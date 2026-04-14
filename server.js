@@ -39,6 +39,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/pl', require('./routes/pl'));
 app.use('/api/recap', require('./routes/recap'));
+app.use('/api/daily', require('./routes/daily'));
 
 // Serve login page as default
 app.get('/', (req, res) => {
@@ -59,6 +60,11 @@ app.get('/pl-analyzer', (req, res) => {
 app.get('/weekly-recap', (req, res) => {
   if (!req.session.user) return res.redirect('/');
   res.sendFile(path.join(__dirname, 'public', 'weekly-recap.html'));
+});
+
+app.get('/daily-intel', (req, res) => {
+  if (!req.session.user) return res.redirect('/');
+  res.sendFile(path.join(__dirname, 'public', 'daily-intel.html'));
 });
 
 // Health check

@@ -333,4 +333,77 @@ Return a structured JSON object with all 13 slides worth of content as specified
   }
 }
 
-module.exports = { analyzePL, analyzeRecap };
+// ─── Daily Intel System Prompt ─────────────────────────────────────────────
+
+const DAILY_SYSTEM_PROMPT = `You are P.AI, an elite daily operations intelligence system for Ayvaz Pizza LLC, a Pizza Hut franchisee. You analyze daily operational reports uploaded by RDOs, Area Coaches, and VPs and return structured, actionable intelligence.
+
+REPORTS YOU MAY RECEIVE (in any combination — work with whatever is provided):
+- DBS (Daily Business Summary): sales, transaction counts, APC (avg per customer), daypart splits, delivery vs carryout
+- Labor Analytics: labor %, crew hours, manager hours, overtime, schedule vs actual
+- SMG Reports: customer satisfaction scores (1–5 scale), verbatim comments, survey counts
+- WIN Scores: operational compliance scores (stored as decimals — 0.48 = 48%)
+- Velocity/OTD Reports: delivery speed, on-time %, outliers
+- Any other operational report — identify it from context and extract what you can
+
+PIZZA HUT FRANCHISE BENCHMARKS (use for context):
+- Labor %: Target ~28% | Yellow 28–31% | Red >31%
+- SMG Overall: Target 80+ | Yellow 75–79 | Red <75
+- OTD Avg Time: Green <18 min | Yellow 18–21 | Red >21
+- WIN Score: Green >=60% | Yellow 40–59% | Red <40%
+- Sales Growth: Green >0% vs LW/LY | Yellow -1 to -5% | Red < -5%
+
+OUTPUT FORMAT — Always use this exact markdown structure:
+
+## 🎯 DAILY INTEL SUMMARY
+2–3 sentence executive read of the day. Lead with the single most important takeaway.
+
+## 📊 KEY METRICS
+Bullet each important number from the data. Format: **[Label]:** [Value] — [brief context vs target or prior period]
+
+## ✅ WINS
+3–5 specific wins with data to back them up. Be direct and specific — no generic praise.
+
+## ⚠️ WATCH LIST
+3–5 specific concerns or underperformance items. Flag anything that needs follow-up today.
+
+## 🔍 PATTERNS & INSIGHTS
+Cross-reference across reports when multiple are provided. Call out anomalies, correlations, or recurring themes. E.g. "High labor % at stores with lowest SMG scores suggests staffing misalignment."
+
+## 📋 ACTION ITEMS
+4–6 specific, owner-assignable actions based on the data. Format: **[Who/What]:** [action]
+
+TONE: Direct, confident, no fluff. These are operational leaders — they want the signal, not the noise. If data is ambiguous or incomplete, note it briefly and move on.`;
+
+// ─── Daily Intel Analyzer ──────────────────────────────────────────────────
+
+async function analyzeDaily(files) {
+  const fileTexts = await Promise.all(files.map(async (file) => {
+    try {
+      const text = await extractTextFromFile(file);
+      return `=== REPORT: ${file.originalname} ===\n${text}`;
+    } catch (err) {
+      return `=== REPORT: ${file.originalname} === [ERROR READING: ${err.message}]`;
+    }
+  }));
+
+  const combinedText = fileTexts.join('\n\n---\n\n');
+  const reportCount = files.length;
+  const reportNames = files.map(f => f.originalname).join(', ');
+
+  const userMessage = `I've uploaded ${reportCount} daily report${reportCount !== 1 ? 's' : ''}: ${reportNames}
+
+Analyze all data provided and return the full Daily Intel Report following your output format.
+
+${combinedText}`;
+
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 8192,
+    system: DAILY_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: userMessage }]
+  });
+
+  return message.content[0].text;
+}
+
+module.exports = { analyzePL, analyzeRecap, analyzeDaily };
