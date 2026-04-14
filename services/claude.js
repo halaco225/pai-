@@ -297,7 +297,10 @@ async function analyzeRecap(files, weekLabel, recapDay) {
 
   const combinedText = fileTexts.join('\n\n---\n\n');
 
-  const userMessage = `I've uploaded my weekly reports. Build me the full region recap deck using the data in these files. Follow the 13-slide structure from the instructions. Read the Velocity file to confirm this week's store and AC alignment.
+  const fileNames = files.map(f => f.originalname).join(', ');
+  const userMessage = `I've uploaded ${files.length} weekly report file(s): ${fileNames}
+
+Build the region recap deck using whatever data is available in these files. If some data sources are missing, build the slides you can with the data provided and note where data was unavailable — do not fail or refuse because of missing files. Work with what you have.
 
 Week: ${weekLabel || '[not specified]'}
 Recap call day: ${recapDay || 'Thursday'}
@@ -306,7 +309,7 @@ Here are the file contents:
 
 ${combinedText}
 
-Return a structured JSON object with all 13 slides worth of content as specified in the instructions.`;
+Return a structured JSON object with all 13 slides worth of content as specified in the instructions. For any slide where source data was not provided, use placeholder text like "[Data not available — upload [file type] to populate]".`;
 
   const message = await client.messages.create({
     model: MODEL,

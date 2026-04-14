@@ -6,174 +6,38 @@
 <title>P.AI — Weekly Recap</title>
 <link rel="stylesheet" href="/css/styles.css" />
 <style>
-  .step-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 20px;
-  }
-  .step-number {
-    width: 28px; height: 28px;
-    background: var(--accent);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 800;
-    flex-shrink: 0;
-  }
-  .step-header h3 {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--text-primary);
-    letter-spacing: 2px;
-    text-transform: uppercase;
-  }
+  .step-header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .step-number { width: 28px; height: 28px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; flex-shrink: 0; }
+  .step-header h3 { font-size: 13px; font-weight: 700; color: var(--text-primary); letter-spacing: 2px; text-transform: uppercase; }
 
-  .file-slot-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-    margin-bottom: 24px;
-  }
+  .report-hint { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+  .report-badge { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text-muted); font-weight: 600; }
+  .report-badge.optional { opacity: 0.6; }
 
-  .file-slot {
-    background: var(--surface-2);
-    border: 1px dashed var(--border-light);
-    border-radius: 10px;
-    padding: 16px;
-    position: relative;
-    transition: all 0.2s;
-  }
-  .file-slot:hover { border-color: var(--accent); }
-  .file-slot.has-file {
-    border-color: var(--success);
-    border-style: solid;
-    background: rgba(16,185,129,0.05);
-  }
+  /* ── File chips ─────────────────────────────────── */
+  .file-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .file-chip { display: flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px; padding: 5px 10px 5px 12px; font-size: 12px; color: var(--text-secondary); }
+  .chip-name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip-remove { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px; padding: 0 2px; line-height: 1; transition: color 0.15s; }
+  .chip-remove:hover { color: var(--accent); }
+  .chip-type { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .add-more-btn { display: inline-flex; align-items: center; gap: 6px; background: none; border: 1px dashed var(--border-light); border-radius: 20px; padding: 5px 14px; font-size: 12px; color: var(--text-muted); cursor: pointer; transition: all 0.15s; font-family: inherit; }
+  .add-more-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .add-more-btn input { display: none; }
 
-  .file-slot-label {
-    font-size: 10px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    margin-bottom: 8px;
-  }
-  .file-slot-name {
-    font-size: 12px;
-    color: var(--text-primary);
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .file-slot-desc {
-    font-size: 11px;
-    color: var(--text-muted);
-    margin-top: 2px;
-  }
-  .file-slot-status {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    margin-top: 6px;
-  }
-  .file-slot-status.ready { color: var(--success); }
-  .file-slot-status.waiting { color: var(--text-muted); }
+  .meta-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
 
-  .bulk-upload-zone {
-    border: 2px dashed var(--border-light);
-    border-radius: 12px;
-    padding: 36px 32px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.2s;
-    position: relative;
-    margin-bottom: 20px;
-  }
-  .bulk-upload-zone:hover,
-  .bulk-upload-zone.drag-over {
-    border-color: var(--accent);
-    background: var(--accent-glow);
-  }
-  .bulk-upload-zone input {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    cursor: pointer;
-    width: 100%;
-    height: 100%;
-  }
-  .bulk-upload-zone h3 {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 6px;
-  }
-  .bulk-upload-zone p {
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-
-  .meta-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 20px;
-  }
-
-  .file-count-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: var(--surface-3);
-    border: 1px solid var(--border-light);
-    border-radius: 20px;
-    padding: 4px 12px;
-    font-size: 11px;
-    color: var(--text-secondary);
-    margin-bottom: 16px;
-  }
-  .file-count-badge .count {
-    font-weight: 800;
-    color: var(--accent);
-  }
-
-  .progress-log {
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 16px;
-    font-family: monospace;
-    font-size: 12px;
-    color: var(--text-muted);
-    min-height: 80px;
-    max-height: 200px;
-    overflow-y: auto;
-    margin-top: 16px;
-  }
+  .progress-log { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; font-family: monospace; font-size: 12px; color: var(--text-muted); min-height: 80px; max-height: 200px; overflow-y: auto; margin-top: 16px; }
   .log-line { margin-bottom: 4px; }
   .log-line.ok { color: var(--success); }
   .log-line.err { color: var(--danger); }
   .log-line.info { color: var(--text-secondary); }
-
-  .slide-preview-note {
-    background: rgba(227,24,55,0.08);
-    border: 1px solid rgba(227,24,55,0.15);
-    border-radius: 8px;
-    padding: 14px 18px;
-    font-size: 13px;
-    color: var(--text-secondary);
-    margin-bottom: 20px;
-  }
 
   #buildSection { display: none; }
 </style>
 </head>
 <body>
 <div class="app-shell">
-  <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-logo">
       <div class="logo-text">P<span>.AI</span></div>
@@ -213,11 +77,10 @@
     </div>
   </aside>
 
-  <!-- Main -->
   <div class="main-content">
     <div class="page-header">
       <h1>Weekly Recap Deck</h1>
-      <p>Upload 6 weekly report files — P.AI builds your 13-slide region recap</p>
+      <p>Upload whatever weekly reports you have — P.AI builds your region recap deck with what's available</p>
     </div>
 
     <div class="page-body">
@@ -225,31 +88,30 @@
       <div class="card">
         <div class="step-header">
           <div class="step-number">1</div>
-          <h3>Upload Weekly Report Files</h3>
+          <h3>Upload Weekly Reports</h3>
         </div>
 
-        <div class="slide-preview-note">
-          Upload all 6 files simultaneously. P.AI will read the Velocity IST file for AC/store alignment and pull data from all sources to build the complete 13-slide deck.
+        <div class="report-hint">
+          <span class="report-badge">Velocity IST</span>
+          <span class="report-badge">FRS</span>
+          <span class="report-badge">HUT Bot</span>
+          <span class="report-badge">WIN Score</span>
+          <span class="report-badge">SMG Comments</span>
+          <span class="report-badge optional">+ Any Others</span>
         </div>
 
-        <div class="bulk-upload-zone" id="uploadZone">
-          <input type="file" id="recapFiles" accept=".xlsx,.xls,.csv,.pdf" multiple />
-          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;margin:0 auto 16px;color:var(--text-muted)">
+        <div class="upload-zone" id="uploadZone">
+          <input type="file" id="recapFiles" accept=".xlsx,.xls,.csv,.pdf,.docx" multiple />
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             <polyline points="17 8 12 3 7 8"/>
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
-          <h3>Drop all 6 files here</h3>
-          <p>Velocity IST · FRS · HUT Bot · WIN Score · SMG Comments · OTD Data</p>
+          <h3>Drop weekly report files here</h3>
+          <p>Upload as many or as few as you have · Excel, PDF, CSV · Max 25MB each</p>
         </div>
 
-        <div id="fileCountDisplay" style="display:none;">
-          <div class="file-count-badge">
-            <span class="count" id="fileCountNum">0</span>
-            <span>files selected</span>
-          </div>
-          <div class="file-list" id="fileListDisplay"></div>
-        </div>
+        <div class="file-chips" id="fileChips"></div>
       </div>
 
       <!-- Step 2: Configure -->
@@ -276,27 +138,28 @@
           </div>
         </div>
 
-        <button class="btn btn-primary" id="buildBtn" onclick="buildDeck()" disabled>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-          Build 13-Slide Deck
-        </button>
+        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+          <button class="btn btn-primary" id="buildBtn" onclick="buildDeck()" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            Build Recap Deck
+          </button>
+          <button class="btn btn-ghost" id="clearBtn" onclick="clearAll()" style="display:none">Clear</button>
+        </div>
       </div>
 
-      <!-- Build Progress -->
+      <!-- Step 3: Progress & Download -->
       <div id="buildSection">
         <div class="card" style="margin-top: 20px;">
           <div class="step-header">
             <div class="step-number">3</div>
             <h3>Building Your Deck</h3>
           </div>
-
           <div id="buildStatus">
             <div class="loading-state">
               <div class="spinner"></div>
               <p>P.AI IS BUILDING YOUR DECK...</p>
             </div>
           </div>
-
           <div class="progress-log" id="progressLog"></div>
         </div>
       </div>
@@ -310,13 +173,12 @@
 </div>
 
 <script>
-  let selectedFiles = [];
+  let fileList = [];
 
   async function init() {
     const res = await fetch('/api/auth/me');
-    if (!res.ok) { window.location.href = '/'; return; }
     const data = await res.json();
-    if (!data.authenticated) { window.location.href = '/'; return; }
+    if (!res.ok || !data.authenticated) { window.location.href = '/'; return; }
     document.getElementById('userName').textContent = data.user.name;
     document.getElementById('userRole').textContent = data.user.role.toUpperCase();
     document.getElementById('userInitial').textContent = data.user.name.charAt(0).toUpperCase();
@@ -330,44 +192,54 @@
   const fileInput = document.getElementById('recapFiles');
   const uploadZone = document.getElementById('uploadZone');
 
-  fileInput.addEventListener('change', handleFileSelect);
-
+  fileInput.addEventListener('change', () => addFiles(fileInput.files));
   uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
   uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
   uploadZone.addEventListener('drop', e => {
-    e.preventDefault();
-    uploadZone.classList.remove('drag-over');
-    const dt = new DataTransfer();
-    for (const f of e.dataTransfer.files) dt.items.add(f);
-    fileInput.files = dt.files;
-    handleFileSelect();
+    e.preventDefault(); uploadZone.classList.remove('drag-over');
+    addFiles(e.dataTransfer.files);
   });
 
-  function handleFileSelect() {
-    selectedFiles = Array.from(fileInput.files);
-    const countDisplay = document.getElementById('fileCountDisplay');
-    const fileList = document.getElementById('fileListDisplay');
-    const countNum = document.getElementById('fileCountNum');
-    const buildBtn = document.getElementById('buildBtn');
-
-    if (selectedFiles.length === 0) {
-      countDisplay.style.display = 'none';
-      buildBtn.disabled = true;
-      return;
+  function addFiles(incoming) {
+    for (const f of incoming) {
+      if (!fileList.find(x => x.name === f.name && x.size === f.size)) fileList.push(f);
     }
+    renderChips();
+    fileInput.value = '';
+  }
 
-    countDisplay.style.display = 'block';
-    countNum.textContent = selectedFiles.length;
+  function removeFile(i) { fileList.splice(i, 1); renderChips(); }
 
-    fileList.innerHTML = selectedFiles.map(f => `
-      <div class="file-item">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-        <span class="file-name">${f.name}</span>
-        <span class="file-size">${(f.size / 1024).toFixed(0)} KB</span>
-      </div>
-    `).join('');
+  function getReportType(filename) {
+    const n = filename.toLowerCase();
+    if (n.includes('velocity') || n.includes('ist')) return 'VELOCITY';
+    if (n.includes('frs') || n.includes('food')) return 'FRS';
+    if (n.includes('hut') && n.includes('bot')) return 'HUTBOT';
+    if (n.includes('win') || n.includes('comparison')) return 'WIN';
+    if (n.includes('smg') || n.includes('survey') || n.includes('comment')) return 'SMG';
+    if (n.includes('labor')) return 'LABOR';
+    return 'RPT';
+  }
 
-    buildBtn.disabled = selectedFiles.length === 0;
+  function renderChips() {
+    const container = document.getElementById('fileChips');
+    container.innerHTML = fileList.map((f, i) => `
+      <div class="file-chip">
+        <span class="chip-type">${getReportType(f.name)}</span>
+        <span class="chip-name" title="${f.name}">${f.name}</span>
+        <button class="chip-remove" onclick="removeFile(${i})">×</button>
+      </div>`).join('');
+    if (fileList.length > 0) {
+      container.innerHTML += `<label class="add-more-btn"><input type="file" accept=".xlsx,.xls,.csv,.pdf,.docx" multiple onchange="addFiles(this.files)" /> + Add More</label>`;
+    }
+    document.getElementById('buildBtn').disabled = fileList.length === 0;
+    document.getElementById('clearBtn').style.display = fileList.length > 0 ? 'inline-flex' : 'none';
+  }
+
+  function clearAll() {
+    fileList = [];
+    renderChips();
+    document.getElementById('buildSection').style.display = 'none';
   }
 
   function log(msg, type = 'info') {
@@ -381,30 +253,29 @@
   }
 
   async function buildDeck() {
-    if (selectedFiles.length === 0) return;
+    if (!fileList.length) return;
 
     const buildSection = document.getElementById('buildSection');
     const buildBtn = document.getElementById('buildBtn');
     const buildStatus = document.getElementById('buildStatus');
+    const progressLog = document.getElementById('progressLog');
 
     buildSection.style.display = 'block';
+    progressLog.innerHTML = '';
+    buildStatus.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>P.AI IS BUILDING YOUR DECK...</p></div>`;
     buildSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     buildBtn.disabled = true;
     buildBtn.textContent = 'Building...';
 
-    log('Starting deck build...', 'info');
-    log(`Files: ${selectedFiles.map(f => f.name).join(', ')}`, 'info');
-    log('Uploading to P.AI...', 'info');
+    log(`Building from ${fileList.length} file(s): ${fileList.map(f => f.name).join(', ')}`, 'info');
+    log('Analyzing data with Claude... (2–4 minutes)', 'info');
 
     const formData = new FormData();
-    for (const file of selectedFiles) formData.append('files', file);
+    fileList.forEach(f => formData.append('files', f));
     formData.append('weekLabel', document.getElementById('weekLabel').value);
     formData.append('recapDay', document.getElementById('recapDay').value);
 
     try {
-      log('Analyzing all data sources with Claude...', 'info');
-      log('This takes 2-4 minutes. Please wait.', 'info');
-
       const res = await fetch('/api/recap/generate', { method: 'POST', body: formData });
 
       if (!res.ok) {
@@ -427,18 +298,16 @@
       log('Remember to fill in Slide 12 (Key Dates) before sending to your ACs.', 'info');
 
       buildStatus.innerHTML = `
-        <div style="text-align: center; padding: 20px; background: rgba(16,185,129,0.08); border-radius: 10px; border: 1px solid rgba(16,185,129,0.2);">
-          <div style="font-size: 32px; margin-bottom: 12px;">✓</div>
-          <div style="font-size: 16px; font-weight: 700; color: var(--success); margin-bottom: 8px;">13-Slide Deck Downloaded</div>
-          <div style="font-size: 13px; color: var(--text-muted);">Open in PowerPoint and fill in Slide 12 (Key Dates &amp; Reminders) before sending to your ACs.</div>
+        <div style="text-align:center;padding:20px;background:rgba(16,185,129,0.08);border-radius:10px;border:1px solid rgba(16,185,129,0.2);">
+          <div style="font-size:32px;margin-bottom:12px;">✓</div>
+          <div style="font-size:16px;font-weight:700;color:var(--success);margin-bottom:8px;">Deck Downloaded</div>
+          <div style="font-size:13px;color:var(--text-muted);">Open in PowerPoint and fill in Slide 12 (Key Dates &amp; Reminders) before sending to your ACs.</div>
+          <button class="btn btn-ghost" style="margin-top:16px;" onclick="clearAll()">Build Another</button>
         </div>`;
 
     } catch (err) {
       log(`ERROR: ${err.message}`, 'err');
-      buildStatus.innerHTML = `
-        <div style="color: var(--danger); padding: 16px; background: rgba(239,68,68,0.08); border-radius: 8px; border: 1px solid rgba(239,68,68,0.2);">
-          <strong>Build failed:</strong> ${err.message}
-        </div>`;
+      buildStatus.innerHTML = `<div style="color:var(--danger);padding:16px;background:rgba(239,68,68,0.08);border-radius:8px;border:1px solid rgba(239,68,68,0.2);"><strong>Build failed:</strong> ${err.message}</div>`;
       buildBtn.disabled = false;
       buildBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Retry Build';
     }

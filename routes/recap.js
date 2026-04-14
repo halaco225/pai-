@@ -2,9 +2,9 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const { requireAuth } = require('../middleware/auth');
 
-// Multer config for weekly recap uploads (up to 6 files)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, path.join(__dirname, '../uploads')),
   filename: (req, file, cb) => {
@@ -12,6 +12,7 @@ const storage = multer.diskStorage({
     cb(null, `recap_${ts}_${Math.random().toString(36).slice(2)}_${file.originalname}`);
   }
 });
+
 const upload = multer({
   storage,
   limits: { fileSize: 25 * 1024 * 1024 },
@@ -23,22 +24,20 @@ const upload = multer({
   }
 });
 
-// POST /api/recap/generate — upload 6 files and generate 13-slide deck
-router.post('/generate', requireAuth, upload.array('files', 6), async (req, res) => {
+// POST /api/recap/generate — upload 1-10 files and generate recap deck
+router.post('/generate', requireAuth, upload.array('files', 10), async (req, res) => {
   if (!req.files || req.files.length === 0) {
-    return res.status(400).json({ error: 'No files uploaded.' });
+    return res.status(400).json({ error: 'At least one report file is required.' });
   }
 
   try {
     const { analyzeRecap } = require('../services/claude');
     const { generateRecapPPTX } = require('../services/pptx-recap');
 
-    // Extract text from all uploaded files
     const weekLabel = req.body.weekLabel || '';
     const recapDay = req.body.recapDay || 'Thursday';
     const analysis = await analyzeRecap(req.files, weekLabel, recapDay);
 
-    // Generate the 13-slide PPTX
     const pptxBuffer = await generateRecapPPTX(analysis);
 
     res.set({
@@ -49,6 +48,8 @@ router.post('/generate', requireAuth, upload.array('files', 6), async (req, res)
   } catch (err) {
     console.error('Recap generation error:', err);
     res.status(500).json({ error: err.message || 'Recap generation failed.' });
+  } finally {
+    if (req.files) req.files.forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
   }
 });
 
