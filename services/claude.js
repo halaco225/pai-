@@ -6,6 +6,11 @@ const XLSX = require('xlsx');
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = 'claude-sonnet-4-20250514';
 
+// ─── Constants ─────────────────────────────────────────────────────────────
+// ~125k tokens of file content — leaves headroom for system prompt + response
+const MAX_FILE_CHARS = 500_000;
+const MAX_ROWS_PER_SHEET = 2000;
+
 // ─── File text extraction ───────────────────────────────────────────────────
 
 async function extractTextFromFile(file) {
@@ -15,7 +20,7 @@ async function extractTextFromFile(file) {
     const pdfParse = require('pdf-parse');
     const buffer = fs.readFileSync(file.path);
     const data = await pdfParse(buffer);
-    return data.text;
+    return truncateText(data.text, file.originalname);
   }
 
   if (['.xlsx', '.xls', '.csv'].includes(ext)) {
@@ -23,14 +28,28 @@ async function extractTextFromFile(file) {
     let text = '';
     workbook.SheetNames.forEach(sheetName => {
       const sheet = workbook.Sheets[sheetName];
+      // Convert to rows array and cap per sheet to avoid massive dumps
+      const rows = XLSX.utils.sheet_to_csv(sheet).split('\n');
+      const cappedRows = rows.slice(0, MAX_ROWS_PER_SHEET);
+      const wasCapped = rows.length > MAX_ROWS_PER_SHEET;
       text += `\n=== Sheet: ${sheetName} ===\n`;
-      text += XLSX.utils.sheet_to_csv(sheet);
+      text += cappedRows.join('\n');
+      if (wasCapped) text += `\n[... ${rows.length - MAX_ROWS_PER_SHEET} additional rows omitted to fit context limit]\n`;
     });
-    return text;
+    return truncateText(text, file.originalname);
   }
 
   // Fallback: read as plain text
-  return fs.readFileSync(file.path, 'utf8');
+  const raw = fs.readFileSync(file.path, 'utf8');
+  return truncateText(raw, file.originalname);
+}
+
+function truncateText(text, filename) {
+  if (text.length <= MAX_FILE_CHARS) return text;
+  const truncated = text.slice(0, MAX_FILE_CHARS);
+  const omittedChars = text.length - MAX_FILE_CHARS;
+  console.log(`[P.AI] Truncated ${filename}: ${text.length} → ${MAX_FILE_CHARS} chars (${omittedChars} omitted)`);
+  return truncated + `\n\n[FILE TRUNCATED: ${omittedChars.toLocaleString()} characters omitted. Analyze the data provided above — it contains the most significant portion of the file.]`;
 }
 
 // ─── P&L System Prompt ──────────────────────────────────────────────────────
