@@ -6,79 +6,14 @@
 <title>P.AI — P&L Analyzer</title>
 <link rel="stylesheet" href="/css/styles.css" />
 <style>
-  .step-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 20px;
-  }
-  .step-number {
-    width: 28px; height: 28px;
-    background: var(--accent);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 800;
-    flex-shrink: 0;
-  }
-  .step-header h3 {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--text-primary);
-    letter-spacing: 2px;
-    text-transform: uppercase;
-  }
-
-  .pptx-options {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 20px;
-  }
-
-  .logo-upload-zone {
-    border: 1px dashed var(--border-light);
-    border-radius: 8px;
-    padding: 20px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.2s;
-    position: relative;
-  }
-  .logo-upload-zone:hover { border-color: var(--accent); background: var(--accent-glow); }
-  .logo-upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
-  .logo-upload-zone p { font-size: 12px; color: var(--text-muted); }
-
-  .section-divider {
-    height: 1px;
-    background: var(--border);
-    margin: 32px 0;
-  }
-
+  .step-header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .step-number { width: 28px; height: 28px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; flex-shrink: 0; }
+  .step-header h3 { font-size: 13px; font-weight: 700; color: var(--text-primary); letter-spacing: 2px; text-transform: uppercase; }
+  .section-divider { height: 1px; background: var(--border); margin: 32px 0; }
   #analysisContainer { display: none; }
-  #pptxPanel { display: none; }
-
-  .action-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .markdown-output {
-    color: var(--text-secondary);
-    font-size: 14px;
-    line-height: 1.8;
-  }
-  .markdown-output h1, .markdown-output h2, .markdown-output h3 {
-    color: var(--text-primary);
-    font-weight: 700;
-    margin: 20px 0 10px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--border);
-  }
+  .action-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .markdown-output { color: var(--text-secondary); font-size: 14px; line-height: 1.8; }
+  .markdown-output h1, .markdown-output h2, .markdown-output h3 { color: var(--text-primary); font-weight: 700; margin: 20px 0 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
   .markdown-output h1 { font-size: 18px; }
   .markdown-output h2 { font-size: 15px; color: var(--accent); }
   .markdown-output h3 { font-size: 13px; border: none; }
@@ -86,25 +21,74 @@
   .markdown-output ul, .markdown-output ol { padding-left: 20px; margin-bottom: 12px; }
   .markdown-output li { margin-bottom: 6px; }
   .markdown-output strong { color: var(--text-primary); }
-  .markdown-output code {
-    background: var(--surface-3);
-    border: 1px solid var(--border);
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-family: monospace;
-    font-size: 12px;
-  }
-  .markdown-output blockquote {
-    border-left: 3px solid var(--accent);
-    padding-left: 16px;
-    margin: 16px 0;
+  .markdown-output code { background: var(--surface-3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 12px; }
+  .markdown-output blockquote { border-left: 3px solid var(--accent); padding-left: 16px; margin: 16px 0; color: var(--text-muted); }
+
+  /* ── Theme Selector ─────────────────────────────────── */
+  .options-label {
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
     color: var(--text-muted);
+    margin-bottom: 10px;
   }
+  .theme-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .theme-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+  }
+  .theme-card:hover { border-color: var(--accent); }
+  .theme-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(227,24,55,0.25); }
+  .theme-swatch {
+    display: flex;
+    height: 28px;
+    border-radius: 5px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  .theme-swatch-bg { flex: 2; }
+  .theme-swatch-accent { flex: 1; }
+  .theme-name { font-size: 11px; color: var(--text-secondary); font-weight: 600; }
+
+  /* ── Logo Selector ──────────────────────────────────── */
+  .logo-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .logo-option {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface);
+  }
+  .logo-option:hover { border-color: var(--accent); }
+  .logo-option.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(227,24,55,0.25); }
+  .logo-option img { height: 44px; width: auto; max-width: 90px; object-fit: contain; }
+  .logo-option-none { color: var(--text-muted); font-size: 22px; height: 44px; display: flex; align-items: center; justify-content: center; }
+  .logo-option span { font-size: 10px; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
+  .logo-missing { font-size: 10px; color: #F59E0B; margin-top: 2px; display: none; }
 </style>
 </head>
 <body>
 <div class="app-shell">
-  <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-logo">
       <div class="logo-text">P<span>.AI</span></div>
@@ -140,7 +124,6 @@
     </div>
   </aside>
 
-  <!-- Main -->
   <div class="main-content">
     <div class="page-header">
       <h1>P&L Analyzer</h1>
@@ -154,7 +137,6 @@
           <div class="step-number">1</div>
           <h3>Upload P&L File</h3>
         </div>
-
         <div class="upload-zone" id="uploadZone">
           <input type="file" id="plFile" accept=".xlsx,.xls,.pdf,.csv" />
           <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -166,7 +148,6 @@
           <p>Supports Excel (.xlsx, .xls), PDF, and CSV · Max 25MB</p>
           <div class="file-selected" id="fileLabel"></div>
         </div>
-
         <div style="margin-top: 20px;">
           <button class="btn btn-primary" id="analyzeBtn" onclick="analyzeFile()" disabled>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -179,7 +160,7 @@
       <div id="analysisContainer">
         <div class="section-divider"></div>
 
-        <div class="card" id="analysisCard">
+        <div class="card">
           <div class="step-header">
             <div class="step-number">2</div>
             <h3>Analysis Results</h3>
@@ -188,29 +169,59 @@
         </div>
 
         <!-- Step 3: PPTX Options -->
-        <div id="pptxPanel" style="margin-top: 20px;">
+        <div id="pptxPanel" style="margin-top: 20px; display: none;">
           <div class="card">
             <div class="step-header">
               <div class="step-number">3</div>
               <h3>Export as PowerPoint</h3>
             </div>
 
-            <div class="pptx-options">
-              <div class="form-group">
-                <label>Accent Color</label>
-                <input type="color" id="accentColor" value="#E31837" />
+            <!-- Theme Selector -->
+            <div class="options-label">Presentation Theme</div>
+            <div class="theme-grid">
+              <div class="theme-card selected" data-theme="command-dark" onclick="selectTheme('command-dark', this)">
+                <div class="theme-swatch"><div class="theme-swatch-bg" style="background:#0D0D0D"></div><div class="theme-swatch-accent" style="background:#E31837"></div></div>
+                <div class="theme-name">Command Dark</div>
               </div>
-              <div class="form-group">
-                <label>Background Color</label>
-                <input type="color" id="bgColor" value="#0D0D0D" />
+              <div class="theme-card" data-theme="navy-gold" onclick="selectTheme('navy-gold', this)">
+                <div class="theme-swatch"><div class="theme-swatch-bg" style="background:#0F1F3D"></div><div class="theme-swatch-accent" style="background:#C9A84C"></div></div>
+                <div class="theme-name">Navy &amp; Gold</div>
+              </div>
+              <div class="theme-card" data-theme="clean-white" onclick="selectTheme('clean-white', this)">
+                <div class="theme-swatch"><div class="theme-swatch-bg" style="background:#FFFFFF; border: 1px solid #ddd"></div><div class="theme-swatch-accent" style="background:#E31837"></div></div>
+                <div class="theme-name">Clean White</div>
+              </div>
+              <div class="theme-card" data-theme="slate-blue" onclick="selectTheme('slate-blue', this)">
+                <div class="theme-swatch"><div class="theme-swatch-bg" style="background:#1A2744"></div><div class="theme-swatch-accent" style="background:#60A5FA"></div></div>
+                <div class="theme-name">Slate Blue</div>
+              </div>
+              <div class="theme-card" data-theme="obsidian" onclick="selectTheme('obsidian', this)">
+                <div class="theme-swatch"><div class="theme-swatch-bg" style="background:#111827"></div><div class="theme-swatch-accent" style="background:#F59E0B"></div></div>
+                <div class="theme-name">Obsidian</div>
               </div>
             </div>
 
-            <div class="form-group" style="margin-bottom: 20px;">
-              <label>Upload Logo (optional)</label>
-              <div class="logo-upload-zone">
-                <input type="file" id="logoFile" accept=".png,.jpg,.jpeg,.svg" onchange="handleLogoUpload(this)" />
-                <p id="logoLabel">Click to upload your logo (PNG/JPG)</p>
+            <!-- Logo Selector -->
+            <div class="options-label">Cover Logo</div>
+            <div class="logo-grid">
+              <div class="logo-option selected" data-logo="none" onclick="selectLogo('none', this)">
+                <div class="logo-option-none">∅</div>
+                <span>No Logo</span>
+              </div>
+              <div class="logo-option" data-logo="seal" onclick="selectLogo('seal', this)">
+                <img src="/images/logo-seal.png" alt="Seal" onerror="this.style.display='none'; this.nextElementSibling.style.display='block'"/>
+                <div class="logo-missing">Save logo-seal.png to public/images/</div>
+                <span>Seal</span>
+              </div>
+              <div class="logo-option" data-logo="wordmark" onclick="selectLogo('wordmark', this)">
+                <img src="/images/logo-wordmark.png" alt="Wordmark" onerror="this.style.display='none'; this.nextElementSibling.style.display='block'"/>
+                <div class="logo-missing">Save logo-wordmark.png to public/images/</div>
+                <span>Wordmark</span>
+              </div>
+              <div class="logo-option" data-logo="icon" onclick="selectLogo('icon', this)">
+                <img src="/images/logo-icon.png" alt="Icon" onerror="this.style.display='none'; this.nextElementSibling.style.display='block'"/>
+                <div class="logo-missing">Save logo-icon.png to public/images/</div>
+                <span>Icon</span>
               </div>
             </div>
 
@@ -235,12 +246,13 @@
 
 <script>
   let analysisResult = null;
+  let selectedTheme = 'command-dark';
   let logoBase64 = null;
 
   async function init() {
     const res = await fetch('/api/auth/me');
-    if (!res.ok || !(await res.json()).authenticated) { window.location.href = '/'; return; }
-    const data = await (await fetch('/api/auth/me')).json();
+    const data = await res.json();
+    if (!res.ok || !data.authenticated) { window.location.href = '/'; return; }
     document.getElementById('userName').textContent = data.user.name;
     document.getElementById('userRole').textContent = data.user.role.toUpperCase();
     document.getElementById('userInitial').textContent = data.user.name.charAt(0).toUpperCase();
@@ -251,7 +263,7 @@
     window.location.href = '/';
   }
 
-  // File input
+  // ── File input ────────────────────────────────────────────────────────────
   const plFile = document.getElementById('plFile');
   const analyzeBtn = document.getElementById('analyzeBtn');
   const fileLabel = document.getElementById('fileLabel');
@@ -264,7 +276,6 @@
     }
   });
 
-  // Drag & drop
   uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
   uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
   uploadZone.addEventListener('drop', e => {
@@ -280,19 +291,48 @@
     }
   });
 
+  // ── Theme selector ────────────────────────────────────────────────────────
+  function selectTheme(themeKey, el) {
+    selectedTheme = themeKey;
+    document.querySelectorAll('.theme-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+  }
+
+  // ── Logo selector ─────────────────────────────────────────────────────────
+  async function selectLogo(logoKey, el) {
+    document.querySelectorAll('.logo-option').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+
+    if (logoKey === 'none') {
+      logoBase64 = null;
+      return;
+    }
+
+    try {
+      const res = await fetch(`/images/logo-${logoKey}.png`);
+      if (!res.ok) { logoBase64 = null; return; }
+      const blob = await res.blob();
+      await new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = (e) => { logoBase64 = e.target.result; resolve(); };
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      logoBase64 = null;
+    }
+  }
+
+  // ── Analyze ───────────────────────────────────────────────────────────────
   async function analyzeFile() {
     if (!plFile.files.length) return;
 
     const container = document.getElementById('analysisContainer');
     const content = document.getElementById('analysisContent');
+    const pptxPanel = document.getElementById('pptxPanel');
 
     container.style.display = 'block';
-    content.innerHTML = `
-      <div class="loading-state">
-        <div class="spinner"></div>
-        <p>P.AI is analyzing your P&L...</p>
-      </div>`;
-    document.getElementById('pptxPanel').style.display = 'none';
+    pptxPanel.style.display = 'none';
+    content.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>P.AI is analyzing your P&L...</p></div>`;
     analyzeBtn.disabled = true;
     analyzeBtn.textContent = 'Analyzing...';
 
@@ -302,64 +342,40 @@
     try {
       const res = await fetch('/api/pl/analyze', { method: 'POST', body: formData });
       const data = await res.json();
-
       if (!res.ok) throw new Error(data.error || 'Analysis failed');
-
       analysisResult = data.analysis;
       content.innerHTML = `<div class="markdown-output">${renderMarkdown(analysisResult)}</div>`;
-      document.getElementById('pptxPanel').style.display = 'block';
-
+      pptxPanel.style.display = 'block';
     } catch (err) {
-      content.innerHTML = `
-        <div style="color: var(--danger); padding: 20px; background: rgba(239,68,68,0.1); border-radius: 8px; border: 1px solid rgba(239,68,68,0.2);">
-          <strong>Analysis failed:</strong> ${err.message}
-        </div>`;
+      content.innerHTML = `<div style="color:var(--danger);padding:20px;background:rgba(239,68,68,0.1);border-radius:8px;border:1px solid rgba(239,68,68,0.2);"><strong>Analysis failed:</strong> ${err.message}</div>`;
     } finally {
       analyzeBtn.disabled = false;
       analyzeBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Re-Analyze';
     }
   }
 
-  function handleLogoUpload(input) {
-    if (!input.files.length) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      logoBase64 = e.target.result;
-      document.getElementById('logoLabel').textContent = `✓ Logo loaded: ${input.files[0].name}`;
-    };
-    reader.readAsDataURL(input.files[0]);
-  }
-
+  // ── Download PPTX ─────────────────────────────────────────────────────────
   async function downloadPPTX() {
     if (!analysisResult) return;
-
-    const btn = event.target;
+    const btn = event.currentTarget;
     btn.disabled = true;
     btn.textContent = 'Generating...';
 
     try {
-      const options = {
-        accentColor: document.getElementById('accentColor').value,
-        bgColor: document.getElementById('bgColor').value,
-        logoBase64: logoBase64
-      };
-
+      const options = { theme: selectedTheme, logoBase64 };
       const res = await fetch('/api/pl/generate-pptx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ analysis: analysisResult, options })
       });
-
       if (!res.ok) throw new Error('PPTX generation failed');
-
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'P.AI_PL_Analysis.pptx';
+      a.download = `P.AI_PL_Analysis_${selectedTheme}.pptx`;
       a.click();
       URL.revokeObjectURL(url);
-
     } catch (err) {
       alert('Failed to generate PowerPoint: ' + err.message);
     } finally {
@@ -368,7 +384,6 @@
     }
   }
 
-  // Simple markdown renderer
   function renderMarkdown(text) {
     return text
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
