@@ -15,13 +15,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 25 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowed = ['.xlsx', '.xls', '.pdf', '.csv', '.docx'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (allowed.includes(ext)) cb(null, true);
-    else cb(new Error('Unsupported file type.'));
-  }
+  limits: { fileSize: 25 * 1024 * 1024 }
 });
 
 // POST /api/recap/generate — upload 1-10 files and generate recap deck

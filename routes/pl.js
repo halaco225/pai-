@@ -14,13 +14,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
-  fileFilter: (req, file, cb) => {
-    const allowed = ['.xlsx', '.xls', '.pdf', '.csv'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (allowed.includes(ext)) cb(null, true);
-    else cb(new Error('Only Excel and PDF files are supported.'));
-  }
+  limits: { fileSize: 25 * 1024 * 1024 }
 });
 
 // POST /api/pl/analyze — upload and analyze a P&L file

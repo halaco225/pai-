@@ -9,12 +9,7 @@ const { saveAnalysis, getHistory, getRecentDaily, getAnalysisById } = require('.
 
 const upload = multer({
   dest: path.join(__dirname, '../uploads'),
-  limits: { fileSize: 25 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowed = ['.xlsx', '.xls', '.csv', '.pdf', '.txt'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, allowed.includes(ext));
-  }
+  limits: { fileSize: 25 * 1024 * 1024 }
 });
 
 // ── POST /api/daily/analyze ───────────────────────────────────────────────────

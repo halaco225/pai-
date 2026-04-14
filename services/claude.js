@@ -16,6 +16,7 @@ const MAX_ROWS_PER_SHEET = 2000;
 async function extractTextFromFile(file) {
   const ext = path.extname(file.originalname).toLowerCase();
 
+  // ── PDF ──────────────────────────────────────────────────────────────────
   if (ext === '.pdf') {
     const pdfParse = require('pdf-parse');
     const buffer = fs.readFileSync(file.path);
@@ -23,25 +24,50 @@ async function extractTextFromFile(file) {
     return truncateText(data.text, file.originalname);
   }
 
+  // ── Excel / CSV ───────────────────────────────────────────────────────────
   if (['.xlsx', '.xls', '.csv'].includes(ext)) {
     const workbook = XLSX.readFile(file.path);
     let text = '';
     workbook.SheetNames.forEach(sheetName => {
       const sheet = workbook.Sheets[sheetName];
-      // Convert to rows array and cap per sheet to avoid massive dumps
       const rows = XLSX.utils.sheet_to_csv(sheet).split('\n');
       const cappedRows = rows.slice(0, MAX_ROWS_PER_SHEET);
       const wasCapped = rows.length > MAX_ROWS_PER_SHEET;
       text += `\n=== Sheet: ${sheetName} ===\n`;
       text += cappedRows.join('\n');
-      if (wasCapped) text += `\n[... ${rows.length - MAX_ROWS_PER_SHEET} additional rows omitted to fit context limit]\n`;
+      if (wasCapped) text += `\n[... ${rows.length - MAX_ROWS_PER_SHEET} additional rows omitted]\n`;
     });
     return truncateText(text, file.originalname);
   }
 
-  // Fallback: read as plain text
-  const raw = fs.readFileSync(file.path, 'utf8');
-  return truncateText(raw, file.originalname);
+  // ── Word (.docx) ──────────────────────────────────────────────────────────
+  if (ext === '.docx') {
+    try {
+      const mammoth = require('mammoth');
+      const result = await mammoth.extractRawText({ path: file.path });
+      return truncateText(result.value, file.originalname);
+    } catch {
+      // fall through to plain text
+    }
+  }
+
+  // ── HTML / XML / JSON ─────────────────────────────────────────────────────
+  if (['.html', '.htm', '.xml', '.json'].includes(ext)) {
+    const raw = fs.readFileSync(file.path, 'utf8');
+    // Strip HTML/XML tags for cleaner reading
+    const cleaned = ext === '.html' || ext === '.htm'
+      ? raw.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ')
+      : raw;
+    return truncateText(cleaned, file.originalname);
+  }
+
+  // ── Universal fallback: try to read as plain text ─────────────────────────
+  try {
+    const raw = fs.readFileSync(file.path, 'utf8');
+    return truncateText(raw, file.originalname);
+  } catch {
+    return `[Could not extract text from ${file.originalname} — file may be a binary format not yet supported]`;
+  }
 }
 
 function truncateText(text, filename) {
