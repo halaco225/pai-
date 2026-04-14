@@ -4,6 +4,7 @@ const session = require('express-session');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const { initDB } = require('./services/db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -81,8 +82,15 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error', message: err.message });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`\n🍕 P.AI is running on http://localhost:${PORT}`);
   console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`   Claude model: claude-sonnet-4-20250514\n`);
+  console.log(`   Claude model: claude-sonnet-4-20250514`);
+  try {
+    await initDB();
+    console.log(`   Database: connected ✓`);
+  } catch (err) {
+    console.log(`   Database: not configured (${err.message})`);
+  }
+  console.log('');
 });

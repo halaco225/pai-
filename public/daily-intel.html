@@ -10,132 +10,121 @@
   .step-number { width: 28px; height: 28px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; flex-shrink: 0; }
   .step-header h3 { font-size: 13px; font-weight: 700; color: var(--text-primary); letter-spacing: 2px; text-transform: uppercase; }
   .section-divider { height: 1px; background: var(--border); margin: 32px 0; }
-  #resultsContainer { display: none; }
 
-  /* ── File chips ─────────────────────────────────────── */
-  .file-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 14px;
-    min-height: 0;
+  /* ── Two-column layout ───────────────────────────── */
+  .intel-layout {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 20px;
+    align-items: start;
   }
-  .file-chip {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 5px 10px 5px 12px;
-    font-size: 12px;
-    color: var(--text-secondary);
-    transition: all 0.15s;
+  @media (max-width: 1100px) {
+    .intel-layout { grid-template-columns: 1fr; }
   }
-  .file-chip .chip-name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .chip-remove {
-    background: none; border: none; cursor: pointer;
-    color: var(--text-muted); font-size: 14px; padding: 0 2px;
-    line-height: 1; transition: color 0.15s;
-  }
+
+  /* ── File chips ─────────────────────────────────── */
+  .file-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .file-chip { display: flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px; padding: 5px 10px 5px 12px; font-size: 12px; color: var(--text-secondary); }
+  .chip-name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip-remove { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px; padding: 0 2px; line-height: 1; transition: color 0.15s; }
   .chip-remove:hover { color: var(--accent); }
-  .chip-type {
-    font-size: 9px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    color: var(--accent);
-    font-weight: 700;
-  }
-
-  .add-more-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: none;
-    border: 1px dashed var(--border-light);
-    border-radius: 20px;
-    padding: 5px 14px;
-    font-size: 12px;
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: all 0.15s;
-    font-family: inherit;
-  }
+  .chip-type { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .add-more-btn { display: inline-flex; align-items: center; gap: 6px; background: none; border: 1px dashed var(--border-light); border-radius: 20px; padding: 5px 14px; font-size: 12px; color: var(--text-muted); cursor: pointer; transition: all 0.15s; font-family: inherit; }
   .add-more-btn:hover { border-color: var(--accent); color: var(--accent); }
   .add-more-btn input { display: none; }
 
-  /* ── Report type badges ─────────────────────────────── */
-  .report-hint {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 16px;
-  }
-  .report-badge {
-    font-size: 10px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 3px 8px;
-    color: var(--text-muted);
-    font-weight: 600;
-  }
+  .report-hint { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+  .report-badge { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text-muted); font-weight: 600; }
 
-  /* ── Dashboard output ───────────────────────────────── */
-  .intel-output {
-    font-size: 14px;
-    line-height: 1.8;
-    color: var(--text-secondary);
+  /* ── Save indicator ─────────────────────────────── */
+  .save-indicator {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; color: #34D399; margin-left: 12px;
+    opacity: 0; transition: opacity 0.3s;
   }
-  .intel-output h2 {
-    font-size: 15px;
-    font-weight: 800;
-    color: var(--text-primary);
-    margin: 28px 0 12px;
-    padding: 10px 14px;
-    border-radius: 6px;
-    letter-spacing: 0.5px;
-  }
+  .save-indicator.visible { opacity: 1; }
+
+  /* ── Analysis output ────────────────────────────── */
+  .intel-output { font-size: 14px; line-height: 1.8; color: var(--text-secondary); }
+  .intel-output h2 { font-size: 14px; font-weight: 800; margin: 24px 0 10px; padding: 9px 14px; border-radius: 6px; letter-spacing: 0.5px; }
   .intel-output h2:first-child { margin-top: 0; }
-
-  /* Section color coding */
-  .intel-output h2.section-summary { background: rgba(227,24,55,0.1); border-left: 3px solid #E31837; color: #E31837; }
-  .intel-output h2.section-metrics { background: rgba(96,165,250,0.08); border-left: 3px solid #60A5FA; color: #60A5FA; }
-  .intel-output h2.section-wins    { background: rgba(52,211,153,0.08); border-left: 3px solid #34D399; color: #34D399; }
-  .intel-output h2.section-watch   { background: rgba(251,191,36,0.08); border-left: 3px solid #FBBF24; color: #FBBF24; }
-  .intel-output h2.section-patterns{ background: rgba(167,139,250,0.08); border-left: 3px solid #A78BFA; color: #A78BFA; }
-  .intel-output h2.section-actions { background: rgba(251,146,60,0.08); border-left: 3px solid #FB923C; color: #FB923C; }
-
+  .intel-output h2.section-summary  { background: rgba(227,24,55,0.1);   border-left: 3px solid #E31837; color: #E31837; }
+  .intel-output h2.section-metrics  { background: rgba(96,165,250,0.08); border-left: 3px solid #60A5FA; color: #60A5FA; }
+  .intel-output h2.section-wins     { background: rgba(52,211,153,0.08); border-left: 3px solid #34D399; color: #34D399; }
+  .intel-output h2.section-watch    { background: rgba(251,191,36,0.08); border-left: 3px solid #FBBF24; color: #FBBF24; }
+  .intel-output h2.section-connect  { background: rgba(167,139,250,0.08);border-left: 3px solid #A78BFA; color: #A78BFA; }
+  .intel-output h2.section-actions  { background: rgba(251,146,60,0.08); border-left: 3px solid #FB923C; color: #FB923C; }
+  /* Trend sections */
+  .intel-output h2.section-trend    { background: rgba(96,165,250,0.08); border-left: 3px solid #60A5FA; color: #60A5FA; }
+  .intel-output h2.section-recur    { background: rgba(251,191,36,0.08); border-left: 3px solid #FBBF24; color: #FBBF24; }
+  .intel-output h2.section-corr     { background: rgba(167,139,250,0.08);border-left: 3px solid #A78BFA; color: #A78BFA; }
+  .intel-output h2.section-down     { background: rgba(239,68,68,0.08);  border-left: 3px solid #EF4444; color: #EF4444; }
+  .intel-output h2.section-up       { background: rgba(52,211,153,0.08); border-left: 3px solid #34D399; color: #34D399; }
+  .intel-output h2.section-systemic { background: rgba(251,146,60,0.08); border-left: 3px solid #FB923C; color: #FB923C; }
+  .intel-output h2.section-priority { background: rgba(227,24,55,0.1);   border-left: 3px solid #E31837; color: #E31837; }
   .intel-output p { margin-bottom: 10px; padding: 0 4px; }
   .intel-output ul { padding-left: 8px; margin-bottom: 12px; list-style: none; }
-  .intel-output li {
-    margin-bottom: 8px;
-    padding: 8px 12px;
-    background: var(--surface);
-    border-radius: 6px;
-    border-left: 2px solid var(--border);
-  }
-  .intel-output li::before { content: none; }
+  .intel-output li { margin-bottom: 7px; padding: 8px 12px; background: var(--surface); border-radius: 6px; border-left: 2px solid var(--border); }
   .intel-output strong { color: var(--text-primary); }
   .intel-output em { color: var(--text-muted); font-style: italic; }
 
-  .file-count-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: var(--surface-2);
+  /* ── History sidebar ────────────────────────────── */
+  .history-panel {
+    background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 4px 10px;
-    font-size: 11px;
-    color: var(--text-muted);
-    margin-bottom: 20px;
+    border-radius: 14px;
+    overflow: hidden;
+    position: sticky;
+    top: 20px;
   }
-  .file-count-badge span { color: var(--accent); font-weight: 700; }
+  .history-header {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .history-header h4 { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin: 0; }
+  .history-count { font-size: 11px; color: var(--accent); font-weight: 700; }
+  .history-list { max-height: 480px; overflow-y: auto; }
+  .history-item {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .history-item:last-child { border-bottom: none; }
+  .history-item:hover { background: var(--surface-2); }
+  .history-item.active { background: var(--accent-glow); border-left: 2px solid var(--accent); }
+  .history-date { font-size: 11px; color: var(--accent); font-weight: 700; margin-bottom: 3px; }
+  .history-files { font-size: 11px; color: var(--text-muted); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+  .history-preview { font-size: 11px; color: var(--text-secondary); margin-top: 4px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .history-empty { padding: 24px 18px; text-align: center; font-size: 12px; color: var(--text-muted); }
+
+  /* ── Trends button area ─────────────────────────── */
+  .trends-section {
+    padding: 14px 18px;
+    border-top: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .trends-section p { font-size: 11px; color: var(--text-muted); margin-bottom: 10px; line-height: 1.5; }
+  .btn-trends {
+    width: 100%;
+    background: linear-gradient(135deg, #7C3AED, #A78BFA);
+    color: white; border: none;
+    padding: 10px 14px; border-radius: 8px;
+    font-size: 12px; font-weight: 700;
+    cursor: pointer; transition: opacity 0.2s;
+    font-family: inherit; letter-spacing: 0.5px;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn-trends:hover { opacity: 0.9; }
+  .btn-trends:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .days-select { width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text-primary); padding: 7px 10px; border-radius: 6px; font-size: 12px; font-family: inherit; margin-bottom: 8px; }
 
   .action-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+  #resultsContainer { display: none; }
 </style>
 </head>
 <body>
@@ -182,63 +171,85 @@
   <div class="main-content">
     <div class="page-header">
       <h1>Daily Intel</h1>
-      <p>Upload any daily reports for an instant AI-powered operations briefing</p>
+      <p>Upload any daily reports — P.AI analyzes, cross-references, and builds your history automatically</p>
     </div>
 
     <div class="page-body">
-      <div class="card">
-        <div class="step-header">
-          <div class="step-number">1</div>
-          <h3>Upload Reports</h3>
-        </div>
-
-        <div class="report-hint">
-          <span class="report-badge">DBS</span>
-          <span class="report-badge">Labor Analytics</span>
-          <span class="report-badge">SMG Scores</span>
-          <span class="report-badge">WIN Score</span>
-          <span class="report-badge">Velocity / OTD</span>
-          <span class="report-badge">+ Any Report</span>
-        </div>
-
-        <div class="upload-zone" id="uploadZone">
-          <input type="file" id="fileInput" accept=".xlsx,.xls,.pdf,.csv,.txt" multiple />
-          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-          <h3>Drop reports here</h3>
-          <p>Upload one or more daily reports · Excel, PDF, CSV · Max 25MB each</p>
-        </div>
-
-        <div class="file-chips" id="fileChips"></div>
-
-        <div style="margin-top: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-          <button class="btn btn-primary" id="analyzeBtn" onclick="runAnalysis()" disabled>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-            Run Daily Intel
-          </button>
-          <button class="btn btn-ghost" id="clearBtn" onclick="clearAll()" style="display:none;">Clear All</button>
-        </div>
-      </div>
-
-      <!-- Results -->
-      <div id="resultsContainer">
-        <div class="section-divider"></div>
-        <div class="card">
-          <div class="step-header">
-            <div class="step-number">2</div>
-            <h3>Daily Intelligence Report</h3>
+      <div class="intel-layout">
+        <!-- Left: Upload + Results -->
+        <div>
+          <div class="card">
+            <div class="step-header">
+              <div class="step-number">1</div>
+              <h3>Upload Reports</h3>
+            </div>
+            <div class="report-hint">
+              <span class="report-badge">DBS</span>
+              <span class="report-badge">Labor Analytics</span>
+              <span class="report-badge">SMG Scores</span>
+              <span class="report-badge">WIN Score</span>
+              <span class="report-badge">Velocity / OTD</span>
+              <span class="report-badge">+ Any Report</span>
+            </div>
+            <div class="upload-zone" id="uploadZone">
+              <input type="file" id="fileInput" accept=".xlsx,.xls,.pdf,.csv,.txt" multiple />
+              <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              <h3>Drop reports here</h3>
+              <p>Upload one or more daily reports · Excel, PDF, CSV · Max 25MB each</p>
+            </div>
+            <div class="file-chips" id="fileChips"></div>
+            <div style="margin-top: 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <button class="btn btn-primary" id="analyzeBtn" onclick="runAnalysis()" disabled>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                Run Daily Intel
+              </button>
+              <button class="btn btn-ghost" id="clearBtn" onclick="clearAll()" style="display:none">Clear</button>
+              <span class="save-indicator" id="saveIndicator">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                Saved to history
+              </span>
+            </div>
           </div>
-          <div id="fileCountBadge" class="file-count-badge">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
-            Analyzed <span id="reportCountText">0</span> report(s)
+
+          <!-- Results -->
+          <div id="resultsContainer">
+            <div class="section-divider"></div>
+            <div class="card">
+              <div id="intelOutput"></div>
+              <div class="action-row">
+                <button class="btn btn-ghost" onclick="window.print()">Print Report</button>
+                <button class="btn btn-ghost" onclick="clearAll()">New Analysis</button>
+              </div>
+            </div>
           </div>
-          <div id="intelOutput"></div>
-          <div class="action-row">
-            <button class="btn btn-ghost" onclick="window.print()">Print Report</button>
-            <button class="btn btn-ghost" onclick="clearAll()">New Analysis</button>
+        </div>
+
+        <!-- Right: History + Trends -->
+        <div>
+          <div class="history-panel">
+            <div class="history-header">
+              <h4>History</h4>
+              <span class="history-count" id="historyCount">—</span>
+            </div>
+            <div class="history-list" id="historyList">
+              <div class="history-empty">Loading history...</div>
+            </div>
+            <div class="trends-section">
+              <p>Feed P.AI your recent daily reports and get a multi-day pattern + cross-correlation analysis.</p>
+              <select class="days-select" id="trendDays">
+                <option value="7">Last 7 days</option>
+                <option value="14" selected>Last 14 days</option>
+                <option value="30">Last 30 days</option>
+              </select>
+              <button class="btn-trends" id="trendsBtn" onclick="runTrends()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                Analyze Trends
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -261,6 +272,7 @@
     document.getElementById('userName').textContent = data.user.name;
     document.getElementById('userRole').textContent = data.user.role.toUpperCase();
     document.getElementById('userInitial').textContent = data.user.name.charAt(0).toUpperCase();
+    loadHistory();
   }
 
   async function logout() {
@@ -268,6 +280,7 @@
     window.location.href = '/';
   }
 
+  // ── File handling ──────────────────────────────────────────────────────────
   const fileInput = document.getElementById('fileInput');
   const uploadZone = document.getElementById('uploadZone');
 
@@ -275,25 +288,19 @@
   uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
   uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
   uploadZone.addEventListener('drop', e => {
-    e.preventDefault();
-    uploadZone.classList.remove('drag-over');
+    e.preventDefault(); uploadZone.classList.remove('drag-over');
     addFiles(e.dataTransfer.files);
   });
 
   function addFiles(incoming) {
-    for (const file of incoming) {
-      if (!fileList.find(f => f.name === file.name && f.size === file.size)) {
-        fileList.push(file);
-      }
+    for (const f of incoming) {
+      if (!fileList.find(x => x.name === f.name && x.size === f.size)) fileList.push(f);
     }
     renderChips();
     fileInput.value = '';
   }
 
-  function removeFile(index) {
-    fileList.splice(index, 1);
-    renderChips();
-  }
+  function removeFile(i) { fileList.splice(i, 1); renderChips(); }
 
   function getReportType(filename) {
     const n = filename.toLowerCase();
@@ -308,48 +315,40 @@
 
   function renderChips() {
     const container = document.getElementById('fileChips');
-    const analyzeBtn = document.getElementById('analyzeBtn');
-    const clearBtn = document.getElementById('clearBtn');
-
     container.innerHTML = fileList.map((f, i) => `
       <div class="file-chip">
         <span class="chip-type">${getReportType(f.name)}</span>
         <span class="chip-name" title="${f.name}">${f.name}</span>
-        <button class="chip-remove" onclick="removeFile(${i})" title="Remove">×</button>
-      </div>
-    `).join('');
-
+        <button class="chip-remove" onclick="removeFile(${i})">×</button>
+      </div>`).join('');
     if (fileList.length > 0) {
-      container.innerHTML += `
-        <label class="add-more-btn">
-          <input type="file" accept=".xlsx,.xls,.pdf,.csv,.txt" multiple onchange="addFiles(this.files)" />
-          + Add More
-        </label>`;
+      container.innerHTML += `<label class="add-more-btn"><input type="file" accept=".xlsx,.xls,.pdf,.csv,.txt" multiple onchange="addFiles(this.files)" /> + Add More</label>`;
     }
-
-    analyzeBtn.disabled = fileList.length === 0;
-    clearBtn.style.display = fileList.length > 0 ? 'inline-flex' : 'none';
+    document.getElementById('analyzeBtn').disabled = fileList.length === 0;
+    document.getElementById('clearBtn').style.display = fileList.length > 0 ? 'inline-flex' : 'none';
   }
 
   function clearAll() {
     fileList = [];
     renderChips();
     document.getElementById('resultsContainer').style.display = 'none';
+    document.getElementById('saveIndicator').classList.remove('visible');
   }
 
+  // ── Run analysis ──────────────────────────────────────────────────────────
   async function runAnalysis() {
-    if (fileList.length === 0) return;
+    if (!fileList.length) return;
 
     const resultsContainer = document.getElementById('resultsContainer');
     const output = document.getElementById('intelOutput');
     const analyzeBtn = document.getElementById('analyzeBtn');
+    const saveIndicator = document.getElementById('saveIndicator');
 
     resultsContainer.style.display = 'block';
-    output.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>P.AI is reading your reports...</p></div>`;
+    saveIndicator.classList.remove('visible');
+    output.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>P.AI is reading your reports and cross-referencing data...</p></div>`;
     analyzeBtn.disabled = true;
     analyzeBtn.textContent = 'Analyzing...';
-
-    // Scroll to results
     setTimeout(() => resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
 
     const formData = new FormData();
@@ -360,9 +359,12 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Analysis failed');
 
-      document.getElementById('reportCountText').textContent = data.fileCount;
       output.innerHTML = renderIntelMarkdown(data.analysis);
 
+      if (data.savedId) {
+        saveIndicator.classList.add('visible');
+        loadHistory(); // refresh history panel
+      }
     } catch (err) {
       output.innerHTML = `<div style="color:var(--danger);padding:20px;background:rgba(239,68,68,0.1);border-radius:8px;border:1px solid rgba(239,68,68,0.2);"><strong>Analysis failed:</strong> ${err.message}</div>`;
     } finally {
@@ -371,32 +373,117 @@
     }
   }
 
-  // Enhanced markdown renderer with section-aware color coding
-  function renderIntelMarkdown(text) {
-    const sectionClasses = {
-      '🎯': 'section-summary',
-      '📊': 'section-metrics',
-      '✅': 'section-wins',
-      '⚠️': 'section-watch',
-      '🔍': 'section-patterns',
-      '📋': 'section-actions'
-    };
+  // ── History ───────────────────────────────────────────────────────────────
+  async function loadHistory() {
+    try {
+      const res = await fetch('/api/daily/history');
+      const data = await res.json();
+      const items = data.history || [];
+      document.getElementById('historyCount').textContent = items.length ? `${items.length} reports` : '0 reports';
+      const list = document.getElementById('historyList');
+      if (!items.length) {
+        list.innerHTML = '<div class="history-empty">No history yet.<br>Run Daily Intel to start building your record.</div>';
+        return;
+      }
+      list.innerHTML = items.map(item => {
+        const d = new Date(item.created_at);
+        const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        const preview = item.analysis_text.replace(/#{1,3} .+/g, '').replace(/[*_`]/g, '').trim().slice(0, 80);
+        return `<div class="history-item" onclick="loadHistoryItem(${item.id}, this)">
+          <div class="history-date">${dateStr} · ${timeStr}</div>
+          <div class="history-files">${item.report_names || 'Unknown reports'}</div>
+          <div class="history-preview">${preview}...</div>
+        </div>`;
+      }).join('');
+    } catch {
+      document.getElementById('historyList').innerHTML = '<div class="history-empty">History unavailable.</div>';
+    }
+  }
 
-    let html = text
+  async function loadHistoryItem(id, el) {
+    document.querySelectorAll('.history-item').forEach(i => i.classList.remove('active'));
+    el.classList.add('active');
+
+    const resultsContainer = document.getElementById('resultsContainer');
+    const output = document.getElementById('intelOutput');
+    resultsContainer.style.display = 'block';
+    output.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>Loading report...</p></div>`;
+    resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    try {
+      const res = await fetch(`/api/daily/history/${id}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error('Not found');
+      const d = new Date(data.record.created_at);
+      const dateStr = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      output.innerHTML = `
+        <div style="margin-bottom:16px; padding:10px 14px; background:var(--surface-2); border-radius:6px; font-size:12px; color:var(--text-muted);">
+          <strong style="color:var(--text-primary)">📅 ${dateStr}</strong> &nbsp;·&nbsp; ${data.record.report_names || 'Unknown reports'}
+        </div>
+        ${renderIntelMarkdown(data.record.analysis_text)}`;
+    } catch {
+      output.innerHTML = `<div style="color:var(--danger);padding:20px;">Could not load this report.</div>`;
+    }
+  }
+
+  // ── Trends ────────────────────────────────────────────────────────────────
+  async function runTrends() {
+    const btn = document.getElementById('trendsBtn');
+    const days = document.getElementById('trendDays').value;
+    const resultsContainer = document.getElementById('resultsContainer');
+    const output = document.getElementById('intelOutput');
+
+    btn.disabled = true;
+    btn.textContent = 'Analyzing trends...';
+    resultsContainer.style.display = 'block';
+    output.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>P.AI is cross-referencing your last ${days} days of data...</p></div>`;
+    resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    try {
+      const res = await fetch('/api/daily/trends', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: parseInt(days) })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Trend analysis failed');
+
+      output.innerHTML = `
+        <div style="margin-bottom:16px; padding:10px 14px; background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(167,139,250,0.08)); border-radius:6px; border-left: 3px solid #7C3AED; font-size:12px; color: #A78BFA; font-weight:700; letter-spacing:1px;">
+          📈 TREND ANALYSIS &nbsp;·&nbsp; Last ${data.days} days &nbsp;·&nbsp; ${data.reportCount} session${data.reportCount !== 1 ? 's' : ''}
+        </div>
+        ${renderIntelMarkdown(data.analysis)}`;
+    } catch (err) {
+      output.innerHTML = `<div style="color:var(--danger);padding:20px;background:rgba(239,68,68,0.1);border-radius:8px;"><strong>Trend analysis failed:</strong> ${err.message}</div>`;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Analyze Trends';
+    }
+  }
+
+  // ── Markdown renderer ─────────────────────────────────────────────────────
+  function renderIntelMarkdown(text) {
+    const sectionMap = {
+      '🎯': 'section-summary', '📊': 'section-metrics', '✅': 'section-wins',
+      '⚠️': 'section-watch', '🔗': 'section-connect', '📋': 'section-actions',
+      '📈': 'section-trend', '🔄': 'section-recur', '📉': 'section-down',
+      '🎯': 'section-priority', '⚡': 'section-priority', '🔍': 'section-corr'
+    };
+    const html = text
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
       .replace(/`(.+?)`/g, '<code style="background:var(--surface-3);padding:2px 6px;border-radius:4px;font-family:monospace;font-size:12px;">$1</code>')
-      .replace(/^## (.+)$/gm, (_, title) => {
-        const emoji = Object.keys(sectionClasses).find(e => title.includes(e));
-        const cls = emoji ? sectionClasses[emoji] : '';
-        return `<h2 class="${cls}">${title}</h2>`;
+      .replace(/^## (.+)$/gm, (_, t) => {
+        const emoji = Object.keys(sectionMap).find(e => t.includes(e));
+        const cls = emoji ? sectionMap[emoji] : '';
+        return `<h2 class="${cls}">${t}</h2>`;
       })
       .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
       .replace(/\n\n/g, '\n')
-      .replace(/(<li>[\s\S]*?<\/li>)(?=\n(?!<li>))/g, (m) => `<ul>${m}</ul>`)
-      .replace(/^(?!<[hul])(.+)$/gm, (m) => m.trim() ? `<p>${m}</p>` : '');
-
+      .replace(/(<li>[\s\S]*?<\/li>)(?=\n(?!<li>))/g, m => `<ul>${m}</ul>`)
+      .replace(/^(?!<[hul])(.+)$/gm, m => m.trim() ? `<p>${m}</p>` : '');
     return `<div class="intel-output">${html}</div>`;
   }
 

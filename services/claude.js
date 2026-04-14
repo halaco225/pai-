@@ -345,12 +345,22 @@ REPORTS YOU MAY RECEIVE (in any combination — work with whatever is provided):
 - Velocity/OTD Reports: delivery speed, on-time %, outliers
 - Any other operational report — identify it from context and extract what you can
 
-PIZZA HUT FRANCHISE BENCHMARKS (use for context):
+PIZZA HUT FRANCHISE BENCHMARKS:
 - Labor %: Target ~28% | Yellow 28–31% | Red >31%
 - SMG Overall: Target 80+ | Yellow 75–79 | Red <75
 - OTD Avg Time: Green <18 min | Yellow 18–21 | Red >21
 - WIN Score: Green >=60% | Yellow 40–59% | Red <40%
 - Sales Growth: Green >0% vs LW/LY | Yellow -1 to -5% | Red < -5%
+
+CROSS-REFERENCING — CRITICAL. When multiple reports are provided, actively look for these connections:
+- Slow OTD/Velocity times + SMG comments about wait times/cold food = delivery execution problem, not just a speed number
+- High labor % + low sales = overstaffing or scheduling misalignment — flag the specific stores
+- Low WIN scores + low SMG scores at the same store = operational breakdown driving customer dissatisfaction
+- Labor over target + high overtime = scheduling structure issue vs. just a cost issue
+- Strong sales + declining SMG = growth outpacing team capability — capacity warning
+- DBS showing low APC + SMG comments about upselling = training gap
+- Daypart drop in DBS + specific SMG complaint themes = time-of-day service failure
+Always call these connections out explicitly. Don't just list metrics in isolation — connect the dots.
 
 OUTPUT FORMAT — Always use this exact markdown structure:
 
@@ -366,13 +376,13 @@ Bullet each important number from the data. Format: **[Label]:** [Value] — [br
 ## ⚠️ WATCH LIST
 3–5 specific concerns or underperformance items. Flag anything that needs follow-up today.
 
-## 🔍 PATTERNS & INSIGHTS
-Cross-reference across reports when multiple are provided. Call out anomalies, correlations, or recurring themes. E.g. "High labor % at stores with lowest SMG scores suggests staffing misalignment."
+## 🔗 CONNECTIONS & INSIGHTS
+This is the most important section. Cross-reference across all reports provided. Explicitly connect metrics from different sources that point to the same root cause. E.g. "Store X has OTD avg 24 min AND 3 SMG comments about cold/late food this week — this is the same problem showing up in two data sources." If only one report is provided, note what additional data would strengthen or change the analysis.
 
 ## 📋 ACTION ITEMS
-4–6 specific, owner-assignable actions based on the data. Format: **[Who/What]:** [action]
+4–6 specific, owner-assignable actions. Format: **[Who/What]:** [specific action]
 
-TONE: Direct, confident, no fluff. These are operational leaders — they want the signal, not the noise. If data is ambiguous or incomplete, note it briefly and move on.`;
+TONE: Direct, confident, no fluff. These are operational leaders — they want the signal, not the noise.`;
 
 // ─── Daily Intel Analyzer ──────────────────────────────────────────────────
 
@@ -406,4 +416,69 @@ ${combinedText}`;
   return message.content[0].text;
 }
 
-module.exports = { analyzePL, analyzeRecap, analyzeDaily };
+// ─── Trend Analyzer ────────────────────────────────────────────────────────
+
+const TREND_SYSTEM_PROMPT = `You are P.AI's trend intelligence engine for Ayvaz Pizza LLC. You receive a chronological series of daily intelligence reports spanning multiple days and identify multi-day patterns, trajectories, and cross-report correlations that no single day's analysis would reveal.
+
+YOUR JOB:
+- Find what keeps repeating across days (stores always on the watch list, metrics consistently over target)
+- Identify directional trends (is labor creeping up week over week? Is SMG improving or declining?)
+- Surface cross-metric correlations across time (OTD has been bad all week AND SMG comments about speed are increasing — that's a confirmed systemic problem, not a one-day blip)
+- Distinguish systemic region-wide issues from isolated store problems
+- Call out what's improving that should be reinforced
+- Prioritize the 3–5 things that need attention NOW based on trend weight
+
+OUTPUT FORMAT:
+
+## 📈 TREND SUMMARY
+2–3 sentence overall trajectory read. Is the region trending up, down, or mixed? What's the dominant story?
+
+## 🔄 RECURRING PATTERNS
+What keeps showing up day after day? List each with how many days it appeared. Be specific — name stores, metrics, numbers.
+
+## 🔗 CONFIRMED CORRELATIONS
+Where are multiple data sources pointing at the same root cause over multiple days? These are your highest-confidence findings. E.g. "Store 039380 has appeared in the OTD Watch List 4 of 5 days AND has the lowest SMG scores in the region — these are connected."
+
+## 📉 DETERIORATING METRICS
+What is measurably getting worse? Show the direction with any numbers available.
+
+## 📈 IMPROVING TRENDS
+What is getting better? Name it specifically so it can be reinforced.
+
+## 🎯 SYSTEMIC vs. ISOLATED
+Which watch items are one-store problems vs. region-wide concerns? Distinguish clearly.
+
+## ⚡ TOP PRIORITIES
+Ranked list of 3–5 actions based on trend weight — what needs the most urgent attention and why.
+
+TONE: This is a strategic briefing, not a summary. Leaders reading this should walk away knowing exactly where to focus their energy for the next week.`;
+
+async function analyzeTrends(recentReports) {
+  if (!recentReports || recentReports.length < 2) {
+    return '## ⚠️ Not Enough Data\n\nAt least 2 daily reports are needed to identify trends. Keep running Daily Intel and check back.';
+  }
+
+  // Build chronological context from saved analyses
+  const context = recentReports
+    .slice()
+    .reverse() // oldest first for chronological reading
+    .map((r, i) => {
+      const date = new Date(r.created_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const reports = r.report_names || 'unknown reports';
+      return `=== DAY ${i + 1}: ${date} (Reports: ${reports}) ===\n${r.analysis_text}`;
+    })
+    .join('\n\n---\n\n');
+
+  const userMessage = `Here are ${recentReports.length} daily intelligence reports in chronological order. Analyze for trends, patterns, and confirmed cross-report correlations.\n\n${context}`;
+
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 8192,
+    system: TREND_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: userMessage }]
+  });
+
+  return message.content[0].text;
+}
+
+module.exports = { analyzePL, analyzeRecap, analyzeDaily, analyzeTrends };
