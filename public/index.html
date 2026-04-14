@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>P.AI — Login</title>
+<link rel="stylesheet" href="/css/styles.css" />
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+
+  .login-shell {
+    display: flex;
+    width: 900px;
+    height: 560px;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 40px 100px rgba(0,0,0,0.7);
+    border: 1px solid var(--border);
+  }
+
+  .login-brand {
+    width: 380px;
+    background: var(--surface-2);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 56px 48px;
+    position: relative;
+    overflow: hidden;
+  }
+  .login-brand::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    width: 4px;
+    background: var(--accent);
+  }
+  .login-brand .pai-mark {
+    font-size: 56px;
+    font-weight: 900;
+    letter-spacing: -2px;
+    color: var(--text-primary);
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .login-brand .pai-mark span { color: var(--accent); }
+  .login-brand .tagline {
+    font-size: 12px;
+    letter-spacing: 4px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 40px;
+  }
+  .login-brand .brand-desc {
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.7;
+  }
+  .login-brand .deco-circle {
+    position: absolute;
+    bottom: -80px;
+    right: -80px;
+    width: 260px;
+    height: 260px;
+    border-radius: 50%;
+    border: 2px solid rgba(227,24,55,0.1);
+  }
+  .login-brand .deco-circle-2 {
+    position: absolute;
+    bottom: -40px;
+    right: -40px;
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    border: 2px solid rgba(227,24,55,0.15);
+  }
+
+  .login-form-panel {
+    flex: 1;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 56px 48px;
+  }
+  .login-form-panel h2 {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+  }
+  .login-form-panel p {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 36px;
+  }
+
+  .form-group { margin-bottom: 18px; }
+  .form-group label {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .form-group input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 13px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+  }
+  .form-group input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .btn-login {
+    width: 100%;
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    margin-top: 8px;
+    font-family: inherit;
+  }
+  .btn-login:hover { background: #c41530; }
+  .btn-login:active { transform: scale(0.99); }
+
+  .error-msg {
+    background: rgba(239,68,68,0.1);
+    border: 1px solid rgba(239,68,68,0.3);
+    color: #ef4444;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    margin-top: 12px;
+    display: none;
+  }
+
+  .restricted-note {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+<div class="login-shell">
+  <div class="login-brand">
+    <div class="pai-mark">P<span>.AI</span></div>
+    <div class="tagline">Ayvaz Pizza LLC</div>
+    <div class="brand-desc">
+      AI-powered command center for franchise operations. P&amp;L analysis, weekly recaps, and performance insights — instantly.
+    </div>
+    <div class="deco-circle"></div>
+    <div class="deco-circle-2"></div>
+  </div>
+  <div class="login-form-panel">
+    <h2>Sign in to P.AI</h2>
+    <p>Access restricted to authorized personnel only.</p>
+    <form id="loginForm">
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="email" placeholder="e.g., hlacoste" autocomplete="username" required />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required />
+      </div>
+      <button type="submit" class="btn-login" id="loginBtn">SIGN IN</button>
+      <div class="error-msg" id="errorMsg"></div>
+    </form>
+    <div class="restricted-note">VP · RDO · AREA COACH ACCESS ONLY</div>
+  </div>
+</div>
+
+<script>
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('loginBtn');
+    const err = document.getElementById('errorMsg');
+    btn.textContent = 'SIGNING IN...';
+    btn.disabled = true;
+    err.style.display = 'none';
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        window.location.href = '/dashboard';
+      } else {
+        err.textContent = data.error || 'Login failed.';
+        err.style.display = 'block';
+        btn.textContent = 'SIGN IN';
+        btn.disabled = false;
+      }
+    } catch {
+      err.textContent = 'Network error. Please try again.';
+      err.style.display = 'block';
+      btn.textContent = 'SIGN IN';
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>P.AI — Weekly Recap</title>
+<link rel="stylesheet" href="/css/styles.css" />
+<style>
+  .step-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .step-number {
+    width: 28px; height: 28px;
+    background: var(--accent);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+  .step-header h3 {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .file-slot-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .file-slot {
+    background: var(--surface-2);
+    border: 1px dashed var(--border-light);
+    border-radius: 10px;
+    padding: 16px;
+    position: relative;
+    transition: all 0.2s;
+  }
+  .file-slot:hover { border-color: var(--accent); }
+  .file-slot.has-file {
+    border-color: var(--success);
+    border-style: solid;
+    background: rgba(16,185,129,0.05);
+  }
+
+  .file-slot-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .file-slot-name {
+    font-size: 12px;
+    color: var(--text-primary);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .file-slot-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+  .file-slot-status {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    margin-top: 6px;
+  }
+  .file-slot-status.ready { color: var(--success); }
+  .file-slot-status.waiting { color: var(--text-muted); }
+
+  .bulk-upload-zone {
+    border: 2px dashed var(--border-light);
+    border-radius: 12px;
+    padding: 36px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    margin-bottom: 20px;
+  }
+  .bulk-upload-zone:hover,
+  .bulk-upload-zone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-glow);
+  }
+  .bulk-upload-zone input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+  .bulk-upload-zone h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+  }
+  .bulk-upload-zone p {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .meta-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .file-count-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface-3);
+    border: 1px solid var(--border-light);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+  }
+  .file-count-badge .count {
+    font-weight: 800;
+    color: var(--accent);
+  }
+
+  .progress-log {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+    min-height: 80px;
+    max-height: 200px;
+    overflow-y: auto;
+    margin-top: 16px;
+  }
+  .log-line { margin-bottom: 4px; }
+  .log-line.ok { color: var(--success); }
+  .log-line.err { color: var(--danger); }
+  .log-line.info { color: var(--text-secondary); }
+
+  .slide-preview-note {
+    background: rgba(227,24,55,0.08);
+    border: 1px solid rgba(227,24,55,0.15);
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+  }
+
+  #buildSection { display: none; }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-text">P<span>.AI</span></div>
+      <div class="logo-sub">Ayvaz Pizza LLC</div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Navigation</div>
+      <a href="/dashboard" class="nav-item">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <div class="nav-section-label">Modules</div>
+      <a href="/pl-analyzer" class="nav-item">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        P&L Analyzer
+      </a>
+      <a href="/weekly-recap" class="nav-item active">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        Weekly Recap
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="user-avatar" id="userInitial">?</div>
+        <div class="user-info">
+          <div class="user-name" id="userName">Loading...</div>
+          <div class="user-role" id="userRole"></div>
+        </div>
+        <button class="btn-logout" onclick="logout()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main-content">
+    <div class="page-header">
+      <h1>Weekly Recap Deck</h1>
+      <p>Upload 6 weekly report files — P.AI builds your 13-slide region recap</p>
+    </div>
+
+    <div class="page-body">
+      <!-- Step 1: Upload -->
+      <div class="card">
+        <div class="step-header">
+          <div class="step-number">1</div>
+          <h3>Upload Weekly Report Files</h3>
+        </div>
+
+        <div class="slide-preview-note">
+          Upload all 6 files simultaneously. P.AI will read the Velocity IST file for AC/store alignment and pull data from all sources to build the complete 13-slide deck.
+        </div>
+
+        <div class="bulk-upload-zone" id="uploadZone">
+          <input type="file" id="recapFiles" accept=".xlsx,.xls,.csv,.pdf" multiple />
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;margin:0 auto 16px;color:var(--text-muted)">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <h3>Drop all 6 files here</h3>
+          <p>Velocity IST · FRS · HUT Bot · WIN Score · SMG Comments · OTD Data</p>
+        </div>
+
+        <div id="fileCountDisplay" style="display:none;">
+          <div class="file-count-badge">
+            <span class="count" id="fileCountNum">0</span>
+            <span>files selected</span>
+          </div>
+          <div class="file-list" id="fileListDisplay"></div>
+        </div>
+      </div>
+
+      <!-- Step 2: Configure -->
+      <div class="card" style="margin-top: 20px;">
+        <div class="step-header">
+          <div class="step-number">2</div>
+          <h3>Configure Deck</h3>
+        </div>
+
+        <div class="meta-row">
+          <div class="form-group">
+            <label>Week Dates</label>
+            <input type="text" id="weekLabel" placeholder="e.g., 3/31–4/6" />
+          </div>
+          <div class="form-group">
+            <label>Recap Call Day</label>
+            <select id="recapDay">
+              <option>Monday</option>
+              <option>Tuesday</option>
+              <option>Wednesday</option>
+              <option selected>Thursday</option>
+              <option>Friday</option>
+            </select>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" id="buildBtn" onclick="buildDeck()" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          Build 13-Slide Deck
+        </button>
+      </div>
+
+      <!-- Build Progress -->
+      <div id="buildSection">
+        <div class="card" style="margin-top: 20px;">
+          <div class="step-header">
+            <div class="step-number">3</div>
+            <h3>Building Your Deck</h3>
+          </div>
+
+          <div id="buildStatus">
+            <div class="loading-state">
+              <div class="spinner"></div>
+              <p>P.AI IS BUILDING YOUR DECK...</p>
+            </div>
+          </div>
+
+          <div class="progress-log" id="progressLog"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <div><span class="status-dot"></span>WEEKLY RECAP READY</div>
+      <div>13-slide deck · claude-sonnet-4-20250514</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let selectedFiles = [];
+
+  async function init() {
+    const res = await fetch('/api/auth/me');
+    if (!res.ok) { window.location.href = '/'; return; }
+    const data = await res.json();
+    if (!data.authenticated) { window.location.href = '/'; return; }
+    document.getElementById('userName').textContent = data.user.name;
+    document.getElementById('userRole').textContent = data.user.role.toUpperCase();
+    document.getElementById('userInitial').textContent = data.user.name.charAt(0).toUpperCase();
+  }
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.href = '/';
+  }
+
+  const fileInput = document.getElementById('recapFiles');
+  const uploadZone = document.getElementById('uploadZone');
+
+  fileInput.addEventListener('change', handleFileSelect);
+
+  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+  uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    const dt = new DataTransfer();
+    for (const f of e.dataTransfer.files) dt.items.add(f);
+    fileInput.files = dt.files;
+    handleFileSelect();
+  });
+
+  function handleFileSelect() {
+    selectedFiles = Array.from(fileInput.files);
+    const countDisplay = document.getElementById('fileCountDisplay');
+    const fileList = document.getElementById('fileListDisplay');
+    const countNum = document.getElementById('fileCountNum');
+    const buildBtn = document.getElementById('buildBtn');
+
+    if (selectedFiles.length === 0) {
+      countDisplay.style.display = 'none';
+      buildBtn.disabled = true;
+      return;
+    }
+
+    countDisplay.style.display = 'block';
+    countNum.textContent = selectedFiles.length;
+
+    fileList.innerHTML = selectedFiles.map(f => `
+      <div class="file-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        <span class="file-name">${f.name}</span>
+        <span class="file-size">${(f.size / 1024).toFixed(0)} KB</span>
+      </div>
+    `).join('');
+
+    buildBtn.disabled = selectedFiles.length === 0;
+  }
+
+  function log(msg, type = 'info') {
+    const logEl = document.getElementById('progressLog');
+    const line = document.createElement('div');
+    line.className = `log-line ${type}`;
+    const ts = new Date().toLocaleTimeString();
+    line.textContent = `[${ts}] ${msg}`;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  async function buildDeck() {
+    if (selectedFiles.length === 0) return;
+
+    const buildSection = document.getElementById('buildSection');
+    const buildBtn = document.getElementById('buildBtn');
+    const buildStatus = document.getElementById('buildStatus');
+
+    buildSection.style.display = 'block';
+    buildSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    buildBtn.disabled = true;
+    buildBtn.textContent = 'Building...';
+
+    log('Starting deck build...', 'info');
+    log(`Files: ${selectedFiles.map(f => f.name).join(', ')}`, 'info');
+    log('Uploading to P.AI...', 'info');
+
+    const formData = new FormData();
+    for (const file of selectedFiles) formData.append('files', file);
+    formData.append('weekLabel', document.getElementById('weekLabel').value);
+    formData.append('recapDay', document.getElementById('recapDay').value);
+
+    try {
+      log('Analyzing all data sources with Claude...', 'info');
+      log('This takes 2-4 minutes. Please wait.', 'info');
+
+      const res = await fetch('/api/recap/generate', { method: 'POST', body: formData });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Generation failed');
+      }
+
+      log('Analysis complete. Generating PowerPoint...', 'ok');
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const week = document.getElementById('weekLabel').value || 'Weekly';
+      a.download = `P.AI_Region_Recap_${week.replace(/[^a-zA-Z0-9]/g, '_')}.pptx`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      log('✓ Deck downloaded successfully!', 'ok');
+      log('Remember to fill in Slide 12 (Key Dates) before sending to your ACs.', 'info');
+
+      buildStatus.innerHTML = `
+        <div style="text-align: center; padding: 20px; background: rgba(16,185,129,0.08); border-radius: 10px; border: 1px solid rgba(16,185,129,0.2);">
+          <div style="font-size: 32px; margin-bottom: 12px;">✓</div>
+          <div style="font-size: 16px; font-weight: 700; color: var(--success); margin-bottom: 8px;">13-Slide Deck Downloaded</div>
+          <div style="font-size: 13px; color: var(--text-muted);">Open in PowerPoint and fill in Slide 12 (Key Dates &amp; Reminders) before sending to your ACs.</div>
+        </div>`;
+
+    } catch (err) {
+      log(`ERROR: ${err.message}`, 'err');
+      buildStatus.innerHTML = `
+        <div style="color: var(--danger); padding: 16px; background: rgba(239,68,68,0.08); border-radius: 8px; border: 1px solid rgba(239,68,68,0.2);">
+          <strong>Build failed:</strong> ${err.message}
+        </div>`;
+      buildBtn.disabled = false;
+      buildBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Retry Build';
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>

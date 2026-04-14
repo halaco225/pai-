@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>P.AI — P&L Analyzer</title>
+<link rel="stylesheet" href="/css/styles.css" />
+<style>
+  .step-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .step-number {
+    width: 28px; height: 28px;
+    background: var(--accent);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+  .step-header h3 {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .pptx-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .logo-upload-zone {
+    border: 1px dashed var(--border-light);
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .logo-upload-zone:hover { border-color: var(--accent); background: var(--accent-glow); }
+  .logo-upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .logo-upload-zone p { font-size: 12px; color: var(--text-muted); }
+
+  .section-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 32px 0;
+  }
+
+  #analysisContainer { display: none; }
+  #pptxPanel { display: none; }
+
+  .action-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .markdown-output {
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1.8;
+  }
+  .markdown-output h1, .markdown-output h2, .markdown-output h3 {
+    color: var(--text-primary);
+    font-weight: 700;
+    margin: 20px 0 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .markdown-output h1 { font-size: 18px; }
+  .markdown-output h2 { font-size: 15px; color: var(--accent); }
+  .markdown-output h3 { font-size: 13px; border: none; }
+  .markdown-output p { margin-bottom: 12px; }
+  .markdown-output ul, .markdown-output ol { padding-left: 20px; margin-bottom: 12px; }
+  .markdown-output li { margin-bottom: 6px; }
+  .markdown-output strong { color: var(--text-primary); }
+  .markdown-output code {
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+  }
+  .markdown-output blockquote {
+    border-left: 3px solid var(--accent);
+    padding-left: 16px;
+    margin: 16px 0;
+    color: var(--text-muted);
+  }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-text">P<span>.AI</span></div>
+      <div class="logo-sub">Ayvaz Pizza LLC</div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Navigation</div>
+      <a href="/dashboard" class="nav-item">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <div class="nav-section-label">Modules</div>
+      <a href="/pl-analyzer" class="nav-item active">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        P&L Analyzer
+      </a>
+      <a href="/weekly-recap" class="nav-item">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        Weekly Recap
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="user-avatar" id="userInitial">?</div>
+        <div class="user-info">
+          <div class="user-name" id="userName">Loading...</div>
+          <div class="user-role" id="userRole"></div>
+        </div>
+        <button class="btn-logout" onclick="logout()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main-content">
+    <div class="page-header">
+      <h1>P&L Analyzer</h1>
+      <p>Upload a period-end P&L file for AI-powered financial review</p>
+    </div>
+
+    <div class="page-body">
+      <!-- Step 1: Upload -->
+      <div class="card">
+        <div class="step-header">
+          <div class="step-number">1</div>
+          <h3>Upload P&L File</h3>
+        </div>
+
+        <div class="upload-zone" id="uploadZone">
+          <input type="file" id="plFile" accept=".xlsx,.xls,.pdf,.csv" />
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <h3>Drop your P&L file here</h3>
+          <p>Supports Excel (.xlsx, .xls), PDF, and CSV · Max 25MB</p>
+          <div class="file-selected" id="fileLabel"></div>
+        </div>
+
+        <div style="margin-top: 20px;">
+          <button class="btn btn-primary" id="analyzeBtn" onclick="analyzeFile()" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            Analyze with P.AI
+          </button>
+        </div>
+      </div>
+
+      <!-- Analysis Output -->
+      <div id="analysisContainer">
+        <div class="section-divider"></div>
+
+        <div class="card" id="analysisCard">
+          <div class="step-header">
+            <div class="step-number">2</div>
+            <h3>Analysis Results</h3>
+          </div>
+          <div id="analysisContent"></div>
+        </div>
+
+        <!-- Step 3: PPTX Options -->
+        <div id="pptxPanel" style="margin-top: 20px;">
+          <div class="card">
+            <div class="step-header">
+              <div class="step-number">3</div>
+              <h3>Export as PowerPoint</h3>
+            </div>
+
+            <div class="pptx-options">
+              <div class="form-group">
+                <label>Accent Color</label>
+                <input type="color" id="accentColor" value="#E31837" />
+              </div>
+              <div class="form-group">
+                <label>Background Color</label>
+                <input type="color" id="bgColor" value="#0D0D0D" />
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 20px;">
+              <label>Upload Logo (optional)</label>
+              <div class="logo-upload-zone">
+                <input type="file" id="logoFile" accept=".png,.jpg,.jpeg,.svg" onchange="handleLogoUpload(this)" />
+                <p id="logoLabel">Click to upload your logo (PNG/JPG)</p>
+              </div>
+            </div>
+
+            <div class="action-row">
+              <button class="btn btn-primary" onclick="downloadPPTX()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download PowerPoint
+              </button>
+              <button class="btn btn-ghost" onclick="window.print()">Print Analysis</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <div><span class="status-dot"></span>P&L ANALYZER READY</div>
+      <div>claude-sonnet-4-20250514</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let analysisResult = null;
+  let logoBase64 = null;
+
+  async function init() {
+    const res = await fetch('/api/auth/me');
+    if (!res.ok || !(await res.json()).authenticated) { window.location.href = '/'; return; }
+    const data = await (await fetch('/api/auth/me')).json();
+    document.getElementById('userName').textContent = data.user.name;
+    document.getElementById('userRole').textContent = data.user.role.toUpperCase();
+    document.getElementById('userInitial').textContent = data.user.name.charAt(0).toUpperCase();
+  }
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.href = '/';
+  }
+
+  // File input
+  const plFile = document.getElementById('plFile');
+  const analyzeBtn = document.getElementById('analyzeBtn');
+  const fileLabel = document.getElementById('fileLabel');
+  const uploadZone = document.getElementById('uploadZone');
+
+  plFile.addEventListener('change', () => {
+    if (plFile.files.length) {
+      fileLabel.textContent = `✓ ${plFile.files[0].name}`;
+      analyzeBtn.disabled = false;
+    }
+  });
+
+  // Drag & drop
+  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+  uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      plFile.files = dt.files;
+      fileLabel.textContent = `✓ ${file.name}`;
+      analyzeBtn.disabled = false;
+    }
+  });
+
+  async function analyzeFile() {
+    if (!plFile.files.length) return;
+
+    const container = document.getElementById('analysisContainer');
+    const content = document.getElementById('analysisContent');
+
+    container.style.display = 'block';
+    content.innerHTML = `
+      <div class="loading-state">
+        <div class="spinner"></div>
+        <p>P.AI is analyzing your P&L...</p>
+      </div>`;
+    document.getElementById('pptxPanel').style.display = 'none';
+    analyzeBtn.disabled = true;
+    analyzeBtn.textContent = 'Analyzing...';
+
+    const formData = new FormData();
+    formData.append('file', plFile.files[0]);
+
+    try {
+      const res = await fetch('/api/pl/analyze', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Analysis failed');
+
+      analysisResult = data.analysis;
+      content.innerHTML = `<div class="markdown-output">${renderMarkdown(analysisResult)}</div>`;
+      document.getElementById('pptxPanel').style.display = 'block';
+
+    } catch (err) {
+      content.innerHTML = `
+        <div style="color: var(--danger); padding: 20px; background: rgba(239,68,68,0.1); border-radius: 8px; border: 1px solid rgba(239,68,68,0.2);">
+          <strong>Analysis failed:</strong> ${err.message}
+        </div>`;
+    } finally {
+      analyzeBtn.disabled = false;
+      analyzeBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Re-Analyze';
+    }
+  }
+
+  function handleLogoUpload(input) {
+    if (!input.files.length) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      logoBase64 = e.target.result;
+      document.getElementById('logoLabel').textContent = `✓ Logo loaded: ${input.files[0].name}`;
+    };
+    reader.readAsDataURL(input.files[0]);
+  }
+
+  async function downloadPPTX() {
+    if (!analysisResult) return;
+
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+
+    try {
+      const options = {
+        accentColor: document.getElementById('accentColor').value,
+        bgColor: document.getElementById('bgColor').value,
+        logoBase64: logoBase64
+      };
+
+      const res = await fetch('/api/pl/generate-pptx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ analysis: analysisResult, options })
+      });
+
+      if (!res.ok) throw new Error('PPTX generation failed');
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'P.AI_PL_Analysis.pptx';
+      a.click();
+      URL.revokeObjectURL(url);
+
+    } catch (err) {
+      alert('Failed to generate PowerPoint: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download PowerPoint';
+    }
+  }
+
+  // Simple markdown renderer
+  function renderMarkdown(text) {
+    return text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+      .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/`(.+?)`/g, '<code>$1</code>')
+      .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+      .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
+      .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
+      .replace(/\n\n/g, '</p><p>')
+      .replace(/^(?!<[hbuli])(.+)/gm, (m) => m.startsWith('<') ? m : `<p>${m}</p>`);
+  }
+
+  init();
+</script>
+</body>
+</html>
