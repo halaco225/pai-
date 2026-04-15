@@ -211,7 +211,7 @@ DECK STRUCTURE — Always build 13 slides in this exact order:
 
 SLIDE 1 — TITLE: Region name from Velocity file | Week label from IST file | 4 preview stat cards: Sales Growth, Labor Var, WIN, HUT Bot
 
-SLIDE 2 — REGION SCORECARD: 5 stat cards — Sales Growth | Labor Var | OTD Avg Time | WIN Score | HUT Bot. Below cards: HUT Bot Breakdown box (On Time %, Late %, Missed % only — no Avg OTD Time in this box).
+SLIDE 2 — REGION SCORECARD: 5 stat cards — Sales Growth | Labor Var | OTD Avg Time | WIN Score | HUT Bot. Below cards: HUT Bot Breakdown box (On Time %, Late %, Missed %). Below that: Routine Non-Completers table — pull from the Routines Status file, cross-referenced with org summary. Show each person's name, store, AC, which specific routines they missed, and their status (Not Started / Late). Up to 6 rows. This is the accountability callout: the team sees exactly WHO dropped the ball, not just which store.
 
 SLIDE 3 — AC PERFORMANCE TABLE: One row per AC read from Velocity WTD IST file. Columns: Area Coach | Sales Growth | Labor Var | WIN Score | HUT Bot. Highlight best performer in each column with green cell background.
 
@@ -229,7 +229,7 @@ SLIDE 9 — SMG STORE SPOTLIGHT: Top 5 and Bottom 5 stores by Sat Avg (min 3 rev
 
 SLIDE 10 — CUSTOMER VOICE: Pull 5 positive and 5 negative VERBATIM quotes directly from the SMG comments file — real customer words, not summaries. Positives = best comments deserving recognition. Negatives = worst complaints that need AC follow-up. For each, include store name/number, AC name, and that store's WIN score. The WIN score context matters: a low WIN score + a bad customer comment = operational breakdown, not a one-off. Complaint themes in footer.
 
-SLIDE 11 — SMART GOALS: 3 data-specific SMART goals. Format: Metric | Current | Target | By When | HOW (name specific stores and ACs — never generic).
+SLIDE 11 — SMART GOALS: 3 data-specific SMART goals. Each goal must include: Metric | Current | Target | By When | Owner (specific AC name + store numbers they're responsible for) | Why It Matters (1 sentence: what the data shows and what's at risk) | How (specific action steps naming ACs and stores — never generic). The "why" should connect the number to the business impact. The "how" should be a concrete play, not a platitude.
 
 SLIDE 12 — KEY DATES AND REMINDERS: Dark background. 7 placeholder bullet lines formatted as '[ ] Date — Event or reminder here'. No auto-generated content — user fills this in manually each week before sending.
 
@@ -249,6 +249,14 @@ COS Var % = column AB (index 28)
 HUT BOT FILE (Organization_Breakdown_Summary.xlsx):
 'On Time %' = whether FSCC, Pest Walk, Oven Calibration, and Closing audits were completed on schedule. Has NOTHING to do with delivery speed.
 Area-level rows have a backtick (\`) appended to the name.
+
+ROUTINES STATUS FILE (any file named "Learnings" or "Routines Status" or "Routine Details by User"):
+This file shows individual users (employees/managers) and whether they completed HUT Bot routines. Extract:
+- User/employee name
+- Store number — match to Organization_Breakdown_Summary.xlsx by store number to get AC assignment
+- Routine type(s) not completed or completed late (FSCC, Pest Walk, Oven Calibration, Closing, etc.)
+- Status: Not Started | Late | Completed
+Cross-reference: for any store flagged as Late or Missed in the org summary, pull the specific user names from this file. Surface WHO is responsible — not just which store. Include up to 6 worst offenders (prioritize Not Started over Late).
 
 SMG COMMENTS FILE:
 Header row 7, data starts row 8
@@ -322,7 +330,7 @@ When you receive the uploaded files, analyze all data sources and return a struc
   "recapCallDay": "...",
   "slides": {
     "title": { "regionName": "...", "weekLabel": "...", "stats": [{"label":"SALES GROWTH","value":"+2.2%","sub":"vs LY"}] },
-    "scorecard": { "metrics": [{"label":"SALES GROWTH","value":"+2.2%","sub":"vs LY","status":"green"}], "hutBotBreakdown": {"onTime":"92%","late":"5%","missed":"3%"} },
+    "scorecard": { "metrics": [{"label":"SALES GROWTH","value":"+2.2%","sub":"vs LY","status":"green"}], "hutBotBreakdown": {"onTime":"92%","late":"5%","missed":"3%","nonCompleters":[{"user":"Employee Full Name","store":"Store Name","storeNum":"039380","ac":"AC Full Name","routines":"FSCC, Pest Walk","status":"Not Started"},{"user":"Employee Full Name","store":"Store Name","storeNum":"039382","ac":"AC Full Name","routines":"Oven Calibration","status":"Late"}]} },
     "acTable": { "rows": [{"name":"Full AC Name","salesGrowth":"+4.9%","laborVar":"+2.14%","winScore":"67%","hutBot":"96%"}] },
     "wins": { "items": [{"store":"Store Name","storeNum":"039380","metric":"83% WIN Score","description":"...","ac":"AC Full Name"}] },
     "focusAreas": { "items": [{"store":"Store Name","storeNum":"039382","metric":"29.6 min IST","description":"...","ac":"AC Full Name"}] },
@@ -331,7 +339,7 @@ When you receive the uploaded files, analyze all data sources and return a struc
     "smgByAC": { "rows": [{"name":"Full AC Name","reviews":"45","avg":"4.2","pos":"38","neg":"7","negRate":"15.6%"}], "complaintThemes": [{"theme":"Late/Slow","count":"12"},{"theme":"Wrong Order","count":"8"}] },
     "smgSpotlight": { "top5": [{"name":"Store Name","storeNum":"039380","ac":"AC Name","reviews":"22","score":"4.8","winScore":"72%"}], "bottom5": [{"name":"Store Name","storeNum":"039388","ac":"AC Name","reviews":"15","score":"2.1","winScore":"28%"}] },
     "customerVoice": { "positives": [{"store":"Store Name (#039380)","ac":"AC Name","winScore":"72%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039381)","ac":"AC Name","winScore":"68%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039382)","ac":"AC Name","winScore":"81%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039383)","ac":"AC Name","winScore":"65%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039384)","ac":"AC Name","winScore":"59%","quote":"Actual verbatim quote copied from SMG file column G"}], "negatives": [{"store":"Store Name (#039385)","ac":"AC Name","winScore":"31%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039386)","ac":"AC Name","winScore":"28%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039387)","ac":"AC Name","winScore":"44%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039388)","ac":"AC Name","winScore":"35%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039389)","ac":"AC Name","winScore":"22%","quote":"Actual verbatim quote copied from SMG file column G"}], "themes": [{"theme":"Late/Slow","count":"12"},{"theme":"Cold Food","count":"8"}] },
-    "smartGoals": { "goals": [{"metric":"In-Store Time","current":"18.6 min","target":"<18.0 min","byWhen":"End of P4","how":"Specific AC and store names with action"}] },
+    "smartGoals": { "goals": [{"metric":"In-Store Time","current":"18.6 min","target":"<18.0 min","byWhen":"End of P4","owner":"AC Full Name (stores 039382, 039388)","why":"3 of 5 stores above 18-min target; 2 SMG complaints this week cite slow delivery — pattern, not a one-off","how":"Specific action steps naming ACs and stores — e.g. Michelle Meehan to implement pre-rush staffing at 039388 by Thursday"}] },
     "keyDates": { "placeholders": 7 },
     "closing": { "acOfWeek": {"name":"Full AC Name","description":"Why they won","note":"Keep pushing."}, "footerStats": [{"label":"Sales","value":"+2.2%"},{"label":"Labor","value":"+1.78%"},{"label":"IST","value":"18.6 min"},{"label":"WIN","value":"51%"}], "recapDay": "Thursday" }
   }

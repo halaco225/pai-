@@ -18,6 +18,18 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 }
 });
 
+// Helper: auto-calculate the next Thursday (or today if today IS Thursday)
+function getRecapDay() {
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const today = new Date();
+  const dow = today.getDay(); // 0=Sun, 4=Thu
+  if (dow === 4) return 'Thursday'; // today is Thursday
+  const diff = (4 - dow + 7) % 7;
+  const next = new Date(today);
+  next.setDate(today.getDate() + diff);
+  return days[next.getDay()]; // will always be Thursday
+}
+
 // ── POST /api/recap/analyze ────────────────────────────────────────────────────
 // Step 1: Upload files → analyze with Claude → return JSON preview data
 router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res) => {
@@ -27,10 +39,9 @@ router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res)
 
   try {
     const { analyzeRecap } = require('../services/claude');
-    const weekLabel = req.body.weekLabel || '';
-    const recapDay  = req.body.recapDay  || 'Thursday';
+    const recapDay = getRecapDay();
 
-    const data = await analyzeRecap(req.files, weekLabel, recapDay);
+    const data = await analyzeRecap(req.files, '', recapDay);
 
     res.json({
       data,
@@ -94,9 +105,7 @@ router.post('/generate', requireAuth, upload.array('files', 10), async (req, res
     const { analyzeRecap } = require('../services/claude');
     const { generateRecapPPTX } = require('../services/pptx-recap');
 
-    const weekLabel = req.body.weekLabel || '';
-    const recapDay  = req.body.recapDay  || 'Thursday';
-    const analysis  = await analyzeRecap(req.files, weekLabel, recapDay);
+    const analysis  = await analyzeRecap(req.files, '', getRecapDay());
     const pptxBuffer = await generateRecapPPTX(analysis);
 
     res.set({

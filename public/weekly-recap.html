@@ -165,22 +165,6 @@
           <h3>Configure Output</h3>
         </div>
 
-        <!-- Week / Day -->
-        <div class="meta-row">
-          <div class="form-group">
-            <label>Week Dates</label>
-            <input type="text" id="weekLabel" placeholder="e.g., P4W3 4/7–4/13" />
-          </div>
-          <div class="form-group">
-            <label>Recap Call Day</label>
-            <select id="recapDay">
-              <option>Monday</option><option>Tuesday</option>
-              <option>Wednesday</option><option selected>Thursday</option>
-              <option>Friday</option>
-            </select>
-          </div>
-        </div>
-
         <!-- Format toggle -->
         <label style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:10px;">Output Format</label>
         <div class="format-toggle">
@@ -203,12 +187,12 @@
               </div>
               <div class="theme-label">Command</div>
             </div>
-            <div class="theme-card" onclick="selectTheme('navy-gold',this)" title="Navy Gold — Deep navy + gold">
+            <div class="theme-card" onclick="selectTheme('cowboys',this)" title="Cowboys — Blue + white">
               <div class="theme-swatch">
-                <div class="theme-swatch-dark" style="background:#1A2744"></div>
-                <div class="theme-swatch-accent" style="background:#C9A84C"></div>
+                <div class="theme-swatch-dark" style="background:#003594"></div>
+                <div class="theme-swatch-accent" style="background:#FFFFFF; border-left:1px solid #ccc;"></div>
               </div>
-              <div class="theme-label">Navy Gold</div>
+              <div class="theme-label">Cowboys</div>
             </div>
             <div class="theme-card" onclick="selectTheme('clean-white',this)" title="Clean White — Light background, red accent (best for printing)">
               <div class="theme-swatch">
@@ -217,12 +201,12 @@
               </div>
               <div class="theme-label" style="background:#F0F0F0; color:#555;">Clean White</div>
             </div>
-            <div class="theme-card" onclick="selectTheme('teal',this)" title="Teal — Deep teal + seafoam green">
+            <div class="theme-card" onclick="selectTheme('purple-gold',this)" title="Purple & Gold — Deep purple + gold">
               <div class="theme-swatch">
-                <div class="theme-swatch-dark" style="background:#063D5C"></div>
-                <div class="theme-swatch-accent" style="background:#02C39A"></div>
+                <div class="theme-swatch-dark" style="background:#2D0A5E"></div>
+                <div class="theme-swatch-accent" style="background:#F5C518"></div>
               </div>
-              <div class="theme-label">Teal</div>
+              <div class="theme-label">Purple & Gold</div>
             </div>
             <div class="theme-card" onclick="selectTheme('maroon',this)" title="Maroon — Deep maroon + warm gold">
               <div class="theme-swatch">
@@ -458,8 +442,6 @@
 
     const formData = new FormData();
     fileList.forEach(f => formData.append('files', f));
-    formData.append('weekLabel', document.getElementById('weekLabel').value);
-    formData.append('recapDay', document.getElementById('recapDay').value);
 
     try {
       const res = await fetch('/api/recap/analyze', { method: 'POST', body: formData });
@@ -553,7 +535,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const week = (analyzedData.weekLabel || document.getElementById('weekLabel').value || 'Weekly').replace(/[^a-zA-Z0-9]/g, '_');
+      const week = (analyzedData.weekLabel || 'Weekly').replace(/[^a-zA-Z0-9]/g, '_');
       a.download = `P.AI_Region_Recap_${week}.pptx`;
       a.click();
       URL.revokeObjectURL(url);

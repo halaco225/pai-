@@ -7,20 +7,20 @@ const THEMES = {
     dark: '#1A1A1A', mid: '#2A2A2A', muted: '#3A3A3A',
     light: '#F5F5F5', accent: '#CC0000'
   },
-  // 2 — Navy blue + gold (premium/formal)
-  'navy-gold': {
-    dark: '#1A2744', mid: '#253360', muted: '#2E3D6E',
-    light: '#F5F6F8', accent: '#C9A84C'
+  // 2 — Cowboys blue + white (clean/sharp)
+  'cowboys': {
+    dark: '#003594', mid: '#0040A8', muted: '#1A55BC',
+    light: '#F0F4FF', accent: '#FFFFFF'
   },
   // 3 — Bright white bg + charcoal (print-friendly, minimal)
   'clean-white': {
     dark: '#1C1C1C', mid: '#2C2C2C', muted: '#4A4A4A',
     light: '#FFFFFF', accent: '#CC0000'
   },
-  // 4 — Deep teal + seafoam (modern/fresh — clearly different)
-  'teal': {
-    dark: '#063D5C', mid: '#0A5276', muted: '#0E6B9A',
-    light: '#F0F9FF', accent: '#02C39A'
+  // 4 — Purple + gold (bold/premium)
+  'purple-gold': {
+    dark: '#2D0A5E', mid: '#3D1278', muted: '#4E1A92',
+    light: '#FAF5FF', accent: '#F5C518'
   },
   // 5 — Deep maroon + warm gold (rich/bold — completely different)
   'maroon': {
@@ -250,6 +250,52 @@ function makeScorecard(pptx, d, weekLabel, total) {
     slide.addShape(pptx.ShapeType.rect, { x: 0.25 + i * 3.1, y: ly, w: 0.18, h: 0.18, fill: { color: col } });
     slide.addText(lbl, { x: 0.5 + i * 3.1, y: ly - 0.02, w: 2.7, h: 0.22, color: '#444444', fontSize: 9 });
   });
+
+  // ── Routine Non-Completers ─────────────────────────────────────────────────
+  const nonCompleters = safeArr(
+    hb.nonCompleters || hb.non_completers || hb.flaggedUsers || hb.users || hb.flagged
+  );
+  if (nonCompleters.length) {
+    slide.addShape(pptx.ShapeType.rect, { x: 0.25, y: 3.95, w: 9.2, h: 0.28, fill: { color: B.danger } });
+    slide.addText('⚠  ROUTINE NON-COMPLETERS THIS WEEK — WHO DROPPED THE BALL', {
+      x: 0.35, y: 3.96, w: 9.0, h: 0.26,
+      color: B.white, fontSize: 9, bold: true, charSpacing: 1
+    });
+
+    const tableRows = [[
+      { text: 'EMPLOYEE',      options: { bold: true, color: B.white, fill: B.dark, fontSize: 8 } },
+      { text: 'STORE',         options: { bold: true, color: B.white, fill: B.dark, fontSize: 8 } },
+      { text: 'AREA COACH',    options: { bold: true, color: B.white, fill: B.dark, fontSize: 8 } },
+      { text: 'ROUTINES MISSED', options: { bold: true, color: B.white, fill: B.dark, fontSize: 8 } },
+      { text: 'STATUS',        options: { bold: true, color: B.white, fill: B.dark, fontSize: 8, align: 'center' } },
+    ]];
+
+    nonCompleters.slice(0, 6).forEach((u, idx) => {
+      const fill = idx % 2 === 0 ? B.white : '#F5F5F5';
+      const status = safe(u.status || u.completion || u.completionStatus || '—');
+      const isNotStarted = status.toLowerCase().includes('not') || status.toLowerCase().includes('never');
+      const statusColor = isNotStarted ? B.danger : B.yellow;
+      const storeLine = [safe(u.store || u.storeName || ''), u.storeNum ? '#' + safe(u.storeNum) : '']
+        .filter(Boolean).join('  ');
+      tableRows.push([
+        { text: safe(u.user || u.name || u.userName || u.employee || '—'), options: { color: B.dark, fontSize: 9, fill, bold: true } },
+        { text: storeLine, options: { color: B.dark, fontSize: 9, fill } },
+        { text: safe(u.ac || u.acName || extractName(u) || '—'), options: { color: B.dark, fontSize: 9, fill } },
+        { text: safe(u.routines || u.routine || u.routinesMissed || u.missed || '—'), options: { color: B.dark, fontSize: 9, fill } },
+        { text: status, options: { color: statusColor, fontSize: 9, fill, bold: true, align: 'center' } },
+      ]);
+    });
+
+    slide.addTable(tableRows, {
+      x: 0.25, y: 4.26, w: 9.2, rowH: 0.36,
+      border: { type: 'solid', color: '#DDDDDD', pt: 1 }
+    });
+  } else {
+    // Placeholder when file not uploaded
+    slide.addText('Upload "Routines Status by User" file to see individual accountability data', {
+      x: 0.25, y: 4.1, w: 9.2, h: 0.3, color: B.gray, fontSize: 9, italic: true
+    });
+  }
 }
 
 function makeACTable(pptx, d, weekLabel, total) {
@@ -706,30 +752,75 @@ function makeSmartGoals(pptx, d, weekLabel, total) {
   }
 
   goals.slice(0, 3).forEach((g, i) => {
-    const y = 0.78 + i * 1.9;
-    // Number badge
-    slide.addShape(pptx.ShapeType.rect, { x: 0.25, y, w: 0.4, h: 0.4, fill: { color: B.red } });
-    slide.addText(String(i + 1).padStart(2, '0'), { x: 0.25, y: y + 0.04, w: 0.4, h: 0.3, color: B.white, fontSize: 13, bold: true, align: 'center' });
-    // Metric name
-    slide.addText(safe(g.metric || g.name), { x: 0.75, y, w: 4, h: 0.4, color: B.dark, fontSize: 14, bold: true });
-    // Current / Target / By When
-    const cols = [
-      { lbl: 'CURRENT', val: safe(g.current) },
-      { lbl: 'TARGET', val: safe(g.target) },
-      { lbl: 'BY WHEN', val: safe(g.byWhen || g.by_when) },
-    ];
-    cols.forEach((c, ci) => {
-      const cx = 4.85 + ci * 1.5;
-      slide.addText(c.lbl, { x: cx, y, w: 1.4, h: 0.2, color: '#777777', fontSize: 7, bold: true, charSpacing: 1 });
-      slide.addText(c.val, { x: cx, y: y + 0.2, w: 1.4, h: 0.25, color: B.dark, fontSize: 10, bold: true });
+    const y = 0.78 + i * 2.05;
+
+    // ── Number badge ────────────────────────────────────────────────────────
+    slide.addShape(pptx.ShapeType.rect, { x: 0.25, y, w: 0.38, h: 0.38, fill: { color: B.red } });
+    slide.addText(String(i + 1).padStart(2, '0'), {
+      x: 0.25, y: y + 0.04, w: 0.38, h: 0.3,
+      color: B.white, fontSize: 13, bold: true, align: 'center'
     });
-    // How
-    const how = safe(g.how || g.description);
-    if (how) {
-      slide.addText('HOW: ' + how, { x: 0.75, y: y + 0.5, w: 8.8, h: 0.85, color: '#444444', fontSize: 10, wrap: true });
+
+    // ── Metric name ─────────────────────────────────────────────────────────
+    slide.addText(safe(g.metric || g.name), {
+      x: 0.73, y, w: 4.1, h: 0.38,
+      color: B.dark, fontSize: 14, bold: true, valign: 'middle'
+    });
+
+    // ── Current → Target chips + By When ────────────────────────────────────
+    const current = safe(g.current, '—');
+    const target  = safe(g.target, '—');
+    const byWhen  = safe(g.byWhen || g.by_when, '—');
+
+    slide.addShape(pptx.ShapeType.rect, { x: 5.0, y: y + 0.04, w: 1.45, h: 0.3, fill: { color: '#E8E8E8' }, line: { color: '#CCCCCC', width: 0.5 } });
+    slide.addText(`NOW: ${current}`, { x: 5.0, y: y + 0.06, w: 1.45, h: 0.26, color: B.dark, fontSize: 9, bold: true, align: 'center' });
+
+    slide.addText('→', { x: 6.5, y: y + 0.06, w: 0.28, h: 0.26, color: B.red, fontSize: 13, bold: true, align: 'center' });
+
+    slide.addShape(pptx.ShapeType.rect, { x: 6.82, y: y + 0.04, w: 1.45, h: 0.3, fill: { color: B.green }, line: { color: B.green, width: 0.5 } });
+    slide.addText(`GOAL: ${target}`, { x: 6.82, y: y + 0.06, w: 1.45, h: 0.26, color: B.white, fontSize: 9, bold: true, align: 'center' });
+
+    slide.addText(`By: ${byWhen}`, {
+      x: 8.32, y: y + 0.09, w: 1.25, h: 0.2,
+      color: '#888888', fontSize: 9, align: 'right'
+    });
+
+    // ── Owner line ───────────────────────────────────────────────────────────
+    const owner = safe(g.owner || g.ac || g.who || '');
+    let rowY = y + 0.44;
+    if (owner) {
+      slide.addText([
+        { text: 'OWNER:  ', options: { bold: true, color: '#555555', fontSize: 9 } },
+        { text: owner,      options: { color: B.dark, fontSize: 9 } }
+      ], { x: 0.73, y: rowY, w: 8.85, h: 0.22, wrap: false });
+      rowY += 0.24;
     }
-    if (i < goals.length - 1 && i < 2) {
-      slide.addShape(pptx.ShapeType.line, { x: 0.25, y: y + 1.45, w: 9.1, h: 0, line: { color: '#DDDDDD', width: 0.5 } });
+
+    // ── Why it matters ───────────────────────────────────────────────────────
+    const why = safe(g.why || g.impact || g.reason || '');
+    if (why) {
+      slide.addText([
+        { text: 'WHY:  ', options: { bold: true, color: '#555555', fontSize: 9 } },
+        { text: why,       options: { color: '#444444', fontSize: 9 } }
+      ], { x: 0.73, y: rowY, w: 8.85, h: 0.3, wrap: true });
+      rowY += 0.34;
+    }
+
+    // ── How (action plan) ────────────────────────────────────────────────────
+    const how = safe(g.how || g.description || '');
+    if (how) {
+      slide.addText([
+        { text: 'HOW:  ', options: { bold: true, color: B.red, fontSize: 9 } },
+        { text: how,       options: { color: '#333333', fontSize: 9 } }
+      ], { x: 0.73, y: rowY, w: 8.85, h: 0.7, wrap: true });
+    }
+
+    // ── Divider ──────────────────────────────────────────────────────────────
+    if (i < Math.min(goals.length, 3) - 1) {
+      slide.addShape(pptx.ShapeType.line, {
+        x: 0.25, y: y + 1.97, w: 9.1, h: 0,
+        line: { color: '#DDDDDD', width: 0.5 }
+      });
     }
   });
 }
