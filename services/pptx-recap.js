@@ -48,7 +48,24 @@ let B = buildBrand('command-dark');
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function safe(val, fallback = '') {
   if (val === null || val === undefined) return fallback;
-  return String(val);
+  if (typeof val === 'object' && !Array.isArray(val)) return fallback;
+  return String(val) || fallback;
+}
+
+// Extract AC/person name from a row object — tries every plausible field key
+function extractName(row, fallback = '') {
+  if (!row || typeof row !== 'object') return fallback;
+  const keys = ['name', 'acName', 'ac', 'areaCoach', 'coach', 'area_coach',
+                'areaCoachName', 'Area_Coach', 'AreaCoach', 'Name', 'AC',
+                'district_manager', 'dm', 'manager'];
+  for (const k of keys) {
+    if (row[k] && typeof row[k] === 'string' && row[k].trim()) return row[k].trim();
+  }
+  // Last resort: find any string-valued key whose value looks like a name (2+ words, no numbers)
+  for (const [k, v] of Object.entries(row)) {
+    if (typeof v === 'string' && /^[A-Za-z]+ [A-Za-z]+/.test(v.trim())) return v.trim();
+  }
+  return fallback;
 }
 
 function safeArr(val) {
@@ -248,7 +265,7 @@ function makeACTable(pptx, d, weekLabel, total) {
   ];
 
   rows.forEach((r, idx) => {
-    const acName = safe(r.name || r.acName || r.ac || r.areaCoach || r.coach || r.area_coach || r.areaCoachName);
+    const acName = extractName(r);
     tableRows.push([
       { text: acName, options: { color: B.dark, fontSize: 11, bold: true, fill: idx % 2 === 0 ? B.white : '#F0F0F0' } },
       { text: safe(r.salesGrowth || r.sales_growth || r.sales), options: { color: B.dark, fontSize: 11, fill: idx % 2 === 0 ? B.white : '#F0F0F0', align: 'center' } },
@@ -382,7 +399,7 @@ function makeLaborDeepDive(pptx, d, weekLabel, total) {
 
   acRows.forEach((r, idx) => {
     const fill = idx % 2 === 0 ? B.white : '#F0F0F0';
-    const acName = safe(r.name || r.acName || r.ac || r.areaCoach || r.coach || r.area_coach || r.areaCoachName);
+    const acName = extractName(r);
     tableRows.push([
       { text: acName, options: { color: B.dark, fontSize: 10, bold: true, fill } },
       { text: safe(r.salesGrowth || r.sales_growth || r.sales), options: { color: B.dark, fontSize: 10, fill, align: 'center' } },
@@ -466,7 +483,7 @@ function makeSMGbyAC(pptx, d, weekLabel, total) {
 
   rows.forEach((r, idx) => {
     const fill = idx % 2 === 0 ? B.white : '#F0F0F0';
-    const acName = safe(r.name || r.acName || r.ac || r.areaCoach || r.coach || r.area_coach || r.areaCoachName);
+    const acName = extractName(r);
     tableRows.push([
       { text: acName, options: { color: B.dark, fontSize: 11, bold: true, fill } },
       { text: safe(r.reviews || r.reviewCount || r.review_count), options: { color: B.dark, fontSize: 11, fill, align: 'center' } },

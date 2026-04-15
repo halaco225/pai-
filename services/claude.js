@@ -285,25 +285,47 @@ Stat cards: white card, colored top bar, large number, sub-label, note below div
 No bullet walls. No accent lines under titles.
 Output format: structured JSON for PPTX generation
 
-When you receive the uploaded files, analyze all data sources and return a structured JSON object with content for all 13 slides. The JSON should have this structure:
+CRITICAL — STORE AND AC ALIGNMENT RULES:
+1. Build the complete AC roster FIRST from the Velocity WTD IST tab before reading any other file.
+2. In the Velocity file: Level=AREA rows = Area Coach names. Level=STORE rows directly below an AREA row = stores belonging to that AC.
+3. Every store must be assigned to exactly one AC. Never leave a store unassigned or assign it to the wrong AC.
+4. When matching stores across files (FRS, WIN, SMG, HUT Bot), match by store number only — never by position or order.
+5. If a file lists stores/ACs in a different order than Velocity, re-sort to match Velocity alignment.
+
+CRITICAL — JSON FIELD NAMES (use EXACTLY these names, no variations):
+- AC name in any row object: "name" (not acName, not areaCoach, not coach, not AC, not area_coach)
+- Store name: "store"
+- Store number: "storeNum"
+- Sales growth: "salesGrowth"
+- Labor variance: "laborVar"
+- WIN score: "winScore"
+- HUT Bot score: "hutBot"
+- Crew OT dollars: "crewOT"
+- HAM OT dollars: "hamOT"
+- PCA percent: "pca"
+- COS variance: "cosVar"
+- Description/note: "description"
+- AC name on a win/focus/customer voice item: "ac"
+
+When you receive the uploaded files, analyze all data sources and return a structured JSON object with content for all 13 slides. The JSON MUST use exactly these field names:
 {
   "regionName": "...",
   "weekLabel": "...",
   "recapCallDay": "...",
   "slides": {
-    "title": { "regionName": "...", "weekLabel": "...", "stats": [...] },
-    "scorecard": { "metrics": [...], "hutBotBreakdown": {...} },
-    "acTable": { "rows": [...] },
-    "wins": { "items": [...] },
-    "focusAreas": { "items": [...] },
-    "laborDeepDive": { "regionSummary": {...}, "acRows": [...], "otFlags": "..." },
-    "speedOutlier": { "dailyChart": [...], "outlierStores": [...] },
-    "smgByAC": { "rows": [...], "complaintThemes": [...] },
-    "smgSpotlight": { "top5": [...], "bottom5": [...] },
-    "customerVoice": { "positives": [...], "negatives": [...], "themes": [...] },
-    "smartGoals": { "goals": [...] },
+    "title": { "regionName": "...", "weekLabel": "...", "stats": [{"label":"SALES GROWTH","value":"+2.2%","sub":"vs LY"}] },
+    "scorecard": { "metrics": [{"label":"SALES GROWTH","value":"+2.2%","sub":"vs LY","status":"green"}], "hutBotBreakdown": {"onTime":"92%","late":"5%","missed":"3%"} },
+    "acTable": { "rows": [{"name":"Full AC Name","salesGrowth":"+4.9%","laborVar":"+2.14%","winScore":"67%","hutBot":"96%"}] },
+    "wins": { "items": [{"store":"Store Name","storeNum":"039380","metric":"83% WIN Score","description":"...","ac":"AC Full Name"}] },
+    "focusAreas": { "items": [{"store":"Store Name","storeNum":"039382","metric":"29.6 min IST","description":"...","ac":"AC Full Name"}] },
+    "laborDeepDive": { "regionSummary": {"laborVar":"+1.78%","crewOT":"$3,688","hamOT":"$1,435","totalOT":"$5,123","pca":"26%","cosVar":"-0.7%"}, "acRows": [{"name":"Full AC Name","salesGrowth":"+4.9%","laborVar":"+2.14%","crewOT":"$377","hamOT":"$967","pca":"26.13%","cosVar":"-0.72%"}], "otFlags": "Highest OT: AC Name ($943), AC Name ($857)" },
+    "speedOutlier": { "dailyChart": [{"day":"Tue 4/7","value":"18.2"}], "outlierStores": [{"store":"Store Name","storeNum":"039382","ist":"29.6 min","ac":"AC Name","note":"Highest in region"}] },
+    "smgByAC": { "rows": [{"name":"Full AC Name","reviews":"45","avg":"4.2","pos":"38","neg":"7","negRate":"15.6%"}], "complaintThemes": [{"theme":"Late/Slow","count":"12"},{"theme":"Wrong Order","count":"8"}] },
+    "smgSpotlight": { "top5": [{"name":"Store Name","storeNum":"039380","ac":"AC Name","reviews":"22","score":"4.8"}], "bottom5": [{"name":"Store Name","storeNum":"039388","ac":"AC Name","reviews":"15","score":"2.1"}] },
+    "customerVoice": { "positives": [{"store":"Store Name (#039380)","ac":"AC Name","quote":"Customer quote here"}], "negatives": [{"store":"Store Name (#039382)","ac":"AC Name","quote":"Customer quote here"}], "themes": [{"theme":"Late/Slow","count":"12"},{"theme":"Cold Food","count":"8"}] },
+    "smartGoals": { "goals": [{"metric":"In-Store Time","current":"18.6 min","target":"<18.0 min","byWhen":"End of P4","how":"Specific AC and store names with action"}] },
     "keyDates": { "placeholders": 7 },
-    "closing": { "acOfWeek": {...}, "footerStats": [...] }
+    "closing": { "acOfWeek": {"name":"Full AC Name","description":"Why they won","note":"Keep pushing."}, "footerStats": [{"label":"Sales","value":"+2.2%"},{"label":"Labor","value":"+1.78%"},{"label":"IST","value":"18.6 min"},{"label":"WIN","value":"51%"}], "recapDay": "Thursday" }
   }
 }`;
 
