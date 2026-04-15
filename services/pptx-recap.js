@@ -2,30 +2,55 @@ const PptxGenJS = require('pptxgenjs');
 
 // ── Themes ────────────────────────────────────────────────────────────────────
 const THEMES = {
-  // 1 — Deep dark + PH red (default signature look)
+  // 1 — Charcoal + red (default)
   'command-dark': {
     dark: '#1A1A1A', mid: '#2A2A2A', muted: '#3A3A3A',
     light: '#F5F5F5', accent: '#CC0000'
   },
-  // 2 — Cowboys blue + white (clean/sharp)
-  'cowboys': {
-    dark: '#003594', mid: '#0040A8', muted: '#1A55BC',
-    light: '#F0F4FF', accent: '#FFFFFF'
-  },
-  // 3 — Bright white bg + charcoal (print-friendly, minimal)
+  // 2 — White + red (print-friendly)
   'clean-white': {
     dark: '#1C1C1C', mid: '#2C2C2C', muted: '#4A4A4A',
     light: '#FFFFFF', accent: '#CC0000'
   },
-  // 4 — Purple + gold (bold/premium)
+  // 3 — Deep maroon + warm gold
+  'maroon': {
+    dark: '#3D0C0C', mid: '#5A1313', muted: '#751A1A',
+    light: '#FFF8F0', accent: '#F9A825'
+  },
+  // 4 — Royal blue + white
+  'royal-white': {
+    dark: '#003594', mid: '#0040A8', muted: '#1A55BC',
+    light: '#F0F4FF', accent: '#FFFFFF'
+  },
+  // 5 — Deep purple + gold
   'purple-gold': {
     dark: '#2D0A5E', mid: '#3D1278', muted: '#4E1A92',
     light: '#FAF5FF', accent: '#F5C518'
   },
-  // 5 — Deep maroon + warm gold (rich/bold — completely different)
-  'maroon': {
-    dark: '#3D0C0C', mid: '#5A1313', muted: '#751A1A',
-    light: '#FFF8F0', accent: '#F9A825'
+  // 6 — Forest green + gold
+  'forest-gold': {
+    dark: '#1A4731', mid: '#235E40', muted: '#2C7550',
+    light: '#F2FAF5', accent: '#B8960C'
+  },
+  // 7 — Dark navy + orange
+  'navy-orange': {
+    dark: '#0D1B2A', mid: '#162638', muted: '#1F3347',
+    light: '#FFF8F2', accent: '#E85D04'
+  },
+  // 8 — True black + vegas gold
+  'black-gold': {
+    dark: '#0F0F0F', mid: '#1E1E1E', muted: '#2D2D2D',
+    light: '#FAFAF5', accent: '#C9A84C'
+  },
+  // 9 — Slate + teal
+  'slate-teal': {
+    dark: '#1C3A4A', mid: '#264D61', muted: '#306078',
+    light: '#F0F8FA', accent: '#00B4D8'
+  },
+  // 10 — Crimson + silver
+  'crimson-silver': {
+    dark: '#6B0F1A', mid: '#8B1525', muted: '#A61B2E',
+    light: '#FFF5F6', accent: '#A8A9AD'
   },
 };
 

@@ -30,14 +30,26 @@
   .format-btn { flex: 1; padding: 10px; border: 2px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-secondary); font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; font-family: inherit; transition: all 0.15s; text-align: center; }
   .format-btn.active { border-color: var(--accent); background: rgba(204,0,0,0.08); color: var(--accent); }
 
-  /* ── Theme cards ──────────────────────────────── */
-  .theme-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
-  .theme-card { border: 2px solid var(--border); border-radius: 8px; overflow: hidden; cursor: pointer; transition: border-color 0.15s; }
-  .theme-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-  .theme-swatch { height: 44px; display: flex; }
-  .theme-swatch-dark { flex: 1.4; }
-  .theme-swatch-accent { flex: 1; }
-  .theme-label { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; text-align: center; padding: 6px 4px; color: var(--text-muted); background: var(--surface-2); }
+  /* ── Theme dropdown ───────────────────────────── */
+  .theme-dropdown { position: relative; margin-bottom: 20px; }
+  .theme-trigger { display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: border-color 0.15s; user-select: none; }
+  .theme-trigger:hover { border-color: var(--accent); }
+  .theme-trigger.open { border-color: var(--accent); border-radius: 8px 8px 0 0; }
+  .t-swatches { display: flex; width: 48px; height: 26px; border-radius: 4px; overflow: hidden; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.1); }
+  .t-sw-dark { flex: 1.4; }
+  .t-sw-accent { flex: 1; }
+  .t-name { flex: 1; font-size: 13px; font-weight: 700; color: var(--text-primary); }
+  .t-arrow { color: var(--text-muted); font-size: 11px; transition: transform 0.15s; }
+  .theme-trigger.open .t-arrow { transform: rotate(180deg); }
+  .theme-panel { display: none; position: absolute; top: 100%; left: 0; right: 0; background: var(--surface-2); border: 1px solid var(--accent); border-top: none; border-radius: 0 0 8px 8px; z-index: 200; overflow: hidden; }
+  .theme-panel.open { display: block; }
+  .theme-opt { display: flex; align-items: center; gap: 10px; padding: 8px 14px; cursor: pointer; transition: background 0.1s; }
+  .theme-opt:hover { background: var(--surface); }
+  .theme-opt.selected { background: rgba(204,0,0,0.1); }
+  .t-opt-swatches { display: flex; width: 40px; height: 22px; border-radius: 3px; overflow: hidden; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.08); }
+  .t-opt-dark { flex: 1.4; }
+  .t-opt-accent { flex: 1; }
+  .t-opt-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
 
   /* ── Email options ────────────────────────────── */
   .email-opts { display: none; gap: 16px; margin-bottom: 20px; }
@@ -179,42 +191,16 @@
         <!-- PPTX theme options -->
         <div id="pptxOpts">
           <label style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:10px;">Deck Style</label>
-          <div class="theme-grid">
-            <div class="theme-card selected" onclick="selectTheme('command-dark',this)" title="Command Dark — Dark charcoal + Pizza Hut red">
-              <div class="theme-swatch">
-                <div class="theme-swatch-dark" style="background:#1A1A1A"></div>
-                <div class="theme-swatch-accent" style="background:#CC0000"></div>
+          <div class="theme-dropdown" id="themeDropdown">
+            <div class="theme-trigger" id="themeTrigger" onclick="toggleThemeDropdown()">
+              <div class="t-swatches">
+                <div class="t-sw-dark" id="triggerDark" style="background:#1A1A1A"></div>
+                <div class="t-sw-accent" id="triggerAccent" style="background:#CC0000"></div>
               </div>
-              <div class="theme-label">Command</div>
+              <span class="t-name" id="triggerName">Command</span>
+              <span class="t-arrow">▾</span>
             </div>
-            <div class="theme-card" onclick="selectTheme('cowboys',this)" title="Cowboys — Blue + white">
-              <div class="theme-swatch">
-                <div class="theme-swatch-dark" style="background:#003594"></div>
-                <div class="theme-swatch-accent" style="background:#FFFFFF; border-left:1px solid #ccc;"></div>
-              </div>
-              <div class="theme-label">Cowboys</div>
-            </div>
-            <div class="theme-card" onclick="selectTheme('clean-white',this)" title="Clean White — Light background, red accent (best for printing)">
-              <div class="theme-swatch">
-                <div class="theme-swatch-dark" style="background:#F5F5F5; border-right: 1px solid #ddd;"></div>
-                <div class="theme-swatch-accent" style="background:#CC0000"></div>
-              </div>
-              <div class="theme-label" style="background:#F0F0F0; color:#555;">Clean White</div>
-            </div>
-            <div class="theme-card" onclick="selectTheme('purple-gold',this)" title="Purple & Gold — Deep purple + gold">
-              <div class="theme-swatch">
-                <div class="theme-swatch-dark" style="background:#2D0A5E"></div>
-                <div class="theme-swatch-accent" style="background:#F5C518"></div>
-              </div>
-              <div class="theme-label">Purple & Gold</div>
-            </div>
-            <div class="theme-card" onclick="selectTheme('maroon',this)" title="Maroon — Deep maroon + warm gold">
-              <div class="theme-swatch">
-                <div class="theme-swatch-dark" style="background:#3D0C0C"></div>
-                <div class="theme-swatch-accent" style="background:#F9A825"></div>
-              </div>
-              <div class="theme-label">Maroon</div>
-            </div>
+            <div class="theme-panel" id="themePanel"></div>
           </div>
         </div>
 
@@ -335,11 +321,63 @@
       `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Analyze &amp; Preview`;
   }
 
-  function selectTheme(theme, card) {
-    selectedTheme = theme;
-    document.querySelectorAll('.theme-card').forEach(c => c.classList.remove('selected'));
-    card.classList.add('selected');
+  // ── Theme dropdown ────────────────────────────────────────────────────────
+  const THEME_OPTIONS = [
+    { slug: 'command-dark',   name: 'Command',          dark: '#1A1A1A', accent: '#CC0000' },
+    { slug: 'clean-white',    name: 'Clean White',       dark: '#E8E8E8', accent: '#CC0000' },
+    { slug: 'maroon',         name: 'Maroon & Gold',     dark: '#3D0C0C', accent: '#F9A825' },
+    { slug: 'royal-white',    name: 'Royal & White',     dark: '#003594', accent: '#E8EEF8' },
+    { slug: 'purple-gold',    name: 'Purple & Gold',     dark: '#2D0A5E', accent: '#F5C518' },
+    { slug: 'forest-gold',    name: 'Forest & Gold',     dark: '#1A4731', accent: '#B8960C' },
+    { slug: 'navy-orange',    name: 'Navy & Orange',     dark: '#0D1B2A', accent: '#E85D04' },
+    { slug: 'black-gold',     name: 'Black & Gold',      dark: '#0F0F0F', accent: '#C9A84C' },
+    { slug: 'slate-teal',     name: 'Slate & Teal',      dark: '#1C3A4A', accent: '#00B4D8' },
+    { slug: 'crimson-silver', name: 'Crimson & Silver',  dark: '#6B0F1A', accent: '#A8A9AD' },
+  ];
+
+  function buildThemeDropdown() {
+    const panel = document.getElementById('themePanel');
+    panel.innerHTML = THEME_OPTIONS.map(t => `
+      <div class="theme-opt${t.slug === selectedTheme ? ' selected' : ''}" onclick="selectTheme('${t.slug}')">
+        <div class="t-opt-swatches">
+          <div class="t-opt-dark" style="background:${t.dark}"></div>
+          <div class="t-opt-accent" style="background:${t.accent}"></div>
+        </div>
+        <span class="t-opt-name">${t.name}</span>
+      </div>`).join('');
   }
+
+  function selectTheme(slug) {
+    selectedTheme = slug;
+    const t = THEME_OPTIONS.find(o => o.slug === slug);
+    if (t) {
+      document.getElementById('triggerDark').style.background   = t.dark;
+      document.getElementById('triggerAccent').style.background = t.accent;
+      document.getElementById('triggerName').textContent        = t.name;
+    }
+    document.querySelectorAll('.theme-opt').forEach(o => {
+      o.classList.toggle('selected', o.textContent.trim() === (t ? t.name : ''));
+    });
+    closeThemeDropdown();
+  }
+
+  function toggleThemeDropdown() {
+    const trigger = document.getElementById('themeTrigger');
+    const panel   = document.getElementById('themePanel');
+    const isOpen  = panel.classList.contains('open');
+    if (!isOpen) buildThemeDropdown();
+    trigger.classList.toggle('open', !isOpen);
+    panel.classList.toggle('open', !isOpen);
+  }
+
+  function closeThemeDropdown() {
+    document.getElementById('themeTrigger').classList.remove('open');
+    document.getElementById('themePanel').classList.remove('open');
+  }
+
+  document.addEventListener('click', e => {
+    if (!document.getElementById('themeDropdown').contains(e.target)) closeThemeDropdown();
+  });
 
   function selectPill(btn) {
     const group = btn.dataset.group;

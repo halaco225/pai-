@@ -1,11 +1,16 @@
 const PptxGenJS = require('pptxgenjs');
 
 const THEMES = {
-  'command-dark': { bg: '#0D0D0D', accent: '#E31837', text: '#F5F5F5', sub: '#AAAAAA', line: '#333333', foot: '#444444' },
-  'navy-gold':    { bg: '#0F1F3D', accent: '#C9A84C', text: '#F0EDE6', sub: '#9BAEC8', line: '#1E3A5F', foot: '#5A7A9A' },
-  'clean-white':  { bg: '#FFFFFF', accent: '#E31837', text: '#1A1A1A', sub: '#555555', line: '#DDDDDD', foot: '#999999' },
-  'slate-blue':   { bg: '#1A2744', accent: '#60A5FA', text: '#F0F4FF', sub: '#94A3B8', line: '#2A3F6F', foot: '#4A6090' },
-  'obsidian':     { bg: '#111827', accent: '#F59E0B', text: '#F9FAFB', sub: '#9CA3AF', line: '#2D3748', foot: '#4B5563' },
+  'command-dark':   { bg: '#1A1A1A', accent: '#CC0000', text: '#F5F5F5', sub: '#AAAAAA', line: '#333333', foot: '#444444' },
+  'clean-white':    { bg: '#FFFFFF', accent: '#CC0000', text: '#1A1A1A', sub: '#555555', line: '#DDDDDD', foot: '#999999' },
+  'maroon':         { bg: '#3D0C0C', accent: '#F9A825', text: '#FFF8F0', sub: '#CC9966', line: '#5A1313', foot: '#884422' },
+  'royal-white':    { bg: '#003594', accent: '#FFFFFF', text: '#FFFFFF', sub: '#AABFE8', line: '#1A55BC', foot: '#4477CC' },
+  'purple-gold':    { bg: '#2D0A5E', accent: '#F5C518', text: '#FAF5FF', sub: '#B89ECC', line: '#3D1278', foot: '#6633AA' },
+  'forest-gold':    { bg: '#1A4731', accent: '#B8960C', text: '#F2FAF5', sub: '#88BB99', line: '#235E40', foot: '#448855' },
+  'navy-orange':    { bg: '#0D1B2A', accent: '#E85D04', text: '#FFF8F2', sub: '#8899AA', line: '#1F3347', foot: '#334455' },
+  'black-gold':     { bg: '#0F0F0F', accent: '#C9A84C', text: '#FAFAF5', sub: '#AAAAAA', line: '#2D2D2D', foot: '#444444' },
+  'slate-teal':     { bg: '#1C3A4A', accent: '#00B4D8', text: '#F0F8FA', sub: '#88AACC', line: '#264D61', foot: '#3A6678' },
+  'crimson-silver': { bg: '#6B0F1A', accent: '#A8A9AD', text: '#FFF5F6', sub: '#CC8899', line: '#8B1525', foot: '#AA3344' },
 };
 
 async function generatePLPPTX(analysisText, options = {}) {
