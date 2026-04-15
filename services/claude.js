@@ -204,8 +204,76 @@ Format your response in clear sections with headers. Use markdown formatting. Be
 
 const RECAP_SYSTEM_PROMPT = `You are building a weekly Area Coach recap deck for a Regional Director at Pizza Hut / Ayvaz Pizza LLC (Harold Lacoste's region).
 
-STORE AND AC ALIGNMENT:
-Do not assume or hardcode store-to-AC assignments. The Velocity IST file (Velocity_IST_P4W#_[date].xlsx) WTD IST tab contains the complete alignment for the region. Read the Level, Region, Area Coach, Store #, and Store Name columns to build the full roster. AREA rows give you AC names and district numbers. STORE rows give you each store assigned to that AC. Always pull this from the file — never guess.
+AYVAZ MASTER ALIGNMENT — ATLANTA REGION (AUTHORITATIVE — use this for ALL store-to-AC-to-RGM mapping):
+This table is hardcoded from the master alignment file provided by Harold Lacoste.
+Use it as the primary source for store numbers, AC names, AC emails, and RGM names.
+The Velocity IST file confirms live metric alignment but this table is the hierarchy truth.
+If there is a conflict between files, trust this table.
+
+REGION COACH: Harold Lacoste | hlacoste@ayvazpizza.com | 225-810-1361
+VP: Matt Hester | mhester@ayvazpizza.com
+
+AREA COACH ROSTER (6 ACs, 40 stores):
+
+AC: Darian Spikes | Area 2011 | dspikes@ayvazpizza.com
+  038876 | Senoia       | Senoia      | RGM: April Berger
+  039377 | Griffin      | Griffin     | RGM: Patricia Washington
+  039378 | Union City   | Union City  | RGM: Kirk Browne
+  039379 | Jefferson St | Newnan      | RGM: Jasmine Mozley
+  039384 | Newnan       | Newnan      | RGM: Michelle Thompsen
+  039454 | Zebulon      | Griffin     | RGM: Candice Weston
+  039465 | Senoia       | Fairburn    | RGM: Cynthia Vining
+
+AC: Ebony Simmons | Area 2016 | esimmons@ayvazpizza.com
+  039383 | Stockbridge  | Stockbridge | RGM: Ronald George
+  039388 | Jonesboro Rd | McDonough   | RGM: Sylvia Brown
+  039393 | Lovejoy      | Hampton     | RGM: Judah Howard
+  039429 | Ola          | McDonough   | RGM: Gary Burney
+  039461 | County Line  | Fayetteville| RGM: Sidney Freeman
+  039513 | Jodeco       | Stockbridge | RGM: Michael Abernathy
+  039521 | Kellytown    | McDonough   | RGM: Veronica McWilliams
+  039522 | Ellenwood    | Ellenwood   | RGM: Pierce Smith
+
+AC: Jadon McNeil | Area 2022 | jmcneil@ayvazpizza.com
+  039375 | Bells Ferry Rd    | Kennesaw | RGM: Krystle Presnell
+  039376 | CrossRds          | Dallas   | RGM: Shannel Norville
+  039382 | Glade Rd          | Acworth  | RGM: Hailey Delgadillo
+  039387 | Kennesaw          | Kennesaw | RGM: Alana Pate
+  039392 | Towne Lake        | Woodstock| RGM: Matthew Gaddy
+  039462 | Acworth/Emerson   | Acworth  | RGM: Andrea Lowe
+
+AC: Jorge Garcia | Area 2000 | jgarcia@ayvazpizza.com
+  039380 | Windy Hill        | Marietta       | RGM: Naaja Bloodsoe
+  039386 | Powder Springs    | Powder Springs | RGM: Dasha Lane
+  039389 | Lithia Springs    | Lithia Springs | RGM: Karla Moore
+  039410 | Mableton          | Mableton       | RGM: Naudia Walker
+  039451 | Bolton            | Atlanta        | RGM: Keane Leslie
+  039525 | Smyrna            | Smyrna         | RGM: OPEN
+  039527 | Austell Rd        | Austell        | RGM: Isaac Bowens
+
+AC: Marc Gannon | Area 2015 | mgannon@ayvazpizza.com
+  039412 | Miracle Strip     | Fort Walton Beach | RGM: Dawn Lee
+  039413 | Navarre           | Navarre          | RGM: James Carnes
+  039414 | Gulf Breeze       | Gulf Breeze      | RGM: OPEN
+  039415 | Miramar Beach     | Miramar Beach    | RGM: James Haberlin
+  039416 | Niceville         | Niceville        | RGM: Nicholas Cepero
+  039430 | Racetrack         | Fort Walton Beach | RGM: Brandon Seeley
+  039529 | Crestview         | Crestview        | RGM: Rebecca Anderson
+  042659 | Destin            | Destin           | RGM: Robert Lowe
+
+AC: Michelle Meehan | Area 2034 | mmeehan@ayvazpizza.com
+  039381 | Fairburn Rd       | Douglasville | RGM: Cheree Leddy
+  039385 | Ridge Rd          | Douglasville | RGM: Austin Zavala
+  039390 | East Paulding     | Dallas       | RGM: OPEN
+  039391 | Hwy 5             | Douglasville | RGM: Stephen Payton
+  039526 | Dallas            | Dallas       | RGM: OPEN
+
+ALIGNMENT LOOKUP RULES:
+1. Match any store number by stripping prefixes ("1P", "P", region codes) → 6-digit number → look up in this table.
+2. If a file shows a store name instead of a number, match it against the store name/city in this table (partial match OK).
+3. RGM name for HUT Bot Bottom 5 and any manager callouts comes from the "RGM:" column above. If marked OPEN, note "Position Open".
+4. The Velocity WTD IST file confirms live metric data. Use this table for hierarchy/names, Velocity for metric values.
+5. Never output "[Store not mapped]", "[Unknown]", or "[Data mapping needed]" — every Atlanta store is in this table.
 
 DECK STRUCTURE — Always build 13 slides in this exact order:
 
@@ -269,23 +337,22 @@ Score is 1-5 scale from Pizza Hut GES via SMG portal
 Store info in column D, format: 1P039380 - 039380,250 WINDY HILL RD,...
 
 WIN SCORE FILE (ComparisonReport.xls or ComparisonReport.xlsx):
-CRITICAL — follow these steps exactly. The Velocity IST file is your source of truth for store-to-AC alignment. Use it to compute AC-level WIN scores even if individual store matching is imperfect.
+CRITICAL — follow these steps exactly. Use the AYVAZ MASTER ALIGNMENT table above as your primary store-to-AC lookup.
 
-STEP 1 — BUILD THE AC ROSTER FIRST. From the Velocity WTD IST file, you already have the complete list of every store and which AC it belongs to. This is your master alignment. You know: AC name → list of store numbers.
+STEP 1 — YOU ALREADY HAVE THE AC ROSTER. From the AYVAZ MASTER ALIGNMENT table above, you know every store number → AC mapping for all 40 Atlanta stores. No need to re-derive from Velocity for store assignment.
 
 STEP 2 — READ ALL STORE WIN SCORES from ComparisonReport. Go row by row. For each row that is not the "Combined" header/total row: extract whatever store identifier is present (number, name, or code) and the WIN score decimal. Convert every decimal to a percentage: 0.48 → 48%.
 
-STEP 3 — MATCH STORES TO ACS. For each WIN score row, try to find that store in the Velocity roster:
+STEP 3 — MATCH STORES TO ACS using the hardcoded table:
   - Strip any prefix ("1P", region codes) — match on the 6-digit number
-  - If no number is present, match on store name (partial match is fine)
-  - If a match is found, assign that WIN score to that store's AC
+  - If no number is present, match on store name/city from the table (partial match is fine)
+  - Every Atlanta store IS in the table — if you can read the store identifier, you can find the AC
 
-STEP 4 — COMPUTE AC-LEVEL WIN. For each AC: average the WIN scores of all their stores that had a match in the ComparisonReport. Even if only 2 of 5 stores matched, use those 2 to compute a partial average — this is better than showing nothing. Label it with the matched count if partial, e.g. "61% (4/5 stores)".
+STEP 4 — COMPUTE AC-LEVEL WIN. For each AC: average the WIN scores of all their stores found in the ComparisonReport. Even if only 2 of 5 stores matched, use those 2 — label as "61% (4/5 stores)".
 
-STEP 5 — REGION TOTAL. Use the "Combined" row value if present. Otherwise average all stores.
+STEP 5 — REGION TOTAL. Use the "Combined" row value if present. Otherwise average all matched stores.
 
-FALLBACK — if ComparisonReport is missing or completely unreadable: use the WIN score from the Velocity WTD IST file if it has a WIN column. The Velocity file sometimes includes WIN scores directly. Never output "[Data mapping needed]" — always provide a number or explain specifically why it cannot be calculated.
-
+FALLBACK — if ComparisonReport is missing or completely unreadable: check if the Velocity WTD IST file has a WIN column and use those values. Never output "[Data mapping needed]" — always provide a number or explain specifically what file is missing.
 WIN SCORE METHODOLOGY — critical for coaching and analysis:
 - Score of 5 = PASSING (counts toward WIN%)
 - Score of 4 = NOT COUNTED (excluded from scoring) — coaching goal is to upgrade every 4 to a 5
@@ -319,12 +386,11 @@ No bullet walls. No accent lines under titles.
 Output format: structured JSON for PPTX generation
 
 CRITICAL — STORE AND AC ALIGNMENT RULES:
-1. Build the complete AC roster FIRST from the Velocity WTD IST tab before reading any other file.
-2. In the Velocity file: Level=AREA rows = Area Coach names. Level=STORE rows directly below an AREA row = stores belonging to that AC.
-3. Every store must be assigned to exactly one AC. Never leave a store unassigned or assign it to the wrong AC.
-4. When matching stores across files (FRS, WIN, SMG, HUT Bot), match by store number only — never by position or order.
-5. If a file lists stores/ACs in a different order than Velocity, re-sort to match Velocity alignment.
-
+1. PRIMARY SOURCE: Use the AYVAZ MASTER ALIGNMENT table above for all store→AC→RGM assignments.
+2. SECONDARY SOURCE: Velocity WTD IST file confirms live metric data and may include additional stores not yet in the master alignment. Build the AC roster from Velocity and cross-reference with the master table.
+3. Every store must be assigned to exactly one AC. If a store number appears in a report file but not in the master alignment table, it may be a non-Atlanta store — flag it but do not block the analysis.
+4. When matching stores across files (FRS, WIN, SMG, HUT Bot), match by 6-digit store number — strip any prefix first.
+5. RGM names for any manager callout (HUT Bot Bottom 5, Non-Completers, etc.) come from the master alignment table. If the Routines/HUT Bot file shows a different name, prefer the most recent one from the file but note the discrepancy if significant.
 CRITICAL — JSON FIELD NAMES (use EXACTLY these names, no variations):
 - AC name in any row object: "name" (not acName, not areaCoach, not coach, not AC, not area_coach)
 - Store name: "store"
