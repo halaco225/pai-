@@ -169,8 +169,8 @@
         </div>
         <div class="file-chips" id="fileChips"></div>
 
-        <!-- Alignment file status (auto-applied, managed from Settings) -->
-        <div id="alignBanner" style="display:none;margin-top:12px;padding:8px 14px;border-radius:6px;font-size:12px;display:flex;align-items:center;gap:8px;"></div>
+        <!-- Alignment file status (auto-applied from Dashboard) -->
+        <div id="alignBanner" style="display:none;margin-top:12px;padding:8px 14px;border-radius:6px;font-size:12px;"></div>
       </div>
 
       <!-- Step 2: Configure -->
@@ -416,7 +416,6 @@
 
   function removeFile(i) { fileList.splice(i, 1); renderChips(); }
 
-  // Check if user has a stored alignment file and show banner
   async function checkAlignmentStatus() {
     try {
       const res = await fetch('/api/alignment/status');
@@ -425,16 +424,10 @@
       const banner = document.getElementById('alignBanner');
       if (!banner) return;
       if (data.hasFile) {
-        const updated = new Date(data.updatedAt).toLocaleDateString();
-        banner.style.display = 'flex';
+        banner.style.display = 'block';
         banner.style.background = '#e8f5e9';
         banner.style.color = '#2E7D32';
-        banner.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Alignment file on file — store mapping, AC emails &amp; RGM names auto-applied`;
-      } else {
-        banner.style.display = 'flex';
-        banner.style.background = '#fff8e1';
-        banner.style.color = '#b8860b';
-        banner.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> No alignment file saved — <a href="/dashboard" style="color:inherit;font-weight:700;margin-left:4px;">upload one from the Dashboard</a> to enable RGM names and accurate store mapping`;
+        banner.innerHTML = '&#10003; Alignment file saved &mdash; store mapping &amp; RGM names auto-applied to every recap';
       }
     } catch {}
   }
@@ -533,15 +526,9 @@
         document.getElementById('downloadBtn').style.display = 'inline-flex';
         document.getElementById('downloadBtn').innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download PPTX`;
       } else {
-        // Email format: show a manual trigger button to avoid rate limit issues
-        // (analyze uses most of the 30k/min token budget — need time before email)
-        document.getElementById('pptxPreview').style.display = 'none';
-        document.getElementById('emailPreview').style.display = 'none';
-        document.getElementById('previewTitle').textContent = 'Analysis Complete — Ready to Compose';
-        document.getElementById('downloadBtn').style.display = 'inline-flex';
-        document.getElementById('downloadBtn').innerHTML = '✉️ Compose Email';
-        document.getElementById('downloadBtn').onclick = () => triggerEmailGeneration();
-        log('✓ Analysis done. Click "Compose Email" when ready — the server needs ~65s between analyze and email to avoid rate limits.', 'ok');
+        // Generate email
+        log('Generating email recap...', 'info');
+        await generateEmail(analyzedData);
       }
 
       previewSection.style.display = 'block';
@@ -582,25 +569,6 @@
     document.getElementById('emailPreview').style.display = 'block';
     document.getElementById('previewTitle').textContent = 'Email Preview';
     document.getElementById('downloadBtn').style.display = 'none';
-    document.getElementById('downloadBtn').onclick = downloadOutput;
-    document.getElementById('downloadBtn').disabled = false;
-  }
-
-  // ── Trigger email manually (avoids rate limit after analyze) ─────────────
-  async function triggerEmailGeneration() {
-    const btn = document.getElementById('downloadBtn');
-    btn.disabled = true;
-    btn.textContent = '⏳ Composing... (~65s)';
-    log('Composing email recap... (65s server cooldown for rate limits)', 'info');
-    try {
-      await generateEmail(analyzedData);
-      document.getElementById('previewSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } catch (err) {
-      log('ERROR: ' + err.message, 'err');
-      btn.disabled = false;
-      btn.innerHTML = '✉️ Retry Compose Email';
-      btn.onclick = () => triggerEmailGeneration();
-    }
   }
 
   // ── Download PPTX ──────────────────────────────────────────────────────────
@@ -762,4 +730,50 @@
       const top = safeArr((s.smgSpotlight || {}).top5 || (s.smgSpotlight || {}).top);
       const bot = safeArr((s.smgSpotlight || {}).bottom5 || (s.smgSpotlight || {}).bottom);
       if (!top.length && !bot.length) return 'No SMG spotlight data';
-      const topHtml = top.slice(0,3).map(t => `★ ${escHtml(safe(t.name || t.storeName))} (${escHtm
+      const topHtml = top.slice(0,3).map(t => `★ ${escHtml(safe(t.name || t.storeName))} (${escHtml(safe(t.score))})`).join(' · ');
+      const botHtml = bot.slice(0,3).map(t => `⚠ ${escHtml(safe(t.name || t.storeName))} (${escHtml(safe(t.score))})`).join(' · ');
+      return (topHtml ? `<div>${topHtml}</div>` : '') + (botHtml ? `<div style="margin-top:6px">${botHtml}</div>` : '');
+    })());
+
+    // Slide 10 — Customer Voice
+    html += slide(10, 'Customer Voice', (() => {
+      const pos = safeArr((s.customerVoice || {}).positives || (s.customerVoice || {}).positive);
+      const neg = safeArr((s.customerVoice || {}).negatives || (s.customerVoice || {}).negative);
+      const posHtml = pos.slice(0,3).map(p => `★ ${escHtml(safe(p.store || p.storeName))}`).join(', ');
+      const negHtml = neg.slice(0,3).map(n => `⚠ ${escHtml(safe(n.store || n.storeName))}`).join(', ');
+      return `Praising: ${posHtml || 'N/A'}<br>Flagging: ${negHtml || 'N/A'}`;
+    })());
+
+    // Slide 11 — Smart Goals
+    html += slide(11, 'Smart Goals', (() => {
+      const goals = safeArr((s.smartGoals || {}).goals);
+      if (!goals.length) return 'No goals data';
+      return goals.map((g, i) =>
+        `<div>${i+1}. <strong>${escHtml(safe(g.metric || g.name))}</strong>: ${escHtml(safe(g.current))} → ${escHtml(safe(g.target))} by ${escHtml(safe(g.byWhen || g.by_when))}</div>`
+      ).join('');
+    })());
+
+    // Slide 12 — Key Dates
+    html += slide(12, 'Key Dates & Reminders', '<span style="color:var(--text-muted);font-style:italic">You fill this in before distributing — 7 date/reminder slots</span>');
+
+    // Slide 13 — Closing
+    html += slide(13, 'Closing', (() => {
+      const ac = (s.closing || {}).acOfWeek || (s.closing || {}).ac_of_week || {};
+      return `AC of the Week: <strong>${escHtml(safe(ac.name, 'TBD'))}</strong><br>${escHtml(safe(ac.description || ac.reason, ''))}`;
+    })());
+
+    container.innerHTML = html;
+  }
+
+  function slide(num, title, bodyHtml) {
+    return `<div class="preview-slide">
+      <div class="preview-slide-num">Slide ${num}</div>
+      <div class="preview-slide-title">${title}</div>
+      <div class="preview-slide-body">${bodyHtml}</div>
+    </div>`;
+  }
+
+  init();
+</script>
+</body>
+</html>
