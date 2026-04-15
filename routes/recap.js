@@ -18,6 +18,26 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 }
 });
 
+// Helper: retry a Claude API call with exponential backoff on 429 rate limit errors
+async function withRetry(fn, maxAttempts = 4) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const status = err.status || (err.error && err.error.status);
+      const isRateLimit = status === 429 || (err.message && err.message.includes('rate_limit'));
+      if (isRateLimit && attempt < maxAttempts) {
+        // Exponential backoff: 15s, 30s, 60s
+        const delay = 15000 * Math.pow(2, attempt - 1);
+        console.log(`Rate limit hit (attempt ${attempt}/${maxAttempts}). Retrying in ${delay / 1000}s...`);
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
 // Helper: auto-calculate the next Thursday (or today if today IS Thursday)
 function getRecapDay() {
   const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -40,8 +60,9 @@ router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res)
   try {
     const { analyzeRecap } = require('../services/claude');
     const recapDay = getRecapDay();
+    const lastAcOfWeek = req.body.lastAcOfWeek || null;
 
-    const data = await analyzeRecap(req.files, '', recapDay);
+    const data = await withRetry(() => analyzeRecap(req.files, '', recapDay, lastAcOfWeek));
 
     res.json({
       data,
@@ -86,7 +107,7 @@ router.post('/email', requireAuth, async (req, res) => {
     const { data, tone, length } = req.body;
     if (!data) return res.status(400).json({ error: 'No data provided.' });
 
-    const result = await generateRecapEmail(data, { tone, length });
+    const result = await withRetry(() => generateRecapEmail(data, { tone, length }));
     res.json(result);
   } catch (err) {
     console.error('Recap email error:', err);
@@ -105,7 +126,7 @@ router.post('/generate', requireAuth, upload.array('files', 10), async (req, res
     const { analyzeRecap } = require('../services/claude');
     const { generateRecapPPTX } = require('../services/pptx-recap');
 
-    const analysis  = await analyzeRecap(req.files, '', getRecapDay());
+    const analysis  = await withRetry(() => analyzeRecap(req.files, '', getRecapDay()));
     const pptxBuffer = await generateRecapPPTX(analysis);
 
     res.set({

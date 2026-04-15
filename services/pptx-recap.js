@@ -174,11 +174,11 @@ async function generateRecapPPTX(data, options = {}) {
   // 7 ── Speed Outlier ─────────────────────────────────────────────────────────
   makeSpeedOutlier(pptx, s.speedOutlier || {}, weekLabel, TOTAL);
 
-  // 8 ── SMG by AC ─────────────────────────────────────────────────────────────
-  makeSMGbyAC(pptx, s.smgByAC || {}, weekLabel, TOTAL);
+  // 8 ── WIN Score by Area Coach ────────────────────────────────────────────────
+  makeWINbyAC(pptx, s.winByAC || s.smgByAC || {}, weekLabel, TOTAL);
 
-  // 9 ── SMG Store Spotlight ───────────────────────────────────────────────────
-  makeSMGSpotlight(pptx, s.smgSpotlight || {}, weekLabel, TOTAL);
+  // 9 ── WIN Store Spotlight ────────────────────────────────────────────────────
+  makeWINStoreSpotlight(pptx, s.winStoreSpotlight || s.smgSpotlight || {}, weekLabel, TOTAL);
 
   // 10 ── Customer Voice ───────────────────────────────────────────────────────
   makeCustomerVoice(pptx, s.customerVoice || {}, weekLabel, TOTAL);
@@ -276,14 +276,53 @@ function makeScorecard(pptx, d, weekLabel, total) {
     slide.addText(lbl, { x: 0.5 + i * 3.1, y: ly - 0.02, w: 2.7, h: 0.22, color: '#444444', fontSize: 9 });
   });
 
+  // ── Bottom 5 Worst HUT Bot Stores ──────────────────────────────────────────
+  const bottom5 = safeArr(hb.bottom5Stores || hb.worstStores || []);
+  const nonCompletersStartY = bottom5.length ? 5.2 : 3.95;
+
+  if (bottom5.length) {
+    slide.addShape(pptx.ShapeType.rect, { x: 0.25, y: 3.65, w: 9.2, h: 0.25, fill: { color: '#8B0000' } });
+    slide.addText('⬇  BOTTOM 5 HUT BOT STORES — LOWEST ON-TIME COMPLIANCE', {
+      x: 0.35, y: 3.66, w: 9.0, h: 0.23,
+      color: B.white, fontSize: 8.5, bold: true, charSpacing: 1
+    });
+
+    const bot5Rows = [[
+      { text: 'STORE',       options: { bold: true, color: B.white, fill: B.dark, fontSize: 8 } },
+      { text: '#',           options: { bold: true, color: B.white, fill: B.dark, fontSize: 8, align: 'center' } },
+      { text: 'AREA COACH',  options: { bold: true, color: B.white, fill: B.dark, fontSize: 8 } },
+      { text: 'MANAGER',     options: { bold: true, color: B.white, fill: B.dark, fontSize: 8 } },
+      { text: 'ON TIME %',   options: { bold: true, color: B.white, fill: B.dark, fontSize: 8, align: 'center' } },
+    ]];
+
+    bottom5.slice(0, 5).forEach((s, idx) => {
+      const fill = idx % 2 === 0 ? B.white : '#FFF5F5';
+      const ot = safe(s.onTime || s.onTimePercent || s.hutBot || '—');
+      const otNum = parseFloat(ot);
+      const otColor = isNaN(otNum) ? B.danger : (otNum >= 95 ? B.green : otNum >= 88 ? B.yellow : B.danger);
+      bot5Rows.push([
+        { text: safe(s.store || s.storeName || '—'), options: { color: B.dark, fontSize: 8.5, fill } },
+        { text: safe(s.storeNum || '—'), options: { color: B.dark, fontSize: 8.5, fill, align: 'center' } },
+        { text: safe(s.ac || s.acName || '—'), options: { color: B.dark, fontSize: 8.5, fill } },
+        { text: safe(s.manager || s.managerName || '—'), options: { color: '#444444', fontSize: 8.5, fill, italic: true } },
+        { text: ot, options: { color: otColor, fontSize: 9, fill, bold: true, align: 'center' } },
+      ]);
+    });
+
+    slide.addTable(bot5Rows, {
+      x: 0.25, y: 3.92, w: 9.2, rowH: 0.3,
+      border: { type: 'solid', color: '#DDDDDD', pt: 1 }
+    });
+  }
+
   // ── Routine Non-Completers ─────────────────────────────────────────────────
   const nonCompleters = safeArr(
     hb.nonCompleters || hb.non_completers || hb.flaggedUsers || hb.users || hb.flagged
   );
   if (nonCompleters.length) {
-    slide.addShape(pptx.ShapeType.rect, { x: 0.25, y: 3.95, w: 9.2, h: 0.28, fill: { color: B.danger } });
+    slide.addShape(pptx.ShapeType.rect, { x: 0.25, y: nonCompletersStartY, w: 9.2, h: 0.28, fill: { color: B.danger } });
     slide.addText('⚠  ROUTINE NON-COMPLETERS THIS WEEK — WHO DROPPED THE BALL', {
-      x: 0.35, y: 3.96, w: 9.0, h: 0.26,
+      x: 0.35, y: nonCompletersStartY + 0.01, w: 9.0, h: 0.26,
       color: B.white, fontSize: 9, bold: true, charSpacing: 1
     });
 
@@ -295,11 +334,11 @@ function makeScorecard(pptx, d, weekLabel, total) {
       { text: 'STATUS',        options: { bold: true, color: B.white, fill: B.dark, fontSize: 8, align: 'center' } },
     ]];
 
-    nonCompleters.slice(0, 6).forEach((u, idx) => {
+    nonCompleters.slice(0, 5).forEach((u, idx) => {
       const fill = idx % 2 === 0 ? B.white : '#F5F5F5';
       const status = safe(u.status || u.completion || u.completionStatus || '—');
       const isNotStarted = status.toLowerCase().includes('not') || status.toLowerCase().includes('never');
-      const statusColor = isNotStarted ? B.danger : B.yellow;
+      const sColor = isNotStarted ? B.danger : B.yellow;
       const storeLine = [safe(u.store || u.storeName || ''), u.storeNum ? '#' + safe(u.storeNum) : '']
         .filter(Boolean).join('  ');
       tableRows.push([
@@ -307,18 +346,17 @@ function makeScorecard(pptx, d, weekLabel, total) {
         { text: storeLine, options: { color: B.dark, fontSize: 9, fill } },
         { text: safe(u.ac || u.acName || extractName(u) || '—'), options: { color: B.dark, fontSize: 9, fill } },
         { text: safe(u.routines || u.routine || u.routinesMissed || u.missed || '—'), options: { color: B.dark, fontSize: 9, fill } },
-        { text: status, options: { color: statusColor, fontSize: 9, fill, bold: true, align: 'center' } },
+        { text: status, options: { color: sColor, fontSize: 9, fill, bold: true, align: 'center' } },
       ]);
     });
 
     slide.addTable(tableRows, {
-      x: 0.25, y: 4.26, w: 9.2, rowH: 0.36,
+      x: 0.25, y: nonCompletersStartY + 0.3, w: 9.2, rowH: 0.34,
       border: { type: 'solid', color: '#DDDDDD', pt: 1 }
     });
   } else {
-    // Placeholder when file not uploaded
     slide.addText('Upload "Routines Status by User" file to see individual accountability data', {
-      x: 0.25, y: 4.1, w: 9.2, h: 0.3, color: B.gray, fontSize: 9, italic: true
+      x: 0.25, y: nonCompletersStartY + 0.15, w: 9.2, h: 0.3, color: B.gray, fontSize: 9, italic: true
     });
   }
 }
@@ -542,124 +580,133 @@ function makeSpeedOutlier(pptx, d, weekLabel, total) {
   }
 }
 
-function makeSMGbyAC(pptx, d, weekLabel, total) {
+function makeWINbyAC(pptx, d, weekLabel, total) {
   const slide = pptx.addSlide();
   slide.background = { color: B.light };
-  chrome(slide, pptx, `SMG BY AREA COACH  |  ${weekLabel}`, 8, total);
+  chrome(slide, pptx, `WIN SCORE BY AREA COACH  |  ${weekLabel}`, 8, total);
+
+  const regionAvg = safe(d.regionAvg || d.region_avg || '');
+  if (regionAvg) {
+    slide.addText(`REGION AVG:  ${regionAvg}`, {
+      x: 6.5, y: 0.73, w: 3, h: 0.3, color: B.dark, fontSize: 12, bold: true, align: 'right'
+    });
+  }
 
   const rows = safeArr(d.rows);
   const tableRows = [[
-    { text: 'AREA COACH', options: { bold: true, color: B.white, fill: B.dark, fontSize: 9 } },
-    { text: 'REVIEWS', options: { bold: true, color: B.white, fill: B.dark, fontSize: 9, align: 'center' } },
-    { text: 'AVG SCORE', options: { bold: true, color: B.white, fill: B.dark, fontSize: 9, align: 'center' } },
-    { text: 'POS', options: { bold: true, color: B.white, fill: B.dark, fontSize: 9, align: 'center' } },
-    { text: 'NEG', options: { bold: true, color: B.white, fill: B.dark, fontSize: 9, align: 'center' } },
-    { text: 'NEG RATE', options: { bold: true, color: B.white, fill: B.dark, fontSize: 9, align: 'center' } },
+    { text: 'AREA COACH',    options: { bold: true, color: B.white, fill: B.dark, fontSize: 9 } },
+    { text: 'WIN SCORE',     options: { bold: true, color: B.white, fill: B.dark, fontSize: 9, align: 'center' } },
+    { text: 'TOP STORE',     options: { bold: true, color: B.white, fill: B.dark, fontSize: 9 } },
+    { text: 'BOTTOM STORE',  options: { bold: true, color: B.white, fill: B.dark, fontSize: 9 } },
+    { text: 'SMG FOCUS AREAS', options: { bold: true, color: B.white, fill: B.dark, fontSize: 9 } },
   ]];
 
   rows.forEach((r, idx) => {
     const fill = idx % 2 === 0 ? B.white : '#F0F0F0';
     const acName = extractName(r);
+    const winRaw = safe(r.winScore || r.win_score || r.win || '—');
+    const winNum = parseFloat(winRaw);
+    const winColor = isNaN(winNum) ? B.dark : winNum >= 60 ? B.green : winNum >= 40 ? B.yellow : B.danger;
+
+    const topStore = r.topStore || {};
+    const botStore = r.bottomStore || r.bottomstore || {};
+    const topStr = topStore.store ? `${topStore.store}  (${safe(topStore.winScore || '')})` : '—';
+    const botStr = botStore.store ? `${botStore.store}  (${safe(botStore.winScore || '')})` : '—';
+    const focus = safe(r.focusAreas || r.focus_areas || r.themes || '—');
+
     tableRows.push([
-      { text: acName, options: { color: B.dark, fontSize: 11, bold: true, fill } },
-      { text: safe(r.reviews || r.reviewCount || r.review_count), options: { color: B.dark, fontSize: 11, fill, align: 'center' } },
-      { text: safe(r.avg || r.avgScore || r.avg_score || r.satAvg || r.score), options: { color: B.dark, fontSize: 11, fill, align: 'center' } },
-      { text: safe(r.pos || r.positive), options: { color: B.green, fontSize: 11, fill, align: 'center' } },
-      { text: safe(r.neg || r.negative), options: { color: B.danger, fontSize: 11, fill, align: 'center' } },
-      { text: safe(r.negRate || r.neg_rate), options: { color: B.dark, fontSize: 11, fill, align: 'center' } },
+      { text: acName, options: { color: B.dark, fontSize: 10, bold: true, fill } },
+      { text: winRaw, options: { color: winColor, fontSize: 13, bold: true, fill, align: 'center' } },
+      { text: topStr, options: { color: B.green, fontSize: 9, fill } },
+      { text: botStr, options: { color: B.danger, fontSize: 9, fill } },
+      { text: focus, options: { color: B.dark, fontSize: 8.5, fill, wrap: true } },
     ]);
   });
 
   if (tableRows.length > 1) {
-    slide.addTable(tableRows, { x: 0.25, y: 0.75, w: 9.2, rowH: 0.47, border: { type: 'solid', color: '#DDDDDD', pt: 1 } });
+    slide.addTable(tableRows, { x: 0.25, y: 0.75, w: 9.2, rowH: 0.52, border: { type: 'solid', color: '#DDDDDD', pt: 1 } });
   } else {
-    slide.addText('No AC-level SMG data available — upload SMG comments file to populate this table.', {
+    slide.addText('WIN score data not available — upload ComparisonReport.xls for full analysis.', {
       x: 0.25, y: 1.5, w: 9.2, h: 0.5, color: B.gray, fontSize: 11, italic: true
     });
   }
 
+  // Scoring key at bottom
+  slide.addText('WIN SCORE KEY:  5 = PASS  |  4 = NOT SCORED (upgrade to 5)  |  3/2/1 = ALL COUNT AS FAIL  —  eliminate 3s first, then convert 4s to 5s', {
+    x: 0.25, y: 6.65, w: 9.2, h: 0.3, color: '#555555', fontSize: 8, italic: true
+  });
+
   // Complaint themes
   const themes = safeArr(d.complaintThemes || d.complaint_themes);
   if (themes.length) {
-    const themeTotal = themes.reduce((s, t) => s + (parseInt(t.count) || 0), 0);
-    const prefix = themeTotal ? `TOP COMPLAINT THEMES ACROSS ${themeTotal} REVIEWS:` : 'TOP COMPLAINT THEMES:';
-    slide.addText(prefix, { x: 0.25, y: 5.6, w: 9, h: 0.25, color: '#444444', fontSize: 9, bold: true });
     const themeStr = themes.slice(0, 6).map(t => {
       const label = safe(t.theme || t.name || t);
       const count = safe(t.count || t.mentions || '');
       return count ? `${label}  [${count}]` : label;
     }).filter(Boolean).join('     ');
-    slide.addText(themeStr, { x: 0.25, y: 5.88, w: 9.2, h: 0.3, color: B.dark, fontSize: 11, bold: true });
+    slide.addText(`TOP COMPLAINT THEMES:  ${themeStr}`, {
+      x: 0.25, y: 6.95, w: 9.2, h: 0.3, color: B.dark, fontSize: 9, bold: true
+    });
   }
 }
 
-function makeSMGSpotlight(pptx, d, weekLabel, total) {
+function makeWINStoreSpotlight(pptx, d, weekLabel, total) {
   const slide = pptx.addSlide();
   slide.background = { color: B.light };
-  chrome(slide, pptx, `SMG STORE SPOTLIGHT  |  Top & Bottom Performers  |  ${weekLabel}`, 9, total);
+  chrome(slide, pptx, `WIN STORE SPOTLIGHT  |  Top & Bottom 5  |  ${weekLabel}`, 9, total);
 
   const top = safeArr(d.top5 || d.top);
   const bot = safeArr(d.bottom5 || d.bottom);
 
-  // Column headers with colored background bars
-  slide.addShape(pptx.ShapeType.rect, { x: 0.25, y: 0.72, w: 4.35, h: 0.32, fill: { color: B.green } });
-  slide.addText('★  TOP RATED STORES', { x: 0.35, y: 0.74, w: 4.1, h: 0.28, color: B.white, fontSize: 10, bold: true });
-  slide.addShape(pptx.ShapeType.rect, { x: 4.9, y: 0.72, w: 4.85, h: 0.32, fill: { color: B.danger } });
-  slide.addText('⚠  LOWEST RATED STORES', { x: 5.0, y: 0.74, w: 4.6, h: 0.28, color: B.white, fontSize: 10, bold: true });
+  // Column headers
+  slide.addShape(pptx.ShapeType.rect, { x: 0.25, y: 0.72, w: 4.4, h: 0.3, fill: { color: B.green } });
+  slide.addText('★  HIGHEST WIN SCORE', { x: 0.35, y: 0.74, w: 4.1, h: 0.26, color: B.white, fontSize: 10, bold: true });
+  slide.addShape(pptx.ShapeType.rect, { x: 5.0, y: 0.72, w: 4.75, h: 0.3, fill: { color: B.danger } });
+  slide.addText('⚠  LOWEST WIN SCORE', { x: 5.1, y: 0.74, w: 4.5, h: 0.26, color: B.white, fontSize: 10, bold: true });
 
-  // Row-based layout — SMG score pill right, WIN score badge below store name
-  const renderStoreList = (items, x, colW, isTop) => {
-    const color = isTop ? B.green : B.danger;
+  const renderWINList = (items, x, colW, isTop) => {
+    const accentColor = isTop ? B.green : B.danger;
     items.slice(0, 5).forEach((item, i) => {
-      const y = 1.12 + i * 1.08;
-      const score    = safe(item.score || item.avgScore || item.avg_score || item.satAvg, '—');
+      const y = 1.1 + i * 1.1;
+      const winScore = safe(item.winScore || item.win_score || item.win || '—');
       const name     = safe(item.name || item.storeName || item.store, 'Store');
       const num      = safe(item.num || item.storeNum || item.store_num);
-      const reviews  = safe(item.reviews || item.reviewCount || item.review_count);
       const ac       = extractName(item) || safe(item.ac || item.acName);
-      const winScore = safe(item.winScore || item.win_score || item.win || '');
+      const insight  = safe(item.smgInsight || item.insight || item.note || '');
+      const winNum   = parseFloat(winScore);
+      const winColor = isNaN(winNum) ? accentColor : winNum >= 60 ? B.green : winNum >= 40 ? B.yellow : B.danger;
 
-      // SMG score pill (right)
-      slide.addShape(pptx.ShapeType.rect, { x: x + colW - 1.2, y, w: 1.15, h: 0.42, fill: { color }, rectRadius: 0.05 });
-      slide.addText(`${score} / 5`, { x: x + colW - 1.2, y: y + 0.02, w: 1.15, h: 0.38, color: B.white, fontSize: 13, bold: true, align: 'center', valign: 'middle' });
+      // WIN score pill
+      slide.addShape(pptx.ShapeType.rect, { x: x + colW - 1.2, y, w: 1.15, h: 0.46, fill: { color: winColor } });
+      slide.addText(winScore, { x: x + colW - 1.2, y: y + 0.02, w: 1.15, h: 0.42, color: B.white, fontSize: 16, bold: true, align: 'center', valign: 'middle' });
 
       // Store name
-      slide.addText(`${name}${num ? ' — ' + num : ''}`, {
+      slide.addText(`${name}${num ? '  #' + num : ''}`, {
         x, y, w: colW - 1.3, h: 0.28, color: B.dark, fontSize: 11, bold: true
       });
 
-      // AC + reviews + WIN score on second row
-      const acPart = ac ? `AC: ${ac}` : '';
-      const revPart = reviews ? `${reviews} reviews` : '';
-      const sub = [acPart, revPart].filter(Boolean).join('  |  ');
-      if (sub) {
-        slide.addText(sub, { x, y: y + 0.29, w: colW - 1.3, h: 0.2, color: B.gray, fontSize: 9 });
+      // AC line
+      if (ac) {
+        slide.addText(`AC: ${ac}`, { x, y: y + 0.3, w: colW - 1.3, h: 0.2, color: B.gray, fontSize: 9 });
       }
 
-      // WIN score badge (below AC info)
-      if (winScore) {
-        slide.addShape(pptx.ShapeType.rect, {
-          x, y: y + 0.51, w: 0.95, h: 0.18,
-          fill: { color: '#1A1A1A' }, line: { color: B.red, width: 1 }
-        });
-        slide.addText(`WIN  ${winScore}`, {
-          x, y: y + 0.52, w: 0.95, h: 0.16,
-          color: B.red, fontSize: 7.5, bold: true, align: 'center'
-        });
+      // SMG insight
+      if (insight) {
+        slide.addText(insight, { x, y: y + 0.52, w: colW - 1.3, h: 0.35, color: isTop ? '#2E7D32' : B.danger, fontSize: 8.5, italic: true, wrap: true });
       }
 
       // Divider
       if (i < Math.min(items.length, 5) - 1) {
-        slide.addShape(pptx.ShapeType.line, { x, y: y + 0.78, w: colW, h: 0, line: { color: '#DDDDDD', width: 0.5 } });
+        slide.addShape(pptx.ShapeType.line, { x, y: y + 0.9, w: colW, h: 0, line: { color: '#DDDDDD', width: 0.5 } });
       }
     });
   };
 
   if (top.length || bot.length) {
-    renderStoreList(top, 0.25, 4.45, true);
-    renderStoreList(bot, 4.9, 4.85, false);
+    renderWINList(top, 0.25, 4.5, true);
+    renderWINList(bot, 5.0, 4.75, false);
   } else {
-    slide.addText('SMG store spotlight data not available — upload SMG comments file for full analysis', {
+    slide.addText('WIN store data not available — upload ComparisonReport.xls for full analysis', {
       x: 0.25, y: 1.5, w: 9.5, h: 0.5, color: B.gray, fontSize: 11, italic: true
     });
   }

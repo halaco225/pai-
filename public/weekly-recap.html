@@ -209,7 +209,8 @@
           <div class="opt-group">
             <label>Tone</label>
             <div class="opt-pills">
-              <button class="opt-pill selected" data-group="tone" onclick="selectPill(this)">Professional</button>
+              <button class="opt-pill" data-group="tone" onclick="selectPill(this)">Professional</button>
+              <button class="opt-pill selected" data-group="tone" onclick="selectPill(this)">Direct</button>
               <button class="opt-pill" data-group="tone" onclick="selectPill(this)">Conversational</button>
               <button class="opt-pill" data-group="tone" onclick="selectPill(this)">Brief</button>
             </div>
@@ -387,7 +388,7 @@
 
   function getEmailOpt(group) {
     const sel = document.querySelector(`.opt-pill.selected[data-group="${group}"]`);
-    return sel ? sel.textContent.trim().toLowerCase() : (group === 'tone' ? 'professional' : 'standard');
+    return sel ? sel.textContent.trim().toLowerCase() : (group === 'tone' ? 'direct' : 'standard');
   }
 
   // ── File handling ─────────────────────────────────────────────────────────
@@ -480,6 +481,9 @@
 
     const formData = new FormData();
     fileList.forEach(f => formData.append('files', f));
+    // Include last week's AC of the Week to prevent repeats
+    const lastAcOfWeek = localStorage.getItem('pai_last_ac_of_week');
+    if (lastAcOfWeek) formData.append('lastAcOfWeek', lastAcOfWeek);
 
     try {
       const res = await fetch('/api/recap/analyze', { method: 'POST', body: formData });
@@ -580,6 +584,10 @@
 
       log('✓ PPTX downloaded!', 'ok');
       log('Fill in Slide 12 (Key Dates) before sending to your ACs.', 'info');
+      // Save AC of the Week to prevent repeat next week
+      if (analyzedData && analyzedData.slides && analyzedData.slides.closing && analyzedData.slides.closing.acOfWeek) {
+        localStorage.setItem('pai_last_ac_of_week', analyzedData.slides.closing.acOfWeek.name);
+      }
 
       downloadBtn.innerHTML = `✓ Downloaded`;
       setTimeout(() => {

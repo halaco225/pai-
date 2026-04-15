@@ -211,7 +211,7 @@ DECK STRUCTURE — Always build 13 slides in this exact order:
 
 SLIDE 1 — TITLE: Region name from Velocity file | Week label from IST file | 4 preview stat cards: Sales Growth, Labor Var, WIN, HUT Bot
 
-SLIDE 2 — REGION SCORECARD: 5 stat cards — Sales Growth | Labor Var | OTD Avg Time | WIN Score | HUT Bot. Below cards: HUT Bot Breakdown box (On Time %, Late %, Missed %). Below that: Routine Non-Completers table — pull from the Routines Status file, cross-referenced with org summary. Show each person's name, store, AC, which specific routines they missed, and their status (Not Started / Late). Up to 6 rows. This is the accountability callout: the team sees exactly WHO dropped the ball, not just which store.
+SLIDE 2 — REGION SCORECARD: 5 stat cards — Sales Growth | Labor Var | OTD Avg Time | WIN Score | HUT Bot. Below cards: HUT Bot Breakdown box (On Time %, Late %, Missed %) + Bottom 5 worst stores by HUT Bot On Time % — store name, number, AC name, on-time %, and the store manager name from the Org Summary or Routines file if available. Below that: Routine Non-Completers table — pull from the Routines Status file, cross-referenced with org summary. Show each person's name, store, AC, which specific routines they missed, and their status (Not Started / Late). Up to 6 rows. This is the accountability callout: the team sees exactly WHO dropped the ball, not just which store.
 
 SLIDE 3 — AC PERFORMANCE TABLE: One row per AC read from Velocity WTD IST file. Columns: Area Coach | Sales Growth | Labor Var | WIN Score | HUT Bot. Highlight best performer in each column with green cell background.
 
@@ -223,9 +223,9 @@ SLIDE 6 — LABOR VARIANCE DEEP DIVE: Region summary strip + AC-level table (Sal
 
 SLIDE 7 — SPEED OUTLIER ANALYSIS: Left = daily IST bar chart (region avg by day, target line at 18 min, bars color-coded). Right = WTD outlier stores IST >22 with day-level pattern pulled from daily tabs in Velocity file.
 
-SLIDE 8 — SMG BY AREA COACH: Table with Responses, Sat Avg, Pos (4-5), Neg (1-2), Neg Rate. Complaint themes always in this order: Late/Slow | Wrong Order | Undercooked | Cold Food | Missing Items | Rude Staff.
+SLIDE 8 — WIN SCORE BY AREA COACH: One row per AC. For each AC: WIN score (from ComparisonReport.xls), their top-performing store (highest WIN%) and bottom store (lowest WIN%), and 1-2 SMG focus areas from that AC's customer comments. Region average WIN score at top. Use WIN score thresholds: Green >=60% | Yellow 40-59% | Red <40%. Complaint themes always in this order: Late/Slow | Wrong Order | Undercooked | Cold Food | Missing Items | Rude Staff.
 
-SLIDE 9 — SMG STORE SPOTLIGHT: Top 5 and Bottom 5 stores by Sat Avg (min 3 reviews). Store name, number, AC, review count, score. Also include each store's WIN score (from ComparisonReport.xls matched by store number) so the team sees operational score alongside customer feedback.
+SLIDE 9 — WIN STORE SPOTLIGHT: Top 5 stores with highest WIN score + Bottom 5 stores with lowest WIN score (from ComparisonReport.xls). For each store: store name, number, AC name, WIN score, and one key SMG insight (best stores = what they're doing right; worst stores = their top complaint theme). This is WIN-score-driven, not SMG-driven.
 
 SLIDE 10 — CUSTOMER VOICE: Pull 5 positive and 5 negative VERBATIM quotes directly from the SMG comments file — real customer words, not summaries. Positives = best comments deserving recognition. Negatives = worst complaints that need AC follow-up. For each, include store name/number, AC name, and that store's WIN score. The WIN score context matters: a low WIN score + a bad customer comment = operational breakdown, not a one-off. Complaint themes in footer.
 
@@ -233,7 +233,7 @@ SLIDE 11 — SMART GOALS: 3 data-specific SMART goals. Each goal must include: M
 
 SLIDE 12 — KEY DATES AND REMINDERS: Dark background. 7 placeholder bullet lines formatted as '[ ] Date — Event or reminder here'. No auto-generated content — user fills this in manually each week before sending.
 
-SLIDE 13 — CLOSING: AC of the Week recognition + 'Keep pushing. See you on the recap call — [day].' + footer stat summary strip.
+SLIDE 13 — CLOSING: AC of the Week recognition + 'Keep pushing. See you on the recap call — [day].' + footer stat summary strip. IMPORTANT: The same AC cannot win two weeks in a row. If the JSON includes a "lastAcOfWeek" field, choose a different AC this week — pick the next most deserving based on data. Never repeat unless there is genuinely no other option.
 
 DATA FILE MAPPINGS (permanent — do not change these):
 
@@ -330,18 +330,18 @@ When you receive the uploaded files, analyze all data sources and return a struc
   "recapCallDay": "...",
   "slides": {
     "title": { "regionName": "...", "weekLabel": "...", "stats": [{"label":"SALES GROWTH","value":"+2.2%","sub":"vs LY"}] },
-    "scorecard": { "metrics": [{"label":"SALES GROWTH","value":"+2.2%","sub":"vs LY","status":"green"}], "hutBotBreakdown": {"onTime":"92%","late":"5%","missed":"3%","nonCompleters":[{"user":"Employee Full Name","store":"Store Name","storeNum":"039380","ac":"AC Full Name","routines":"FSCC, Pest Walk","status":"Not Started"},{"user":"Employee Full Name","store":"Store Name","storeNum":"039382","ac":"AC Full Name","routines":"Oven Calibration","status":"Late"}]} },
+    "scorecard": { "metrics": [{"label":"SALES GROWTH","value":"+2.2%","sub":"vs LY","status":"green"}], "hutBotBreakdown": {"onTime":"92%","late":"5%","missed":"3%","bottom5Stores":[{"store":"Store Name","storeNum":"039388","ac":"AC Full Name","manager":"Manager Full Name","onTime":"71%"}],"nonCompleters":[{"user":"Employee Full Name","store":"Store Name","storeNum":"039380","ac":"AC Full Name","routines":"FSCC, Pest Walk","status":"Not Started"},{"user":"Employee Full Name","store":"Store Name","storeNum":"039382","ac":"AC Full Name","routines":"Oven Calibration","status":"Late"}]} },
     "acTable": { "rows": [{"name":"Full AC Name","salesGrowth":"+4.9%","laborVar":"+2.14%","winScore":"67%","hutBot":"96%"}] },
     "wins": { "items": [{"store":"Store Name","storeNum":"039380","metric":"83% WIN Score","description":"...","ac":"AC Full Name"}] },
     "focusAreas": { "items": [{"store":"Store Name","storeNum":"039382","metric":"29.6 min IST","description":"...","ac":"AC Full Name"}] },
     "laborDeepDive": { "regionSummary": {"laborVar":"+1.78%","crewOT":"$3,688","hamOT":"$1,435","totalOT":"$5,123","pca":"26%","cosVar":"-0.7%"}, "acRows": [{"name":"Full AC Name","salesGrowth":"+4.9%","laborVar":"+2.14%","crewOT":"$377","hamOT":"$967","pca":"26.13%","cosVar":"-0.72%"}], "otFlags": "Highest OT: AC Name ($943), AC Name ($857)" },
     "speedOutlier": { "dailyChart": [{"day":"Tue 4/7","value":"18.2"}], "outlierStores": [{"store":"Store Name","storeNum":"039382","ist":"29.6 min","ac":"AC Name","note":"Highest in region"}] },
-    "smgByAC": { "rows": [{"name":"Full AC Name","reviews":"45","avg":"4.2","pos":"38","neg":"7","negRate":"15.6%"}], "complaintThemes": [{"theme":"Late/Slow","count":"12"},{"theme":"Wrong Order","count":"8"}] },
-    "smgSpotlight": { "top5": [{"name":"Store Name","storeNum":"039380","ac":"AC Name","reviews":"22","score":"4.8","winScore":"72%"}], "bottom5": [{"name":"Store Name","storeNum":"039388","ac":"AC Name","reviews":"15","score":"2.1","winScore":"28%"}] },
+    "winByAC": { "regionAvg":"51%","rows": [{"name":"Full AC Name","winScore":"67%","status":"green","topStore":{"store":"Store Name","storeNum":"039380","winScore":"83%"},"bottomStore":{"store":"Store Name","storeNum":"039382","winScore":"31%"},"focusAreas":"Late/Slow (8), Cold Food (3)"}], "complaintThemes": [{"theme":"Late/Slow","count":"12"},{"theme":"Wrong Order","count":"8"}] },
+    "winStoreSpotlight": { "top5": [{"name":"Store Name","storeNum":"039380","ac":"AC Name","winScore":"83%","smgInsight":"Consistently praised for fast delivery and order accuracy"}], "bottom5": [{"name":"Store Name","storeNum":"039388","ac":"AC Name","winScore":"28%","smgInsight":"Top complaint: Late/Slow — 6 comments this week"}] },
     "customerVoice": { "positives": [{"store":"Store Name (#039380)","ac":"AC Name","winScore":"72%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039381)","ac":"AC Name","winScore":"68%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039382)","ac":"AC Name","winScore":"81%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039383)","ac":"AC Name","winScore":"65%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039384)","ac":"AC Name","winScore":"59%","quote":"Actual verbatim quote copied from SMG file column G"}], "negatives": [{"store":"Store Name (#039385)","ac":"AC Name","winScore":"31%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039386)","ac":"AC Name","winScore":"28%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039387)","ac":"AC Name","winScore":"44%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039388)","ac":"AC Name","winScore":"35%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039389)","ac":"AC Name","winScore":"22%","quote":"Actual verbatim quote copied from SMG file column G"}], "themes": [{"theme":"Late/Slow","count":"12"},{"theme":"Cold Food","count":"8"}] },
     "smartGoals": { "goals": [{"metric":"In-Store Time","current":"18.6 min","target":"<18.0 min","byWhen":"End of P4","owner":"AC Full Name (stores 039382, 039388)","why":"3 of 5 stores above 18-min target; 2 SMG complaints this week cite slow delivery — pattern, not a one-off","how":"Specific action steps naming ACs and stores — e.g. Michelle Meehan to implement pre-rush staffing at 039388 by Thursday"}] },
     "keyDates": { "placeholders": 7 },
-    "closing": { "acOfWeek": {"name":"Full AC Name","description":"Why they won","note":"Keep pushing."}, "footerStats": [{"label":"Sales","value":"+2.2%"},{"label":"Labor","value":"+1.78%"},{"label":"IST","value":"18.6 min"},{"label":"WIN","value":"51%"}], "recapDay": "Thursday" }
+    "closing": { "acOfWeek": {"name":"Full AC Name","description":"Why they won — specific metric or achievement","note":"Keep pushing."}, "footerStats": [{"label":"Sales","value":"+2.2%"},{"label":"Labor","value":"+1.78%"},{"label":"IST","value":"18.6 min"},{"label":"WIN","value":"51%"}], "recapDay": "Thursday" }
   }
 }`;
 
@@ -367,7 +367,7 @@ async function analyzePL(file) {
 
 // ─── Weekly Recap Analyzer ──────────────────────────────────────────────────
 
-async function analyzeRecap(files, weekLabel, recapDay) {
+async function analyzeRecap(files, weekLabel, recapDay, lastAcOfWeek) {
   // Extract text from all uploaded files
   const fileTexts = await Promise.all(files.map(async (file) => {
     try {
@@ -387,6 +387,7 @@ Build the region recap deck using whatever data is available in these files. If 
 
 Week: ${weekLabel || '[not specified]'}
 Recap call day: ${recapDay || 'Thursday'}
+${lastAcOfWeek ? `Last week's AC of the Week: ${lastAcOfWeek} — DO NOT pick this person again this week. Choose the next most deserving AC based on the data.` : ''}
 
 Here are the file contents:
 
@@ -502,6 +503,7 @@ ${combinedText}`;
   return message.content[0].text;
 }
 
+
 // ─── Trend Analyzer ────────────────────────────────────────────────────────
 
 const TREND_SYSTEM_PROMPT = `You are P.AI's trend intelligence engine for Ayvaz Pizza LLC. You receive a chronological series of daily intelligence reports spanning multiple days and identify multi-day patterns, trajectories, and cross-report correlations that no single day's analysis would reveal.
@@ -523,13 +525,13 @@ OUTPUT FORMAT:
 What keeps showing up day after day? List each with how many days it appeared. Be specific — name stores, metrics, numbers.
 
 ## 🔗 CONFIRMED CORRELATIONS
-Where are multiple data sources pointing at the same root cause over multiple days? These are your highest-confidence findings. E.g. "Store 039380 has appeared in the OTD Watch List 4 of 5 days AND has the lowest SMG scores in the region — these are connected."
+Where are multiple data sources pointing at the same root cause over multiple days? These are your highest-confidence findings.
 
 ## 📉 DETERIORATING METRICS
 What is measurably getting worse? Show the direction with any numbers available.
 
-## 📈 IMPROVING TRENDS
-What is getting better? Name it specifically so it can be reinforced.
+## 📈 IMPROVING METRICS
+What is measurably getting better? Reinforce these.
 
 ## 🎯 SYSTEMIC vs. ISOLATED
 Which watch items are one-store problems vs. region-wide concerns? Distinguish clearly.
@@ -537,17 +539,16 @@ Which watch items are one-store problems vs. region-wide concerns? Distinguish c
 ## ⚡ TOP PRIORITIES
 Ranked list of 3–5 actions based on trend weight — what needs the most urgent attention and why.
 
-TONE: This is a strategic briefing, not a summary. Leaders reading this should walk away knowing exactly where to focus their energy for the next week.`;
+TONE: This is a strategic briefing, not a summary. Leaders reading this should walk away knowing exactly where to focus their energy.`;
 
 async function analyzeTrends(recentReports) {
   if (!recentReports || recentReports.length < 2) {
     return '## ⚠️ Not Enough Data\n\nAt least 2 daily reports are needed to identify trends. Keep running Daily Intel and check back.';
   }
 
-  // Build chronological context from saved analyses
   const context = recentReports
     .slice()
-    .reverse() // oldest first for chronological reading
+    .reverse()
     .map((r, i) => {
       const date = new Date(r.created_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
       const reports = r.report_names || 'unknown reports';
@@ -555,13 +556,11 @@ async function analyzeTrends(recentReports) {
     })
     .join('\n\n---\n\n');
 
-  const userMessage = `Here are ${recentReports.length} daily intelligence reports in chronological order. Analyze for trends, patterns, and confirmed cross-report correlations.\n\n${context}`;
-
   const message = await client.messages.create({
     model: MODEL,
     max_tokens: 8192,
     system: TREND_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: userMessage }]
+    messages: [{ role: 'user', content: `Here are ${recentReports.length} daily intelligence reports in chronological order. Analyze for trends, patterns, and confirmed cross-report correlations.\n\n${context}` }]
   });
 
   return message.content[0].text;
@@ -585,16 +584,16 @@ async function generateDailyIntelEmail(analysisText, options = {}) {
     detailed: '300-400 words. All sections from the analysis, with context.'
   }[length] || 'standard';
 
-  const system = `You are drafting a daily ops intel email from a Regional Director at Ayvaz Pizza LLC (Pizza Hut).
+  const system = `You are drafting a daily ops intel email from Harold Lacoste (Regional Director, Ayvaz Pizza LLC / Pizza Hut).
 Tone: ${toneGuide}
 Length: ${lengthGuide}
 
-Format the output as:
-1. Subject line: "Subject: [subject here]"
-2. HTML email body using only <p>, <strong>, <ul>, <li> tags — no CSS
-3. Signature: Harold Lacoste | Regional Director | Ayvaz Pizza LLC
-4. Separator "---PLAIN---"
-5. Plain text version
+Format the output as JSON:
+{
+  "subject": "Subject line here",
+  "htmlBody": "HTML body using only <p>, <strong>, <ul>, <li> tags. Include Harold Lacoste | Regional Director | Ayvaz Pizza LLC signature at end.",
+  "plainText": "Plain text version"
+}
 
 Pull real numbers and store names from the analysis. Never use placeholder text.`;
 
@@ -602,38 +601,39 @@ Pull real numbers and store names from the analysis. Never use placeholder text.
     model: MODEL,
     max_tokens: 2048,
     system,
-    messages: [{
-      role: 'user',
-      content: `Convert this daily intel analysis into an email:\n\n${analysisText}`
-    }]
+    messages: [{ role: 'user', content: `Convert this daily intel analysis into an email:\n\n${analysisText}` }]
   });
 
   const raw = message.content[0].text;
-  const subjectMatch = raw.match(/Subject:\s*(.+)/i);
-  const subject = subjectMatch ? subjectMatch[1].trim() : 'Daily Ops Intel';
-  const parts = raw.split(/---PLAIN---/i);
-  const htmlBody = parts[0].replace(/Subject:.*\n?/i, '').trim();
-  const plainText = (parts[1] || '').trim();
-
-  return { subject, htmlBody, plainText };
+  try {
+    const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) return JSON.parse(jsonMatch[1]);
+    const start = raw.indexOf('{');
+    const end = raw.lastIndexOf('}');
+    if (start !== -1 && end !== -1) return JSON.parse(raw.slice(start, end + 1));
+    return { subject: 'Daily Ops Intel', htmlBody: `<p>${raw}</p>`, plainText: raw };
+  } catch {
+    return { subject: 'Daily Ops Intel', htmlBody: `<p>${raw}</p>`, plainText: raw };
+  }
 }
 
 // ─── Recap Email Generator ─────────────────────────────────────────────────
 
 async function generateRecapEmail(data, options = {}) {
-  const tone = options.tone || 'professional';
+  const tone = options.tone || 'direct';
   const length = options.length || 'standard';
 
   const toneGuide = {
-    professional: 'formal, direct, executive-level tone. Use complete sentences. No slang.',
-    conversational: 'friendly but professional tone. Write as if talking directly to your ACs. Short sentences.',
-    brief: 'extremely concise. Bullet-heavy. Get to the point fast. Under 200 words total.'
-  }[tone] || 'professional, direct tone';
+    direct: 'Confident and direct. Short declarative sentences. Data first. No filler.',
+    professional: 'Formal, executive-level. Complete sentences. No slang.',
+    conversational: 'Warm and collegial. Write like a person, not a report.',
+    brief: 'Extremely concise. Bullet-heavy. Under 200 words total.'
+  }[tone] || 'direct and clear';
 
   const lengthGuide = {
-    brief: '3–5 key points only. No more than 150 words. Lead with the #1 takeaway.',
+    brief: '3–5 key points only. Under 150 words. Lead with the #1 takeaway.',
     standard: '8–12 key points. Cover wins, watch items, and top 2–3 goals.',
-    detailed: 'Full recap. Cover all major metrics, wins, focus areas, all 3 goals, and include a closing note.'
+    detailed: 'Full recap. Cover all major metrics, wins, focus areas, all goals, and a closing note.'
   }[length] || 'standard length covering key highlights';
 
   const system = `You are drafting a weekly region recap email from Harold Lacoste (RDO, Ayvaz Pizza LLC) to his Area Coach team.
@@ -641,44 +641,35 @@ async function generateRecapEmail(data, options = {}) {
 Tone: ${toneGuide}
 Length: ${lengthGuide}
 
-Structure the email with:
-1. A subject line (format: "Subject: ...")
-2. A greeting
-3. The recap content
-4. A closing with Harold's signature
+Return a JSON object with this exact shape:
+{
+  "subject": "Email subject line",
+  "htmlBody": "Full HTML body using only <p>, <ul>, <li>, <strong>, <br> tags. End with Harold Lacoste | Regional Director | Ayvaz Pizza LLC signature.",
+  "plainText": "Plain text version"
+}
 
-Use data from the JSON provided. Be specific with numbers. Do not include placeholder text — if data is missing for a section, skip it.
-Format the body using HTML for clean email rendering (use <p>, <strong>, <ul>, <li> — no complex CSS).
-After the full email, add a separator "---PLAIN---" and then provide a plain-text version.`;
-
-  const s = data.slides || data;
-  const summary = JSON.stringify({
-    regionName: data.regionName,
-    weekLabel: data.weekLabel,
-    scorecard: s.scorecard,
-    wins: s.wins,
-    focusAreas: s.focusAreas,
-    smartGoals: s.smartGoals,
-    closing: s.closing
-  });
+Include: week/period label, top wins with specific numbers, top concerns with specific stores, WIN score summary, AC of the week callout, and a closing call-to-action. Use real data from the JSON — no placeholders.`;
 
   const message = await client.messages.create({
     model: MODEL,
     max_tokens: 4096,
     system,
-    messages: [{ role: 'user', content: `Here is the region recap data for this week:\n\n${summary}\n\nWrite the email.` }]
+    messages: [{ role: 'user', content: `Generate a ${tone} tone, ${length} length weekly recap email from this data:\n\n${JSON.stringify(data, null, 2)}` }]
   });
 
   const raw = message.content[0].text;
-  const subjectMatch = raw.match(/Subject:\s*(.+)/i);
-  const subject = subjectMatch ? subjectMatch[1].trim() : `Weekly Region Recap — ${data.weekLabel || 'This Week'}`;
-
-  // Split HTML and plain text
-  const parts = raw.split(/---PLAIN---/i);
-  const htmlBody = parts[0].replace(/Subject:.*\n?/i, '').trim();
-  const plainText = (parts[1] || '').trim();
-
-  return { subject, htmlBody, plainText };
+  try {
+    const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) return JSON.parse(jsonMatch[1]);
+    const start = raw.indexOf('{');
+    const end = raw.lastIndexOf('}');
+    if (start !== -1 && end !== -1) return JSON.parse(raw.slice(start, end + 1));
+    return { subject: 'Weekly Recap', htmlBody: `<p>${raw}</p>`, plainText: raw };
+  } catch {
+    return { subject: 'Weekly Recap', htmlBody: `<p>${raw}</p>`, plainText: raw };
+  }
 }
+
+// ─── Exports ────────────────────────────────────────────────────────────────
 
 module.exports = { analyzePL, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail, generateDailyIntelEmail };
