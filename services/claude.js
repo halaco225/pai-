@@ -269,23 +269,22 @@ Score is 1-5 scale from Pizza Hut GES via SMG portal
 Store info in column D, format: 1P039380 - 039380,250 WINDY HILL RD,...
 
 WIN SCORE FILE (ComparisonReport.xls or ComparisonReport.xlsx):
-CRITICAL — follow these steps exactly to extract WIN scores:
+CRITICAL — follow these steps exactly. The Velocity IST file is your source of truth for store-to-AC alignment. Use it to compute AC-level WIN scores even if individual store matching is imperfect.
 
-STEP 1 — FIND THE DATA. The file contains one row per store plus a 'Combined' total row. Look for columns containing store identifiers and a decimal score (e.g. 0.48, 0.71). The WIN score column may be labeled "Win %", "WIN", "Score", "Combined Score", or similar.
+STEP 1 — BUILD THE AC ROSTER FIRST. From the Velocity WTD IST file, you already have the complete list of every store and which AC it belongs to. This is your master alignment. You know: AC name → list of store numbers.
 
-STEP 2 — NORMALIZE STORE NUMBERS. Store numbers in this file may appear as:
-  - 6-digit numbers: 039380
-  - With "1P" prefix: 1P039380
-  - With region prefix: any variation
-  Strip all non-numeric characters and leading zeros to get the core store number, then match to the Velocity roster (which also uses 6-digit format like 039380). Always match on the numeric portion only.
+STEP 2 — READ ALL STORE WIN SCORES from ComparisonReport. Go row by row. For each row that is not the "Combined" header/total row: extract whatever store identifier is present (number, name, or code) and the WIN score decimal. Convert every decimal to a percentage: 0.48 → 48%.
 
-STEP 3 — CONVERT SCORES. All WIN scores are stored as decimals. Multiply by 100 and round to nearest whole number. 0.48 → 48%. NEVER display the raw decimal.
+STEP 3 — MATCH STORES TO ACS. For each WIN score row, try to find that store in the Velocity roster:
+  - Strip any prefix ("1P", region codes) — match on the 6-digit number
+  - If no number is present, match on store name (partial match is fine)
+  - If a match is found, assign that WIN score to that store's AC
 
-STEP 4 — ASSIGN TO ACS. For each store in the WIN file, find its AC from the Velocity roster (built in Step 1 of the AC alignment rules above). AC-level WIN = average WIN score of all stores under that AC.
+STEP 4 — COMPUTE AC-LEVEL WIN. For each AC: average the WIN scores of all their stores that had a match in the ComparisonReport. Even if only 2 of 5 stores matched, use those 2 to compute a partial average — this is better than showing nothing. Label it with the matched count if partial, e.g. "61% (4/5 stores)".
 
-STEP 5 — 'Combined' row = region total WIN score.
+STEP 5 — REGION TOTAL. Use the "Combined" row value if present. Otherwise average all stores.
 
-If you cannot parse a WIN score for a store, output "[WIN data not available]" — but attempt all 5 steps above before giving up. Do not output "[Data mapping needed]" or "[WIN data not mapped]".
+FALLBACK — if ComparisonReport is missing or completely unreadable: use the WIN score from the Velocity WTD IST file if it has a WIN column. The Velocity file sometimes includes WIN scores directly. Never output "[Data mapping needed]" — always provide a number or explain specifically why it cannot be calculated.
 
 WIN SCORE METHODOLOGY — critical for coaching and analysis:
 - Score of 5 = PASSING (counts toward WIN%)
