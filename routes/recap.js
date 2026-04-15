@@ -18,8 +18,9 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 }
 });
 
-// Helper: retry a Claude API call with exponential backoff on 429 rate limit errors
-async function withRetry(fn, maxAttempts = 4) {
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function withRetry(fn, maxAttempts = 5) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn();
@@ -27,10 +28,10 @@ async function withRetry(fn, maxAttempts = 4) {
       const status = err.status || (err.error && err.error.status);
       const isRateLimit = status === 429 || (err.message && err.message.includes('rate_limit'));
       if (isRateLimit && attempt < maxAttempts) {
-        // Exponential backoff: 15s, 30s, 60s
-        const delay = 15000 * Math.pow(2, attempt - 1);
+        const retryAfter = err.headers && err.headers['retry-after'];
+        const delay = retryAfter ? parseInt(retryAfter) * 1000 : 30000 * attempt;
         console.log(`Rate limit hit (attempt ${attempt}/${maxAttempts}). Retrying in ${delay / 1000}s...`);
-        await new Promise(r => setTimeout(r, delay));
+        await sleep(delay);
       } else {
         throw err;
       }
@@ -38,37 +39,27 @@ async function withRetry(fn, maxAttempts = 4) {
   }
 }
 
-// Helper: auto-calculate the next Thursday (or today if today IS Thursday)
 function getRecapDay() {
   const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const today = new Date();
-  const dow = today.getDay(); // 0=Sun, 4=Thu
-  if (dow === 4) return 'Thursday'; // today is Thursday
+  const dow = today.getDay();
+  if (dow === 4) return 'Thursday';
   const diff = (4 - dow + 7) % 7;
   const next = new Date(today);
   next.setDate(today.getDate() + diff);
-  return days[next.getDay()]; // will always be Thursday
+  return days[next.getDay()];
 }
 
-// ── POST /api/recap/analyze ────────────────────────────────────────────────────
-// Step 1: Upload files → analyze with Claude → return JSON preview data
 router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res) => {
   if (!req.files || req.files.length === 0) {
     return res.status(400).json({ error: 'At least one report file is required.' });
   }
-
   try {
     const { analyzeRecap } = require('../services/claude');
     const recapDay = getRecapDay();
     const lastAcOfWeek = req.body.lastAcOfWeek || null;
-
     const data = await withRetry(() => analyzeRecap(req.files, '', recapDay, lastAcOfWeek));
-
-    res.json({
-      data,
-      fileCount: req.files.length,
-      fileNames: req.files.map(f => f.originalname).join(', ')
-    });
+    res.json({ data, fileCount: req.files.length, fileNames: req.files.map(f => f.originalname).join(', ') });
   } catch (err) {
     console.error('Recap analyze error:', err);
     res.status(500).json({ error: err.message || 'Analysis failed.' });
@@ -77,17 +68,13 @@ router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res)
   }
 });
 
-// ── POST /api/recap/build ──────────────────────────────────────────────────────
-// Step 2: Take JSON data → build PPTX → return file
 router.post('/build', requireAuth, async (req, res) => {
   try {
     const { generateRecapPPTX } = require('../services/pptx-recap');
     const { data, theme } = req.body;
     if (!data) return res.status(400).json({ error: 'No data provided.' });
-
     const pptxBuffer = await generateRecapPPTX(data, { theme });
     const weekLabel = (data.weekLabel || 'Weekly').replace(/[^a-zA-Z0-9]/g, '_');
-
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'Content-Disposition': `attachment; filename="P.AI_Region_Recap_${weekLabel}.pptx"`
@@ -99,14 +86,12 @@ router.post('/build', requireAuth, async (req, res) => {
   }
 });
 
-// ── POST /api/recap/email ──────────────────────────────────────────────────────
-// Generate email recap from JSON data
 router.post('/email', requireAuth, async (req, res) => {
   try {
     const { generateRecapEmail } = require('../services/claude');
     const { data, tone, length } = req.body;
     if (!data) return res.status(400).json({ error: 'No data provided.' });
-
+    await sleep(65000);
     const result = await withRetry(() => generateRecapEmail(data, { tone, length }));
     res.json(result);
   } catch (err) {
@@ -115,20 +100,15 @@ router.post('/email', requireAuth, async (req, res) => {
   }
 });
 
-// ── POST /api/recap/generate ───────────────────────────────────────────────────
-// Legacy one-shot route (kept for backward compatibility)
 router.post('/generate', requireAuth, upload.array('files', 10), async (req, res) => {
   if (!req.files || req.files.length === 0) {
     return res.status(400).json({ error: 'At least one report file is required.' });
   }
-
   try {
     const { analyzeRecap } = require('../services/claude');
     const { generateRecapPPTX } = require('../services/pptx-recap');
-
-    const analysis  = await withRetry(() => analyzeRecap(req.files, '', getRecapDay()));
+    const analysis   = await withRetry(() => analyzeRecap(req.files, '', getRecapDay()));
     const pptxBuffer = await generateRecapPPTX(analysis);
-
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'Content-Disposition': 'attachment; filename="P.AI_Weekly_Recap.pptx"'

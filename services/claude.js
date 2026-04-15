@@ -251,12 +251,15 @@ HUT BOT FILE (Organization_Breakdown_Summary.xlsx):
 Area-level rows have a backtick (\`) appended to the name.
 
 ROUTINES STATUS FILE (any file named "Learnings" or "Routines Status" or "Routine Details by User"):
-This file shows individual users (employees/managers) and whether they completed HUT Bot routines. Extract:
-- User/employee name
-- Store number — match to Organization_Breakdown_Summary.xlsx by store number to get AC assignment
-- Routine type(s) not completed or completed late (FSCC, Pest Walk, Oven Calibration, Closing, etc.)
-- Status: Not Started | Late | Completed
-Cross-reference: for any store flagged as Late or Missed in the org summary, pull the specific user names from this file. Surface WHO is responsible — not just which store. Include up to 6 worst offenders (prioritize Not Started over Late).
+This file shows individual users (employees/managers) and whether they completed HUT Bot routines.
+
+CRITICAL CROSS-REFERENCE — follow these steps:
+STEP 1: Read the Routines Status file. Find each row's: employee/user name, store number or store name, routine type, and completion status.
+STEP 2: Normalize the store number (strip any prefix, use 6-digit format). Match it to the Velocity roster to get the store's full name and AC assignment.
+STEP 3: If the Routines file shows a store NAME instead of a number, match it to the closest store name in the Velocity roster.
+STEP 4: Never output "[Store not mapped]" or "[Unknown]" — if you cannot match the store, use the store name/number exactly as it appears in the file. For AC, search all available files for that store number before giving up.
+
+Extract the worst offenders: up to 6 rows, prioritize "Not Started" over "Late". Include only employees who missed or were late — skip "Completed" entries.
 
 SMG COMMENTS FILE:
 Header row 7, data starts row 8
@@ -265,9 +268,24 @@ Overall Satisfaction = column S (index 18)
 Score is 1-5 scale from Pizza Hut GES via SMG portal
 Store info in column D, format: 1P039380 - 039380,250 WINDY HILL RD,...
 
-WIN SCORE FILE (ComparisonReport.xls):
-Scores stored as decimals — 0.48 = 48%. Always convert before displaying.
-'Combined' row = region total.
+WIN SCORE FILE (ComparisonReport.xls or ComparisonReport.xlsx):
+CRITICAL — follow these steps exactly to extract WIN scores:
+
+STEP 1 — FIND THE DATA. The file contains one row per store plus a 'Combined' total row. Look for columns containing store identifiers and a decimal score (e.g. 0.48, 0.71). The WIN score column may be labeled "Win %", "WIN", "Score", "Combined Score", or similar.
+
+STEP 2 — NORMALIZE STORE NUMBERS. Store numbers in this file may appear as:
+  - 6-digit numbers: 039380
+  - With "1P" prefix: 1P039380
+  - With region prefix: any variation
+  Strip all non-numeric characters and leading zeros to get the core store number, then match to the Velocity roster (which also uses 6-digit format like 039380). Always match on the numeric portion only.
+
+STEP 3 — CONVERT SCORES. All WIN scores are stored as decimals. Multiply by 100 and round to nearest whole number. 0.48 → 48%. NEVER display the raw decimal.
+
+STEP 4 — ASSIGN TO ACS. For each store in the WIN file, find its AC from the Velocity roster (built in Step 1 of the AC alignment rules above). AC-level WIN = average WIN score of all stores under that AC.
+
+STEP 5 — 'Combined' row = region total WIN score.
+
+If you cannot parse a WIN score for a store, output "[WIN data not available]" — but attempt all 5 steps above before giving up. Do not output "[Data mapping needed]" or "[WIN data not mapped]".
 
 WIN SCORE METHODOLOGY — critical for coaching and analysis:
 - Score of 5 = PASSING (counts toward WIN%)
@@ -654,7 +672,9 @@ Include: week/period label, top wins with specific numbers, top concerns with sp
     model: MODEL,
     max_tokens: 4096,
     system,
-    messages: [{ role: 'user', content: `Generate a ${tone} tone, ${length} length weekly recap email from this data:\n\n${JSON.stringify(data, null, 2)}` }]
+    messages: [{ role: 'user', content: `Generate a ${tone} tone, ${length} length weekly recap email from this data:
+
+${JSON.stringify(data, null, 2)}` }]
   });
 
   const raw = message.content[0].text;
