@@ -224,6 +224,21 @@
         </a>
       </div>
 
+      <!-- Master Alignment File Management -->
+      <div class="card">
+        <div class="card-title">Master Alignment File</div>
+        <p style="color:var(--text-secondary);font-size:13px;line-height:1.6;margin-bottom:14px;">Upload your roster file once — P.AI automatically uses it every time you run a recap. Re-upload whenever your ACs, stores, or RGMs change.</p>
+        <div id="alignStatus" style="font-size:13px;margin-bottom:14px;padding:8px 12px;border-radius:6px;display:none;"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:8px 16px;border-radius:6px;background:#CC0000;color:#fff;font-size:13px;font-weight:700;white-space:nowrap;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span id="uploadBtnLabel">Upload Alignment File</span>
+            <input type="file" id="alignUploadInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="uploadAlignment(this)" />
+          </label>
+          <button id="clearAlignBtn" onclick="clearAlignment()" style="display:none;padding:8px 14px;border-radius:6px;background:transparent;border:1px solid #ccc;font-size:13px;color:var(--text-secondary);cursor:pointer;">Remove</button>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-title">About P.AI</div>
         <p style="color: var(--text-secondary); font-size: 13px; line-height: 1.8;">
@@ -250,6 +265,57 @@
     document.getElementById('userRole').textContent = role.toUpperCase();
     document.getElementById('userInitial').textContent = name.charAt(0).toUpperCase();
     document.getElementById('welcomeName').textContent = name.split(' ')[0];
+    checkAlignmentStatus();
+  }
+
+  async function checkAlignmentStatus() {
+    try {
+      const res = await fetch('/api/alignment/status');
+      if (!res.ok) return;
+      const data = await res.json();
+      const statusEl = document.getElementById('alignStatus');
+      const clearBtn = document.getElementById('clearAlignBtn');
+      const uploadLabel = document.getElementById('uploadBtnLabel');
+      statusEl.style.display = 'block';
+      if (data.hasFile) {
+        const updated = new Date(data.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        statusEl.style.background = '#e8f5e9';
+        statusEl.style.color = '#2E7D32';
+        statusEl.innerHTML = `<strong>&#10003; Alignment file saved</strong> — last updated ${updated}. Auto-applied to every recap.`;
+        clearBtn.style.display = 'inline-block';
+        uploadLabel.textContent = 'Update Alignment File';
+      } else {
+        statusEl.style.background = '#fff8e1';
+        statusEl.style.color = '#b8860b';
+        statusEl.innerHTML = `<strong>No alignment file saved.</strong> Upload your master alignment file to enable RGM names and accurate store mapping.`;
+        clearBtn.style.display = 'none';
+        uploadLabel.textContent = 'Upload Alignment File';
+      }
+    } catch {}
+  }
+
+  async function uploadAlignment(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const label = document.getElementById('uploadBtnLabel');
+    label.textContent = 'Uploading…';
+    const fd = new FormData();
+    fd.append('alignmentFile', file);
+    try {
+      const res = await fetch('/api/alignment/upload', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error('Upload failed');
+      checkAlignmentStatus();
+    } catch (e) {
+      alert('Upload failed: ' + e.message);
+      label.textContent = 'Upload Alignment File';
+    }
+    input.value = '';
+  }
+
+  async function clearAlignment() {
+    if (!confirm('Remove the stored alignment file?')) return;
+    await fetch('/api/alignment/clear', { method: 'DELETE' });
+    checkAlignmentStatus();
   }
 
   async function logout() {

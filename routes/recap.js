@@ -54,17 +54,31 @@ router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res)
   if (!req.files || req.files.length === 0) {
     return res.status(400).json({ error: 'At least one report file is required.' });
   }
+  let alignTempFile = null;
   try {
     const { analyzeRecap } = require('../services/claude');
+    const { getAlignmentPath } = require('./alignment');
     const recapDay = getRecapDay();
     const lastAcOfWeek = req.body.lastAcOfWeek || null;
-    const data = await withRetry(() => analyzeRecap(req.files, '', recapDay, lastAcOfWeek));
+
+    // Auto-inject stored alignment file if one exists for this user
+    let allFiles = [...req.files];
+    const alignPath = getAlignmentPath(req.session.user.username);
+    if (alignPath) {
+      const alignStat = require('fs').statSync(alignPath);
+      alignTempFile = { path: alignPath, originalname: 'Master_Alignment.xlsx', size: alignStat.size, mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', skipDelete: true };
+      allFiles = [...allFiles, alignTempFile];
+      console.log(`Auto-injecting alignment file for ${req.session.user.username}`);
+    }
+
+    const data = await withRetry(() => analyzeRecap(allFiles, '', recapDay, lastAcOfWeek));
     res.json({ data, fileCount: req.files.length, fileNames: req.files.map(f => f.originalname).join(', ') });
   } catch (err) {
     console.error('Recap analyze error:', err);
     res.status(500).json({ error: err.message || 'Analysis failed.' });
   } finally {
     if (req.files) req.files.forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
+    // Do NOT delete the stored alignment file
   }
 });
 

@@ -169,18 +169,8 @@
         </div>
         <div class="file-chips" id="fileChips"></div>
 
-        <!-- Optional: Master Alignment File -->
-        <div style="margin-top:16px;padding:12px 16px;background:var(--bg-secondary,#f5f5f5);border-radius:8px;border:1px dashed #ccc;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-          <div style="flex:1;min-width:200px;">
-            <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin-bottom:2px;">Master Alignment File <span style="font-weight:400;text-transform:none;letter-spacing:0;">(optional)</span></div>
-            <div style="font-size:12px;color:var(--text-muted);">Unlocks RGM names, AC emails, and accurate store mapping. Upload when your roster changes.</div>
-          </div>
-          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:7px 14px;border-radius:6px;background:#fff;border:1px solid #ddd;font-size:13px;font-weight:600;color:#444;white-space:nowrap;transition:border-color .15s;" onmouseover="this.style.borderColor='#CC0000'" onmouseout="this.style.borderColor='#ddd'">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            <span id="alignFileName">Choose file…</span>
-            <input type="file" id="alignmentFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleAlignFile(this)" />
-          </label>
-        </div>
+        <!-- Alignment file status (auto-applied, managed from Settings) -->
+        <div id="alignBanner" style="display:none;margin-top:12px;padding:8px 14px;border-radius:6px;font-size:12px;display:flex;align-items:center;gap:8px;"></div>
       </div>
 
       <!-- Step 2: Configure -->
@@ -426,17 +416,29 @@
 
   function removeFile(i) { fileList.splice(i, 1); renderChips(); }
 
-  function handleAlignFile(input) {
-    const f = input.files[0];
-    const label = document.getElementById('alignFileName');
-    if (f) {
-      label.textContent = f.name.length > 28 ? f.name.slice(0, 26) + '…' : f.name;
-      label.style.color = '#2E7D32';
-    } else {
-      label.textContent = 'Choose file…';
-      label.style.color = '';
-    }
+  // Check if user has a stored alignment file and show banner
+  async function checkAlignmentStatus() {
+    try {
+      const res = await fetch('/api/alignment/status');
+      if (!res.ok) return;
+      const data = await res.json();
+      const banner = document.getElementById('alignBanner');
+      if (!banner) return;
+      if (data.hasFile) {
+        const updated = new Date(data.updatedAt).toLocaleDateString();
+        banner.style.display = 'flex';
+        banner.style.background = '#e8f5e9';
+        banner.style.color = '#2E7D32';
+        banner.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Alignment file on file — store mapping, AC emails &amp; RGM names auto-applied`;
+      } else {
+        banner.style.display = 'flex';
+        banner.style.background = '#fff8e1';
+        banner.style.color = '#b8860b';
+        banner.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> No alignment file saved — <a href="/dashboard" style="color:inherit;font-weight:700;margin-left:4px;">upload one from the Dashboard</a> to enable RGM names and accurate store mapping`;
+      }
+    } catch {}
   }
+  checkAlignmentStatus();
 
   function getReportType(filename) {
     const n = filename.toLowerCase();
@@ -495,21 +497,16 @@
     buildSection.style.display = 'block';
     previewSection.style.display = 'none';
     progressLog.innerHTML = '';
-    const alignFileForLog = document.getElementById('alignmentFile').files[0];
-    const alignNote = alignFileForLog ? ` + alignment file` : '';
     buildStatus.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>P.AI IS ANALYZING YOUR REPORTS...</p></div>`;
     buildSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     buildBtn.disabled = true;
     buildBtn.textContent = 'Analyzing...';
 
-    log(`Reading ${fileList.length} file(s): ${fileList.map(f => f.name).join(', ')}${alignNote}`, 'info');
+    log(`Reading ${fileList.length} file(s): ${fileList.map(f => f.name).join(', ')}`, 'info');
     log('Sending to Claude for analysis... (1–3 minutes)', 'info');
 
     const formData = new FormData();
     fileList.forEach(f => formData.append('files', f));
-    // Include master alignment file if provided
-    const alignFile = document.getElementById('alignmentFile').files[0];
-    if (alignFile) formData.append('files', alignFile);
     // Include last week's AC of the Week to prevent repeats
     const lastAcOfWeek = localStorage.getItem('pai_last_ac_of_week');
     if (lastAcOfWeek) formData.append('lastAcOfWeek', lastAcOfWeek);

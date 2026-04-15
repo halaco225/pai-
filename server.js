@@ -41,6 +41,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/pl', require('./routes/pl'));
 app.use('/api/recap', require('./routes/recap'));
 app.use('/api/daily', require('./routes/daily'));
+app.use('/api/alignment', require('./routes/alignment'));
 
 // Serve login page as default
 app.get('/', (req, res) => {
