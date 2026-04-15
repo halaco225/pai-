@@ -7,9 +7,10 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = 'claude-sonnet-4-20250514';
 
 // ─── Constants ─────────────────────────────────────────────────────────────
-// ~125k tokens of file content — leaves headroom for system prompt + response
-const MAX_FILE_CHARS = 500_000;
-const MAX_ROWS_PER_SHEET = 2000;
+// Total budget ~150k tokens across all files — leaves headroom for system prompt + response
+const MAX_FILE_CHARS = 80_000;   // per file
+const MAX_ROWS_PER_SHEET = 500;  // per sheet (most recap files are <200 rows)
+const MAX_ROWS_COMMENTS = 250;   // SMG comments files — comments are long, cap tighter
 
 // ─── File text extraction ───────────────────────────────────────────────────
 
@@ -28,11 +29,13 @@ async function extractTextFromFile(file) {
   if (['.xlsx', '.xls', '.csv'].includes(ext)) {
     const workbook = XLSX.readFile(file.path);
     let text = '';
+    const isComments = /comment|smg|survey|voice/i.test(file.originalname);
+    const rowLimit = isComments ? MAX_ROWS_COMMENTS : MAX_ROWS_PER_SHEET;
     workbook.SheetNames.forEach(sheetName => {
       const sheet = workbook.Sheets[sheetName];
       const rows = XLSX.utils.sheet_to_csv(sheet).split('\n');
-      const cappedRows = rows.slice(0, MAX_ROWS_PER_SHEET);
-      const wasCapped = rows.length > MAX_ROWS_PER_SHEET;
+      const cappedRows = rows.slice(0, rowLimit);
+      const wasCapped = rows.length > rowLimit;
       text += `\n=== Sheet: ${sheetName} ===\n`;
       text += cappedRows.join('\n');
       if (wasCapped) text += `\n[... ${rows.length - MAX_ROWS_PER_SHEET} additional rows omitted]\n`;
