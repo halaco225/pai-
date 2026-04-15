@@ -4,7 +4,8 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { requireAuth } = require('../middleware/auth');
-const { analyzeDaily, analyzeTrends } = require('../services/claude');
+const { analyzeDaily, analyzeTrends, generateDailyIntelEmail } = require('../services/claude');
+const { generateDailyIntelPPTX } = require('../services/pptx-daily');
 const { saveAnalysis, getHistory, getRecentDaily, getAnalysisById } = require('../services/db');
 
 const upload = multer({
@@ -85,6 +86,36 @@ router.post('/trends', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Trends error:', err);
     res.status(500).json({ error: 'Trend analysis failed.', message: err.message });
+  }
+});
+
+// ── POST /api/daily/email ─────────────────────────────────────────────────────
+router.post('/email', requireAuth, async (req, res) => {
+  try {
+    const { analysisText, tone, length } = req.body;
+    if (!analysisText) return res.status(400).json({ error: 'No analysis text provided.' });
+    const result = await generateDailyIntelEmail(analysisText, { tone, length });
+    res.json(result);
+  } catch (err) {
+    console.error('Daily email error:', err);
+    res.status(500).json({ error: err.message || 'Email generation failed.' });
+  }
+});
+
+// ── POST /api/daily/pptx ──────────────────────────────────────────────────────
+router.post('/pptx', requireAuth, async (req, res) => {
+  try {
+    const { analysisText } = req.body;
+    if (!analysisText) return res.status(400).json({ error: 'No analysis text provided.' });
+    const buffer = await generateDailyIntelPPTX(analysisText);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const filename = `Daily_Intel_${dateStr}.pptx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  } catch (err) {
+    console.error('Daily PPTX error:', err);
+    res.status(500).json({ error: err.message || 'PPTX generation failed.' });
   }
 });
 

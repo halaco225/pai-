@@ -225,9 +225,9 @@ SLIDE 7 — SPEED OUTLIER ANALYSIS: Left = daily IST bar chart (region avg by da
 
 SLIDE 8 — SMG BY AREA COACH: Table with Responses, Sat Avg, Pos (4-5), Neg (1-2), Neg Rate. Complaint themes always in this order: Late/Slow | Wrong Order | Undercooked | Cold Food | Missing Items | Rude Staff.
 
-SLIDE 9 — SMG STORE SPOTLIGHT: Top 5 and Bottom 5 stores by Sat Avg (min 3 reviews). Store name, number, AC, review count, score labeled '/ 5 sat score'.
+SLIDE 9 — SMG STORE SPOTLIGHT: Top 5 and Bottom 5 stores by Sat Avg (min 3 reviews). Store name, number, AC, review count, score. Also include each store's WIN score (from ComparisonReport.xls matched by store number) so the team sees operational score alongside customer feedback.
 
-SLIDE 10 — CUSTOMER VOICE: 3 positive store callouts + 3 negative store callouts. Bottom bar: top 3 complaint themes with mention counts and specific sub-theme detail.
+SLIDE 10 — CUSTOMER VOICE: Pull 5 positive and 5 negative VERBATIM quotes directly from the SMG comments file — real customer words, not summaries. Positives = best comments deserving recognition. Negatives = worst complaints that need AC follow-up. For each, include store name/number, AC name, and that store's WIN score. The WIN score context matters: a low WIN score + a bad customer comment = operational breakdown, not a one-off. Complaint themes in footer.
 
 SLIDE 11 — SMART GOALS: 3 data-specific SMART goals. Format: Metric | Current | Target | By When | HOW (name specific stores and ACs — never generic).
 
@@ -260,6 +260,14 @@ Store info in column D, format: 1P039380 - 039380,250 WINDY HILL RD,...
 WIN SCORE FILE (ComparisonReport.xls):
 Scores stored as decimals — 0.48 = 48%. Always convert before displaying.
 'Combined' row = region total.
+
+WIN SCORE METHODOLOGY — critical for coaching and analysis:
+- Score of 5 = PASSING (counts toward WIN%)
+- Score of 4 = NOT COUNTED (excluded from scoring) — coaching goal is to upgrade every 4 to a 5
+- Scores 3, 2, 1 = ALL count as a complete FAIL, same weight as a 1 — they drag the score down equally
+- This is why a store can have mostly "good" (4) answers and still have a terrible WIN score
+- The single biggest lever: eliminate all 3s/2s/1s first (they all cost the same), then convert 4s to 5s
+- When explaining a low WIN score, always note: "Every 3 counts the same as a 1 — the goal is 5s only"
 
 VELOCITY IST FILE:
 WTD IST tab = scorecard, AC table, and store/AC alignment
@@ -321,8 +329,8 @@ When you receive the uploaded files, analyze all data sources and return a struc
     "laborDeepDive": { "regionSummary": {"laborVar":"+1.78%","crewOT":"$3,688","hamOT":"$1,435","totalOT":"$5,123","pca":"26%","cosVar":"-0.7%"}, "acRows": [{"name":"Full AC Name","salesGrowth":"+4.9%","laborVar":"+2.14%","crewOT":"$377","hamOT":"$967","pca":"26.13%","cosVar":"-0.72%"}], "otFlags": "Highest OT: AC Name ($943), AC Name ($857)" },
     "speedOutlier": { "dailyChart": [{"day":"Tue 4/7","value":"18.2"}], "outlierStores": [{"store":"Store Name","storeNum":"039382","ist":"29.6 min","ac":"AC Name","note":"Highest in region"}] },
     "smgByAC": { "rows": [{"name":"Full AC Name","reviews":"45","avg":"4.2","pos":"38","neg":"7","negRate":"15.6%"}], "complaintThemes": [{"theme":"Late/Slow","count":"12"},{"theme":"Wrong Order","count":"8"}] },
-    "smgSpotlight": { "top5": [{"name":"Store Name","storeNum":"039380","ac":"AC Name","reviews":"22","score":"4.8"}], "bottom5": [{"name":"Store Name","storeNum":"039388","ac":"AC Name","reviews":"15","score":"2.1"}] },
-    "customerVoice": { "positives": [{"store":"Store Name (#039380)","ac":"AC Name","quote":"Customer quote here"}], "negatives": [{"store":"Store Name (#039382)","ac":"AC Name","quote":"Customer quote here"}], "themes": [{"theme":"Late/Slow","count":"12"},{"theme":"Cold Food","count":"8"}] },
+    "smgSpotlight": { "top5": [{"name":"Store Name","storeNum":"039380","ac":"AC Name","reviews":"22","score":"4.8","winScore":"72%"}], "bottom5": [{"name":"Store Name","storeNum":"039388","ac":"AC Name","reviews":"15","score":"2.1","winScore":"28%"}] },
+    "customerVoice": { "positives": [{"store":"Store Name (#039380)","ac":"AC Name","winScore":"72%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039381)","ac":"AC Name","winScore":"68%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039382)","ac":"AC Name","winScore":"81%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039383)","ac":"AC Name","winScore":"65%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039384)","ac":"AC Name","winScore":"59%","quote":"Actual verbatim quote copied from SMG file column G"}], "negatives": [{"store":"Store Name (#039385)","ac":"AC Name","winScore":"31%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039386)","ac":"AC Name","winScore":"28%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039387)","ac":"AC Name","winScore":"44%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039388)","ac":"AC Name","winScore":"35%","quote":"Actual verbatim quote copied from SMG file column G"},{"store":"Store Name (#039389)","ac":"AC Name","winScore":"22%","quote":"Actual verbatim quote copied from SMG file column G"}], "themes": [{"theme":"Late/Slow","count":"12"},{"theme":"Cold Food","count":"8"}] },
     "smartGoals": { "goals": [{"metric":"In-Store Time","current":"18.6 min","target":"<18.0 min","byWhen":"End of P4","how":"Specific AC and store names with action"}] },
     "keyDates": { "placeholders": 7 },
     "closing": { "acOfWeek": {"name":"Full AC Name","description":"Why they won","note":"Keep pushing."}, "footerStats": [{"label":"Sales","value":"+2.2%"},{"label":"Labor","value":"+1.78%"},{"label":"IST","value":"18.6 min"},{"label":"WIN","value":"51%"}], "recapDay": "Thursday" }
@@ -411,7 +419,7 @@ REPORTS YOU MAY RECEIVE (in any combination — work with whatever is provided):
 - DBS (Daily Business Summary): sales, transaction counts, APC (avg per customer), daypart splits, delivery vs carryout
 - Labor Analytics: labor %, crew hours, manager hours, overtime, schedule vs actual
 - SMG Reports: customer satisfaction scores (1–5 scale), verbatim comments, survey counts
-- WIN Scores: operational compliance scores (stored as decimals — 0.48 = 48%)
+- WIN Scores: operational compliance scores (stored as decimals — 0.48 = 48%). WIN scoring: 5s count toward score, 4s are excluded/not scored (goal: convert 4s to 5s), and 3s/2s/1s ALL count as a complete fail — same weight as a 1. This is why a store with mostly 4s and a few 3s has a shockingly low WIN score. The lever is: eliminate 3s first (they hurt as much as 1s), then convert 4s to 5s.
 - Velocity/OTD Reports: delivery speed, on-time %, outliers
 - Any other operational report — identify it from context and extract what you can
 
@@ -419,7 +427,7 @@ PIZZA HUT FRANCHISE BENCHMARKS:
 - Labor %: Target ~28% | Yellow 28–31% | Red >31%
 - SMG Overall: Target 80+ | Yellow 75–79 | Red <75
 - OTD Avg Time: Green <18 min | Yellow 18–21 | Red >21
-- WIN Score: Green >=60% | Yellow 40–59% | Red <40%
+- WIN Score: Green >=60% | Yellow 40–59% | Red <40% (5=pass, 4=excluded, 3/2/1=all count as fail)
 - Sales Growth: Green >0% vs LW/LY | Yellow -1 to -5% | Red < -5%
 
 CROSS-REFERENCING — CRITICAL. When multiple reports are provided, actively look for these connections:
@@ -551,6 +559,57 @@ async function analyzeTrends(recentReports) {
   return message.content[0].text;
 }
 
+// ─── Daily Intel Email Generator ──────────────────────────────────────────
+
+async function generateDailyIntelEmail(analysisText, options = {}) {
+  const tone = options.tone || 'direct';
+  const length = options.length || 'standard';
+
+  const toneGuide = {
+    direct: 'Direct and to the point. No fluff. Lead with the single most critical finding.',
+    professional: 'Professional and polished. Complete sentences. Formal but not stiff.',
+    brief: 'Ultra-brief. 3-5 bullet points max. Get in, get out.'
+  }[tone] || 'direct and clear';
+
+  const lengthGuide = {
+    brief: 'Under 100 words. Headline + 3 bullets + one action.',
+    standard: '150-250 words. Key metrics, top win, top concern, and action items.',
+    detailed: '300-400 words. All sections from the analysis, with context.'
+  }[length] || 'standard';
+
+  const system = `You are drafting a daily ops intel email from a Regional Director at Ayvaz Pizza LLC (Pizza Hut).
+Tone: ${toneGuide}
+Length: ${lengthGuide}
+
+Format the output as:
+1. Subject line: "Subject: [subject here]"
+2. HTML email body using only <p>, <strong>, <ul>, <li> tags — no CSS
+3. Signature: Harold Lacoste | Regional Director | Ayvaz Pizza LLC
+4. Separator "---PLAIN---"
+5. Plain text version
+
+Pull real numbers and store names from the analysis. Never use placeholder text.`;
+
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 2048,
+    system,
+    messages: [{
+      role: 'user',
+      content: `Convert this daily intel analysis into an email:\n\n${analysisText}`
+    }]
+  });
+
+  const raw = message.content[0].text;
+  const subjectMatch = raw.match(/Subject:\s*(.+)/i);
+  const subject = subjectMatch ? subjectMatch[1].trim() : 'Daily Ops Intel';
+  const parts = raw.split(/---PLAIN---/i);
+  const htmlBody = parts[0].replace(/Subject:.*\n?/i, '').trim();
+  const plainText = (parts[1] || '').trim();
+
+  return { subject, htmlBody, plainText };
+}
+
 // ─── Recap Email Generator ─────────────────────────────────────────────────
 
 async function generateRecapEmail(data, options = {}) {
@@ -614,4 +673,4 @@ After the full email, add a separator "---PLAIN---" and then provide a plain-tex
   return { subject, htmlBody, plainText };
 }
 
-module.exports = { analyzePL, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail };
+module.exports = { analyzePL, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail, generateDailyIntelEmail };

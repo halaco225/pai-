@@ -33,11 +33,11 @@
   /* ── Theme cards ──────────────────────────────── */
   .theme-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
   .theme-card { border: 2px solid var(--border); border-radius: 8px; overflow: hidden; cursor: pointer; transition: border-color 0.15s; }
-  .theme-card.selected { border-color: var(--accent); }
-  .theme-swatch { height: 36px; display: flex; }
-  .theme-swatch-dark { flex: 1; }
-  .theme-swatch-accent { width: 8px; }
-  .theme-label { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; text-align: center; padding: 5px 4px; color: var(--text-muted); }
+  .theme-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .theme-swatch { height: 44px; display: flex; }
+  .theme-swatch-dark { flex: 1.4; }
+  .theme-swatch-accent { flex: 1; }
+  .theme-label { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; text-align: center; padding: 6px 4px; color: var(--text-muted); background: var(--surface-2); }
 
   /* ── Email options ────────────────────────────── */
   .email-opts { display: none; gap: 16px; margin-bottom: 20px; }
@@ -196,40 +196,40 @@
         <div id="pptxOpts">
           <label style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:10px;">Deck Style</label>
           <div class="theme-grid">
-            <div class="theme-card selected" onclick="selectTheme('command-dark',this)" title="Command Dark">
+            <div class="theme-card selected" onclick="selectTheme('command-dark',this)" title="Command Dark — Dark charcoal + Pizza Hut red">
               <div class="theme-swatch">
                 <div class="theme-swatch-dark" style="background:#1A1A1A"></div>
                 <div class="theme-swatch-accent" style="background:#CC0000"></div>
               </div>
               <div class="theme-label">Command</div>
             </div>
-            <div class="theme-card" onclick="selectTheme('navy-gold',this)" title="Navy Gold">
+            <div class="theme-card" onclick="selectTheme('navy-gold',this)" title="Navy Gold — Deep navy + gold">
               <div class="theme-swatch">
                 <div class="theme-swatch-dark" style="background:#1A2744"></div>
                 <div class="theme-swatch-accent" style="background:#C9A84C"></div>
               </div>
               <div class="theme-label">Navy Gold</div>
             </div>
-            <div class="theme-card" onclick="selectTheme('clean-white',this)" title="Clean White">
+            <div class="theme-card" onclick="selectTheme('clean-white',this)" title="Clean White — Light background, red accent (best for printing)">
               <div class="theme-swatch">
-                <div class="theme-swatch-dark" style="background:#1F1F1F"></div>
+                <div class="theme-swatch-dark" style="background:#F5F5F5; border-right: 1px solid #ddd;"></div>
                 <div class="theme-swatch-accent" style="background:#CC0000"></div>
               </div>
-              <div class="theme-label">Clean</div>
+              <div class="theme-label" style="background:#F0F0F0; color:#555;">Clean White</div>
             </div>
-            <div class="theme-card" onclick="selectTheme('slate-blue',this)" title="Slate Blue">
+            <div class="theme-card" onclick="selectTheme('teal',this)" title="Teal — Deep teal + seafoam green">
               <div class="theme-swatch">
-                <div class="theme-swatch-dark" style="background:#1E3A5F"></div>
-                <div class="theme-swatch-accent" style="background:#4A90D9"></div>
+                <div class="theme-swatch-dark" style="background:#063D5C"></div>
+                <div class="theme-swatch-accent" style="background:#02C39A"></div>
               </div>
-              <div class="theme-label">Corporate</div>
+              <div class="theme-label">Teal</div>
             </div>
-            <div class="theme-card" onclick="selectTheme('obsidian',this)" title="Obsidian">
+            <div class="theme-card" onclick="selectTheme('maroon',this)" title="Maroon — Deep maroon + warm gold">
               <div class="theme-swatch">
-                <div class="theme-swatch-dark" style="background:#0D0D0D"></div>
-                <div class="theme-swatch-accent" style="background:#E53E3E"></div>
+                <div class="theme-swatch-dark" style="background:#3D0C0C"></div>
+                <div class="theme-swatch-accent" style="background:#F9A825"></div>
               </div>
-              <div class="theme-label">Obsidian</div>
+              <div class="theme-label">Maroon</div>
             </div>
           </div>
         </div>

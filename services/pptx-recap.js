@@ -2,25 +2,30 @@ const PptxGenJS = require('pptxgenjs');
 
 // ── Themes ────────────────────────────────────────────────────────────────────
 const THEMES = {
+  // 1 — Deep dark + PH red (default signature look)
   'command-dark': {
     dark: '#1A1A1A', mid: '#2A2A2A', muted: '#3A3A3A',
     light: '#F5F5F5', accent: '#CC0000'
   },
+  // 2 — Navy blue + gold (premium/formal)
   'navy-gold': {
     dark: '#1A2744', mid: '#253360', muted: '#2E3D6E',
     light: '#F5F6F8', accent: '#C9A84C'
   },
+  // 3 — Bright white bg + charcoal (print-friendly, minimal)
   'clean-white': {
-    dark: '#1F1F1F', mid: '#2C2C2C', muted: '#3D3D3D',
+    dark: '#1C1C1C', mid: '#2C2C2C', muted: '#4A4A4A',
     light: '#FFFFFF', accent: '#CC0000'
   },
-  'slate-blue': {
-    dark: '#1E3A5F', mid: '#2A4D7A', muted: '#345A8A',
-    light: '#F0F4F8', accent: '#4A90D9'
+  // 4 — Deep teal + seafoam (modern/fresh — clearly different)
+  'teal': {
+    dark: '#063D5C', mid: '#0A5276', muted: '#0E6B9A',
+    light: '#F0F9FF', accent: '#02C39A'
   },
-  'obsidian': {
-    dark: '#0D0D0D', mid: '#161616', muted: '#212121',
-    light: '#F8F8F8', accent: '#E53E3E'
+  // 5 — Deep maroon + warm gold (rich/bold — completely different)
+  'maroon': {
+    dark: '#3D0C0C', mid: '#5A1313', muted: '#751A1A',
+    light: '#FFF8F0', accent: '#F9A825'
   },
 };
 
@@ -496,6 +501,10 @@ function makeSMGbyAC(pptx, d, weekLabel, total) {
 
   if (tableRows.length > 1) {
     slide.addTable(tableRows, { x: 0.25, y: 0.75, w: 9.2, rowH: 0.47, border: { type: 'solid', color: '#DDDDDD', pt: 1 } });
+  } else {
+    slide.addText('No AC-level SMG data available — upload SMG comments file to populate this table.', {
+      x: 0.25, y: 1.5, w: 9.2, h: 0.5, color: B.gray, fontSize: 11, italic: true
+    });
   }
 
   // Complaint themes
@@ -504,7 +513,11 @@ function makeSMGbyAC(pptx, d, weekLabel, total) {
     const themeTotal = themes.reduce((s, t) => s + (parseInt(t.count) || 0), 0);
     const prefix = themeTotal ? `TOP COMPLAINT THEMES ACROSS ${themeTotal} REVIEWS:` : 'TOP COMPLAINT THEMES:';
     slide.addText(prefix, { x: 0.25, y: 5.6, w: 9, h: 0.25, color: '#444444', fontSize: 9, bold: true });
-    const themeStr = themes.slice(0, 6).map(t => `${safe(t.theme)}  ${safe(t.count)}`).join('     ');
+    const themeStr = themes.slice(0, 6).map(t => {
+      const label = safe(t.theme || t.name || t);
+      const count = safe(t.count || t.mentions || '');
+      return count ? `${label}  [${count}]` : label;
+    }).filter(Boolean).join('     ');
     slide.addText(themeStr, { x: 0.25, y: 5.88, w: 9.2, h: 0.3, color: B.dark, fontSize: 11, bold: true });
   }
 }
@@ -517,39 +530,66 @@ function makeSMGSpotlight(pptx, d, weekLabel, total) {
   const top = safeArr(d.top5 || d.top);
   const bot = safeArr(d.bottom5 || d.bottom);
 
-  // Column headers
-  slide.addText('★  TOP RATED STORES', { x: 0.25, y: 0.72, w: 4.3, h: 0.28, color: B.green, fontSize: 10, bold: true });
-  slide.addText('⚠  LOWEST RATED STORES', { x: 5.05, y: 0.72, w: 4.5, h: 0.28, color: B.danger, fontSize: 10, bold: true });
-  slide.addShape(pptx.ShapeType.line, { x: 4.8, y: 0.7, w: 0, h: 5.8, line: { color: '#DDDDDD', width: 1 } });
+  // Column headers with colored background bars
+  slide.addShape(pptx.ShapeType.rect, { x: 0.25, y: 0.72, w: 4.35, h: 0.32, fill: { color: B.green } });
+  slide.addText('★  TOP RATED STORES', { x: 0.35, y: 0.74, w: 4.1, h: 0.28, color: B.white, fontSize: 10, bold: true });
+  slide.addShape(pptx.ShapeType.rect, { x: 4.9, y: 0.72, w: 4.85, h: 0.32, fill: { color: B.danger } });
+  slide.addText('⚠  LOWEST RATED STORES', { x: 5.0, y: 0.74, w: 4.6, h: 0.28, color: B.white, fontSize: 10, bold: true });
 
-  const renderStoreList = (items, x, isTop) => {
+  // Row-based layout — SMG score pill right, WIN score badge below store name
+  const renderStoreList = (items, x, colW, isTop) => {
+    const color = isTop ? B.green : B.danger;
     items.slice(0, 5).forEach((item, i) => {
-      const y = 1.08 + i * 1.1;
-      const score = safe(item.score || item.avgScore);
-      const name  = safe(item.name || item.storeName || item.store);
-      const num   = safe(item.num || item.storeNum || item.store_num);
-      const reviews = safe(item.reviews);
-      const ac    = safe(item.ac || item.acName);
-      const color = isTop ? B.green : B.danger;
-      slide.addText(score, { x, y, w: 1.0, h: 0.55, color, fontSize: 30, bold: true });
-      slide.addText('/ 5 sat score', { x: x + 1.05, y: y + 0.25, w: 1.5, h: 0.25, color: '#777777', fontSize: 9 });
-      slide.addText(`${name}${num ? ' #' + num : ''}`, { x: x + 1.05, y, w: 3.0, h: 0.28, color: B.dark, fontSize: 11, bold: true });
-      if (ac || reviews) {
-        slide.addText(`${ac ? 'AC: ' + ac : ''}${ac && reviews ? '  |  ' : ''}${reviews ? reviews + ' reviews' : ''}`,
-          { x: x + 1.05, y: y + 0.6, w: 3.0, h: 0.22, color: B.gray, fontSize: 9 });
+      const y = 1.12 + i * 1.08;
+      const score    = safe(item.score || item.avgScore || item.avg_score || item.satAvg, '—');
+      const name     = safe(item.name || item.storeName || item.store, 'Store');
+      const num      = safe(item.num || item.storeNum || item.store_num);
+      const reviews  = safe(item.reviews || item.reviewCount || item.review_count);
+      const ac       = extractName(item) || safe(item.ac || item.acName);
+      const winScore = safe(item.winScore || item.win_score || item.win || '');
+
+      // SMG score pill (right)
+      slide.addShape(pptx.ShapeType.rect, { x: x + colW - 1.2, y, w: 1.15, h: 0.42, fill: { color }, rectRadius: 0.05 });
+      slide.addText(`${score} / 5`, { x: x + colW - 1.2, y: y + 0.02, w: 1.15, h: 0.38, color: B.white, fontSize: 13, bold: true, align: 'center', valign: 'middle' });
+
+      // Store name
+      slide.addText(`${name}${num ? ' — ' + num : ''}`, {
+        x, y, w: colW - 1.3, h: 0.28, color: B.dark, fontSize: 11, bold: true
+      });
+
+      // AC + reviews + WIN score on second row
+      const acPart = ac ? `AC: ${ac}` : '';
+      const revPart = reviews ? `${reviews} reviews` : '';
+      const sub = [acPart, revPart].filter(Boolean).join('  |  ');
+      if (sub) {
+        slide.addText(sub, { x, y: y + 0.29, w: colW - 1.3, h: 0.2, color: B.gray, fontSize: 9 });
       }
+
+      // WIN score badge (below AC info)
+      if (winScore) {
+        slide.addShape(pptx.ShapeType.rect, {
+          x, y: y + 0.51, w: 0.95, h: 0.18,
+          fill: { color: '#1A1A1A' }, line: { color: B.red, width: 1 }
+        });
+        slide.addText(`WIN  ${winScore}`, {
+          x, y: y + 0.52, w: 0.95, h: 0.16,
+          color: B.red, fontSize: 7.5, bold: true, align: 'center'
+        });
+      }
+
+      // Divider
       if (i < Math.min(items.length, 5) - 1) {
-        slide.addShape(pptx.ShapeType.line, { x, y: y + 0.95, w: 4.3, h: 0, line: { color: '#EEEEEE', width: 0.5 } });
+        slide.addShape(pptx.ShapeType.line, { x, y: y + 0.78, w: colW, h: 0, line: { color: '#DDDDDD', width: 0.5 } });
       }
     });
   };
 
-  renderStoreList(top, 0.25, true);
-  renderStoreList(bot, 5.05, false);
-
-  if (!top.length && !bot.length) {
-    slide.addText('SMG store spotlight data not available — upload SMG file for full analysis', {
-      x: 0.25, y: 1.5, w: 9.2, h: 0.5, color: B.gray, fontSize: 12
+  if (top.length || bot.length) {
+    renderStoreList(top, 0.25, 4.45, true);
+    renderStoreList(bot, 4.9, 4.85, false);
+  } else {
+    slide.addText('SMG store spotlight data not available — upload SMG comments file for full analysis', {
+      x: 0.25, y: 1.5, w: 9.5, h: 0.5, color: B.gray, fontSize: 11, italic: true
     });
   }
 }
@@ -557,45 +597,100 @@ function makeSMGSpotlight(pptx, d, weekLabel, total) {
 function makeCustomerVoice(pptx, d, weekLabel, total) {
   const slide = pptx.addSlide();
   slide.background = { color: B.dark };
-  chrome(slide, pptx, `CUSTOMER VOICE  |  What They're Saying`, 10, total);
+  chrome(slide, pptx, `CUSTOMER VOICE  |  Actual Comments This Week`, 10, total);
 
   const pos = safeArr(d.positives || d.positive);
   const neg = safeArr(d.negatives || d.negative);
-  // themes may be an array of objects or a plain string
-  const themesRaw = d.themes || d.topThemes || d.complaintThemes;
-  let themes = '';
-  if (Array.isArray(themesRaw)) {
-    themes = themesRaw.map(t => {
-      if (typeof t === 'string') return t;
-      const label = safe(t.theme || t.name || t.label || t.topic);
-      const count = safe(t.count || t.mentions || t.total || '');
-      return count ? `${label}  [${count}]` : label;
-    }).filter(Boolean).join('     ');
-  } else {
-    themes = safe(themesRaw);
-  }
 
-  slide.addText('WHAT CUSTOMERS ARE PRAISING', { x: 0.25, y: 0.72, w: 4.3, h: 0.25, color: B.green, fontSize: 9, bold: true, charSpacing: 1 });
-  slide.addText('WHAT CUSTOMERS ARE FLAGGING', { x: 5.05, y: 0.72, w: 4.5, h: 0.25, color: B.danger, fontSize: 9, bold: true, charSpacing: 1 });
-  slide.addShape(pptx.ShapeType.line, { x: 4.8, y: 0.7, w: 0, h: 5.5, line: { color: '#333333', width: 1 } });
+  // Section header bars
+  slide.addShape(pptx.ShapeType.rect, { x: 0.25, y: 0.72, w: 4.35, h: 0.28, fill: { color: '#1B5E20' } });
+  slide.addText(`★  DESERVES RECOGNITION  (${pos.length || 0})`, {
+    x: 0.32, y: 0.73, w: 4.18, h: 0.26, color: '#FFFFFF', fontSize: 9, bold: true
+  });
+  slide.addShape(pptx.ShapeType.rect, { x: 4.9, y: 0.72, w: 4.85, h: 0.28, fill: { color: B.danger } });
+  slide.addText(`⚠  NEEDS FOLLOW-UP  (${neg.length || 0})`, {
+    x: 4.97, y: 0.73, w: 4.68, h: 0.26, color: '#FFFFFF', fontSize: 9, bold: true
+  });
 
-  const renderVoice = (items, x, icon) => {
-    items.slice(0, 3).forEach((item, i) => {
-      const y = 1.05 + i * 1.65;
-      const store = safe(item.store || item.storeName);
-      const quote = safe(item.quote || item.description || item.text);
-      const ac    = safe(item.ac || item.acName);
-      slide.addText(`${icon} ${store}`, { x, y, w: 4.3, h: 0.3, color: B.light, fontSize: 11, bold: true });
-      if (ac) slide.addText(ac, { x, y: y + 0.3, w: 4.3, h: 0.2, color: B.gray, fontSize: 9, italic: true });
-      slide.addText(quote, { x, y: y + 0.5, w: 4.3, h: 0.9, color: B.lgray, fontSize: 10, wrap: true });
+  const renderVoice = (items, x, colW) => {
+    items.slice(0, 5).forEach((item, i) => {
+      const y = 1.1 + i * 1.1;
+      const store = safe(item.store || item.storeName || item.name);
+      const winScore = safe(item.winScore || item.win_score || item.win || '');
+      const quote = safe(
+        item.quote || item.comment || item.feedback || item.review ||
+        item.verbatim || item.text || item.description || item.content ||
+        item.customerComment || item.customer_comment || item.customerFeedback
+      );
+      const ac = extractName(item) || safe(item.ac || item.acName);
+
+      // Store name — leave room for WIN badge if present
+      const storeW = winScore ? colW - 1.15 : colW;
+      slide.addText(store, {
+        x, y, w: storeW, h: 0.22,
+        color: B.light, fontSize: 10, bold: true
+      });
+
+      // WIN score badge (right side of row)
+      if (winScore) {
+        slide.addShape(pptx.ShapeType.rect, {
+          x: x + colW - 1.08, y: y + 0.01, w: 1.03, h: 0.21,
+          fill: { color: B.mid }, line: { color: B.red, width: 1 }
+        });
+        slide.addText(`WIN  ${winScore}`, {
+          x: x + colW - 1.08, y: y + 0.02, w: 1.03, h: 0.19,
+          color: B.red, fontSize: 8, bold: true, align: 'center'
+        });
+      }
+
+      // AC name
+      if (ac) {
+        slide.addText(ac, {
+          x, y: y + 0.23, w: colW, h: 0.16,
+          color: '#777777', fontSize: 8, italic: true
+        });
+      }
+
+      // Verbatim customer quote
+      if (quote) {
+        slide.addText(`"${quote}"`, {
+          x, y: y + (ac ? 0.40 : 0.26), w: colW, h: 0.63,
+          color: '#CCCCCC', fontSize: 9, wrap: true, italic: true
+        });
+      }
+
+      // Thin divider between items
+      if (i < Math.min(items.length, 5) - 1) {
+        slide.addShape(pptx.ShapeType.line, {
+          x, y: y + 1.04, w: colW, h: 0,
+          line: { color: '#2D2D2D', width: 0.5 }
+        });
+      }
     });
   };
 
-  renderVoice(pos, 0.25, '★');
-  renderVoice(neg, 5.05, '⚠');
+  renderVoice(pos, 0.25, 4.45);
+  renderVoice(neg, 4.9, 4.85);
 
-  if (themes) {
-    slide.addText(themes, { x: 0.25, y: 6.45, w: 9.2, h: 0.3, color: B.gray, fontSize: 9, wrap: true });
+  // Complaint themes — compact footer
+  const themesRaw = d.themes || d.topThemes || d.complaintThemes;
+  if (themesRaw) {
+    let themes = '';
+    if (Array.isArray(themesRaw)) {
+      themes = themesRaw.map(t => {
+        if (typeof t === 'string') return t;
+        const label = safe(t.theme || t.name || t.label || t.topic);
+        const count = safe(t.count || t.mentions || t.total || '');
+        return count ? `${label} [${count}]` : label;
+      }).filter(Boolean).join('   ·   ');
+    } else {
+      themes = safe(themesRaw);
+    }
+    if (themes) {
+      slide.addText(`TOP COMPLAINT THEMES:   ${themes}`, {
+        x: 0.25, y: 6.65, w: 9.2, h: 0.22, color: '#555555', fontSize: 8, wrap: true
+      });
+    }
   }
 }
 

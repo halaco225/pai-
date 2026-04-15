@@ -123,7 +123,31 @@
 
   .days-select { width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text-primary); padding: 7px 10px; border-radius: 6px; font-size: 12px; font-family: inherit; margin-bottom: 8px; }
 
-  .action-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+  .action-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; align-items: center; }
+
+  /* ── Export panel ─────────────────────────────── */
+  .export-panel { display: none; margin-top: 16px; padding: 16px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; }
+  .export-panel.show { display: block; }
+  .export-panel-title { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; }
+  .export-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .export-opt-group label { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 6px; }
+  .export-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .export-pill { padding: 4px 10px; border: 1px solid var(--border); border-radius: 14px; font-size: 11px; font-weight: 600; cursor: pointer; color: var(--text-secondary); background: var(--surface); font-family: inherit; }
+  .export-pill.selected { border-color: var(--accent); color: var(--accent); background: rgba(204,0,0,0.08); }
+
+  /* ── Email result ─────────────────────────────── */
+  .email-result { display: none; margin-top: 14px; }
+  .email-result.show { display: block; }
+  .email-subject-bar { padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px 6px 0 0; font-size: 12px; font-weight: 700; color: var(--text-primary); }
+  .email-subject-bar span { color: var(--text-muted); font-weight: 400; }
+  .email-body-preview { padding: 14px; background: var(--surface); border: 1px solid var(--border); border-top: none; border-radius: 0 0 6px 6px; font-size: 12px; line-height: 1.7; color: var(--text-secondary); max-height: 320px; overflow-y: auto; }
+  .email-body-preview p { margin: 0 0 8px; }
+  .email-body-preview ul { margin: 4px 0 8px 16px; }
+  .email-body-preview li { margin-bottom: 3px; }
+  .email-copy-row { display: flex; gap: 8px; margin-top: 10px; }
+  .copy-btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; font-weight: 700; color: var(--text-secondary); cursor: pointer; font-family: inherit; }
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+
   #resultsContainer { display: none; }
 </style>
 </head>
@@ -221,8 +245,50 @@
             <div class="card">
               <div id="intelOutput"></div>
               <div class="action-row">
-                <button class="btn btn-ghost" onclick="window.print()">Print Report</button>
+                <button class="btn btn-primary" id="exportEmailBtn" onclick="toggleEmailPanel()" style="display:none">
+                  ✉️ Compose Email
+                </button>
+                <button class="btn btn-primary" id="exportPptxBtn" onclick="exportAsPPTX()" style="display:none">
+                  📊 Export as Slides
+                </button>
+                <button class="btn btn-ghost" onclick="window.print()">Print</button>
                 <button class="btn btn-ghost" onclick="clearAll()">New Analysis</button>
+              </div>
+
+              <!-- Export panel (email) -->
+              <div class="export-panel" id="exportPanel">
+                <div class="export-panel-title">✉️ Email Export Options</div>
+                <div class="export-opts">
+                  <div class="export-opt-group">
+                    <label>Tone</label>
+                    <div class="export-pills">
+                      <button class="export-pill selected" data-group="eTone" onclick="selectExportPill(this)">Direct</button>
+                      <button class="export-pill" data-group="eTone" onclick="selectExportPill(this)">Professional</button>
+                      <button class="export-pill" data-group="eTone" onclick="selectExportPill(this)">Brief</button>
+                    </div>
+                  </div>
+                  <div class="export-opt-group">
+                    <label>Length</label>
+                    <div class="export-pills">
+                      <button class="export-pill" data-group="eLength" onclick="selectExportPill(this)">Brief</button>
+                      <button class="export-pill selected" data-group="eLength" onclick="selectExportPill(this)">Standard</button>
+                      <button class="export-pill" data-group="eLength" onclick="selectExportPill(this)">Detailed</button>
+                    </div>
+                  </div>
+                </div>
+                <button class="btn btn-primary" id="genEmailBtn" onclick="generateEmail()" style="width:100%">
+                  Generate Email
+                </button>
+
+                <!-- Email preview -->
+                <div class="email-result" id="emailResult">
+                  <div class="email-subject-bar" id="emailSubject"></div>
+                  <div class="email-body-preview" id="emailBodyDiv"></div>
+                  <div class="email-copy-row">
+                    <button class="copy-btn" onclick="copyEmail('html')">📋 Copy HTML</button>
+                    <button class="copy-btn" onclick="copyEmail('plain')">📄 Copy Plain Text</button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -264,6 +330,8 @@
 
 <script>
   let fileList = [];
+  let currentAnalysisText = '';
+  let currentEmailData = null;
 
   async function init() {
     const res = await fetch('/api/auth/me');
@@ -330,9 +398,110 @@
 
   function clearAll() {
     fileList = [];
+    currentAnalysisText = '';
+    currentEmailData = null;
     renderChips();
     document.getElementById('resultsContainer').style.display = 'none';
     document.getElementById('saveIndicator').classList.remove('visible');
+    document.getElementById('exportEmailBtn').style.display = 'none';
+    document.getElementById('exportPptxBtn').style.display = 'none';
+    document.getElementById('exportPanel').classList.remove('show');
+    document.getElementById('emailResult').classList.remove('show');
+  }
+
+  // ── Export / Email ─────────────────────────────────────────────────────────
+  function toggleEmailPanel() {
+    document.getElementById('exportPanel').classList.toggle('show');
+  }
+
+  async function exportAsPPTX() {
+    if (!currentAnalysisText) return;
+    const btn = document.getElementById('exportPptxBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Building Slides...';
+    try {
+      const res = await fetch('/api/daily/pptx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ analysisText: currentAnalysisText })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'PPTX generation failed');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Daily_Intel_${new Date().toISOString().slice(0,10)}.pptx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Slide export failed: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '📊 Export as Slides';
+    }
+  }
+
+  function selectExportPill(btn) {
+    const group = btn.dataset.group;
+    document.querySelectorAll(`.export-pill[data-group="${group}"]`).forEach(p => p.classList.remove('selected'));
+    btn.classList.add('selected');
+  }
+
+  function getExportOpt(group) {
+    const sel = document.querySelector(`.export-pill.selected[data-group="${group}"]`);
+    return sel ? sel.textContent.trim().toLowerCase() : (group === 'eTone' ? 'direct' : 'standard');
+  }
+
+  async function generateEmail() {
+    if (!currentAnalysisText) return;
+    const btn = document.getElementById('genEmailBtn');
+    btn.disabled = true; btn.textContent = 'Generating...';
+
+    try {
+      const res = await fetch('/api/daily/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          analysisText: currentAnalysisText,
+          tone: getExportOpt('eTone'),
+          length: getExportOpt('eLength')
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Email generation failed');
+      currentEmailData = data;
+
+      document.getElementById('emailSubject').innerHTML = `<span>Subject: </span>${data.subject}`;
+      document.getElementById('emailBodyDiv').innerHTML = data.htmlBody;
+      document.getElementById('emailResult').classList.add('show');
+    } catch (err) {
+      alert('Email generation failed: ' + err.message);
+    } finally {
+      btn.disabled = false; btn.textContent = 'Generate Email';
+    }
+  }
+
+  async function copyEmail(type) {
+    if (!currentEmailData) return;
+    const text = type === 'html' ? currentEmailData.htmlBody : currentEmailData.plainText;
+    await navigator.clipboard.writeText(text);
+    // Brief visual feedback
+    const btn = event.target;
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => btn.textContent = orig, 2000);
+  }
+
+  // Also show export buttons when loading from history
+  function loadHistoryWithExport(text) {
+    currentAnalysisText = text;
+    document.getElementById('exportEmailBtn').style.display = 'inline-flex';
+    document.getElementById('exportPptxBtn').style.display = 'inline-flex';
+    document.getElementById('exportPanel').classList.remove('show');
+    document.getElementById('emailResult').classList.remove('show');
   }
 
   // ── Run analysis ──────────────────────────────────────────────────────────
@@ -359,7 +528,10 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Analysis failed');
 
+      currentAnalysisText = data.analysis;
       output.innerHTML = renderIntelMarkdown(data.analysis);
+      document.getElementById('exportEmailBtn').style.display = 'inline-flex';
+      document.getElementById('exportPptxBtn').style.display = 'inline-flex';
 
       if (data.savedId) {
         saveIndicator.classList.add('visible');
@@ -422,6 +594,7 @@
           <strong style="color:var(--text-primary)">📅 ${dateStr}</strong> &nbsp;·&nbsp; ${data.record.report_names || 'Unknown reports'}
         </div>
         ${renderIntelMarkdown(data.record.analysis_text)}`;
+      loadHistoryWithExport(data.record.analysis_text);
     } catch {
       output.innerHTML = `<div style="color:var(--danger);padding:20px;">Could not load this report.</div>`;
     }
