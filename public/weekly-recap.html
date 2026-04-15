@@ -10,28 +10,75 @@
   .step-number { width: 28px; height: 28px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; flex-shrink: 0; }
   .step-header h3 { font-size: 13px; font-weight: 700; color: var(--text-primary); letter-spacing: 2px; text-transform: uppercase; }
 
-  .report-hint { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
   .report-badge { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; color: var(--text-muted); font-weight: 600; }
   .report-badge.optional { opacity: 0.6; }
+  .report-hint { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
 
-  /* ── File chips ─────────────────────────────────── */
   .file-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
   .file-chip { display: flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px; padding: 5px 10px 5px 12px; font-size: 12px; color: var(--text-secondary); }
   .chip-name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .chip-remove { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px; padding: 0 2px; line-height: 1; transition: color 0.15s; }
+  .chip-remove { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px; padding: 0 2px; line-height: 1; }
   .chip-remove:hover { color: var(--accent); }
   .chip-type { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); font-weight: 700; }
-  .add-more-btn { display: inline-flex; align-items: center; gap: 6px; background: none; border: 1px dashed var(--border-light); border-radius: 20px; padding: 5px 14px; font-size: 12px; color: var(--text-muted); cursor: pointer; transition: all 0.15s; font-family: inherit; }
+  .add-more-btn { display: inline-flex; align-items: center; gap: 6px; background: none; border: 1px dashed var(--border-light); border-radius: 20px; padding: 5px 14px; font-size: 12px; color: var(--text-muted); cursor: pointer; font-family: inherit; }
   .add-more-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .add-more-btn input { display: none; }
 
   .meta-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
 
-  .progress-log { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; font-family: monospace; font-size: 12px; color: var(--text-muted); min-height: 80px; max-height: 200px; overflow-y: auto; margin-top: 16px; }
+  /* ── Format toggle ─────────────────────────────── */
+  .format-toggle { display: flex; gap: 8px; margin-bottom: 20px; }
+  .format-btn { flex: 1; padding: 10px; border: 2px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-secondary); font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; font-family: inherit; transition: all 0.15s; text-align: center; }
+  .format-btn.active { border-color: var(--accent); background: rgba(204,0,0,0.08); color: var(--accent); }
+
+  /* ── Theme cards ──────────────────────────────── */
+  .theme-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
+  .theme-card { border: 2px solid var(--border); border-radius: 8px; overflow: hidden; cursor: pointer; transition: border-color 0.15s; }
+  .theme-card.selected { border-color: var(--accent); }
+  .theme-swatch { height: 36px; display: flex; }
+  .theme-swatch-dark { flex: 1; }
+  .theme-swatch-accent { width: 8px; }
+  .theme-label { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; text-align: center; padding: 5px 4px; color: var(--text-muted); }
+
+  /* ── Email options ────────────────────────────── */
+  .email-opts { display: none; gap: 16px; margin-bottom: 20px; }
+  .email-opts.show { display: grid; grid-template-columns: 1fr 1fr; }
+  .opt-group label { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 8px; }
+  .opt-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .opt-pill { padding: 5px 12px; border: 1px solid var(--border); border-radius: 16px; font-size: 11px; font-weight: 600; cursor: pointer; color: var(--text-secondary); background: var(--surface-2); font-family: inherit; }
+  .opt-pill.selected { border-color: var(--accent); color: var(--accent); background: rgba(204,0,0,0.08); }
+
+  .progress-log { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; font-family: monospace; font-size: 12px; color: var(--text-muted); min-height: 60px; max-height: 180px; overflow-y: auto; margin-top: 16px; }
   .log-line { margin-bottom: 4px; }
   .log-line.ok { color: var(--success); }
   .log-line.err { color: var(--danger); }
   .log-line.info { color: var(--text-secondary); }
+
+  /* ── Preview panel ────────────────────────────── */
+  #previewSection { display: none; }
+  .preview-grid { display: grid; gap: 12px; }
+  .preview-slide { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .preview-slide-num { font-size: 10px; font-weight: 700; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; margin-bottom: 6px; }
+  .preview-slide-title { font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
+  .preview-slide-body { font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
+  .preview-slide-body strong { color: var(--text-primary); }
+  .preview-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+  .preview-metric { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 11px; }
+  .preview-metric span { font-weight: 700; color: var(--text-primary); }
+
+  .preview-actions { display: flex; gap: 12px; align-items: center; margin-top: 20px; flex-wrap: wrap; }
+
+  /* ── Email preview ────────────────────────────── */
+  #emailPreview { display: none; }
+  .email-preview-box { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
+  .email-subject { padding: 14px 16px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 700; color: var(--text-primary); }
+  .email-subject span { color: var(--text-muted); font-weight: 400; }
+  .email-body { padding: 20px; font-size: 13px; line-height: 1.7; color: var(--text-secondary); max-height: 500px; overflow-y: auto; }
+  .email-body p { margin: 0 0 10px; }
+  .email-body ul { margin: 6px 0 10px 20px; }
+  .email-body li { margin-bottom: 4px; }
+  .email-body strong { color: var(--text-primary); }
+  .copy-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; font-weight: 700; color: var(--text-secondary); cursor: pointer; font-family: inherit; }
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
 
   #buildSection { display: none; }
 </style>
@@ -51,8 +98,8 @@
       </a>
       <div class="nav-section-label">Modules</div>
       <a href="/pl-analyzer" class="nav-item">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        P&L Analyzer
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        P&amp;L Analyzer
       </a>
       <a href="/daily-intel" class="nav-item">
         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -79,8 +126,8 @@
 
   <div class="main-content">
     <div class="page-header">
-      <h1>Weekly Recap Deck</h1>
-      <p>Upload whatever weekly reports you have — P.AI builds your region recap deck with what's available</p>
+      <h1>Weekly Recap</h1>
+      <p>Upload your weekly reports — P.AI analyzes the data and lets you preview before you download</p>
     </div>
 
     <div class="page-body">
@@ -90,7 +137,6 @@
           <div class="step-number">1</div>
           <h3>Upload Weekly Reports</h3>
         </div>
-
         <div class="report-hint">
           <span class="report-badge">Velocity IST</span>
           <span class="report-badge">FRS</span>
@@ -99,68 +145,169 @@
           <span class="report-badge">SMG Comments</span>
           <span class="report-badge optional">+ Any Others</span>
         </div>
-
         <div class="upload-zone" id="uploadZone">
-          <input type="file" id="recapFiles" accept=".xlsx,.xls,.csv,.pdf,.docx" multiple />
+          <input type="file" id="recapFiles" multiple />
           <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             <polyline points="17 8 12 3 7 8"/>
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
           <h3>Drop weekly report files here</h3>
-          <p>Upload as many or as few as you have · Excel, PDF, CSV · Max 25MB each</p>
+          <p>Excel, PDF, CSV, Word · Any combination · Max 25MB each</p>
         </div>
-
         <div class="file-chips" id="fileChips"></div>
       </div>
 
       <!-- Step 2: Configure -->
-      <div class="card" style="margin-top: 20px;">
+      <div class="card" style="margin-top:20px;">
         <div class="step-header">
           <div class="step-number">2</div>
-          <h3>Configure Deck</h3>
+          <h3>Configure Output</h3>
         </div>
 
+        <!-- Week / Day -->
         <div class="meta-row">
           <div class="form-group">
             <label>Week Dates</label>
-            <input type="text" id="weekLabel" placeholder="e.g., 3/31–4/6" />
+            <input type="text" id="weekLabel" placeholder="e.g., P4W3 4/7–4/13" />
           </div>
           <div class="form-group">
             <label>Recap Call Day</label>
             <select id="recapDay">
-              <option>Monday</option>
-              <option>Tuesday</option>
-              <option>Wednesday</option>
-              <option selected>Thursday</option>
+              <option>Monday</option><option>Tuesday</option>
+              <option>Wednesday</option><option selected>Thursday</option>
               <option>Friday</option>
             </select>
           </div>
         </div>
 
-        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <!-- Format toggle -->
+        <label style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:10px;">Output Format</label>
+        <div class="format-toggle">
+          <button class="format-btn active" id="fmtPptx" onclick="setFormat('pptx')">
+            📊 PowerPoint Deck
+          </button>
+          <button class="format-btn" id="fmtEmail" onclick="setFormat('email')">
+            ✉️ Email Recap
+          </button>
+        </div>
+
+        <!-- PPTX theme options -->
+        <div id="pptxOpts">
+          <label style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:10px;">Deck Style</label>
+          <div class="theme-grid">
+            <div class="theme-card selected" onclick="selectTheme('command-dark',this)" title="Command Dark">
+              <div class="theme-swatch">
+                <div class="theme-swatch-dark" style="background:#1A1A1A"></div>
+                <div class="theme-swatch-accent" style="background:#CC0000"></div>
+              </div>
+              <div class="theme-label">Command</div>
+            </div>
+            <div class="theme-card" onclick="selectTheme('navy-gold',this)" title="Navy Gold">
+              <div class="theme-swatch">
+                <div class="theme-swatch-dark" style="background:#1A2744"></div>
+                <div class="theme-swatch-accent" style="background:#C9A84C"></div>
+              </div>
+              <div class="theme-label">Navy Gold</div>
+            </div>
+            <div class="theme-card" onclick="selectTheme('clean-white',this)" title="Clean White">
+              <div class="theme-swatch">
+                <div class="theme-swatch-dark" style="background:#1F1F1F"></div>
+                <div class="theme-swatch-accent" style="background:#CC0000"></div>
+              </div>
+              <div class="theme-label">Clean</div>
+            </div>
+            <div class="theme-card" onclick="selectTheme('slate-blue',this)" title="Slate Blue">
+              <div class="theme-swatch">
+                <div class="theme-swatch-dark" style="background:#1E3A5F"></div>
+                <div class="theme-swatch-accent" style="background:#4A90D9"></div>
+              </div>
+              <div class="theme-label">Corporate</div>
+            </div>
+            <div class="theme-card" onclick="selectTheme('obsidian',this)" title="Obsidian">
+              <div class="theme-swatch">
+                <div class="theme-swatch-dark" style="background:#0D0D0D"></div>
+                <div class="theme-swatch-accent" style="background:#E53E3E"></div>
+              </div>
+              <div class="theme-label">Obsidian</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Email options -->
+        <div class="email-opts" id="emailOpts">
+          <div class="opt-group">
+            <label>Tone</label>
+            <div class="opt-pills">
+              <button class="opt-pill selected" data-group="tone" onclick="selectPill(this)">Professional</button>
+              <button class="opt-pill" data-group="tone" onclick="selectPill(this)">Conversational</button>
+              <button class="opt-pill" data-group="tone" onclick="selectPill(this)">Brief</button>
+            </div>
+          </div>
+          <div class="opt-group">
+            <label>Length</label>
+            <div class="opt-pills">
+              <button class="opt-pill" data-group="length" onclick="selectPill(this)">Brief</button>
+              <button class="opt-pill selected" data-group="length" onclick="selectPill(this)">Standard</button>
+              <button class="opt-pill" data-group="length" onclick="selectPill(this)">Detailed</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
           <button class="btn btn-primary" id="buildBtn" onclick="buildDeck()" disabled>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-            Build Recap Deck
+            Analyze &amp; Preview
           </button>
           <button class="btn btn-ghost" id="clearBtn" onclick="clearAll()" style="display:none">Clear</button>
         </div>
       </div>
 
-      <!-- Step 3: Progress & Download -->
+      <!-- Step 3: Building -->
       <div id="buildSection">
-        <div class="card" style="margin-top: 20px;">
+        <div class="card" style="margin-top:20px;">
           <div class="step-header">
             <div class="step-number">3</div>
-            <h3>Building Your Deck</h3>
+            <h3>Analyzing Your Data</h3>
           </div>
           <div id="buildStatus">
-            <div class="loading-state">
-              <div class="spinner"></div>
-              <p>P.AI IS BUILDING YOUR DECK...</p>
-            </div>
+            <div class="loading-state"><div class="spinner"></div><p>P.AI IS ANALYZING YOUR REPORTS...</p></div>
           </div>
           <div class="progress-log" id="progressLog"></div>
+        </div>
+      </div>
+
+      <!-- Step 4: Preview -->
+      <div id="previewSection">
+        <div class="card" style="margin-top:20px;">
+          <div class="step-header">
+            <div class="step-number">4</div>
+            <h3 id="previewTitle">Deck Preview</h3>
+          </div>
+          <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;">Review the data P.AI extracted from your reports. If anything looks off, go back and upload the correct files.</p>
+
+          <!-- PPTX preview -->
+          <div id="pptxPreview" class="preview-grid"></div>
+
+          <!-- Email preview -->
+          <div id="emailPreview">
+            <div class="email-preview-box">
+              <div class="email-subject" id="emailSubjectDisplay"></div>
+              <div class="email-body" id="emailBodyDisplay"></div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;">
+              <button class="copy-btn" onclick="copyEmailHtml()">📋 Copy HTML</button>
+              <button class="copy-btn" onclick="copyEmailPlain()">📄 Copy Plain Text</button>
+            </div>
+          </div>
+
+          <div class="preview-actions" id="previewActions">
+            <button class="btn btn-primary" id="downloadBtn" onclick="downloadOutput()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download PPTX
+            </button>
+            <button class="btn btn-ghost" onclick="clearAll()">Start Over</button>
+          </div>
         </div>
       </div>
     </div>
@@ -174,6 +321,10 @@
 
 <script>
   let fileList = [];
+  let selectedTheme = 'command-dark';
+  let selectedFormat = 'pptx';
+  let analyzedData = null;
+  let emailResult = null;
 
   async function init() {
     const res = await fetch('/api/auth/me');
@@ -189,10 +340,40 @@
     window.location.href = '/';
   }
 
+  // ── Format toggle ──────────────────────────────────────────────────────────
+  function setFormat(fmt) {
+    selectedFormat = fmt;
+    document.getElementById('fmtPptx').classList.toggle('active', fmt === 'pptx');
+    document.getElementById('fmtEmail').classList.toggle('active', fmt === 'email');
+    document.getElementById('pptxOpts').style.display = fmt === 'pptx' ? 'block' : 'none';
+    document.getElementById('emailOpts').classList.toggle('show', fmt === 'email');
+    document.getElementById('buildBtn').innerHTML =
+      `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Analyze &amp; Preview`;
+  }
+
+  function selectTheme(theme, card) {
+    selectedTheme = theme;
+    document.querySelectorAll('.theme-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+  }
+
+  function selectPill(btn) {
+    const group = btn.dataset.group;
+    document.querySelectorAll(`.opt-pill[data-group="${group}"]`).forEach(p => p.classList.remove('selected'));
+    btn.classList.add('selected');
+  }
+
+  function getEmailOpt(group) {
+    const sel = document.querySelector(`.opt-pill.selected[data-group="${group}"]`);
+    return sel ? sel.textContent.trim().toLowerCase() : (group === 'tone' ? 'professional' : 'standard');
+  }
+
+  // ── File handling ─────────────────────────────────────────────────────────
   const fileInput = document.getElementById('recapFiles');
   const uploadZone = document.getElementById('uploadZone');
 
   fileInput.addEventListener('change', () => addFiles(fileInput.files));
+  uploadZone.addEventListener('click', () => fileInput.click());
   uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
   uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
   uploadZone.addEventListener('drop', e => {
@@ -230,16 +411,18 @@
         <button class="chip-remove" onclick="removeFile(${i})">×</button>
       </div>`).join('');
     if (fileList.length > 0) {
-      container.innerHTML += `<label class="add-more-btn"><input type="file" accept=".xlsx,.xls,.csv,.pdf,.docx" multiple onchange="addFiles(this.files)" /> + Add More</label>`;
+      container.innerHTML += `<label class="add-more-btn" onclick="fileInput.click()"> + Add More</label>`;
     }
     document.getElementById('buildBtn').disabled = fileList.length === 0;
     document.getElementById('clearBtn').style.display = fileList.length > 0 ? 'inline-flex' : 'none';
   }
 
   function clearAll() {
-    fileList = [];
+    fileList = []; analyzedData = null; emailResult = null;
     renderChips();
     document.getElementById('buildSection').style.display = 'none';
+    document.getElementById('previewSection').style.display = 'none';
+    document.getElementById('progressLog').innerHTML = '';
   }
 
   function log(msg, type = 'info') {
@@ -252,23 +435,26 @@
     logEl.scrollTop = logEl.scrollHeight;
   }
 
+  // ── Main analyze ───────────────────────────────────────────────────────────
   async function buildDeck() {
     if (!fileList.length) return;
 
     const buildSection = document.getElementById('buildSection');
+    const previewSection = document.getElementById('previewSection');
     const buildBtn = document.getElementById('buildBtn');
     const buildStatus = document.getElementById('buildStatus');
     const progressLog = document.getElementById('progressLog');
 
     buildSection.style.display = 'block';
+    previewSection.style.display = 'none';
     progressLog.innerHTML = '';
-    buildStatus.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>P.AI IS BUILDING YOUR DECK...</p></div>`;
+    buildStatus.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>P.AI IS ANALYZING YOUR REPORTS...</p></div>`;
     buildSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     buildBtn.disabled = true;
-    buildBtn.textContent = 'Building...';
+    buildBtn.textContent = 'Analyzing...';
 
-    log(`Building from ${fileList.length} file(s): ${fileList.map(f => f.name).join(', ')}`, 'info');
-    log('Analyzing data with Claude... (2–4 minutes)', 'info');
+    log(`Reading ${fileList.length} file(s): ${fileList.map(f => f.name).join(', ')}`, 'info');
+    log('Sending to Claude for analysis... (1–3 minutes)', 'info');
 
     const formData = new FormData();
     fileList.forEach(f => formData.append('files', f));
@@ -276,41 +462,268 @@
     formData.append('recapDay', document.getElementById('recapDay').value);
 
     try {
-      const res = await fetch('/api/recap/generate', { method: 'POST', body: formData });
-
+      const res = await fetch('/api/recap/analyze', { method: 'POST', body: formData });
       if (!res.ok) {
         const errData = await res.json();
-        throw new Error(errData.error || 'Generation failed');
+        throw new Error(errData.error || 'Analysis failed');
       }
 
-      log('Analysis complete. Generating PowerPoint...', 'ok');
+      const result = await res.json();
+      analyzedData = result.data;
+
+      log('✓ Analysis complete. Building preview...', 'ok');
+
+      buildStatus.innerHTML = `<div style="text-align:center;padding:12px;background:rgba(16,185,129,0.08);border-radius:8px;border:1px solid rgba(16,185,129,0.2);"><div style="color:var(--success);font-weight:700;">✓ Analysis Complete</div><div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Reviewed ${result.fileCount} file(s)</div></div>`;
+
+      if (selectedFormat === 'pptx') {
+        renderPptxPreview(analyzedData);
+        document.getElementById('pptxPreview').style.display = 'block';
+        document.getElementById('emailPreview').style.display = 'none';
+        document.getElementById('previewTitle').textContent = 'Deck Preview — Review Before Downloading';
+        document.getElementById('downloadBtn').style.display = 'inline-flex';
+        document.getElementById('downloadBtn').innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download PPTX`;
+      } else {
+        // Generate email
+        log('Generating email recap...', 'info');
+        await generateEmail(analyzedData);
+      }
+
+      previewSection.style.display = 'block';
+      previewSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    } catch (err) {
+      log(`ERROR: ${err.message}`, 'err');
+      buildStatus.innerHTML = `<div style="color:var(--danger);padding:14px;background:rgba(239,68,68,0.08);border-radius:8px;border:1px solid rgba(239,68,68,0.2);"><strong>Failed:</strong> ${err.message}</div>`;
+    } finally {
+      buildBtn.disabled = false;
+      buildBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Analyze &amp; Preview`;
+    }
+  }
+
+  // ── Generate email (called after analysis if email format selected) ─────────
+  async function generateEmail(data) {
+    const tone   = getEmailOpt('tone');
+    const length = getEmailOpt('length');
+
+    const res = await fetch('/api/recap/email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data, tone, length })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Email generation failed');
+    }
+
+    emailResult = await res.json();
+    log('✓ Email generated', 'ok');
+
+    document.getElementById('emailSubjectDisplay').innerHTML =
+      `<span>Subject: </span>${escHtml(emailResult.subject)}`;
+    document.getElementById('emailBodyDisplay').innerHTML = emailResult.htmlBody;
+    document.getElementById('pptxPreview').style.display = 'none';
+    document.getElementById('emailPreview').style.display = 'block';
+    document.getElementById('previewTitle').textContent = 'Email Preview';
+    document.getElementById('downloadBtn').style.display = 'none';
+  }
+
+  // ── Download PPTX ──────────────────────────────────────────────────────────
+  async function downloadOutput() {
+    if (!analyzedData) return;
+
+    const downloadBtn = document.getElementById('downloadBtn');
+    downloadBtn.disabled = true;
+    downloadBtn.textContent = 'Generating PPTX...';
+    log('Generating PowerPoint file...', 'info');
+
+    try {
+      const res = await fetch('/api/recap/build', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: analyzedData, theme: selectedTheme })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Build failed');
+      }
 
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const week = document.getElementById('weekLabel').value || 'Weekly';
-      a.download = `P.AI_Region_Recap_${week.replace(/[^a-zA-Z0-9]/g, '_')}.pptx`;
+      const week = (analyzedData.weekLabel || document.getElementById('weekLabel').value || 'Weekly').replace(/[^a-zA-Z0-9]/g, '_');
+      a.download = `P.AI_Region_Recap_${week}.pptx`;
       a.click();
       URL.revokeObjectURL(url);
 
-      log('✓ Deck downloaded successfully!', 'ok');
-      log('Remember to fill in Slide 12 (Key Dates) before sending to your ACs.', 'info');
+      log('✓ PPTX downloaded!', 'ok');
+      log('Fill in Slide 12 (Key Dates) before sending to your ACs.', 'info');
 
-      buildStatus.innerHTML = `
-        <div style="text-align:center;padding:20px;background:rgba(16,185,129,0.08);border-radius:10px;border:1px solid rgba(16,185,129,0.2);">
-          <div style="font-size:32px;margin-bottom:12px;">✓</div>
-          <div style="font-size:16px;font-weight:700;color:var(--success);margin-bottom:8px;">Deck Downloaded</div>
-          <div style="font-size:13px;color:var(--text-muted);">Open in PowerPoint and fill in Slide 12 (Key Dates &amp; Reminders) before sending to your ACs.</div>
-          <button class="btn btn-ghost" style="margin-top:16px;" onclick="clearAll()">Build Another</button>
-        </div>`;
+      downloadBtn.innerHTML = `✓ Downloaded`;
+      setTimeout(() => {
+        downloadBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download Again`;
+        downloadBtn.disabled = false;
+      }, 3000);
 
     } catch (err) {
       log(`ERROR: ${err.message}`, 'err');
-      buildStatus.innerHTML = `<div style="color:var(--danger);padding:16px;background:rgba(239,68,68,0.08);border-radius:8px;border:1px solid rgba(239,68,68,0.2);"><strong>Build failed:</strong> ${err.message}</div>`;
-      buildBtn.disabled = false;
-      buildBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Retry Build';
+      downloadBtn.disabled = false;
+      downloadBtn.innerHTML = `Retry Download`;
     }
+  }
+
+  // ── Copy email ─────────────────────────────────────────────────────────────
+  async function copyEmailHtml() {
+    if (!emailResult) return;
+    await navigator.clipboard.writeText(emailResult.htmlBody);
+    showCopied('📋 Copied HTML!');
+  }
+  async function copyEmailPlain() {
+    if (!emailResult) return;
+    await navigator.clipboard.writeText(emailResult.plainText);
+    showCopied('📄 Copied Plain Text!');
+  }
+  function showCopied(msg) {
+    log(msg, 'ok');
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Preview renderer ──────────────────────────────────────────────────────
+  function safe(v, fb = '—') {
+    if (v === null || v === undefined) return fb;
+    if (typeof v === 'object') return fb;
+    return String(v) || fb;
+  }
+  function safeArr(v) { return Array.isArray(v) ? v : []; }
+
+  function renderPptxPreview(data) {
+    const container = document.getElementById('pptxPreview');
+    const s = data.slides || data;
+    let html = '';
+
+    // Slide 1 — Cover
+    html += slide(1, 'Cover', (() => {
+      const stats = safeArr((s.title || {}).stats);
+      const statsHtml = stats.map(st =>
+        `<span class="preview-metric">${escHtml(safe(st.label))}: <span>${escHtml(safe(st.value))}</span></span>`
+      ).join('');
+      return `<strong>${escHtml(safe(data.regionName || (s.title||{}).regionName, 'Region'))}</strong> | Week of ${escHtml(safe(data.weekLabel || (s.title||{}).weekLabel))}<div class="preview-row">${statsHtml}</div>`;
+    })());
+
+    // Slide 2 — Scorecard
+    html += slide(2, 'Region Scorecard', (() => {
+      const metrics = safeArr((s.scorecard || {}).metrics);
+      const mHtml = metrics.map(m =>
+        `<span class="preview-metric">${escHtml(safe(m.label))}: <span>${escHtml(safe(m.value))}</span></span>`
+      ).join('');
+      return `<div class="preview-row">${mHtml || 'No scorecard data'}</div>`;
+    })());
+
+    // Slide 3 — AC Table
+    html += slide(3, 'AC Performance Table', (() => {
+      const rows = safeArr((s.acTable || {}).rows);
+      if (!rows.length) return 'No AC data';
+      return rows.map(r => {
+        const name = safe(r.name || r.acName || r.ac || r.areaCoach || r.coach);
+        return `<div><strong>${escHtml(name)}</strong>: Sales ${escHtml(safe(r.salesGrowth || r.sales_growth || r.sales))} | Labor ${escHtml(safe(r.laborVar || r.labor_var))} | WIN ${escHtml(safe(r.winScore || r.win_score))} | HutBot ${escHtml(safe(r.hutBot || r.hut_bot))}</div>`;
+      }).join('');
+    })());
+
+    // Slide 4 — Wins
+    html += slide(4, 'Wins This Week', (() => {
+      const items = safeArr((s.wins || {}).items);
+      if (!items.length) return 'No wins data';
+      return items.slice(0,5).map(w =>
+        `<div>✓ <strong>${escHtml(safe(w.store || w.storeName))}</strong> — ${escHtml(safe(w.metric))} — ${escHtml(safe(w.description || w.desc))}</div>`
+      ).join('');
+    })());
+
+    // Slide 5 — Focus Areas
+    html += slide(5, 'Focus Areas', (() => {
+      const items = safeArr((s.focusAreas || {}).items);
+      if (!items.length) return 'No focus areas';
+      return items.slice(0,5).map(f =>
+        `<div>⚠ <strong>${escHtml(safe(f.store || f.storeName))}</strong> — ${escHtml(safe(f.metric))} — ${escHtml(safe(f.description || f.desc))}</div>`
+      ).join('');
+    })());
+
+    // Slide 6 — Labor
+    html += slide(6, 'Labor Variance Deep Dive', (() => {
+      const rs = (s.laborDeepDive || {}).regionSummary || (s.laborDeepDive || {}).region || {};
+      const rows = safeArr((s.laborDeepDive || {}).acRows || (s.laborDeepDive || {}).rows);
+      return `Region: Labor Var ${escHtml(safe(rs.laborVar || rs.labor_var))} | Crew OT ${escHtml(safe(rs.crewOT || rs.crew_ot))} | HAM OT ${escHtml(safe(rs.hamOT || rs.ham_ot))}<br>AC rows: ${rows.length}`;
+    })());
+
+    // Slide 7 — Speed
+    html += slide(7, 'Speed Outlier Analysis', (() => {
+      const outliers = safeArr((s.speedOutlier || {}).outlierStores || (s.speedOutlier || {}).outlier_stores);
+      if (!outliers.length) return 'No speed outlier data (upload Velocity IST file)';
+      return outliers.map(o =>
+        `<div>⚡ <strong>${escHtml(safe(o.store || o.name))}</strong>: ${escHtml(safe(o.ist))} IST</div>`
+      ).join('');
+    })());
+
+    // Slide 8 — SMG by AC
+    html += slide(8, 'SMG by Area Coach', (() => {
+      const rows = safeArr((s.smgByAC || {}).rows);
+      const themes = (s.smgByAC || {}).complaintThemes || [];
+      if (!rows.length) return 'No SMG data (upload SMG comments file)';
+      return rows.map(r =>
+        `<div><strong>${escHtml(safe(r.name || r.acName || r.ac))}</strong>: ${escHtml(safe(r.reviews))} reviews, avg ${escHtml(safe(r.avg || r.avgScore))}</div>`
+      ).join('') + (Array.isArray(themes) && themes.length ? `<div style="margin-top:6px;color:var(--text-muted)">Themes: ${themes.map(t => escHtml(safe(t.theme || t.name || t))).join(', ')}</div>` : '');
+    })());
+
+    // Slide 9 — SMG Spotlight
+    html += slide(9, 'SMG Store Spotlight', (() => {
+      const top = safeArr((s.smgSpotlight || {}).top5 || (s.smgSpotlight || {}).top);
+      const bot = safeArr((s.smgSpotlight || {}).bottom5 || (s.smgSpotlight || {}).bottom);
+      if (!top.length && !bot.length) return 'No SMG spotlight data';
+      const topHtml = top.slice(0,3).map(t => `★ ${escHtml(safe(t.name || t.storeName))} (${escHtml(safe(t.score))})`).join(' · ');
+      const botHtml = bot.slice(0,3).map(t => `⚠ ${escHtml(safe(t.name || t.storeName))} (${escHtml(safe(t.score))})`).join(' · ');
+      return (topHtml ? `<div>${topHtml}</div>` : '') + (botHtml ? `<div style="margin-top:6px">${botHtml}</div>` : '');
+    })());
+
+    // Slide 10 — Customer Voice
+    html += slide(10, 'Customer Voice', (() => {
+      const pos = safeArr((s.customerVoice || {}).positives || (s.customerVoice || {}).positive);
+      const neg = safeArr((s.customerVoice || {}).negatives || (s.customerVoice || {}).negative);
+      const posHtml = pos.slice(0,3).map(p => `★ ${escHtml(safe(p.store || p.storeName))}`).join(', ');
+      const negHtml = neg.slice(0,3).map(n => `⚠ ${escHtml(safe(n.store || n.storeName))}`).join(', ');
+      return `Praising: ${posHtml || 'N/A'}<br>Flagging: ${negHtml || 'N/A'}`;
+    })());
+
+    // Slide 11 — Smart Goals
+    html += slide(11, 'Smart Goals', (() => {
+      const goals = safeArr((s.smartGoals || {}).goals);
+      if (!goals.length) return 'No goals data';
+      return goals.map((g, i) =>
+        `<div>${i+1}. <strong>${escHtml(safe(g.metric || g.name))}</strong>: ${escHtml(safe(g.current))} → ${escHtml(safe(g.target))} by ${escHtml(safe(g.byWhen || g.by_when))}</div>`
+      ).join('');
+    })());
+
+    // Slide 12 — Key Dates
+    html += slide(12, 'Key Dates & Reminders', '<span style="color:var(--text-muted);font-style:italic">You fill this in before distributing — 7 date/reminder slots</span>');
+
+    // Slide 13 — Closing
+    html += slide(13, 'Closing', (() => {
+      const ac = (s.closing || {}).acOfWeek || (s.closing || {}).ac_of_week || {};
+      return `AC of the Week: <strong>${escHtml(safe(ac.name, 'TBD'))}</strong><br>${escHtml(safe(ac.description || ac.reason, ''))}`;
+    })());
+
+    container.innerHTML = html;
+  }
+
+  function slide(num, title, bodyHtml) {
+    return `<div class="preview-slide">
+      <div class="preview-slide-num">Slide ${num}</div>
+      <div class="preview-slide-title">${title}</div>
+      <div class="preview-slide-body">${bodyHtml}</div>
+    </div>`;
   }
 
   init();

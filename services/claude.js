@@ -529,4 +529,67 @@ async function analyzeTrends(recentReports) {
   return message.content[0].text;
 }
 
-module.exports = { analyzePL, analyzeRecap, analyzeDaily, analyzeTrends };
+// ─── Recap Email Generator ─────────────────────────────────────────────────
+
+async function generateRecapEmail(data, options = {}) {
+  const tone = options.tone || 'professional';
+  const length = options.length || 'standard';
+
+  const toneGuide = {
+    professional: 'formal, direct, executive-level tone. Use complete sentences. No slang.',
+    conversational: 'friendly but professional tone. Write as if talking directly to your ACs. Short sentences.',
+    brief: 'extremely concise. Bullet-heavy. Get to the point fast. Under 200 words total.'
+  }[tone] || 'professional, direct tone';
+
+  const lengthGuide = {
+    brief: '3–5 key points only. No more than 150 words. Lead with the #1 takeaway.',
+    standard: '8–12 key points. Cover wins, watch items, and top 2–3 goals.',
+    detailed: 'Full recap. Cover all major metrics, wins, focus areas, all 3 goals, and include a closing note.'
+  }[length] || 'standard length covering key highlights';
+
+  const system = `You are drafting a weekly region recap email from Harold Lacoste (RDO, Ayvaz Pizza LLC) to his Area Coach team.
+
+Tone: ${toneGuide}
+Length: ${lengthGuide}
+
+Structure the email with:
+1. A subject line (format: "Subject: ...")
+2. A greeting
+3. The recap content
+4. A closing with Harold's signature
+
+Use data from the JSON provided. Be specific with numbers. Do not include placeholder text — if data is missing for a section, skip it.
+Format the body using HTML for clean email rendering (use <p>, <strong>, <ul>, <li> — no complex CSS).
+After the full email, add a separator "---PLAIN---" and then provide a plain-text version.`;
+
+  const s = data.slides || data;
+  const summary = JSON.stringify({
+    regionName: data.regionName,
+    weekLabel: data.weekLabel,
+    scorecard: s.scorecard,
+    wins: s.wins,
+    focusAreas: s.focusAreas,
+    smartGoals: s.smartGoals,
+    closing: s.closing
+  });
+
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 4096,
+    system,
+    messages: [{ role: 'user', content: `Here is the region recap data for this week:\n\n${summary}\n\nWrite the email.` }]
+  });
+
+  const raw = message.content[0].text;
+  const subjectMatch = raw.match(/Subject:\s*(.+)/i);
+  const subject = subjectMatch ? subjectMatch[1].trim() : `Weekly Region Recap — ${data.weekLabel || 'This Week'}`;
+
+  // Split HTML and plain text
+  const parts = raw.split(/---PLAIN---/i);
+  const htmlBody = parts[0].replace(/Subject:.*\n?/i, '').trim();
+  const plainText = (parts[1] || '').trim();
+
+  return { subject, htmlBody, plainText };
+}
+
+module.exports = { analyzePL, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail };

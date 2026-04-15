@@ -1,20 +1,49 @@
 const PptxGenJS = require('pptxgenjs');
 
-// ── Brand ─────────────────────────────────────────────────────────────────────
-const B = {
-  red:     '#CC0000',
-  dark:    '#1A1A1A',
-  mid:     '#2A2A2A',
-  muted:   '#3A3A3A',
-  light:   '#F5F5F5',
-  white:   '#FFFFFF',
-  gray:    '#888888',
-  lgray:   '#BBBBBB',
-  green:   '#2E7D32',
-  yellow:  '#F57F17',
-  danger:  '#C62828',
-  gold:    '#F9A825',
+// ── Themes ────────────────────────────────────────────────────────────────────
+const THEMES = {
+  'command-dark': {
+    dark: '#1A1A1A', mid: '#2A2A2A', muted: '#3A3A3A',
+    light: '#F5F5F5', accent: '#CC0000'
+  },
+  'navy-gold': {
+    dark: '#1A2744', mid: '#253360', muted: '#2E3D6E',
+    light: '#F5F6F8', accent: '#C9A84C'
+  },
+  'clean-white': {
+    dark: '#1F1F1F', mid: '#2C2C2C', muted: '#3D3D3D',
+    light: '#FFFFFF', accent: '#CC0000'
+  },
+  'slate-blue': {
+    dark: '#1E3A5F', mid: '#2A4D7A', muted: '#345A8A',
+    light: '#F0F4F8', accent: '#4A90D9'
+  },
+  'obsidian': {
+    dark: '#0D0D0D', mid: '#161616', muted: '#212121',
+    light: '#F8F8F8', accent: '#E53E3E'
+  },
 };
+
+function buildBrand(theme) {
+  const t = THEMES[theme] || THEMES['command-dark'];
+  return {
+    red:    t.accent,
+    dark:   t.dark,
+    mid:    t.mid,
+    muted:  t.muted,
+    light:  t.light,
+    white:  '#FFFFFF',
+    gray:   '#888888',
+    lgray:  '#BBBBBB',
+    green:  '#2E7D32',
+    yellow: '#F57F17',
+    danger: '#C62828',
+    gold:   '#F9A825',
+  };
+}
+
+// Default brand (overridden per call in generateRecapPPTX)
+let B = buildBrand('command-dark');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function safe(val, fallback = '') {
@@ -58,7 +87,10 @@ function chrome(slide, pptx, title, slideNum, total) {
 }
 
 // ── Main generator ─────────────────────────────────────────────────────────────
-async function generateRecapPPTX(data) {
+async function generateRecapPPTX(data, options = {}) {
+  // Apply theme
+  B = buildBrand(options.theme || 'command-dark');
+
   const pptx = new PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE';
   pptx.author = 'P.AI by Ayvaz Pizza';
@@ -216,12 +248,13 @@ function makeACTable(pptx, d, weekLabel, total) {
   ];
 
   rows.forEach((r, idx) => {
+    const acName = safe(r.name || r.acName || r.ac || r.areaCoach || r.coach || r.area_coach || r.areaCoachName);
     tableRows.push([
-      { text: safe(r.name), options: { color: B.dark, fontSize: 11, bold: true, fill: idx % 2 === 0 ? B.white : '#F0F0F0' } },
-      { text: safe(r.salesGrowth || r.sales_growth), options: { color: B.dark, fontSize: 11, fill: idx % 2 === 0 ? B.white : '#F0F0F0', align: 'center' } },
+      { text: acName, options: { color: B.dark, fontSize: 11, bold: true, fill: idx % 2 === 0 ? B.white : '#F0F0F0' } },
+      { text: safe(r.salesGrowth || r.sales_growth || r.sales), options: { color: B.dark, fontSize: 11, fill: idx % 2 === 0 ? B.white : '#F0F0F0', align: 'center' } },
       { text: safe(r.laborVar || r.labor_var), options: { color: B.dark, fontSize: 11, fill: idx % 2 === 0 ? B.white : '#F0F0F0', align: 'center' } },
-      { text: safe(r.winScore || r.win_score), options: { color: B.dark, fontSize: 11, fill: idx % 2 === 0 ? B.white : '#F0F0F0', align: 'center' } },
-      { text: safe(r.hutBot || r.hut_bot), options: { color: B.dark, fontSize: 11, fill: idx % 2 === 0 ? B.white : '#F0F0F0', align: 'center' } },
+      { text: safe(r.winScore || r.win_score || r.win), options: { color: B.dark, fontSize: 11, fill: idx % 2 === 0 ? B.white : '#F0F0F0', align: 'center' } },
+      { text: safe(r.hutBot || r.hut_bot || r.hutbot), options: { color: B.dark, fontSize: 11, fill: idx % 2 === 0 ? B.white : '#F0F0F0', align: 'center' } },
     ]);
   });
 
@@ -349,8 +382,9 @@ function makeLaborDeepDive(pptx, d, weekLabel, total) {
 
   acRows.forEach((r, idx) => {
     const fill = idx % 2 === 0 ? B.white : '#F0F0F0';
+    const acName = safe(r.name || r.acName || r.ac || r.areaCoach || r.coach || r.area_coach || r.areaCoachName);
     tableRows.push([
-      { text: safe(r.name), options: { color: B.dark, fontSize: 10, bold: true, fill } },
+      { text: acName, options: { color: B.dark, fontSize: 10, bold: true, fill } },
       { text: safe(r.salesGrowth || r.sales_growth || r.sales), options: { color: B.dark, fontSize: 10, fill, align: 'center' } },
       { text: safe(r.laborVar || r.labor_var), options: { color: B.dark, fontSize: 10, fill, align: 'center' } },
       { text: safe(r.crewOT || r.crew_ot), options: { color: B.dark, fontSize: 10, fill, align: 'center' } },
@@ -432,10 +466,11 @@ function makeSMGbyAC(pptx, d, weekLabel, total) {
 
   rows.forEach((r, idx) => {
     const fill = idx % 2 === 0 ? B.white : '#F0F0F0';
+    const acName = safe(r.name || r.acName || r.ac || r.areaCoach || r.coach || r.area_coach || r.areaCoachName);
     tableRows.push([
-      { text: safe(r.name), options: { color: B.dark, fontSize: 11, bold: true, fill } },
-      { text: safe(r.reviews), options: { color: B.dark, fontSize: 11, fill, align: 'center' } },
-      { text: safe(r.avg || r.avgScore), options: { color: B.dark, fontSize: 11, fill, align: 'center' } },
+      { text: acName, options: { color: B.dark, fontSize: 11, bold: true, fill } },
+      { text: safe(r.reviews || r.reviewCount || r.review_count), options: { color: B.dark, fontSize: 11, fill, align: 'center' } },
+      { text: safe(r.avg || r.avgScore || r.avg_score || r.satAvg || r.score), options: { color: B.dark, fontSize: 11, fill, align: 'center' } },
       { text: safe(r.pos || r.positive), options: { color: B.green, fontSize: 11, fill, align: 'center' } },
       { text: safe(r.neg || r.negative), options: { color: B.danger, fontSize: 11, fill, align: 'center' } },
       { text: safe(r.negRate || r.neg_rate), options: { color: B.dark, fontSize: 11, fill, align: 'center' } },
@@ -509,7 +544,19 @@ function makeCustomerVoice(pptx, d, weekLabel, total) {
 
   const pos = safeArr(d.positives || d.positive);
   const neg = safeArr(d.negatives || d.negative);
-  const themes = safe(d.themes || d.topThemes);
+  // themes may be an array of objects or a plain string
+  const themesRaw = d.themes || d.topThemes || d.complaintThemes;
+  let themes = '';
+  if (Array.isArray(themesRaw)) {
+    themes = themesRaw.map(t => {
+      if (typeof t === 'string') return t;
+      const label = safe(t.theme || t.name || t.label || t.topic);
+      const count = safe(t.count || t.mentions || t.total || '');
+      return count ? `${label}  [${count}]` : label;
+    }).filter(Boolean).join('     ');
+  } else {
+    themes = safe(themesRaw);
+  }
 
   slide.addText('WHAT CUSTOMERS ARE PRAISING', { x: 0.25, y: 0.72, w: 4.3, h: 0.25, color: B.green, fontSize: 9, bold: true, charSpacing: 1 });
   slide.addText('WHAT CUSTOMERS ARE FLAGGING', { x: 5.05, y: 0.72, w: 4.5, h: 0.25, color: B.danger, fontSize: 9, bold: true, charSpacing: 1 });
