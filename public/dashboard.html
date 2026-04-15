@@ -225,7 +225,7 @@
       </div>
 
       <!-- Master Alignment File Management -->
-      <div class="card">
+      <div class="card" id="alignmentCard">
         <div class="card-title">Master Alignment File</div>
         <p style="color:var(--text-secondary);font-size:13px;line-height:1.6;margin-bottom:14px;">Upload the master alignment file once — P.AI automatically applies it to every recap for all users. Re-upload whenever ACs, stores, or RGMs change.</p>
         <div id="alignStatus" style="font-size:13px;margin-bottom:14px;padding:8px 12px;border-radius:6px;display:none;"></div>
@@ -265,7 +265,13 @@
     document.getElementById('userRole').textContent = role.toUpperCase();
     document.getElementById('userInitial').textContent = name.charAt(0).toUpperCase();
     document.getElementById('welcomeName').textContent = name.split(' ')[0];
-    checkAlignmentStatus();
+    // Only show alignment management card to RDOs and VPs
+    if (role === 'rdo' || role === 'vp') {
+      checkAlignmentStatus();
+    } else {
+      const card = document.getElementById('alignmentCard');
+      if (card) card.style.display = 'none';
+    }
   }
 
   async function checkAlignmentStatus() {

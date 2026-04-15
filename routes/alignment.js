@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
 // Single global alignment file — stored in uploads/ as a known filename
 const UPLOADS_DIR = path.join(__dirname, '../uploads');
@@ -28,14 +28,14 @@ router.get('/status', requireAuth, (req, res) => {
   } catch { res.json({ hasFile: false }); }
 });
 
-// POST — upload/replace the global alignment file (any authenticated user)
-router.post('/upload', requireAuth, upload.single('alignmentFile'), (req, res) => {
+// POST — upload/replace the global alignment file (RDO and VP only)
+router.post('/upload', requireRole('rdo', 'vp'), upload.single('alignmentFile'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file provided.' });
   res.json({ success: true });
 });
 
-// DELETE — remove global alignment file
-router.delete('/clear', requireAuth, (req, res) => {
+// DELETE — remove global alignment file (RDO and VP only)
+router.delete('/clear', requireRole('rdo', 'vp'), (req, res) => {
   try { if (fs.existsSync(ALIGN_FILE)) fs.unlinkSync(ALIGN_FILE); } catch {}
   res.json({ success: true });
 });
