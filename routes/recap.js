@@ -61,9 +61,9 @@ router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res)
     const recapDay = getRecapDay();
     const lastAcOfWeek = req.body.lastAcOfWeek || null;
 
-    // Auto-inject stored alignment file if one exists for this user
+    // Auto-inject global alignment file if one has been uploaded
     let allFiles = [...req.files];
-    const alignPath = getAlignmentPath(req.session.user.username);
+    const alignPath = getAlignmentPath();
     if (alignPath) {
       const alignStat = require('fs').statSync(alignPath);
       alignTempFile = { path: alignPath, originalname: 'Master_Alignment.xlsx', size: alignStat.size, mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', skipDelete: true };
