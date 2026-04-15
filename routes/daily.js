@@ -13,17 +13,38 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 }
 });
 
-// ── POST /api/daily/analyze ───────────────────────────────────────────────────
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function withRetry(fn, maxAttempts = 5) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const status = err.status || (err.error && err.error.status);
+      const isRateLimit = status === 429 || (err.message && err.message.includes('rate_limit'));
+      if (isRateLimit && attempt < maxAttempts) {
+        const retryAfter = err.headers && err.headers['retry-after'];
+        const delay = retryAfter ? parseInt(retryAfter) * 1000 : 30000 * attempt;
+        console.log('[Daily] Rate limit hit (attempt ' + attempt + '/' + maxAttempts + '). Retrying in ' + (delay / 1000) + 's...');
+        await sleep(delay);
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
+// POST /api/daily/analyze
 router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res) => {
-  if (!req.files || req.files.length === 0) {
+  if (req.files == null || req.files.length === 0) {
     return res.status(400).json({ error: 'At least one report file is required.' });
   }
 
   try {
-    const analysis = await analyzeDaily(req.files);
+    console.log('[Daily] Analyzing ' + req.files.length + ' file(s) for ' + req.session.user.username + ': ' + req.files.map(f => f.originalname).join(', '));
+    const analysis = await withRetry(() => analyzeDaily(req.files));
     const reportNames = req.files.map(f => f.originalname).join(', ');
 
-    // Auto-save to history
     const saved = await saveAnalysis({
       username: req.session.user.username,
       userName: req.session.user.name,
@@ -35,18 +56,19 @@ router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res)
     res.json({
       analysis,
       fileCount: req.files.length,
-      savedId: saved?.id || null,
-      savedAt: saved?.created_at || null
+      savedId: saved && saved.id ? saved.id : null,
+      savedAt: saved && saved.created_at ? saved.created_at : null
     });
   } catch (err) {
-    console.error('Daily analysis error:', err);
-    res.status(500).json({ error: 'Analysis failed.', message: err.message });
+    const stack1 = err.stack ? err.stack.split('\n')[1] : '';
+    console.error('[Daily] Analysis error (status=' + err.status + ', code=' + err.code + '):', err.message, stack1);
+    res.status(500).json({ error: 'Analysis failed.', message: err.message || String(err) });
   } finally {
-    req.files.forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
+    req.files.forEach(f => { try { fs.unlinkSync(f.path); } catch (e) {} });
   }
 });
 
-// ── GET /api/daily/history ────────────────────────────────────────────────────
+// GET /api/daily/history
 router.get('/history', requireAuth, async (req, res) => {
   try {
     const history = await getHistory(req.session.user.username, 30);
@@ -57,18 +79,18 @@ router.get('/history', requireAuth, async (req, res) => {
   }
 });
 
-// ── GET /api/daily/history/:id ────────────────────────────────────────────────
+// GET /api/daily/history/:id
 router.get('/history/:id', requireAuth, async (req, res) => {
   try {
     const record = await getAnalysisById(req.params.id, req.session.user.username);
-    if (!record) return res.status(404).json({ error: 'Not found.' });
+    if (record == null) return res.status(404).json({ error: 'Not found.' });
     res.json({ record });
   } catch (err) {
     res.status(500).json({ error: 'Could not load record.' });
   }
 });
 
-// ── POST /api/daily/trends ────────────────────────────────────────────────────
+// POST /api/daily/trends
 router.post('/trends', requireAuth, async (req, res) => {
   try {
     const days = parseInt(req.body.days) || 14;
@@ -76,12 +98,12 @@ router.post('/trends', requireAuth, async (req, res) => {
 
     if (recentReports.length < 2) {
       return res.json({
-        analysis: '## ⚠️ Not Enough Data\n\nAt least 2 daily intel sessions are needed to identify trends. Run Daily Intel for a few days and come back.',
+        analysis: '## Not Enough Data\n\nAt least 2 daily intel sessions are needed to identify trends.',
         reportCount: recentReports.length
       });
     }
 
-    const analysis = await analyzeTrends(recentReports);
+    const analysis = await withRetry(() => analyzeTrends(recentReports));
     res.json({ analysis, reportCount: recentReports.length, days });
   } catch (err) {
     console.error('Trends error:', err);
@@ -89,11 +111,11 @@ router.post('/trends', requireAuth, async (req, res) => {
   }
 });
 
-// ── POST /api/daily/email ─────────────────────────────────────────────────────
+// POST /api/daily/email
 router.post('/email', requireAuth, async (req, res) => {
   try {
     const { analysisText, tone, length } = req.body;
-    if (!analysisText) return res.status(400).json({ error: 'No analysis text provided.' });
+    if (analysisText == null) return res.status(400).json({ error: 'No analysis text provided.' });
     const result = await generateDailyIntelEmail(analysisText, { tone, length });
     res.json(result);
   } catch (err) {
@@ -102,16 +124,16 @@ router.post('/email', requireAuth, async (req, res) => {
   }
 });
 
-// ── POST /api/daily/pptx ──────────────────────────────────────────────────────
+// POST /api/daily/pptx
 router.post('/pptx', requireAuth, async (req, res) => {
   try {
     const { analysisText } = req.body;
-    if (!analysisText) return res.status(400).json({ error: 'No analysis text provided.' });
+    if (analysisText == null) return res.status(400).json({ error: 'No analysis text provided.' });
     const buffer = await generateDailyIntelPPTX(analysisText);
     const dateStr = new Date().toISOString().slice(0, 10);
-    const filename = `Daily_Intel_${dateStr}.pptx`;
+    const filename = 'Daily_Intel_' + dateStr + '.pptx';
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Disposition', 'attachment; filename="' + filename + '"');
     res.send(buffer);
   } catch (err) {
     console.error('Daily PPTX error:', err);
@@ -119,4 +141,4 @@ router.post('/pptx', requireAuth, async (req, res) => {
   }
 });
 
-module.exports = router;
+m
