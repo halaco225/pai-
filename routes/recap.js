@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { requireAuth } = require('../middleware/auth');
+const { MASTER_ALIGNMENT_TEXT } = require('../services/alignment-data');
 const { getAlignment } = require('../services/db');
 
 const storage = multer.diskStorage({
@@ -56,13 +57,10 @@ router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res)
     const recapDay = getRecapDay();
     const lastAcOfWeek = req.body.lastAcOfWeek || null;
 
+    // Use DB override if uploaded, otherwise use built-in alignment (always current)
     const alignRow = await getAlignment();
-    const alignmentText = alignRow ? alignRow.content_text : null;
-    if (alignmentText) {
-      console.log('[Recap] Alignment loaded from DB (' + (alignRow.file_name || 'master') + ')');
-    } else {
-      console.log('[Recap] No alignment in DB — proceeding without it');
-    }
+    const alignmentText = (alignRow && alignRow.content_text) ? alignRow.content_text : MASTER_ALIGNMENT_TEXT;
+    console.log('[Recap] Alignment source: ' + (alignRow ? 'DB upload' : 'built-in'));
 
     const data = await withRetry(() => analyzeRecap(req.files, '', recapDay, lastAcOfWeek, alignmentText));
     res.json({ data, fileCount: req.files.length, fileNames: req.files.map(f => f.originalname).join(', ') });
@@ -114,7 +112,7 @@ router.post('/generate', requireAuth, upload.array('files', 10), async (req, res
     const { analyzeRecap } = require('../services/claude');
     const { generateRecapPPTX } = require('../services/pptx-recap');
     const alignRow = await getAlignment();
-    const alignmentText = alignRow ? alignRow.content_text : null;
+    const alignmentText = (alignRow && alignRow.content_text) ? alignRow.content_text : MASTER_ALIGNMENT_TEXT;
     const analysis = await withRetry(() => analyzeRecap(req.files, '', getRecapDay(), null, alignmentText));
     const pptxBuffer = await generateRecapPPTX(analysis);
     res.set({

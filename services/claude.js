@@ -530,7 +530,7 @@ TONE: Direct, confident, no fluff. These are operational leaders — they want t
 
 // ─── Daily Intel Analyzer ──────────────────────────────────────────────────
 
-async function analyzeDaily(files) {
+async function analyzeDaily(files, alignmentText) {
   const fileTexts = await Promise.all(files.map(async (file) => {
     try {
       const text = await extractTextFromFile(file);

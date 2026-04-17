@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { requireAuth } = require('../middleware/auth');
 const { analyzeDaily, analyzeTrends, generateDailyIntelEmail } = require('../services/claude');
+const { MASTER_ALIGNMENT_TEXT } = require('../services/alignment-data');
 const { generateDailyIntelPPTX } = require('../services/pptx-daily');
 const { saveAnalysis, getHistory, getRecentDaily, getAnalysisById } = require('../services/db');
 
@@ -42,7 +43,7 @@ router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res)
 
   try {
     console.log('[Daily] Analyzing ' + req.files.length + ' file(s) for ' + req.session.user.username + ': ' + req.files.map(f => f.originalname).join(', '));
-    const analysis = await withRetry(() => analyzeDaily(req.files));
+    const analysis = await withRetry(() => analyzeDaily(req.files, MASTER_ALIGNMENT_TEXT));
     const reportNames = req.files.map(f => f.originalname).join(', ');
 
     const saved = await saveAnalysis({
