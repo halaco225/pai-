@@ -412,7 +412,7 @@ async function analyzePL(file) {
 
 // ─── Weekly Recap Analyzer ──────────────────────────────────────────────────
 
-async function analyzeRecap(files, weekLabel, recapDay, lastAcOfWeek) {
+async function analyzeRecap(files, weekLabel, recapDay, lastAcOfWeek, alignmentText) {
   // Extract text from all uploaded files
   const fileTexts = await Promise.all(files.map(async (file) => {
     try {
@@ -426,6 +426,17 @@ async function analyzeRecap(files, weekLabel, recapDay, lastAcOfWeek) {
   const combinedText = fileTexts.join('\n\n---\n\n');
 
   const fileNames = files.map(f => f.originalname).join(', ');
+
+  // Persistent alignment text passed in from DB — never requires re-upload
+  const alignBlock = alignmentText
+    ? ('\n\n=== MASTER ALIGNMENT FILE (authoritative — use for all store/AC/RGM lookups) ===\n'
+        + alignmentText.slice(0, 60000)
+        + '\n=== END MASTER ALIGNMENT ===')
+    : '';
+  const alignNote = alignmentText
+    ? 'Master alignment data is included at the bottom — use it for all store/AC/RGM name resolution.'
+    : 'No alignment file on record — derive store/AC data from the uploaded reports directly.';
+
   const userMessage = `I've uploaded ${files.length} weekly report file(s): ${fileNames}
 
 Build the region recap deck using whatever data is available in these files. If some data sources are missing, build the slides you can with the data provided and note where data was unavailable — do not fail or refuse because of missing files. Work with what you have.
@@ -433,10 +444,11 @@ Build the region recap deck using whatever data is available in these files. If 
 Week: ${weekLabel || '[not specified]'}
 Recap call day: ${recapDay || 'Thursday'}
 ${lastAcOfWeek ? `Last week's AC of the Week: ${lastAcOfWeek} — DO NOT pick this person again this week. Choose the next most deserving AC based on the data.` : ''}
+NOTE: ${alignNote}
 
 Here are the file contents:
 
-${combinedText}
+${combinedText}${alignBlock}
 
 Return a structured JSON object with all 13 slides worth of content as specified in the instructions. For any slide where source data was not provided, use placeholder text like "[Data not available — upload [file type] to populate]".`;
 

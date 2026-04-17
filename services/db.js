@@ -35,6 +35,17 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_history_user
     ON analysis_history (username, created_at DESC)
   `);
+
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS alignment_data (
+      id           SERIAL PRIMARY KEY,
+      updated_by   VARCHAR(50)  NOT NULL,
+      file_name    VARCHAR(255),
+      content_text TEXT         NOT NULL,
+      created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    )
+  `);
+
 }
 
 // ── Save an analysis ──────────────────────────────────────────────────────────
@@ -117,4 +128,48 @@ async function getAnalysisById(id, username) {
   }
 }
 
-module.exports = { initDB, saveAnalysis, getHistory, getRecentDaily, getAnalysisById };
+
+// Persistent alignment — survives Render restarts (stored in PostgreSQL)
+async function saveAlignment({ updatedBy, fileName, contentText }) {
+  const p = getPool();
+  if (p == null) return null;
+  try {
+    await p.query('DELETE FROM alignment_data');
+    const res = await p.query(
+      'INSERT INTO alignment_data (updated_by, file_name, content_text) VALUES ($1, $2, $3) RETURNING id, created_at',
+      [updatedBy, fileName, contentText]
+    );
+    console.log('[Alignment] Saved to DB by', updatedBy);
+    return res.rows[0];
+  } catch (err) {
+    console.error('DB saveAlignment error:', err.message);
+    return null;
+  }
+}
+
+async function getAlignment() {
+  const p = getPool();
+  if (p == null) return null;
+  try {
+    const res = await p.query(
+      'SELECT id, updated_by, file_name, content_text, created_at FROM alignment_data ORDER BY created_at DESC LIMIT 1'
+    );
+    return res.rows[0] || null;
+  } catch (err) {
+    console.error('DB getAlignment error:', err.message);
+    return null;
+  }
+}
+
+async function clearAlignment() {
+  const p = getPool();
+  if (p == null) return;
+  try {
+    await p.query('DELETE FROM alignment_data');
+    console.log('[Alignment] Cleared from DB');
+  } catch (err) {
+    console.error('DB clearAlignment error:', err.message);
+  }
+}
+
+module.exports = { initDB, saveAnalysis, getHistory, getRecentDaily, getAnalysisById, saveAlignment, getAlignment, clearAlignment };
