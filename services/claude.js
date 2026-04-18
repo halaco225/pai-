@@ -732,3 +732,4 @@ ${JSON.stringify(data, null, 2)}` }]
 // ─── Exports ────────────────────────────────────────────────────────────────
 
 module.exports = { analyzePL, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail, generateDailyIntelEmail };
+       
