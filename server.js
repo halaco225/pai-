@@ -4,7 +4,7 @@ const session = require('express-session');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const { initDB } = require('./services/db');
+const { initDB, initVelocityDB } = require('./services/db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -42,6 +42,7 @@ app.use('/api/pl', require('./routes/pl'));
 app.use('/api/recap', require('./routes/recap'));
 app.use('/api/daily', require('./routes/daily'));
 app.use('/api/alignment', require('./routes/alignment'));
+app.use('/api/velocity', require('./routes/velocity'));
 
 // Serve login page as default
 app.get('/', (req, res) => {
@@ -69,6 +70,11 @@ app.get('/daily-intel', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'daily-intel.html'));
 });
 
+app.get('/velocity', (req, res) => {
+  if (!req.session.user) return res.redirect('/');
+  res.sendFile(path.join(__dirname, 'public', 'velocity.html'));
+});
+
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', version: '1.0.0' }));
 
@@ -92,6 +98,12 @@ app.listen(PORT, async () => {
     console.log(`   Database: connected ✓`);
   } catch (err) {
     console.log(`   Database: not configured (${err.message})`);
+  }
+  try {
+    await initVelocityDB();
+    console.log(`   Velocity DB: initialized ✓`);
+  } catch (err) {
+    console.log(`   Velocity DB: init failed (${err.message})`);
   }
   console.log('');
 });

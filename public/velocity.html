@@ -1,0 +1,736 @@
+<\!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Velocity — Speed of Service | P.AI</title>
+<style>
+  :root {
+    --bg: #0d0d0d; --surface: #1a1a1a; --surface2: #222;
+    --border: #333; --text: #eee; --muted: #888;
+    --red: #e31837; --green: #28a745; --yellow: #ffc107;
+    --orange: #fd7e14; --blue: #0d6efd;
+    --ist-green: #28a745; --ist-yellow: #ffc107;
+    --ist-orange: #fd7e14; --ist-red: #dc3545;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Arial, sans-serif; min-height: 100vh; }
+
+  /* ── Nav ── */
+  .nav { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 20px; display: flex; align-items: center; height: 56px; gap: 12px; }
+  .nav-brand { color: var(--red); font-weight: 700; font-size: 18px; text-decoration: none; }
+  .nav-sep { color: var(--border); }
+  .nav-title { color: var(--text); font-size: 16px; font-weight: 600; }
+  .nav-back { margin-left: auto; color: var(--muted); text-decoration: none; font-size: 14px; }
+  .nav-back:hover { color: var(--text); }
+
+  /* ── Layout ── */
+  .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+  /* ── Filter bar ── */
+  .filter-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+  .filter-bar select, .filter-bar input { background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+  .filter-bar select { min-width: 160px; }
+  .filter-bar label { color: var(--muted); font-size: 12px; }
+  .btn { background: var(--red); color: #fff; border: none; border-radius: 6px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+  .btn:hover { opacity: 0.85; }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn-outline:hover { border-color: var(--red); color: var(--red); }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+  /* ── View tabs ── */
+  .view-tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab { background: var(--surface); border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+  .tab.active { background: var(--red); border-color: var(--red); color: #fff; }
+  .tab:hover:not(.active) { border-color: #555; color: var(--text); }
+
+  /* ── Scorecard strip ── */
+  .scorecard-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .scorecard { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; text-align: center; }
+  .scorecard .val { font-size: 26px; font-weight: 700; }
+  .scorecard .lbl { font-size: 11px; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: .5px; }
+
+  /* ── Main table ── */
+  .table-wrap { overflow-x: auto; }
+  table.ist-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.ist-table th { background: #111; color: var(--muted); padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; z-index: 2; }
+  table.ist-table td { padding: 8px; border-bottom: 1px solid #1e1e1e; white-space: nowrap; }
+  table.ist-table tr:hover td { background: #1e1e1e; }
+
+  /* row level styles */
+  tr.row-total td { background: #161616; font-weight: 700; }
+  tr.row-region td { background: #131313; font-weight: 600; color: #ccc; }
+  tr.row-area td { background: #111; color: #bbb; padding-left: 20px; }
+  tr.row-store td { padding-left: 36px; }
+  tr.row-store td:first-child { padding-left: 36px; }
+
+  /* IST color badges */
+  .ist-val { display: inline-block; font-weight: 700; padding: 2px 8px; border-radius: 4px; font-size: 13px; }
+  .ist-green  { color: var(--ist-green); }
+  .ist-yellow { color: var(--ist-yellow); }
+  .ist-orange { color: var(--ist-orange); }
+  .ist-red    { color: var(--ist-red); }
+  .ist-none   { color: var(--muted); }
+
+  /* Delta badges */
+  .delta-good { color: var(--ist-green); font-size: 12px; }
+  .delta-bad  { color: var(--ist-red); font-size: 12px; }
+  .delta-flat { color: var(--muted); font-size: 12px; }
+
+  /* ── Day pill strip ── */
+  .day-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .day-pill { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; font-size: 12px; cursor: pointer; color: var(--muted); }
+  .day-pill.active { background: var(--red); border-color: var(--red); color: #fff; }
+  .day-pill:hover:not(.active) { border-color: #555; color: var(--text); }
+
+  /* ── Trend chart area ── */
+  .trend-section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .trend-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .trend-header h3 { font-size: 14px; color: var(--text); }
+
+  /* ── DOW patterns ── */
+  .dow-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+  .dow-card { background: var(--surface2); border-radius: 6px; padding: 10px; text-align: center; }
+  .dow-card .day { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .dow-card .ist { font-size: 18px; font-weight: 700; }
+  .dow-card .insight { font-size: 10px; color: var(--muted); margin-top: 4px; }
+
+  /* ── Insights panel ── */
+  .insights-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .insights-panel h3 { font-size: 14px; color: var(--text); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .insights-text { font-size: 13px; color: #ccc; line-height: 1.6; white-space: pre-wrap; }
+  .insights-loading { color: var(--muted); font-size: 13px; }
+
+  /* ── Status bar ── */
+  .status-bar { display: flex; align-items: center; gap: 12px; padding: 8px 0; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+  .status-dot.warn { background: var(--yellow); }
+  .status-dot.err  { background: var(--red); }
+
+  /* ── Upload zone ── */
+  .upload-zone { border: 2px dashed var(--border); border-radius: 8px; padding: 24px; text-align: center; cursor: pointer; transition: border-color .2s; }
+  .upload-zone:hover { border-color: var(--red); }
+  .upload-zone p { color: var(--muted); font-size: 13px; margin-top: 8px; }
+
+  /* ── Week selector ── */
+  .week-selector { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .week-btn { background: var(--surface); border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+  .week-btn.active { border-color: var(--red); color: var(--red); }
+  .week-btn:hover:not(.active) { border-color: #555; }
+
+  /* ── Loading spinner ── */
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--red); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .hidden { display: none \!important; }
+  .text-muted { color: var(--muted); }
+  .text-right { text-align: right; }
+  .mt-8 { margin-top: 8px; }
+  .flex-end { justify-content: flex-end; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a href="/dashboard" class="nav-brand">P.AI</a>
+  <span class="nav-sep">/</span>
+  <span class="nav-title">⚡ Velocity — Speed of Service</span>
+  <a href="/dashboard" class="nav-back">← Dashboard</a>
+</nav>
+
+<div class="container">
+
+  <\!-- Status bar -->
+  <div class="status-bar">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">Loading...</span>
+    <span style="margin-left:auto;display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm" onclick="openUpload()">↑ Upload Report</button>
+      <button class="btn btn-outline btn-sm" onclick="exportExcel()">↓ Export Excel</button>
+    </span>
+  </div>
+
+  <\!-- Filter bar -->
+  <div class="filter-bar">
+    <div>
+      <label>View</label><br>
+      <div class="view-tabs" style="margin:4px 0 0">
+        <div class="tab active" data-view="wtd" onclick="switchView('wtd')">WTD</div>
+        <div class="tab" data-view="day" onclick="switchView('day')">Daily</div>
+        <div class="tab" data-view="trend" onclick="switchView('trend')">Trend</div>
+        <div class="tab" data-view="dow" onclick="switchView('dow')">Day Pattern</div>
+      </div>
+    </div>
+    <div>
+      <label>Week</label><br>
+      <select id="weekSelect" onchange="loadWTD()"><option value="">Loading...</option></select>
+    </div>
+    <div>
+      <label>Region Coach</label><br>
+      <select id="regionFilter" onchange="applyFilters()"><option value="">All Regions</option></select>
+    </div>
+    <div>
+      <label>Area Coach</label><br>
+      <select id="areaFilter" onchange="applyFilters()"><option value="">All Areas</option></select>
+    </div>
+    <div>
+      <label>Store</label><br>
+      <input type="text" id="storeSearch" placeholder="Search store..." oninput="applyFilters()" style="width:150px">
+    </div>
+    <div style="display:flex;align-items:flex-end">
+      <button class="btn btn-outline btn-sm" onclick="clearFilters()">Clear</button>
+    </div>
+  </div>
+
+  <\!-- Scorecard strip -->
+  <div class="scorecard-row" id="scorecards">
+    <div class="scorecard"><div class="val ist-none">—</div><div class="lbl">Avg IST</div></div>
+    <div class="scorecard"><div class="val ist-none">—</div><div class="lbl">% Under 19 min</div></div>
+    <div class="scorecard"><div class="val ist-none">—</div><div class="lbl">Stores Reporting</div></div>
+    <div class="scorecard"><div class="val ist-none">—</div><div class="lbl">Total Deliveries</div></div>
+    <div class="scorecard"><div class="val ist-none">—</div><div class="lbl">Stores ≥19 min</div></div>
+  </div>
+
+  <\!-- Day pills (shown in WTD + Daily view) -->
+  <div class="day-pills" id="dayPills"></div>
+
+  <\!-- AI Insights panel (shown when area filtered) -->
+  <div class="insights-panel hidden" id="insightsPanel">
+    <h3>🤖 Velocity Insights <span id="insightsFilter"></span></h3>
+    <div class="insights-text" id="insightsText"><span class="insights-loading"><span class="spinner"></span> Analyzing...</span></div>
+  </div>
+
+  <\!-- Trend view -->
+  <div class="trend-section hidden" id="trendSection">
+    <div class="trend-header">
+      <h3>Week-over-Week IST Trend</h3>
+      <select id="trendWeeks" onchange="loadTrend()">
+        <option value="4">4 Weeks</option>
+        <option value="8" selected>8 Weeks</option>
+        <option value="13">Full Period</option>
+        <option value="26">6 Months</option>
+      </select>
+    </div>
+    <div id="trendChart" style="overflow-x:auto"></div>
+  </div>
+
+  <\!-- DOW pattern view -->
+  <div class="trend-section hidden" id="dowSection">
+    <div class="trend-header"><h3>Day-of-Week IST Patterns</h3></div>
+    <div class="dow-grid" id="dowGrid"></div>
+    <p class="mt-8 text-muted" style="font-size:12px">Based on last 12 weeks of data. Helps identify structurally high/low days.</p>
+  </div>
+
+  <\!-- Main data table -->
+  <div class="table-wrap" id="tableWrap">
+    <table class="ist-table">
+      <thead>
+        <tr>
+          <th>Store</th>
+          <th>Area Coach</th>
+          <th>Region</th>
+          <th onclick="sortBy('wtd_ist')" style="cursor:pointer">Avg IST ↕</th>
+          <th>% &lt;19 min</th>
+          <th>&lt;10</th><th>10–14</th><th>15–18</th><th>19–25</th><th>&gt;25</th>
+          <th>Orders</th>
+          <th>Days</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted)"><span class="spinner"></span> Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<\!-- Upload modal -->
+<div id="uploadModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:480px;max-width:95vw">
+    <h3 style="margin-bottom:16px">Upload SOS Report</h3>
+    <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <div style="font-size:32px">📄</div>
+      <p>Click or drag &amp; drop files here</p>
+      <p style="font-size:11px;margin-top:4px">Above Store Report (.pdf) · Speed of Service (.xlsx)</p>
+    </div>
+    <input type="file" id="fileInput" multiple accept=".pdf,.xlsx,.xls" style="display:none" onchange="handleFiles(this.files)">
+    <div id="uploadResults" style="margin-top:12px;font-size:13px"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+      <button class="btn btn-outline" onclick="closeUpload()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================================================
+// Velocity Frontend — PAi Module
+// =====================================================================
+let state = {
+  view: 'wtd',
+  weeks: [],
+  currentWeek: null,
+  wtdData: null,
+  dayData: null,
+  selectedDay: null,
+  sortField: 'wtd_ist',
+  sortDir: 'asc',
+  filters: { region: '', area: '', store: '' }
+};
+
+// ── Boot ──────────────────────────────────────────────────────────────
+async function init() {
+  await Promise.all([ loadMeta(), loadWeeks() ]);
+}
+
+async function loadMeta() {
+  try {
+    const r = await api('/api/velocity/meta');
+    // Populate region filter
+    const rSel = document.getElementById('regionFilter');
+    r.regions.forEach(reg => { const o = new Option(reg, reg); rSel.appendChild(o); });
+    // Populate area coach filter
+    const aSel = document.getElementById('areaFilter');
+    r.area_coaches.forEach(ac => { const o = new Option(ac, ac); aSel.appendChild(o); });
+  } catch(e) { console.error('Meta load failed:', e); }
+}
+
+async function loadWeeks() {
+  try {
+    const r = await api('/api/velocity/weeks');
+    state.weeks = r.weeks || [];
+    const sel = document.getElementById('weekSelect');
+    sel.innerHTML = '';
+    if (\!state.weeks.length) {
+      sel.innerHTML = '<option>No data yet</option>';
+      setStatus('No data loaded yet — upload an Above Store Report to begin', 'warn');
+      return;
+    }
+    state.weeks.forEach((w, i) => {
+      const label = `${w.period_week || w.week_key} (${w.date_range})`;
+      const o = new Option(label, w.week_key);
+      if (i === 0) o.selected = true;
+      sel.appendChild(o);
+    });
+    state.currentWeek = state.weeks[0].week_key;
+    await loadWTD();
+  } catch(e) { setStatus('Failed to load weeks: ' + e.message, 'err'); }
+}
+
+async function loadWTD() {
+  const weekKey = document.getElementById('weekSelect').value;
+  state.currentWeek = weekKey;
+  setStatus('<span class="spinner"></span> Loading...', '');
+  try {
+    const r = await api(`/api/velocity/wtd?week=${weekKey}`);
+    state.wtdData = r;
+    renderDayPills(r.days || []);
+    renderScorecards(r.stores || []);
+    renderTable(r.stores || []);
+    setStatus(`${r.storeCount} stores · ${r.periodWeek} ${r.dateRange}`, 'ok');
+    maybeLoadInsights();
+  } catch(e) { setStatus('Error: ' + e.message, 'err'); }
+}
+
+async function loadDay(dateStr) {
+  setStatus('<span class="spinner"></span> Loading day...', '');
+  try {
+    const r = await api(`/api/velocity/day?date=${dateStr}`);
+    state.dayData = r;
+    renderScorecards(r.stores || [], true);
+    renderTableDay(r.stores || []);
+    setStatus(`${r.storeCount} stores reporting · ${formatDate(dateStr)}`, 'ok');
+  } catch(e) { setStatus('Error: ' + e.message, 'err'); }
+}
+
+async function loadTrend() {
+  const weeks = document.getElementById('trendWeeks').value;
+  const region = state.filters.region;
+  const area   = state.filters.area;
+  let url = `/api/velocity/trends?weeks=${weeks}`;
+  if (region) url += `&region=${encodeURIComponent(region)}`;
+  if (area)   url += `&area_coach=${encodeURIComponent(area)}`;
+
+  document.getElementById('trendChart').innerHTML = '<span class="spinner"></span>';
+  try {
+    const r = await api(url);
+    renderTrendChart(r.weeks || []);
+  } catch(e) { document.getElementById('trendChart').innerHTML = 'Error: ' + e.message; }
+}
+
+async function loadDOW() {
+  const area = state.filters.area;
+  let url = '/api/velocity/dow-trends';
+  if (area) url += `?area_coach=${encodeURIComponent(area)}`;
+
+  document.getElementById('dowGrid').innerHTML = '<span class="spinner"></span>';
+  try {
+    const r = await api(url);
+    renderDOW(r.patterns || []);
+  } catch(e) { document.getElementById('dowGrid').innerHTML = 'Error'; }
+}
+
+async function maybeLoadInsights() {
+  const area   = state.filters.area;
+  const region = state.filters.region;
+  const panel  = document.getElementById('insightsPanel');
+
+  if (\!area && \!region) { panel.classList.add('hidden'); return; }
+
+  panel.classList.remove('hidden');
+  document.getElementById('insightsText').innerHTML = '<span class="spinner"></span> Analyzing performance...';
+  document.getElementById('insightsFilter').textContent = area ? `· ${area}` : `· ${region}`;
+
+  try {
+    let url = '/api/velocity/insights';
+    if (area)   url += `?area_coach=${encodeURIComponent(area)}`;
+    else if (region) url += `?region=${encodeURIComponent(region)}`;
+    const r = await api(url);
+    document.getElementById('insightsText').textContent = r.insights || 'No insights available.';
+  } catch(e) {
+    document.getElementById('insightsText').textContent = 'Could not load insights: ' + e.message;
+  }
+}
+
+// ── Views ─────────────────────────────────────────────────────────────
+function switchView(view) {
+  state.view = view;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+  document.getElementById('trendSection').classList.toggle('hidden', view \!== 'trend');
+  document.getElementById('dowSection').classList.toggle('hidden', view \!== 'dow');
+  document.getElementById('tableWrap').classList.toggle('hidden', view === 'trend' || view === 'dow');
+  document.getElementById('dayPills').classList.toggle('hidden', view === 'trend' || view === 'dow');
+
+  if (view === 'trend') loadTrend();
+  else if (view === 'dow') loadDOW();
+  else if (view === 'wtd' && state.wtdData) { renderTable(state.wtdData.stores || []); renderScorecards(state.wtdData.stores || []); }
+  else if (view === 'day' && state.wtdData?.days?.length) selectDay(state.wtdData.days[state.wtdData.days.length - 1]);
+}
+
+// ── Render functions ──────────────────────────────────────────────────
+function renderScorecards(stores, isDay = false) {
+  const valid = stores.filter(s => s.wtd_ist \!= null || s.ist_avg \!= null);
+  const istField = isDay ? 'ist_avg' : 'wtd_ist';
+  const lt19Field = isDay ? 'ist_lt19_pct' : 'wtd_lt19_pct';
+  const ordField = isDay ? 'total_orders' : 'wtd_orders';
+
+  const avgIST = valid.length ? (valid.reduce((a,s) => a + (s[istField]||0), 0) / valid.length).toFixed(1) : '—';
+  const avgLt19 = valid.length ? (valid.reduce((a,s) => a + (s[lt19Field]||0), 0) / valid.length).toFixed(1) : '—';
+  const totalOrd = valid.reduce((a,s) => a + (s[ordField]||0), 0);
+  const slowStores = valid.filter(s => (s[istField]||0) >= 19).length;
+  const cls = istColorClass(parseFloat(avgIST));
+
+  document.getElementById('scorecards').innerHTML = `
+    <div class="scorecard"><div class="val ${cls}">${avgIST}</div><div class="lbl">Avg IST (min)</div></div>
+    <div class="scorecard"><div class="val">${avgLt19}%</div><div class="lbl">% Under 19 min</div></div>
+    <div class="scorecard"><div class="val">${valid.length}</div><div class="lbl">Stores Reporting</div></div>
+    <div class="scorecard"><div class="val">${totalOrd.toLocaleString()}</div><div class="lbl">Total Deliveries</div></div>
+    <div class="scorecard"><div class="val ${slowStores > 0 ? 'ist-orange':''}">${slowStores}</div><div class="lbl">Stores ≥19 min</div></div>
+  `;
+}
+
+function renderDayPills(days) {
+  const container = document.getElementById('dayPills');
+  container.innerHTML = '';
+  if (\!days.length) return;
+
+  // WTD pill
+  const wtdPill = document.createElement('div');
+  wtdPill.className = 'day-pill ' + (state.view === 'wtd' ? 'active' : '');
+  wtdPill.textContent = 'WTD Avg';
+  wtdPill.onclick = () => { state.selectedDay = null; state.view = 'wtd'; document.querySelectorAll('.day-pill').forEach(p => p.classList.remove('active')); wtdPill.classList.add('active'); renderTable(state.wtdData?.stores || []); renderScorecards(state.wtdData?.stores || []); };
+  container.appendChild(wtdPill);
+
+  days.forEach(d => {
+    const pill = document.createElement('div');
+    pill.className = 'day-pill';
+    pill.textContent = formatDateShort(d);
+    pill.dataset.date = d;
+    pill.onclick = () => selectDay(d);
+    container.appendChild(pill);
+  });
+}
+
+function selectDay(dateStr) {
+  state.selectedDay = dateStr;
+  state.view = 'day';
+  document.querySelectorAll('.day-pill').forEach(p => p.classList.toggle('active', p.dataset.date === dateStr));
+  loadDay(dateStr);
+}
+
+function applyFilters(stores) {
+  const src = stores || (state.view === 'day' ? state.dayData?.stores : state.wtdData?.stores) || [];
+  const region = document.getElementById('regionFilter').value;
+  const area   = document.getElementById('areaFilter').value;
+  const search = document.getElementById('storeSearch').value.toLowerCase();
+  state.filters = { region, area, store: search };
+
+  let filtered = src;
+  if (region) filtered = filtered.filter(s => s.region_coach === region);
+  if (area)   filtered = filtered.filter(s => s.area_coach === area);
+  if (search) filtered = filtered.filter(s => s.name?.toLowerCase().includes(search) || s.store_id?.toLowerCase().includes(search));
+
+  if (state.view === 'day') renderTableDay(filtered);
+  else renderTable(filtered);
+  renderScorecards(filtered, state.view === 'day');
+  maybeLoadInsights();
+}
+
+function clearFilters() {
+  document.getElementById('regionFilter').value = '';
+  document.getElementById('areaFilter').value = '';
+  document.getElementById('storeSearch').value = '';
+  state.filters = { region: '', area: '', store: '' };
+  if (state.view === 'day' && state.dayData) renderTableDay(state.dayData.stores || []);
+  else if (state.wtdData) renderTable(state.wtdData.stores || []);
+  document.getElementById('insightsPanel').classList.add('hidden');
+}
+
+function sortBy(field) {
+  if (state.sortField === field) state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+  else { state.sortField = field; state.sortDir = 'asc'; }
+  applyFilters();
+}
+
+function renderTable(stores) {
+  const region = state.filters.region;
+  const area   = state.filters.area;
+  const search = state.filters.store;
+
+  let filtered = stores;
+  if (region) filtered = filtered.filter(s => s.region_coach === region);
+  if (area)   filtered = filtered.filter(s => s.area_coach === area);
+  if (search) filtered = filtered.filter(s => s.name?.toLowerCase().includes(search) || s.store_id?.toLowerCase().includes(search));
+
+  // Sort
+  filtered = [...filtered].sort((a, b) => {
+    const av = a[state.sortField] ?? 999, bv = b[state.sortField] ?? 999;
+    return state.sortDir === 'asc' ? av - bv : bv - av;
+  });
+
+  const tbody = document.getElementById('tableBody');
+  if (\!filtered.length) { tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted)">No stores match current filters</td></tr>'; return; }
+
+  // Build hierarchical rows
+  const rows = [];
+  if (\!area && \!region && \!search) {
+    // Group hierarchy
+    const byRegion = {};
+    filtered.forEach(s => { (byRegion[s.region_coach] = byRegion[s.region_coach]||[]).push(s); });
+
+    for (const [reg, rStores] of Object.entries(byRegion)) {
+      rows.push(summaryRow(rStores, 'REGION', reg, null, 'row-region'));
+      const byArea = {};
+      rStores.forEach(s => { (byArea[s.area_coach] = byArea[s.area_coach]||[]).push(s); });
+      for (const [ac, aStores] of Object.entries(byArea)) {
+        rows.push(summaryRow(aStores, 'AREA', reg, ac, 'row-area'));
+        aStores.forEach(s => rows.push(storeRow(s, 'row-store')));
+      }
+    }
+  } else {
+    filtered.forEach(s => rows.push(storeRow(s, 'row-store')));
+  }
+
+  tbody.innerHTML = rows.join('');
+}
+
+function renderTableDay(stores) {
+  const region = state.filters.region;
+  const area   = state.filters.area;
+  const search = state.filters.store;
+
+  let filtered = stores;
+  if (region) filtered = filtered.filter(s => s.region_coach === region);
+  if (area)   filtered = filtered.filter(s => s.area_coach === area);
+  if (search) filtered = filtered.filter(s => s.name?.toLowerCase().includes(search) || s.store_id?.toLowerCase().includes(search));
+
+  filtered = [...filtered].sort((a, b) => (a.ist_avg||99) - (b.ist_avg||99));
+
+  const tbody = document.getElementById('tableBody');
+  if (\!filtered.length) { tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted)">No data for this day</td></tr>'; return; }
+
+  tbody.innerHTML = filtered.map(s => `
+    <tr class="row-store">
+      <td><strong>${s.name||s.store_id}</strong><br><small style="color:var(--muted)">${s.store_id}</small></td>
+      <td>${s.area_coach||'—'}</td>
+      <td style="color:var(--muted);font-size:12px">${s.region_coach||'—'}</td>
+      <td><span class="${istColorClass(s.ist_avg)}">${s.ist_avg \!= null ? s.ist_avg + ' min' : '—'}</span></td>
+      <td>${s.ist_lt19_pct \!= null ? s.ist_lt19_pct.toFixed(1)+'%' : '—'}</td>
+      <td>${s.ist_lt10||0}</td><td>${s.ist_1014||0}</td><td>${s.ist_1518||0}</td>
+      <td>${s.ist_1925||0}</td><td class="${(s.ist_gt25||0)>0?'ist-orange':''}">${s.ist_gt25||0}</td>
+      <td>${s.total_orders||0}</td>
+      <td>1</td>
+    </tr>`).join('');
+}
+
+function storeRow(s, cls) {
+  return `<tr class="${cls}">
+    <td><strong>${s.name||s.store_id}</strong><br><small style="color:var(--muted)">${s.store_id}</small></td>
+    <td>${s.area_coach||'—'}</td>
+    <td style="color:var(--muted);font-size:12px">${s.region_coach||'—'}</td>
+    <td><span class="${istColorClass(s.wtd_ist)}">${s.wtd_ist \!= null ? s.wtd_ist + ' min' : '—'}</span></td>
+    <td>${s.wtd_lt19_pct \!= null ? s.wtd_lt19_pct.toFixed(1)+'%' : '—'}</td>
+    <td>${s.wtd_lt10||0}</td><td>${s.wtd_1014||0}</td><td>${s.wtd_1518||0}</td>
+    <td>${s.wtd_1925||0}</td><td class="${(s.wtd_gt25||0)>0?'ist-orange':''}">${s.wtd_gt25||0}</td>
+    <td>${s.wtd_orders||0}</td>
+    <td>${s.days_reported||0}</td>
+  </tr>`;
+}
+
+function summaryRow(stores, level, region, area, cls) {
+  const valid = stores.filter(s => s.wtd_ist \!= null);
+  const avgIST = valid.length ? (valid.reduce((a,s)=>a+s.wtd_ist,0)/valid.length).toFixed(1) : null;
+  const avgLt19 = valid.length ? (valid.reduce((a,s)=>a+(s.wtd_lt19_pct||0),0)/valid.length).toFixed(1) : null;
+  const orders = stores.reduce((a,s)=>a+(s.wtd_orders||0),0);
+  const lt10 = stores.reduce((a,s)=>a+(s.wtd_lt10||0),0);
+  const t1014 = stores.reduce((a,s)=>a+(s.wtd_1014||0),0);
+  const t1518 = stores.reduce((a,s)=>a+(s.wtd_1518||0),0);
+  const t1925 = stores.reduce((a,s)=>a+(s.wtd_1925||0),0);
+  const gt25 = stores.reduce((a,s)=>a+(s.wtd_gt25||0),0);
+
+  const label = level === 'REGION' ? region : area;
+  const sub = level === 'REGION' ? `${stores.length} stores` : `${stores.length} stores`;
+
+  return `<tr class="${cls}">
+    <td colspan="2"><strong>${label}</strong> <small style="color:var(--muted)">${sub}</small></td>
+    <td style="color:var(--muted);font-size:12px">${level === 'AREA' ? region : ''}</td>
+    <td><span class="${istColorClass(parseFloat(avgIST))}">${avgIST \!= null ? avgIST + ' min' : '—'}</span></td>
+    <td>${avgLt19 \!= null ? avgLt19+'%' : '—'}</td>
+    <td>${lt10}</td><td>${t1014}</td><td>${t1518}</td>
+    <td>${t1925}</td><td class="${gt25>0?'ist-orange':''}">${gt25}</td>
+    <td>${orders.toLocaleString()}</td>
+    <td>—</td>
+  </tr>`;
+}
+
+function renderTrendChart(weeks) {
+  if (\!weeks.length) { document.getElementById('trendChart').innerHTML = '<p style="color:var(--muted);font-size:13px">No trend data available</p>'; return; }
+
+  const maxIST = Math.max(...weeks.filter(w=>w.avg_ist).map(w=>w.avg_ist), 25);
+  const minIST = Math.min(...weeks.filter(w=>w.avg_ist).map(w=>w.avg_ist), 15);
+  const range = maxIST - minIST || 5;
+
+  const bars = weeks.map(w => {
+    const pct = w.avg_ist ? ((w.avg_ist - minIST) / range * 60 + 10).toFixed(0) : 0;
+    const cls = istColorClass(w.avg_ist);
+    const delta = w.delta \!= null ? (w.delta > 0 ? `<span class="delta-bad">▲ +${w.delta}</span>` : w.delta < 0 ? `<span class="delta-good">▼ ${w.delta}</span>` : '<span class="delta-flat">—</span>') : '';
+    return `<div style="flex:1;min-width:80px;text-align:center">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${delta}</div>
+      <div style="height:${pct}px;background:${istColorHex(w.avg_ist)};border-radius:4px 4px 0 0;margin:0 4px"></div>
+      <div style="margin-top:4px;font-size:13px;font-weight:700;color:${istColorHex(w.avg_ist)}">${w.avg_ist \!= null ? w.avg_ist : '—'}</div>
+      <div style="font-size:10px;color:var(--muted)">${w.period_week||w.week_key}</div>
+      <div style="font-size:10px;color:var(--muted)">${w.date_range||''}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('trendChart').innerHTML = `
+    <div style="display:flex;align-items:flex-end;gap:0;height:120px;padding:0 0 8px;border-bottom:1px solid var(--border)">
+      ${bars}
+    </div>
+    <div style="display:flex;gap:8px;font-size:11px;margin-top:8px;color:var(--muted)">
+      <span>IST target: 19 min</span>
+    </div>`;
+}
+
+function renderDOW(patterns) {
+  const grid = document.getElementById('dowGrid');
+  if (\!patterns.length) { grid.innerHTML = '<p style="color:var(--muted)">No pattern data yet</p>'; return; }
+  const allDays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  grid.innerHTML = allDays.map(day => {
+    const p = patterns.find(p => p.day_name.trim() === day);
+    if (\!p) return `<div class="dow-card"><div class="day">${day}</div><div class="ist ist-none">—</div><div class="insight">no data</div></div>`;
+    return `<div class="dow-card">
+      <div class="day">${day}</div>
+      <div class="ist ${istColorClass(p.avg_ist)}">${p.avg_ist}</div>
+      <div class="insight">${p.insight} (${p.vs_avg >= 0 ? '+' : ''}${p.vs_avg} vs avg)</div>
+      <div class="insight" style="color:#555">${p.sample_count} samples</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Upload ────────────────────────────────────────────────────────────
+function openUpload() { document.getElementById('uploadModal').style.display = 'flex'; }
+function closeUpload() { document.getElementById('uploadModal').style.display = 'none'; }
+
+async function handleFiles(fileList) {
+  const files = Array.from(fileList);
+  if (\!files.length) return;
+  const resultsDiv = document.getElementById('uploadResults');
+  resultsDiv.innerHTML = '<span class="spinner"></span> Uploading...';
+
+  const fd = new FormData();
+  files.forEach(f => fd.append('files', f));
+
+  try {
+    const r = await fetch('/api/velocity/upload', { method: 'POST', body: fd });
+    const data = await r.json();
+    let html = '';
+    (data.results||[]).forEach(res => { html += `<div style="color:var(--green)">✓ ${res.file} — ${res.storesSaved} stores saved (${res.date})</div>`; });
+    (data.errors||[]).forEach(err => { html += `<div style="color:var(--ist-red)">✗ ${err}</div>`; });
+    resultsDiv.innerHTML = html || 'Done.';
+    await loadWeeks(); // Refresh
+  } catch(e) { resultsDiv.innerHTML = `<span style="color:var(--ist-red)">Error: ${e.message}</span>`; }
+}
+
+// Drag & drop
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor = 'var(--red)'; });
+dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = 'var(--border)'; });
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.style.borderColor = 'var(--border)'; handleFiles(e.dataTransfer.files); });
+
+// ── Excel export ──────────────────────────────────────────────────────
+async function exportExcel() {
+  const weekKey = state.currentWeek;
+  if (\!weekKey) return;
+  try {
+    const r = await fetch('/api/velocity/export', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ week: weekKey })
+    });
+    if (\!r.ok) throw new Error('Export failed');
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `Velocity_IST_${weekKey}.xlsx`;
+    a.click();
+  } catch(e) { alert('Export error: ' + e.message); }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────
+function istColorClass(ist) {
+  if (\!ist || isNaN(ist)) return 'ist-none';
+  if (ist <= 18) return 'ist-green';
+  if (ist <= 20) return 'ist-yellow';
+  if (ist <= 25) return 'ist-orange';
+  return 'ist-red';
+}
+function istColorHex(ist) {
+  if (\!ist) return '#555';
+  if (ist <= 18) return '#28a745';
+  if (ist <= 20) return '#ffc107';
+  if (ist <= 25) return '#fd7e14';
+  return '#dc3545';
+}
+function formatDate(d) {
+  const dt = new Date(d + 'T12:00:00Z');
+  return dt.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+}
+function formatDateShort(d) {
+  const dt = new Date(d + 'T12:00:00Z');
+  return dt.toLocaleDateString('en-US', { weekday:'short', month:'numeric', day:'numeric' });
+}
+function setStatus(msg, type) {
+  document.getElementById('statusText').innerHTML = msg;
+  const dot = document.getElementById('statusDot');
+  dot.className = 'status-dot' + (type === 'warn' ? ' warn' : type === 'err' ? ' err' : '');
+}
+async function api(url, opts = {}) {
+  const r = await fetch(url, opts);
+  if (\!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+// Boot
+init();
+</script>
+</body>
+</html>

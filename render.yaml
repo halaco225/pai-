@@ -5,11 +5,12 @@ databases:
     user: pai
 
 services:
+
   - type: web
     name: pai-ayvaz
     env: node
     plan: starter
-    buildCommand: npm install
+    buildCommand: npm install && npx playwright install chromium --with-deps
     startCommand: node server.js
     envVars:
       - key: NODE_ENV
@@ -22,3 +23,30 @@ services:
         fromDatabase:
           name: pai-db
           property: connectionString
+      - key: ODS_URL
+        value: https://bi.onedatasource.com
+      - key: ODS_ORG
+        value: dgi
+      - key: ODS_USER
+        sync: false
+      - key: ODS_PASSWORD
+        sync: false
+      - key: VELOCITY_AUTOMATION_TOKEN
+        generateValue: true
+
+  - type: cron
+    name: velocity-ods-pull
+    env: node
+    plan: starter
+    schedule: "0 10 * * *"
+    buildCommand: npm install
+    startCommand: node scripts/velocity-cron-pull.js
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pai-db
+          property: connectionString
+      - key: PAI_BASE_URL
+        value: https://pai-ayvaz.onrender.com
+      - key: VELOCITY_AUTOMATION_TOKEN
+        sync: false

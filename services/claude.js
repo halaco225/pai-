@@ -195,14 +195,154 @@ COMMUNICATION STYLE
 * Never present EBITDA improvement as profitability. A store that went from -20% to -8% improved but is still losing money.
 * Use the operator's language: period (not month), area coach (not district manager), net sales (not revenue).
 
-When analyzing the uploaded P&L file:
-1. Identify all area coaches and their stores from the file structure
-2. Pull key metrics for all stores: Net Sales, COS%, Direct Labor%, SCP%, EBITDA% — current period and prior year, plus YTD both years
-3. Pull controllable expense sub-lines for all stores and flag anomalies
-4. Provide a thorough written analysis — summarize what's working, what needs attention, and what the direct labor story is
-5. After the analysis, verify the profitable store count is based strictly on EBITDA sign — not trend
+OUTPUT FORMAT — CRITICAL
+You MUST return a single JSON object wrapped in a \`\`\`json code block. No markdown outside the code block. No preamble. The JSON structure is:
 
-Format your response in clear sections with headers. Use markdown formatting. Be specific about store numbers, dollar amounts, and percentage points. Use BPS language for percentage changes.`;
+{
+  "period": "P3 2026",
+  "region": {
+    "name": "Southeast Atlanta Region",
+    "company": "Ayvaz Pizza LLC",
+    "operator": "Harold Lacoste · Director of Operations"
+  },
+  "headline": {
+    "ebitda": "$277,830",
+    "ebitdaVsPY": "+$87,575 vs PY",
+    "ebitdaMargin": "10.9%",
+    "ebitdaMarginVsPY": "+344 bps vs PY (7.5%)",
+    "netSales": "$2.55M",
+    "netSalesVsPY": "-$6.2K vs prior year",
+    "storesProfitable": "33 / 41",
+    "storesNegativeNote": "8 stores EBITDA negative",
+    "takeaways": [
+      "EBITDA grew $87.6K year-over-year — a 46% increase on essentially flat sales",
+      "Margin expanded 344 basis points from 7.5% to 10.9% — driven by COGS and labor discipline",
+      "COGS improved ~60 bps region-wide; chicken and cheese costs favorable vs prior year",
+      "8 stores remain EBITDA negative — labor is the primary drag across all losing locations"
+    ]
+  },
+  "acScorecard": [
+    { "name": "Daria Spikes", "stores": 7, "ebitdaDollars": "$95,114", "ebitdaPct": "17.5%", "vsPYBps": "+530", "cogsPct": "27.0%", "laborPct": "25.5%" }
+  ],
+  "topPerformers": [
+    { "store": "Wells Street", "storeNum": "38876", "ac": "Daria", "netSales": "$71,304", "ebitdaDollars": "$17,976", "ebitdaPct": "25.2%", "bpsVsPY": "+747", "cogsPct": "27.1%", "laborPct": "21.8%" }
+  ],
+  "topPerformersNote": "Daria's district holds 4 of the top 7 — Wells Street at 25.2% EBITDA is the regional benchmark.",
+  "losingStores": [
+    { "store": "Glade Rd", "storeNum": "39382", "ac": "Ja'Don", "netSales": "$35,836", "ebitdaDollars": "($19,369)", "ebitdaPct": "-54.1%", "cogsPct": "32.0%", "laborPct": "74.4%", "primaryIssue": "CRITICAL — Labor structural failure" }
+  ],
+  "losingStoresNote": "Ja's district: 4 of 6 stores losing money. Glade Rd alone is a ($19.4K) hole at 74% labor — structural, not cyclical.",
+  "turnarounds": {
+    "gainers": [
+      { "store": "Lithia Springs", "storeNum": "39389", "ac": "Jorge", "ebitdaPY": "$10,037", "ebitdaP3": "$23,685", "change": "+$13,648" }
+    ],
+    "declines": [
+      { "store": "Glade Rd", "storeNum": "39382", "ac": "Ja'Don", "ebitdaPY": "($2,119)", "ebitdaP3": "($19,369)", "change": "-$17,250" }
+    ],
+    "footerNote": "Glade Rd decline is not a trend — it is an emergency. Requires immediate staffing and operational intervention."
+  },
+  "peterFramework": [
+    { "number": "1", "title": "Start with EBITDA %", "body": "Green = above 15%. Yellow = 8–15%. Red = below 8%. Negative = actively losing money." },
+    { "number": "2", "title": "Check BPS vs Prior Year", "body": "100 bps = 1%. Positive = improving. Negative = eroding. Sales growth + shrinking margin = still in trouble." },
+    { "number": "3", "title": "Labor % is your first red flag", "body": "Target 28–32%. Above 35% = overstaffed or undersold. Above 40% = structural problem." },
+    { "number": "4", "title": "Flow Through — did growth convert?", "body": "EBITDA change ÷ Sales change. Negative = costs outran sales. 100%+ = excellent leverage." },
+    { "number": "5", "title": "COGS % — control what you can", "body": "Target 26–28%. High COGS = waste, portioning, or theft. COGS + high labor = double jeopardy." },
+    { "number": "6", "title": "The pattern tells the story", "body": "One bad metric = fixable. Two = coaching conversation. Three = PIP conversation. Glade Rd has all three." }
+  ],
+  "acDeepDives": [
+    {
+      "acName": "Daria Spikes",
+      "period": "P3 2026",
+      "totalStores": 7,
+      "coverKPIs": [
+        {"label": "EBITDA %",     "value": "17.5%"},
+        {"label": "EBITDA vs PY", "value": "+$12,450"},
+        {"label": "Net Sales",    "value": "$545K"},
+        {"label": "Labor %",      "value": "25.5%"},
+        {"label": "COS %",        "value": "27.0%"}
+      ],
+      "scorecard": [
+        {
+          "name": "Wells Street", "storeNum": "38876", "status": "green",
+          "netSales": "$71,304", "netSalesVsPY": "+3.2%",
+          "cosPct": "27.1%", "laborPct": "21.8%", "laborPY": "24.2%",
+          "scpPct": "38.5%", "ebitdaPct": "25.2%", "ebitdaPY": "17.5%"
+        }
+      ],
+      "laborChart": {
+        "labels": ["Wells St", "Store B", "Store C"],
+        "current": [21.8, 28.5, 31.2],
+        "prior":   [24.2, 27.1, 30.5],
+        "ytdLines": [
+          "YTD Labor: 25.5% vs PY 26.8% (neg 130 bps)",
+          "3 of 7 stores improved vs PY",
+          "Store C trending up -- needs coaching"
+        ],
+        "insight": "Wells Street best in region at 21.8%. Store C above 31% -- overstaffed relative to $58K volume. Coaching priority."
+      },
+      "cosChart": {
+        "labels": ["Wells St", "Store B", "Store C"],
+        "current": [27.1, 28.8, 30.2],
+        "prior":   [28.0, 28.5, 29.8],
+        "storeCards": [
+          {"name": "Wells St", "trend": "down", "p3": "27.1%", "py": "28.0%", "ytd": "27.5%", "ytdPY": "28.1%"},
+          {"name": "Store B",  "trend": "up",   "p3": "28.8%", "py": "28.5%", "ytd": "28.6%", "ytdPY": "28.2%"},
+          {"name": "Store C",  "trend": "up",   "p3": "30.2%", "py": "29.8%", "ytd": "29.9%", "ytdPY": "29.2%"}
+        ],
+        "insight": "COS improvement led by Wells Street (neg 90 bps). Store C trending up -- check portioning and waste."
+      },
+      "ebitdaChart": {
+        "labels": ["Wells St", "Store B", "Store C"],
+        "current": [25.2, 12.8, -4.1],
+        "prior":   [17.5, 11.2,  3.4],
+        "ytdItems": [
+          {"name": "Wells St", "ytd": "22.3%", "ytdPY": "18.1%"},
+          {"name": "Store B",  "ytd": "11.5%", "ytdPY": "10.8%"},
+          {"name": "Store C",  "ytd": "-1.8%", "ytdPY": "2.9%"}
+        ],
+        "insight": "Store C flipped negative this period. Labor spike of 8.4 pts vs PY is the entire story."
+      },
+      "anomalies": [
+        {
+          "name": "Store C", "storeNum": "39381", "status": "red",
+          "items": [
+            {"line": "Payroll - R&M",  "p3": "$1,842", "py": "$284", "note": "Who was paid? Needs authorization check"},
+            {"line": "Pest Control",   "p3": "$480",   "py": "$57",  "note": "Spike -- new vendor or recurring issue?"},
+            {"line": "Cash Short",     "p3": "$214",   "py": "$18",  "note": "Cash handling concern -- review with GM"}
+          ]
+        }
+      ],
+      "spotlights": {
+        "crisis":     {"name": "Store C (#39381)", "bullets": ["Labor 31.2% on $58K sales -- overstaffed", "EBITDA flipped negative (-4.1%)", "3 controllable line item spikes this period"]},
+        "urgent":     {"name": "Store B (#39383)", "bullets": ["COS trending up 3 consecutive periods", "GM has not submitted COGS correction", "Review scheduling and portioning"]},
+        "brightSpot": {"name": "Wells Street (#38876)", "bullets": ["25.2% EBITDA -- regional best", "Labor improved 240 bps vs PY", "Model store -- cross-train other GMs here"]},
+        "structural": {"name": "Area Trend", "bullets": ["3 of 7 stores improved EBITDA vs PY", "Labor discipline is the primary driver", "Inconsistent portioning training driving COS gaps"]}
+      },
+      "coachingPriorities": [
+        {"number": "01", "status": "red",   "title": "Store C -- Labor Crisis",        "body": "31.2% labor on $58K is structural. Schedule audit this week. GM must explain $1,842 R&M charge before end of period."},
+        {"number": "02", "status": "red",   "title": "Store C -- Controllable Spikes", "body": "Three line-item spikes in one period. Pull invoices for pest control and R&M. Cash short ($214) needs GM investigation."},
+        {"number": "03", "status": "amber", "title": "Store B -- COS Trend",           "body": "3-period upward COS trend. Schedule a full portioning observation visit before next period closes."},
+        {"number": "04", "status": "green", "title": "Replicate Wells Street",          "body": "25.2% EBITDA -- best in region. Cross-train Store C GM at Wells Street this period. Document what they do differently."}
+      ]
+    }
+  ]
+}
+
+RULES:
+- Fill every field with real data from the file. Do not use placeholder text.
+- acScorecard: one entry per area coach, sorted by EBITDA% descending.
+- topPerformers: top 6–8 stores by EBITDA%, only stores with positive EBITDA.
+- losingStores: all stores with negative EBITDA, sorted by EBITDA% ascending (worst first).
+- turnarounds.gainers: top 5 stores by EBITDA$ improvement vs PY.
+- turnarounds.declines: top 5 stores by EBITDA$ decline vs PY.
+- peterFramework: customize the "body" text with 1–2 specific examples from THIS file's data.
+- storesProfitable: count only stores where EBITDA$ is positive. Count carefully — this number goes on the cover.
+- All percentages formatted as strings like "17.5%" — already converted from decimal.
+- Dollar amounts formatted as strings like "$95,114" or "($19,369)" for negatives.
+- acDeepDives: one entry per area coach. Each entry must include all 8 fields: coverKPIs (5 KPIs), scorecard (one row per store with all 8 metric columns), laborChart (labels/current/prior as numeric arrays, ytdLines, insight), cosChart (labels/current/prior as numeric arrays, storeCards, insight), ebitdaChart (labels/current/prior as numeric arrays, ytdItems, insight), anomalies (up to 4 stores with flagged line items — include p3/py dollar amounts and a coaching question as "note"), spotlights (crisis/urgent/brightSpot/structural quadrants with store name and 3 bullet points each — use null for any quadrant with no content), coachingPriorities (4 items with number/status/title/body — status is "red", "amber", or "green").
+- For chart arrays (laborChart.current, cosChart.current, etc.): values must be RAW NUMBERS, not strings. Example: 27.4 not "27.4%". The chart renderer converts to percentages.
+- anomalies: pull from controllable expense sub-lines as defined in the CONTROLLABLE EXPENSE SUB-LINES section above. Every AC should have at least 1–2 anomaly entries if any sub-line moved significantly vs PY.
+- spotlights.crisis: use only if a store is EBITDA negative this period. spotlights.brightSpot: use for the strongest performing store. Set unused quadrants to null.`;
 
 // ─── Weekly Recap System Prompt ─────────────────────────────────────────────
 
@@ -398,7 +538,7 @@ async function analyzePL(file) {
 
   const message = await client.messages.create({
     model: MODEL,
-    max_tokens: 8192,
+    max_tokens: 16000,
     system: PL_SYSTEM_PROMPT,
     messages: [
       {
@@ -408,7 +548,19 @@ async function analyzePL(file) {
     ]
   });
 
-  return message.content[0].text;
+  const responseText = message.content[0].text;
+
+  // Parse JSON from response
+  try {
+    const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) return JSON.parse(jsonMatch[1]);
+    const s = responseText.indexOf('{');
+    const e = responseText.lastIndexOf('}');
+    if (s !== -1 && e !== -1) return JSON.parse(responseText.slice(s, e + 1));
+  } catch (_) { /* fall through */ }
+
+  // If JSON parse fails, return raw text (fallback deck will handle it)
+  return responseText;
 }
 
 // ─── Weekly Recap Analyzer ──────────────────────────────────────────────────
@@ -720,9 +872,7 @@ Include: week/period label, top wins with specific numbers, top concerns with sp
     model: MODEL,
     max_tokens: 4096,
     system,
-    messages: [{ role: 'user', content: `Generate a ${tone} tone, ${length} length weekly recap email from this data:
-
-${JSON.stringify(data, null, 2)}` }]
+    messages: [{ role: 'user', content: `Generate a ${tone} tone, ${length} length weekly recap email from this data:\n\n${JSON.stringify(data, null, 2)}` }]
   });
 
   const raw = message.content[0].text;
@@ -738,6 +888,147 @@ ${JSON.stringify(data, null, 2)}` }]
   }
 }
 
-// ─── Exports ────────────────────────────────────────────────────────────────
+// ─── Exports ──────────────────────────────────────────────────────────────────────
 
-module.exports = { analyzePL, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail, generateDailyIntelEmail };
+// ─── Area Coach P&L Analyzer ────────────────────────────────────────────────
+
+const PL_AC_SYSTEM_PROMPT = `You are analyzing a Pizza Hut franchise P&L file for a single Area Coach's area. The file contains one tab per store (5-8 stores) plus possibly a summary tab for the area. Your job is to produce a detailed, honest, data-driven analysis that the Area Coach will use to run their area review.
+
+THE P&L FILE
+Each store tab follows this column structure:
+* Columns 11-12: Current Period (amount + % of net sales)
+* Columns 14-15: Prior Year same period (amount + % of net sales)
+* Columns 17-18: Period Variance (amount + %)
+* Columns 20-21: YTD Current Year (amount + % of net sales)
+* Columns 23-24: YTD Prior Year (amount + % of net sales)
+All percentages are expressed as a decimal (e.g., 0.274 = 27.4%). Convert to percentage strings in output.
+
+KEY METRICS
+- Net Sales: top-line revenue. Flag declines vs PY especially on YTD.
+- COS% (Cost of Food Sales): target 26-29%. Above 30% = elevated. Flag YOY direction.
+- Direct Labor% (Total Direct Labor Cost): PRIMARY metric. Under 25% = excellent. 25-28% = acceptable. 28-32% = watch. Above 32% = coaching needed. Above 40% = crisis.
+- SCP% (Store Controllable Profit): strong = 30%+. Weak = below 20%.
+- EBITDA% (Store Level EBITDA): healthy = 12%+. Marginal = 5-12%. At-risk = 0-5%. Negative = losing money. Never conflate improvement with profitability.
+- BPS: 1 basis point = 0.01%. Use this language for percentage point changes.
+
+CONTROLLABLE EXPENSE SUB-LINES — flag any spike vs PY:
+- Payroll - R&M: flag above $400 baseline — ask who was paid, for what
+- Pest Control: flag spikes (e.g., $480 vs $57 PY)
+- Safety/Security Repairs: flag if new
+- Grease Trap: flag if new or recurring
+- Food Supplier Supplies: flag if up 40%+ vs PY
+- Cash Over/Short: flag swings above $100 vs PY
+- Electric/Gas/Water: flag any single utility up 30%+ vs PY
+
+OUTPUT FORMAT — CRITICAL
+Return a single JSON object in a \`\`\`json code block. This is the data for ONE area coach's 8-slide deep-dive deck. No preamble, no markdown outside the block.
+
+{
+  "acName": "Daria Spikes",
+  "period": "P3 2026",
+  "totalStores": 7,
+  "coverKPIs": [
+    {"label": "EBITDA %",     "value": "17.5%"},
+    {"label": "EBITDA vs PY", "value": "+$12,450"},
+    {"label": "Net Sales",    "value": "$545K"},
+    {"label": "Labor %",      "value": "25.5%"},
+    {"label": "COS %",        "value": "27.0%"}
+  ],
+  "scorecard": [
+    {
+      "name": "Wells Street", "storeNum": "38876", "status": "green",
+      "netSales": "$71,304", "netSalesVsPY": "+3.2%",
+      "cosPct": "27.1%", "laborPct": "21.8%", "laborPY": "24.2%",
+      "scpPct": "38.5%", "ebitdaPct": "25.2%", "ebitdaPY": "17.5%"
+    }
+  ],
+  "laborChart": {
+    "labels": ["Wells St", "Store B", "Store C"],
+    "current": [21.8, 28.5, 31.2],
+    "prior":   [24.2, 27.1, 30.5],
+    "ytdLines": ["YTD Labor: 25.5% vs PY 26.8% (-130 bps)", "3 of 7 stores improved vs PY"],
+    "insight": "Wells Street best at 21.8%. Store C above 31% on $58K volume -- overstaffed."
+  },
+  "cosChart": {
+    "labels": ["Wells St", "Store B", "Store C"],
+    "current": [27.1, 28.8, 30.2],
+    "prior":   [28.0, 28.5, 29.8],
+    "storeCards": [
+      {"name": "Wells St", "trend": "down", "p3": "27.1%", "py": "28.0%", "ytd": "27.5%", "ytdPY": "28.1%"}
+    ],
+    "insight": "COS improving led by Wells Street (-90 bps). Store C trending up -- check portioning."
+  },
+  "ebitdaChart": {
+    "labels": ["Wells St", "Store B", "Store C"],
+    "current": [25.2, 12.8, -4.1],
+    "prior":   [17.5, 11.2,  3.4],
+    "ytdItems": [
+      {"name": "Wells St", "ytd": "22.3%", "ytdPY": "18.1%"}
+    ],
+    "insight": "Store C flipped negative. Labor spike of 8.4 pts vs PY is the entire story."
+  },
+  "anomalies": [
+    {
+      "name": "Store C", "storeNum": "39381", "status": "red",
+      "items": [
+        {"line": "Payroll - R&M",  "p3": "$1,842", "py": "$284", "note": "Who was paid? Needs authorization check"},
+        {"line": "Pest Control",   "p3": "$480",   "py": "$57",  "note": "Spike -- new vendor or recurring?"},
+        {"line": "Cash Short",     "p3": "$214",   "py": "$18",  "note": "Cash handling concern -- review with GM"}
+      ]
+    }
+  ],
+  "spotlights": {
+    "crisis":     {"name": "Store C (#39381)", "bullets": ["Labor 31.2% on $58K -- overstaffed", "EBITDA negative (-4.1%)", "3 controllable line item spikes"]},
+    "urgent":     {"name": "Store B (#39383)", "bullets": ["COS trending up 3 periods", "GM has not submitted COGS correction", "Review scheduling and portioning"]},
+    "brightSpot": {"name": "Wells Street (#38876)", "bullets": ["25.2% EBITDA -- area best", "Labor improved 240 bps vs PY", "Model store -- cross-train other GMs"]},
+    "structural": {"name": "Area Trend", "bullets": ["3 of 7 stores improved EBITDA vs PY", "Labor discipline is the primary driver", "COS gaps suggest inconsistent portioning"]}
+  },
+  "coachingPriorities": [
+    {"number": "01", "status": "red",   "title": "Store C -- Labor Crisis",       "body": "31.2% on $58K is structural. Schedule audit this week. GM must explain the $1,842 R&M charge."},
+    {"number": "02", "status": "red",   "title": "Store C -- Controllable Spikes","body": "Three line-item spikes this period. Pull pest control and R&M invoices. Investigate $214 cash short."},
+    {"number": "03", "status": "amber", "title": "Store B -- COS Trend",          "body": "3-period upward COS trend. Do a full portioning observation before next period closes."},
+    {"number": "04", "status": "green", "title": "Replicate Wells Street",         "body": "25.2% EBITDA, area best. Cross-train Store C GM here this period. Document what they do differently."}
+  ]
+}
+
+RULES:
+- Fill every field with real numbers from the file. No placeholders.
+- scorecard: one row per store, all 8 metric columns populated.
+- laborChart.current / cosChart.current / ebitdaChart.current: RAW NUMBERS only (e.g., 27.4 not "27.4%"). The chart renderer converts to percentages.
+- status on scorecard rows: "green" if EBITDA >= 10%, "amber" if 0-9.9%, "red" if negative.
+- anomalies: include every store with at least one sub-line spike vs PY. Up to 4 stores.
+- spotlights.crisis: only if a store has negative EBITDA this period. Set to null if none.
+- spotlights: set unused quadrants to null.
+- coachingPriorities: exactly 4 items. status = "red", "amber", or "green". Lead with the most urgent.
+- All percentages as strings ("17.5%"). Dollar amounts as strings ("$95,114" or "($19,369)" for negatives).
+- storeCards in cosChart: one card per store, trend = "up" or "down" vs PY.`;
+
+async function analyzePLForAC(file, acName) {
+  const fileText = await extractTextFromFile(file);
+
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 8192,
+    system: PL_AC_SYSTEM_PROMPT,
+    messages: [{
+      role: 'user',
+      content: `Area Coach: ${acName}\n\nHere is the P&L data to analyze:\n\n${fileText}`
+    }]
+  });
+
+  const responseText = message.content[0].text;
+
+  try {
+    const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) return JSON.parse(jsonMatch[1]);
+    const s = responseText.indexOf('{');
+    const e = responseText.lastIndexOf('}');
+    if (s !== -1 && e !== -1) return JSON.parse(responseText.slice(s, e + 1));
+  } catch (_) { /* fall through */ }
+
+  return responseText;
+}
+
+// ─── Exports ──────────────────────────────────────────────────────────────────────
+
+module.exports = { analyzePL, analyzePLForAC, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail, generateDailyIntelEmail };
