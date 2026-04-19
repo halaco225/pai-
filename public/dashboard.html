@@ -266,25 +266,4 @@
     const res = await fetch('/api/auth/me');
     if (!res.ok) { window.location.href = '/'; return; }
     const data = await res.json();
-    if (!data.authenticated) { window.location.href = '/'; return; }
-    const { name, role } = data.user;
-    document.getElementById('userName').textContent = name;
-    document.getElementById('userRole').textContent = role.toUpperCase();
-    document.getElementById('userInitial').textContent = name.charAt(0).toUpperCase();
-    document.getElementById('welcomeName').textContent = name.split(' ')[0];
-    // Alignment is built-in — show info card to RDOs/VPs only
-    if (role \!== 'rdo' && role \!== 'vp') {
-      const card = document.getElementById('alignmentCard');
-      if (card) card.style.display = 'none';
-    }
-  }
-
-  async function logout() {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    window.location.href = '/';
-  }
-
-  init();
-</script>
-</body>
-</html>
+    if (!data.authenticated) { window.location.href = '/'; return

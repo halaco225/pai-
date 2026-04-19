@@ -15,7 +15,7 @@ const ODS_PASS = process.env.ODS_PASSWORD || '';
 async function pullAboveStoreReport(targetDate) {
   let browser = null;
   const tmpDir = path.join(__dirname, '..', 'uploads');
-  if (\!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
   try {
     // Lazy-load playwright so startup isn't affected if not installed

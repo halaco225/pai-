@@ -16,7 +16,7 @@ function fmtDate(dateStr) {
 }
 
 function avgIST(storeList) {
-  const valid = storeList.filter(s => s.wtd_ist \!= null);
+  const valid = storeList.filter(s => s.wtd_ist != null);
   return valid.length ? Math.round(valid.reduce((a, s) => a + s.wtd_ist, 0) / valid.length * 10) / 10 : null;
 }
 
@@ -25,7 +25,7 @@ function sumOrders(storeList) {
 }
 
 function avgLt19(storeList) {
-  const valid = storeList.filter(s => s.wtd_lt19_pct \!= null);
+  const valid = storeList.filter(s => s.wtd_lt19_pct != null);
   return valid.length ? Math.round(valid.reduce((a, s) => a + s.wtd_lt19_pct, 0) / valid.length * 10) / 10 : null;
 }
 
@@ -41,7 +41,7 @@ function buildHierarchyRows(stores, label = '') {
   const byRegion = {};
   stores.forEach(s => {
     const r = s.region_coach || 'Unknown';
-    if (\!byRegion[r]) byRegion[r] = [];
+    if (!byRegion[r]) byRegion[r] = [];
     byRegion[r].push(s);
   });
 
@@ -70,7 +70,7 @@ function buildHierarchyRows(stores, label = '') {
     const byArea = {};
     rStores.forEach(s => {
       const a = s.area_coach || 'Unknown';
-      if (\!byArea[a]) byArea[a] = [];
+      if (!byArea[a]) byArea[a] = [];
       byArea[a].push(s);
     });
 
@@ -161,13 +161,13 @@ function generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate, allW
 
     const trendRows = [[`PTD Trend — Week over Week IST`], trendHeaders];
     for (const s of allWeekStores) {
-      if (s.level \!== 'STORE') continue;
+      if (s.level !== 'STORE') continue;
       const row = ['STORE', s.region_coach||'', s.area_coach||'', s.store_id, s.name];
       weeks.forEach(w => row.push(s.weeklyIST[w] ?? ''));
       for (let i = 1; i < weeks.length; i++) {
         const prev = s.weeklyIST[weeks[i-1]];
         const curr = s.weeklyIST[weeks[i]];
-        if (prev \!= null && curr \!= null) {
+        if (prev != null && curr != null) {
           const delta = curr - prev;
           row.push(delta > 0 ? `▲ +${delta.toFixed(1)}` : delta < 0 ? `▼ ${delta.toFixed(1)}` : '—');
         } else row.push('—');

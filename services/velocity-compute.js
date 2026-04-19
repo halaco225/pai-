@@ -41,7 +41,7 @@ function getPeriodWeek(dateStr) {
 }
 
 function getWeekDateRange(weekKey) {
-  if (\!weekKey) return '';
+  if (!weekKey) return '';
   try {
     const tue = new Date(weekKey + 'T12:00:00Z');
     const mon = new Date(tue);
@@ -71,16 +71,16 @@ function computeWTD(records) {
   // Group by store, average across days
   const byStore = {};
   for (const r of records) {
-    if (\!byStore[r.store_id]) byStore[r.store_id] = [];
+    if (!byStore[r.store_id]) byStore[r.store_id] = [];
     byStore[r.store_id].push(r);
   }
 
   const stores = [];
   for (const [storeId, days] of Object.entries(byStore)) {
     const align = ALIGNMENT[storeId];
-    if (\!align) continue;
+    if (!align) continue;
 
-    const validIST = days.filter(d => d.ist_avg \!= null);
+    const validIST = days.filter(d => d.ist_avg != null);
     const wtd_ist = validIST.length > 0
       ? Math.round((validIST.reduce((a, d) => a + parseFloat(d.ist_avg), 0) / validIST.length) * 10) / 10
       : null;
@@ -133,7 +133,7 @@ function computeWTD(records) {
 
 // ── Build IST color class ────────────────────────────────────────────
 function istColorClass(ist) {
-  if (\!ist) return 'ist-none';
+  if (!ist) return 'ist-none';
   if (ist <= 18) return 'ist-green';
   if (ist <= 20) return 'ist-yellow';
   if (ist <= 25) return 'ist-orange';
@@ -141,7 +141,7 @@ function istColorClass(ist) {
 }
 
 function istColor(ist) {
-  if (\!ist) return '#aaa';
+  if (!ist) return '#aaa';
   if (ist <= 18) return '#28a745';
   if (ist <= 20) return '#ffc107';
   if (ist <= 25) return '#fd7e14';
@@ -153,7 +153,7 @@ const DOW_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 function analyzeDOWPatterns(dowRows) {
   // dowRows: [{dow, day_name, avg_ist, sample_count}]
-  if (\!dowRows.length) return [];
+  if (!dowRows.length) return [];
   const avg = dowRows.reduce((a, r) => a + parseFloat(r.avg_ist), 0) / dowRows.length;
   return dowRows.map(r => ({
     dow: parseInt(r.dow),

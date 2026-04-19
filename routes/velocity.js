@@ -52,10 +52,10 @@ router.get('/weeks', async (req, res) => {
 router.get('/wtd', async (req, res) => {
   try {
     let weekKey = req.query.week;
-    if (\!weekKey) weekKey = getWeekKey(getYesterdayChicago());
+    if (!weekKey) weekKey = getWeekKey(getYesterdayChicago());
 
     const records = await db.getVelocityWeek(weekKey);
-    if (\!records.length) return res.json({ weekKey, stores: [], days: [] });
+    if (!records.length) return res.json({ weekKey, stores: [], days: [] });
 
     // Enrich records with alignment data
     const enriched = records.map(r => {
@@ -137,14 +137,14 @@ router.get('/trends', async (req, res) => {
     const byWeek = {};
     for (const r of records) {
       const wk = r.week_key instanceof Date ? r.week_key.toISOString().split('T')[0] : String(r.week_key).split('T')[0];
-      if (\!byWeek[wk]) byWeek[wk] = [];
+      if (!byWeek[wk]) byWeek[wk] = [];
       byWeek[wk].push({ ...r, ...(ALIGNMENT[r.store_id] || {}) });
     }
 
     const weekTrends = Object.entries(byWeek)
       .sort(([a],[b]) => a.localeCompare(b))
       .map(([wk, recs]) => {
-        const valid = recs.filter(r => r.ist_avg \!= null);
+        const valid = recs.filter(r => r.ist_avg != null);
         return {
           week_key: wk,
           period_week: recs[0]?.period_week || getPeriodWeek(wk),
@@ -159,7 +159,7 @@ router.get('/trends', async (req, res) => {
     for (let i = 1; i < weekTrends.length; i++) {
       const prev = weekTrends[i-1].avg_ist;
       const curr = weekTrends[i].avg_ist;
-      weekTrends[i].delta = (prev \!= null && curr \!= null) ? Math.round((curr-prev)*10)/10 : null;
+      weekTrends[i].delta = (prev != null && curr != null) ? Math.round((curr-prev)*10)/10 : null;
     }
 
     res.json({ weeks: weekTrends, storeCount: storeId ? 1 : [...new Set(records.map(r=>r.store_id))].length });
@@ -196,11 +196,11 @@ router.get('/insights', async (req, res) => {
     // Group by store and compute weekly averages
     const byStore = {};
     for (const r of records) {
-      if (\!byStore[r.store_id]) {
+      if (!byStore[r.store_id]) {
         byStore[r.store_id] = { ...ALIGNMENT[r.store_id], store_id: r.store_id, weeks: {} };
       }
       const wk = r.week_key instanceof Date ? r.week_key.toISOString().split('T')[0] : String(r.week_key).split('T')[0];
-      if (\!byStore[r.store_id].weeks[wk]) byStore[r.store_id].weeks[wk] = [];
+      if (!byStore[r.store_id].weeks[wk]) byStore[r.store_id].weeks[wk] = [];
       if (r.ist_avg) byStore[r.store_id].weeks[wk].push(parseFloat(r.ist_avg));
     }
 
@@ -222,7 +222,7 @@ router.get('/insights', async (req, res) => {
     });
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (\!apiKey) return res.json({ insights: 'AI insights require ANTHROPIC_API_KEY', storeSummaries });
+    if (!apiKey) return res.json({ insights: 'AI insights require ANTHROPIC_API_KEY', storeSummaries });
 
     const Anthropic = require('@anthropic-ai/sdk');
     const client = new Anthropic();
@@ -255,7 +255,7 @@ Provide a concise coaching brief: top improvers, stores needing attention, any p
 router.post('/upload', upload.array('files'), async (req, res) => {
   const tempFiles = req.files?.map(f => f.path) || [];
   try {
-    if (\!req.files?.length) return res.status(400).json({ error: 'No files received' });
+    if (!req.files?.length) return res.status(400).json({ error: 'No files received' });
     const results = [], errors = [];
 
     for (const file of req.files) {
@@ -274,7 +274,7 @@ router.post('/upload', upload.array('files'), async (req, res) => {
         } else { errors.push(`${file.originalname}: unsupported type`); continue; }
       } catch (e) { errors.push(`${file.originalname}: ${e.message}`); continue; }
 
-      if (\!parsed?.stores?.length) { errors.push(`${file.originalname}: no store data found`); continue; }
+      if (!parsed?.stores?.length) { errors.push(`${file.originalname}: no store data found`); continue; }
 
       const { stores, reportDate, source } = parsed;
       const finalDate = reportDate || getYesterdayChicago();
@@ -284,7 +284,7 @@ router.post('/upload', upload.array('files'), async (req, res) => {
       let saved = 0;
       for (const s of stores) {
         const align = ALIGNMENT[s.store_id];
-        if (\!align) continue;
+        if (!align) continue;
         const record = {
           store_id: s.store_id, record_date: finalDate,
           week_key: weekKey, period_week: periodWk,
@@ -338,7 +338,7 @@ router.post('/export', async (req, res) => {
     const dailyByDate = {};
     for (const r of enriched) {
       const d = r.record_date;
-      if (\!dailyByDate[d]) dailyByDate[d] = [];
+      if (!dailyByDate[d]) dailyByDate[d] = [];
       dailyByDate[d].push(r);
     }
 
@@ -356,7 +356,7 @@ router.post('/export', async (req, res) => {
 router.post('/automation/pull-ods', async (req, res) => {
   // Verify automation token
   const token = req.headers['x-automation-token'] || req.query.token;
-  if (token \!== (process.env.VELOCITY_AUTOMATION_TOKEN || 'velocity-auto-2024')) {
+  if (token !== (process.env.VELOCITY_AUTOMATION_TOKEN || 'velocity-auto-2024')) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -370,19 +370,19 @@ router.post('/automation/pull-ods', async (req, res) => {
     const { pullAboveStoreReport } = require('../services/velocity-ods');
     const pullResult = await pullAboveStoreReport(targetDate);
 
-    if (\!pullResult.success) throw new Error(pullResult.error);
+    if (!pullResult.success) throw new Error(pullResult.error);
 
     const parsed = await parseAboveStorePDF(pullResult.filePath);
     try { fs.unlinkSync(pullResult.filePath); } catch(e){}
 
-    if (\!parsed.stores?.length) throw new Error('No store data in PDF');
+    if (!parsed.stores?.length) throw new Error('No store data in PDF');
 
     const weekKey  = getWeekKey(targetDate);
     const periodWk = getPeriodWeek(targetDate);
     let saved = 0;
 
     for (const s of parsed.stores) {
-      if (\!ALIGNMENT[s.store_id]) continue;
+      if (!ALIGNMENT[s.store_id]) continue;
       await db.upsertVelocityRecord({
         store_id: s.store_id, record_date: targetDate,
         week_key: weekKey, period_week: periodWk,
@@ -405,7 +405,7 @@ router.post('/automation/pull-ods', async (req, res) => {
 // ── POST /api/velocity/automation/send-emails — 7AM cron trigger ─────
 router.post('/automation/send-emails', async (req, res) => {
   const token = req.headers['x-automation-token'] || req.query.token;
-  if (token \!== (process.env.VELOCITY_AUTOMATION_TOKEN || 'velocity-auto-2024')) {
+  if (token !== (process.env.VELOCITY_AUTOMATION_TOKEN || 'velocity-auto-2024')) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -414,7 +414,7 @@ router.post('/automation/send-emails', async (req, res) => {
 
   try {
     const records = await db.getVelocityWeek(weekKey);
-    if (\!records.length) {
+    if (!records.length) {
       return res.status(404).json({ error: `No data for week containing ${targetDate}` });
     }
 
@@ -429,7 +429,7 @@ router.post('/automation/send-emails', async (req, res) => {
     const dailyByDate = {};
     for (const r of enriched) {
       const d = r.record_date;
-      if (\!dailyByDate[d]) dailyByDate[d] = [];
+      if (!dailyByDate[d]) dailyByDate[d] = [];
       dailyByDate[d].push(r);
     }
 

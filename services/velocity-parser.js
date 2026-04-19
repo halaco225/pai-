@@ -28,7 +28,7 @@ function parseAboveStorePDFLocal(filePath) {
 
     for (const block of storeBlocks.slice(1)) {
       const storeMatch = block.trim().match(/^(S?\d+)\s+\(([^)]+)\)/);
-      if (\!storeMatch) continue;
+      if (!storeMatch) continue;
       const rawId = storeMatch[1];
       const store_id = 'S' + rawId.replace(/^S/, '').padStart(6, '0');
 
@@ -43,14 +43,14 @@ function parseAboveStorePDFLocal(filePath) {
 
       // Extract IST bucket counts (5 colon section)
       const colonBlock = block.match(/:\s*\n:\s*\n:\s*\n:\s*\n:\s*\n\s*\n([\s\S]+?)(?:Orders per Dispatch|Averages:|Cash controls)/);
-      if (\!colonBlock) continue;
+      if (!colonBlock) continue;
 
       const afterColons = colonBlock[1];
       const lines = afterColons.trim().split('\n');
       const counts = [];
       for (const line of lines) {
         const l = line.trim();
-        if (\!l) continue;
+        if (!l) continue;
         const m1 = l.match(/^(-?\d+)(?:\s+[\d.]+%)?$/);
         if (m1) { counts.push(parseInt(m1[1])); continue; }
         if (l.match(/^[\d.]+%$/)) continue;
@@ -101,7 +101,7 @@ function parseAboveStorePDFLocal(filePath) {
 async function parseAboveStorePDFClaude(filePath) {
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (\!apiKey) return { stores: [], reportDate: null, source: 'pdf', error: 'No ANTHROPIC_API_KEY' };
+    if (!apiKey) return { stores: [], reportDate: null, source: 'pdf', error: 'No ANTHROPIC_API_KEY' };
 
     const fileBuffer = fs.readFileSync(filePath);
     const base64Data = fileBuffer.toString('base64');
@@ -140,14 +140,14 @@ Return [] if no data found.` }
       })
     });
 
-    if (\!response.ok) throw new Error(`Claude API ${response.status}`);
+    if (!response.ok) throw new Error(`Claude API ${response.status}`);
     const apiResult = await response.json();
     const rawText = apiResult.content?.map(c => c.text || '').join('').trim();
     const jsonMatch = rawText.replace(/^```json\s*/i,'').replace(/```\s*$/,'').match(/\[[\s\S]*\]/);
-    if (\!jsonMatch) throw new Error('No JSON array in response');
+    if (!jsonMatch) throw new Error('No JSON array in response');
 
     const stores = JSON.parse(jsonMatch[0]);
-    if (\!Array.isArray(stores)) throw new Error('Non-array response');
+    if (!Array.isArray(stores)) throw new Error('Non-array response');
 
     const reportDate = stores.find(s => s.report_date)?.report_date || null;
     console.log(`[PDF Claude] ${stores.length} stores, date=${reportDate}`);
@@ -177,15 +177,15 @@ function parseSOSExcel(filePath) {
     const dateCell = raw[1] && raw[1][23];
     reportDate = extractDateFromCell(dateCell);
   } catch(e) {}
-  if (\!reportDate) reportDate = scanForDate(raw);
+  if (!reportDate) reportDate = scanForDate(raw);
 
   const stores = [];
   for (const row of raw) {
-    if (\!row || \!row[0] || typeof row[0] \!== 'string') continue;
-    if (\!row[0].match(/^S0?\d{5,6}$/)) continue;
+    if (!row || !row[0] || typeof row[0] !== 'string') continue;
+    if (!row[0].match(/^S0?\d{5,6}$/)) continue;
     const make = row[11] || null;
     const pctLt4 = row[13] ? parseFloat(String(row[13]).replace('%','')) || null : null;
-    if (\!make) continue;
+    if (!make) continue;
     stores.push({ store_id: normalizeStoreId(row[0].trim()), make_time: make, pct_lt4: pctLt4 });
   }
 
@@ -211,9 +211,9 @@ function parseDeliveryExcel(filePath) {
   const stores = [];
   for (let i = 5; i < raw.length; i++) {
     const row = raw[i];
-    if (\!row || \!row[0] || typeof row[0] \!== 'string') continue;
+    if (!row || !row[0] || typeof row[0] !== 'string') continue;
     const storeMatch = row[0].match(/\(S(\d{6})\)\s*$/);
-    if (\!storeMatch) continue;
+    if (!storeMatch) continue;
     const store_id = 'S' + storeMatch[1];
 
     const avgProdMins = parseFloat(row[7]) || 0;
@@ -240,7 +240,7 @@ function normalizeStoreId(raw) {
 }
 
 function extractDateFromCell(cell) {
-  if (\!cell) return null;
+  if (!cell) return null;
   if (cell instanceof Date && cell.getFullYear() > 2020) {
     return `${cell.getFullYear()}-${String(cell.getMonth()+1).padStart(2,'0')}-${String(cell.getDate()).padStart(2,'0')}`;
   }

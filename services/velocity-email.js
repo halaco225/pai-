@@ -18,7 +18,7 @@ function createTransporter() {
 
 function generateEmailHTML(stores, targetDate, areaFilter = null) {
   const filtered = areaFilter ? stores.filter(s => s.area_coach === areaFilter || s.area === areaFilter) : stores;
-  const valid = filtered.filter(s => s.wtd_ist \!= null);
+  const valid = filtered.filter(s => s.wtd_ist != null);
 
   const avgIST = valid.length ? (valid.reduce((a, s) => a + s.wtd_ist, 0) / valid.length).toFixed(1) : '—';
   const avgLt19 = valid.length ? (valid.reduce((a, s) => a + (s.wtd_lt19_pct || 0), 0) / valid.length).toFixed(1) : '—';
@@ -31,12 +31,12 @@ function generateEmailHTML(stores, targetDate, areaFilter = null) {
   const storeRow = (s) => `
     <tr>
       <td style="padding:8px;border-bottom:1px solid #ddd"><strong>${s.name}</strong><br><small style="color:#666">${s.store_id} · ${s.area_coach}</small></td>
-      <td style="padding:8px;border-bottom:1px solid #ddd;color:${istColor(s.wtd_ist)};font-weight:bold">${s.wtd_ist \!= null ? s.wtd_ist + ' min' : '—'}</td>
-      <td style="padding:8px;border-bottom:1px solid #ddd">${s.wtd_lt19_pct \!= null ? s.wtd_lt19_pct + '%' : '—'}</td>
+      <td style="padding:8px;border-bottom:1px solid #ddd;color:${istColor(s.wtd_ist)};font-weight:bold">${s.wtd_ist != null ? s.wtd_ist + ' min' : '—'}</td>
+      <td style="padding:8px;border-bottom:1px solid #ddd">${s.wtd_lt19_pct != null ? s.wtd_lt19_pct + '%' : '—'}</td>
       <td style="padding:8px;border-bottom:1px solid #ddd">${s.wtd_orders || '—'}</td>
     </tr>`;
 
-  return `<\!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><style>
   body{font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:20px;background:#fff}
