@@ -2,6 +2,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
+const { getFiscalContextString } = require('./fiscal-calendar');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = 'claude-sonnet-4-6';
@@ -437,7 +438,11 @@ async function analyzeRecap(files, weekLabel, recapDay, lastAcOfWeek, alignmentT
     ? 'Master alignment data is included at the bottom — use it for all store/AC/RGM name resolution.'
     : 'No alignment file on record — derive store/AC data from the uploaded reports directly.';
 
+  const fiscalContext = getFiscalContextString();
+
   const userMessage = `I've uploaded ${files.length} weekly report file(s): ${fileNames}
+
+${fiscalContext}
 
 Build the region recap deck using whatever data is available in these files. If some data sources are missing, build the slides you can with the data provided and note where data was unavailable — do not fail or refuse because of missing files. Work with what you have.
 
@@ -544,7 +549,11 @@ async function analyzeDaily(files, alignmentText) {
   const reportCount = files.length;
   const reportNames = files.map(f => f.originalname).join(', ');
 
+  const fiscalContext = getFiscalContextString();
+
   const userMessage = `I've uploaded ${reportCount} daily report${reportCount !== 1 ? 's' : ''}: ${reportNames}
+
+${fiscalContext}
 
 Analyze all data provided and return the full Daily Intel Report following your output format.
 
@@ -732,4 +741,3 @@ ${JSON.stringify(data, null, 2)}` }]
 // ─── Exports ────────────────────────────────────────────────────────────────
 
 module.exports = { analyzePL, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail, generateDailyIntelEmail };
-       
