@@ -111,7 +111,9 @@ async function login() {
 async function downloadAboveStoreReport(session, targetDate, outPath) {
   const { cookie, ua } = session;
 
-  // Step 1: Start the aboveStoreInStoreReportsFlow → get a fresh _flowExecutionKey
+  // Step 1: Start the flow.
+  // The server redirects to a URL containing ?_flowExecutionKey=eNsN — extract it from the
+  // *final* URL after node-fetch follows the redirect (flowStart.url), not from the HTML body.
   console.log(`[ODS] Starting aboveStoreInStoreReportsFlow for ${targetDate}...`);
   const flowStart = await fetch(`${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`, {
     headers: { 'Cookie': cookie, 'User-Agent': ua, 'Referer': `${ODS_URL}/asp/` }
@@ -121,63 +123,91 @@ async function downloadAboveStoreReport(session, targetDate, outPath) {
     return { success: false, error: `Flow start returned ${flowStart.status}` };
   }
 
-  const flowHtml = await flowStart.text();
+  // Final URL after redirect contains the execution key
+  const finalUrl = flowStart.url;
+  console.log(`[ODS] Flow final URL: ${finalUrl}`);
 
-  // Extract _flowExecutionKey from hidden input field
-  const keyMatch = flowHtml.match(/name=["']_flowExecutionKey["'][^>]*value=["']([^"']+)["']/i)
-    || flowHtml.match(/value=["']([^"']+)["'][^>]*name=["']_flowExecutionKey["']/i);
+  let flowKey = null;
 
-  if (!keyMatch) {
-    console.log('[ODS] Flow HTML snippet (no key found):', flowHtml.substring(0, 2000));
-    return { success: false, error: 'Could not extract _flowExecutionKey from flow page — check logs' };
+  // 1. Try the redirect URL (most reliable for JRS flows)
+  const urlKeyMatch = finalUrl.match(/_flowExecutionKey=([^&]+)/);
+  if (urlKeyMatch) flowKey = decodeURIComponent(urlKeyMatch[1]);
+
+  // 2. Fallback: scan HTML for eNsN pattern anywhere
+  if (!flowKey) {
+    const flowHtml = await flowStart.text();
+    const htmlKeyMatch = flowHtml.match(/['"=](\s*e\d+s\d+)['"&]/i);
+    if (htmlKeyMatch) flowKey = htmlKeyMatch[1].trim();
+    if (!flowKey) {
+      // Last resort: any eNsN token
+      const loose = flowHtml.match(/\b(e\d+s\d+)\b/);
+      if (loose) flowKey = loose[1];
+    }
+    if (!flowKey) {
+      console.log('[ODS] Flow HTML (no key found):', flowHtml.substring(0, 2000));
+      return { success: false, error: 'Could not extract _flowExecutionKey — check logs' };
+    }
   }
 
-  const flowKey = keyMatch[1];
   console.log(`[ODS] Flow execution key: ${flowKey}`);
 
-  // Grab CSRF token if present on the form page
-  const csrfOnPage = flowHtml.match(/name=["']OWASP_CSRFTOKEN["'][^>]*value=["']([^"']+)["']/i)
-    || flowHtml.match(/value=["']([^"']+)["'][^>]*name=["']OWASP_CSRFTOKEN["']/i);
-  const csrfToken = csrfOnPage ? csrfOnPage[1] : null;
-  if (csrfToken) console.log(`[ODS] Page CSRF token: ${csrfToken.substring(0, 12)}...`);
+  // Step 2: Request PDF export using the flow key.
+  // Try GET first (standard JRS export pattern), then POST fallback.
+  const exportUrl = `${ODS_URL}/asp/flow.html`
+    + `?_flowId=aboveStoreInStoreReportsFlow`
+    + `&_flowExecutionKey=${encodeURIComponent(flowKey)}`
+    + `&_eventId=export`
+    + `&output=pdf`
+    + `&DATE=${encodeURIComponent(targetDate)}`;
 
-  // Step 2: POST to run the report with the target date → PDF
-  const formFields = [
-    `_flowExecutionKey=${encodeURIComponent(flowKey)}`,
-    `_eventId=run`,
-    `DATE=${encodeURIComponent(targetDate)}`,
-    `output=pdf`
-  ];
-  if (csrfToken) formFields.push(`OWASP_CSRFTOKEN=${encodeURIComponent(csrfToken)}`);
-
-  const reportRes = await fetch(`${ODS_URL}/asp/flow.html`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Cookie': cookie,
-      'User-Agent': ua,
-      'Referer': `${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`
-    },
-    body: formFields.join('&')
+  console.log(`[ODS] Requesting PDF export...`);
+  let pdfRes = await fetch(exportUrl, {
+    headers: { 'Cookie': cookie, 'User-Agent': ua, 'Referer': finalUrl }
   });
+  let ct = pdfRes.headers.get('content-type') || '';
+  console.log(`[ODS] GET export: status=${pdfRes.status} ct=${ct}`);
 
-  const contentType = reportRes.headers.get('content-type') || '';
-  console.log(`[ODS] Report response: status=${reportRes.status} content-type=${contentType}`);
-
-  if (contentType.indexOf('pdf') >= 0 || contentType.indexOf('octet') >= 0) {
-    const buf = await reportRes.buffer();
+  if (ct.includes('pdf') || ct.includes('octet')) {
+    const buf = await pdfRes.buffer();
     fs.writeFileSync(outPath, buf);
-    console.log(`[ODS] PDF saved (${buf.length} bytes) → ${outPath}`);
+    console.log(`[ODS] PDF saved via GET export (${buf.length} bytes)`);
     return { success: true, bytes: buf.length };
   }
 
-  // Got HTML — log snippet so we can see what the form actually expects
-  const html = await reportRes.text();
-  console.log('[ODS] Got HTML instead of PDF. Snippet:', html.substring(0, 1500).replace(/\s+/g, ' '));
+  // POST fallback — some JRS setups require POST for export
+  const postBody = [
+    `_flowExecutionKey=${encodeURIComponent(flowKey)}`,
+    `_eventId=export`,
+    `output=pdf`,
+    `DATE=${encodeURIComponent(targetDate)}`
+  ].join('&');
+
+  pdfRes = await fetch(`${ODS_URL}/asp/flow.html`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Cookie': cookie, 'User-Agent': ua, 'Referer': finalUrl
+    },
+    body: postBody
+  });
+  ct = pdfRes.headers.get('content-type') || '';
+  console.log(`[ODS] POST export: status=${pdfRes.status} ct=${ct}`);
+
+  if (ct.includes('pdf') || ct.includes('octet')) {
+    const buf = await pdfRes.buffer();
+    fs.writeFileSync(outPath, buf);
+    console.log(`[ODS] PDF saved via POST export (${buf.length} bytes)`);
+    return { success: true, bytes: buf.length };
+  }
+
+  // Still HTML — dump it so we can see what the app actually returns
+  const html = await pdfRes.text();
+  console.log('[ODS] POST export HTML snippet:', html.substring(0, 2000).replace(/\s+/g, ' '));
   return {
     success: false,
-    error: `Got HTML instead of PDF (status=${reportRes.status}) — check Render logs for form structure`,
-    flowKey
+    error: `PDF export returned HTML (status=${pdfRes.status}) — see Render logs`,
+    flowKey,
+    finalUrl
   };
 }
 
