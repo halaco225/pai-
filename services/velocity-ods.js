@@ -132,40 +132,97 @@ async function downloadAboveStoreReport(session, targetDate, outPath) {
   const flowKey = keyMatch[1];
   console.log(`[ODS] Flow execution key: ${flowKey}`);
 
-  // Step 2: Use JRS REST v2 API to run the report directly as PDF.
-  // This is cleaner than navigating the SPA flow — REST v2 accepts the session cookie.
-  // ODS_REPORT_URI can be set as an env var once the correct path is confirmed.
-  const reportUri = process.env.ODS_REPORT_URI
-    || '/Reports/Pizza_Hut/Operations/PH_AboveStoreInStoreTime';
+  // Step 2: Request PDF using the discovered event: _eventId=getReportsForView
+  // URL captured from browser network tab:
+  //   flow.html?_flowId=aboveStoreInStoreReportsFlow&_flowExecutionKey=eNsM
+  //     &_eventId=getReportsForView&exportType=pdf&contentDisposition=attachment
+  //
+  // The date may need to be in the flow state (set by an earlier event) or passed directly.
+  // We try three variants in order:
 
-  const restUrl = `${ODS_URL}/asp/rest_v2/reports${reportUri}.pdf`
-    + `?DATE=${encodeURIComponent(targetDate)}`;
-  console.log(`[ODS] REST v2 attempt: ${restUrl}`);
+  const referer = `${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`;
 
-  let pdfRes = await fetch(restUrl, {
-    headers: { 'Cookie': cookie, 'User-Agent': ua }
+  // Attempt 1: call getReportsForView from s1 with date param
+  const url1 = `${ODS_URL}/asp/flow.html`
+    + `?_flowId=aboveStoreInStoreReportsFlow`
+    + `&_flowExecutionKey=${encodeURIComponent(flowKey)}`
+    + `&_eventId=getReportsForView`
+    + `&exportType=pdf`
+    + `&contentDisposition=attachment`
+    + `&DATE=${encodeURIComponent(targetDate)}`
+    + `&date=${encodeURIComponent(targetDate)}`;
+
+  console.log(`[ODS] Attempt 1 — getReportsForView with date param from ${flowKey}`);
+  let pdfRes = await fetch(url1, {
+    headers: { 'Cookie': cookie, 'User-Agent': ua, 'Referer': referer }
   });
   let ct = pdfRes.headers.get('content-type') || '';
-  console.log(`[ODS] REST v2: status=${pdfRes.status} ct=${ct}`);
+  console.log(`[ODS] Attempt 1: status=${pdfRes.status} ct=${ct}`);
 
   if (ct.includes('pdf') || ct.includes('octet')) {
     const buf = await pdfRes.buffer();
     fs.writeFileSync(outPath, buf);
-    console.log(`[ODS] PDF saved via REST v2 (${buf.length} bytes)`);
-    return { success: true, bytes: buf.length, method: 'rest_v2' };
+    console.log(`[ODS] PDF saved — attempt 1 (${buf.length} bytes)`);
+    return { success: true, bytes: buf.length, method: 'getReportsForView_s1_with_date' };
   }
 
-  // REST v2 path was wrong — log what it returned and the flow key so we can debug further
-  const restSnippet = (await pdfRes.text()).substring(0, 300).replace(/\s+/g, ' ');
-  console.log('[ODS] REST v2 non-PDF response:', restSnippet);
-  console.log('[ODS] Tried URI:', reportUri);
-  console.log('[ODS] Set ODS_REPORT_URI env var to the correct JRS report path to fix this.');
+  // Attempt 2: call without date — maybe date is baked into flow state
+  const url2 = `${ODS_URL}/asp/flow.html`
+    + `?_flowId=aboveStoreInStoreReportsFlow`
+    + `&_flowExecutionKey=${encodeURIComponent(flowKey)}`
+    + `&_eventId=getReportsForView`
+    + `&exportType=pdf`
+    + `&contentDisposition=attachment`;
 
+  console.log(`[ODS] Attempt 2 — getReportsForView without date param`);
+  pdfRes = await fetch(url2, {
+    headers: { 'Cookie': cookie, 'User-Agent': ua, 'Referer': referer }
+  });
+  ct = pdfRes.headers.get('content-type') || '';
+  console.log(`[ODS] Attempt 2: status=${pdfRes.status} ct=${ct}`);
+
+  if (ct.includes('pdf') || ct.includes('octet')) {
+    const buf = await pdfRes.buffer();
+    fs.writeFileSync(outPath, buf);
+    console.log(`[ODS] PDF saved — attempt 2 (${buf.length} bytes)`);
+    return { success: true, bytes: buf.length, method: 'getReportsForView_s1_no_date' };
+  }
+
+  // Attempt 3: POST variant
+  const postBody = [
+    `_flowExecutionKey=${encodeURIComponent(flowKey)}`,
+    `_eventId=getReportsForView`,
+    `exportType=pdf`,
+    `contentDisposition=attachment`,
+    `DATE=${encodeURIComponent(targetDate)}`
+  ].join('&');
+
+  console.log(`[ODS] Attempt 3 — POST getReportsForView`);
+  pdfRes = await fetch(`${ODS_URL}/asp/flow.html`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Cookie': cookie, 'User-Agent': ua, 'Referer': referer
+    },
+    body: postBody
+  });
+  ct = pdfRes.headers.get('content-type') || '';
+  console.log(`[ODS] Attempt 3: status=${pdfRes.status} ct=${ct}`);
+
+  if (ct.includes('pdf') || ct.includes('octet')) {
+    const buf = await pdfRes.buffer();
+    fs.writeFileSync(outPath, buf);
+    console.log(`[ODS] PDF saved — attempt 3 (${buf.length} bytes)`);
+    return { success: true, bytes: buf.length, method: 'getReportsForView_POST' };
+  }
+
+  // All attempts returned HTML — log the state/snippet for further diagnosis
+  const html = await pdfRes.text();
+  console.log('[ODS] All attempts returned HTML. Snippet:', html.substring(0, 800).replace(/\s+/g, ' '));
   return {
     success: false,
-    error: `REST v2 returned non-PDF (status=${pdfRes.status}) — ODS_REPORT_URI needs to be set`,
-    flowKey,
-    triedUri: reportUri
+    error: `All getReportsForView attempts returned HTML — check logs`,
+    flowKey
   };
 }
 
