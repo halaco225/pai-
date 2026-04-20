@@ -142,18 +142,55 @@ async function main() {
   console.log(keyLines.slice(0, 30).join('\n'));
   fs.writeFileSync('/tmp/ods-flow.html', flowHtml);
 
-  // ── 7. Try REST v2 async report run (alternative to direct PDF) ──────────
-  console.log('\n── REST v2 async run test (PH_AboveStoreInStoreTime) ─');
-  const asyncRes = await fetch(
-    `${ODS_URL}/asp/rest_v2/reports/Reports/Pizza_Hut/Operations/PH_AboveStoreInStoreTime.pdf?DATE=2026-04-18`, {
-    headers: { Cookie: cookie, 'User-Agent': ua }
-  });
-  console.log('Status:', asyncRes.status, 'ct:', asyncRes.headers.get('content-type'));
-  if (!asyncRes.ok) {
-    const t = await asyncRes.text();
-    console.log(t.substring(0, 300));
-  } else {
-    console.log('Got PDF!', (await asyncRes.buffer()).length, 'bytes');
+  // ── 7. Find the aboveStore JS module (RequireJS base = /asp/optimized-scripts)
+  //       aboveStore.main  →  /asp/optimized-scripts/aboveStore/main.js
+  console.log('\n── aboveStore JS module ─────────────────────────────');
+  const jsPaths = [
+    '/asp/optimized-scripts/aboveStore/main.js',
+    '/asp/optimized-scripts/aboveStore/main.min.js',
+    '/asp/scripts/aboveStore/main.js',
+    '/asp/aboveStore/main.js',
+    '/asp/optimized-scripts/aboveStore.main.js',
+  ];
+  for (const p of jsPaths) {
+    const r = await fetch(`${ODS_URL}${p}`, { headers: { Cookie: cookie, 'User-Agent': ua } });
+    console.log(p, '→', r.status);
+    if (r.ok) {
+      const js = await r.text();
+      fs.writeFileSync('/tmp/ods-aboveStore-main.js', js.substring(0, 100000));
+      // Extract lines with pdf/export/download/api patterns
+      const hits = js.split(';').filter(s => /pdf|export|download|\.pdf|format|aboveStore/i.test(s));
+      console.log('PDF/export relevant snippets:\n', hits.slice(0, 20).join('\n---\n'));
+      break;
+    }
+  }
+
+  // ── 8. Try aboveStore direct API endpoints ────────────────────────────────
+  console.log('\n── aboveStore direct API attempts ───────────────────');
+  const apiAttempts = [
+    '/asp/aboveStore/inStoreTime.pdf?date=2026-04-18',
+    '/asp/aboveStore/download?format=pdf&date=2026-04-18',
+    '/asp/aboveStore/run?format=pdf&reportName=InStoreTime&date=2026-04-18',
+    '/asp/aboveStore/api/report?format=pdf&date=2026-04-18',
+  ];
+  for (const p of apiAttempts) {
+    const r = await fetch(`${ODS_URL}${p}`, { headers: { Cookie: cookie, 'User-Agent': ua } });
+    const ct = r.headers.get('content-type') || '';
+    console.log(p, '→', r.status, ct.substring(0, 40));
+    if (ct.includes('pdf')) { console.log('*** PDF HIT ***'); break; }
+  }
+
+  // ── 9. Get the flow page RequireJS config to find the correct module path ──
+  console.log('\n── Flow page RequireJS config ───────────────────────');
+  const flowFull = fs.readFileSync('/tmp/ods-flow.html', 'utf8');
+  const requireCfg = flowFull.match(/require\.config\s*\(\s*\{[\s\S]{0,3000}?\}\s*\)/);
+  if (requireCfg) console.log(requireCfg[0].substring(0, 1500));
+  else {
+    // Look for paths/baseUrl config
+    const baseUrlMatch = flowFull.match(/baseUrl['":\s]+['"](.*?)['"]/g);
+    const pathsMatch   = flowFull.match(/aboveStore[^;]{0,200}/g);
+    console.log('baseUrl matches:', baseUrlMatch);
+    console.log('aboveStore references:', pathsMatch?.slice(0, 10));
   }
 
   console.log('\nFiles saved to /tmp/ods-*.  Run: ls /tmp/ods-*');
