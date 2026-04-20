@@ -23,7 +23,113 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }
 });
 
-// All velocity routes require auth
+// ── POST /api/velocity/automation/pull-ods — 5AM cron trigger ────────
+router.post('/automation/pull-ods', async (req, res) => {
+  // Verify automation token
+  const token = req.headers['x-automation-token'] || req.query.token;
+  if (token !== (process.env.VELOCITY_AUTOMATION_TOKEN || 'velocity-auto-2024')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const targetDate = req.body.date || req.query.date || getYesterdayChicago();
+  console.log(`[Velocity ODS] Pull triggered for ${targetDate}`);
+
+  // Respond immediately so cron doesn't timeout, then run async
+  res.json({ status: 'started', targetDate });
+
+  try {
+    const { pullAboveStoreReport } = require('../services/velocity-ods');
+    const pullResult = await pullAboveStoreReport(targetDate);
+
+    if (!pullResult.success) throw new Error(pullResult.error);
+
+    const parsed = await parseAboveStorePDF(pullResult.filePath);
+    try { fs.unlinkSync(pullResult.filePath); } catch(e){}
+
+    if (!parsed.stores?.length) throw new Error('No store data in PDF');
+
+    const weekKey  = getWeekKey(targetDate);
+    const periodWk = getPeriodWeek(targetDate);
+    let saved = 0;
+
+    for (const s of parsed.stores) {
+      if (!ALIGNMENT[s.store_id]) continue;
+      await db.upsertVelocityRecord({
+        store_id: s.store_id, record_date: targetDate,
+        week_key: weekKey, period_week: periodWk,
+        ist_avg: s.ist_avg, ist_lt10: s.ist_lt10, ist_1014: s.ist_1014,
+        ist_1518: s.ist_1518, ist_1925: s.ist_1925, ist_gt25: s.ist_gt25,
+        ist_lt19_pct: s.ist_lt19_pct, total_orders: s.total_orders,
+        data_source: parsed.source, uploader: 'system'
+      });
+      saved++;
+    }
+
+    await db.logVelocityJob({ jobType: 'ods_pull', targetDate, status: 'success', storesProcessed: saved, message: `Pulled ${saved} stores` });
+    console.log(`[Velocity ODS] Done — ${saved} stores saved for ${targetDate}`);
+  } catch (e) {
+    console.error('[Velocity ODS] Error:', e.message);
+    await db.logVelocityJob({ jobType: 'ods_pull', targetDate, status: 'failed', message: e.message });
+  }
+});
+
+// ── POST /api/velocity/automation/send-emails — 7AM cron trigger ─────
+router.post('/automation/send-emails', async (req, res) => {
+  const token = req.headers['x-automation-token'] || req.query.token;
+  if (token !== (process.env.VELOCITY_AUTOMATION_TOKEN || 'velocity-auto-2024')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const targetDate = req.body.date || req.query.date || getYesterdayChicago();
+  const weekKey    = getWeekKey(targetDate);
+
+  try {
+    const records = await db.getVelocityWeek(weekKey);
+    if (!records.length) {
+      return res.status(404).json({ error: `No data for week containing ${targetDate}` });
+    }
+
+    const enriched = records.map(r => ({
+      ...r,
+      record_date: r.record_date instanceof Date ? r.record_date.toISOString().split('T')[0] : String(r.record_date).split('T')[0],
+      ...(ALIGNMENT[r.store_id] || {})
+    }));
+
+    const wtdStores  = computeWTD(enriched);
+    const periodWeek = enriched[0]?.period_week || getPeriodWeek(weekKey);
+    const dailyByDate = {};
+    for (const r of enriched) {
+      const d = r.record_date;
+      if (!dailyByDate[d]) dailyByDate[d] = [];
+      dailyByDate[d].push(r);
+    }
+
+    const excelBuffer = generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate });
+    const emailResults = await sendDailyEmails(wtdStores, targetDate, excelBuffer);
+
+    await db.logVelocityJob({
+      jobType: 'send_emails', targetDate, status: 'success',
+      storesProcessed: wtdStores.length,
+      message: `Sent ${emailResults.sent.length}, failed ${emailResults.failed.length}`
+    });
+
+    res.json({ success: true, targetDate, emailResults });
+  } catch (e) {
+    console.error('[Velocity Email] Error:', e.message);
+    await db.logVelocityJob({ jobType: 'send_emails', targetDate, status: 'failed', message: e.message });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── GET /api/velocity/automation/status — last job runs ──────────────
+router.get('/automation/status', async (req, res) => {
+  try {
+    const logs = await db.getVelocityLogs(20);
+    res.json({ logs });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// All other velocity routes require session auth
 router.use(requireAuth);
 
 // ── GET /api/velocity/meta — hierarchy + available filters ───────────
@@ -349,112 +455,6 @@ router.post('/export', async (req, res) => {
       'Content-Disposition': `attachment; filename="Velocity_IST_${weekKey}.xlsx"`
     });
     res.send(buffer);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ── POST /api/velocity/automation/pull-ods — 5AM cron trigger ────────
-router.post('/automation/pull-ods', async (req, res) => {
-  // Verify automation token
-  const token = req.headers['x-automation-token'] || req.query.token;
-  if (token !== (process.env.VELOCITY_AUTOMATION_TOKEN || 'velocity-auto-2024')) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const targetDate = req.body.date || req.query.date || getYesterdayChicago();
-  console.log(`[Velocity ODS] Pull triggered for ${targetDate}`);
-
-  // Respond immediately so cron doesn't timeout, then run async
-  res.json({ status: 'started', targetDate });
-
-  try {
-    const { pullAboveStoreReport } = require('../services/velocity-ods');
-    const pullResult = await pullAboveStoreReport(targetDate);
-
-    if (!pullResult.success) throw new Error(pullResult.error);
-
-    const parsed = await parseAboveStorePDF(pullResult.filePath);
-    try { fs.unlinkSync(pullResult.filePath); } catch(e){}
-
-    if (!parsed.stores?.length) throw new Error('No store data in PDF');
-
-    const weekKey  = getWeekKey(targetDate);
-    const periodWk = getPeriodWeek(targetDate);
-    let saved = 0;
-
-    for (const s of parsed.stores) {
-      if (!ALIGNMENT[s.store_id]) continue;
-      await db.upsertVelocityRecord({
-        store_id: s.store_id, record_date: targetDate,
-        week_key: weekKey, period_week: periodWk,
-        ist_avg: s.ist_avg, ist_lt10: s.ist_lt10, ist_1014: s.ist_1014,
-        ist_1518: s.ist_1518, ist_1925: s.ist_1925, ist_gt25: s.ist_gt25,
-        ist_lt19_pct: s.ist_lt19_pct, total_orders: s.total_orders,
-        data_source: parsed.source, uploader: 'system'
-      });
-      saved++;
-    }
-
-    await db.logVelocityJob({ jobType: 'ods_pull', targetDate, status: 'success', storesProcessed: saved, message: `Pulled ${saved} stores` });
-    console.log(`[Velocity ODS] Done — ${saved} stores saved for ${targetDate}`);
-  } catch (e) {
-    console.error('[Velocity ODS] Error:', e.message);
-    await db.logVelocityJob({ jobType: 'ods_pull', targetDate, status: 'failed', message: e.message });
-  }
-});
-
-// ── POST /api/velocity/automation/send-emails — 7AM cron trigger ─────
-router.post('/automation/send-emails', async (req, res) => {
-  const token = req.headers['x-automation-token'] || req.query.token;
-  if (token !== (process.env.VELOCITY_AUTOMATION_TOKEN || 'velocity-auto-2024')) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const targetDate = req.body.date || req.query.date || getYesterdayChicago();
-  const weekKey    = getWeekKey(targetDate);
-
-  try {
-    const records = await db.getVelocityWeek(weekKey);
-    if (!records.length) {
-      return res.status(404).json({ error: `No data for week containing ${targetDate}` });
-    }
-
-    const enriched = records.map(r => ({
-      ...r,
-      record_date: r.record_date instanceof Date ? r.record_date.toISOString().split('T')[0] : String(r.record_date).split('T')[0],
-      ...(ALIGNMENT[r.store_id] || {})
-    }));
-
-    const wtdStores  = computeWTD(enriched);
-    const periodWeek = enriched[0]?.period_week || getPeriodWeek(weekKey);
-    const dailyByDate = {};
-    for (const r of enriched) {
-      const d = r.record_date;
-      if (!dailyByDate[d]) dailyByDate[d] = [];
-      dailyByDate[d].push(r);
-    }
-
-    const excelBuffer = generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate });
-    const emailResults = await sendDailyEmails(wtdStores, targetDate, excelBuffer);
-
-    await db.logVelocityJob({
-      jobType: 'send_emails', targetDate, status: 'success',
-      storesProcessed: wtdStores.length,
-      message: `Sent ${emailResults.sent.length}, failed ${emailResults.failed.length}`
-    });
-
-    res.json({ success: true, targetDate, emailResults });
-  } catch (e) {
-    console.error('[Velocity Email] Error:', e.message);
-    await db.logVelocityJob({ jobType: 'send_emails', targetDate, status: 'failed', message: e.message });
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── GET /api/velocity/automation/status — last job runs ──────────────
-router.get('/automation/status', async (req, res) => {
-  try {
-    const logs = await db.getVelocityLogs(20);
-    res.json({ logs });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
