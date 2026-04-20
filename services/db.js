@@ -177,7 +177,7 @@ async function clearAlignment() {
 // ── Velocity Tables ───────────────────────────────────────────────────────────
 async function initVelocityDB() {
   const p = getPool();
-  if (\!p) return;
+  if (!p) return;
 
   await p.query(`
     CREATE TABLE IF NOT EXISTS velocity_daily_records (
@@ -246,7 +246,7 @@ async function initVelocityDB() {
 // ── Velocity: upsert a single store/day record ────────────────────────────────
 async function upsertVelocityRecord(record) {
   const p = getPool();
-  if (\!p) return null;
+  if (!p) return null;
   try {
     const res = await p.query(`
       INSERT INTO velocity_daily_records
@@ -294,7 +294,7 @@ async function upsertVelocityRecord(record) {
 // ── Velocity: get records for a date range ────────────────────────────────────
 async function getVelocityRecords({ startDate, endDate, storeIds } = {}) {
   const p = getPool();
-  if (\!p) return [];
+  if (!p) return [];
   try {
     let query = `SELECT * FROM velocity_daily_records WHERE 1=1`;
     const params = [];
@@ -313,7 +313,7 @@ async function getVelocityRecords({ startDate, endDate, storeIds } = {}) {
 // ── Velocity: get WTD records for a week ─────────────────────────────────────
 async function getVelocityWeek(weekKey) {
   const p = getPool();
-  if (\!p) return [];
+  if (!p) return [];
   try {
     const res = await p.query(
       `SELECT * FROM velocity_daily_records WHERE week_key = $1 ORDER BY record_date, store_id`,
@@ -329,7 +329,7 @@ async function getVelocityWeek(weekKey) {
 // ── Velocity: get all weeks that have data ────────────────────────────────────
 async function getVelocityWeeks() {
   const p = getPool();
-  if (\!p) return [];
+  if (!p) return [];
   try {
     const res = await p.query(`
       SELECT week_key, period_week,
@@ -351,7 +351,7 @@ async function getVelocityWeeks() {
 // ── Velocity: log automation job ─────────────────────────────────────────────
 async function logVelocityJob({ jobType, targetDate, status, storesProcessed, message }) {
   const p = getPool();
-  if (\!p) return;
+  if (!p) return;
   try {
     await p.query(
       `INSERT INTO velocity_automation_log (job_type, target_date, status, stores_processed, message)
@@ -366,7 +366,7 @@ async function logVelocityJob({ jobType, targetDate, status, storesProcessed, me
 // ── Velocity: get recent automation logs ─────────────────────────────────────
 async function getVelocityLogs(limit = 20) {
   const p = getPool();
-  if (\!p) return [];
+  if (!p) return [];
   try {
     const res = await p.query(
       `SELECT * FROM velocity_automation_log ORDER BY created_at DESC LIMIT $1`,
@@ -382,7 +382,7 @@ async function getVelocityLogs(limit = 20) {
 // ── Velocity: DOW (day-of-week) trend query ───────────────────────────────────
 async function getVelocityDOWTrends({ storeId, areaCoach, regionCoach, weeks = 8 } = {}) {
   const p = getPool();
-  if (\!p) return [];
+  if (!p) return [];
   try {
     // Build join with alignment data filter
     let whereClause = `WHERE record_date >= NOW() - INTERVAL '${weeks * 7} days'`;
