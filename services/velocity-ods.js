@@ -1,6 +1,11 @@
 // =====================================================================
-// VELOCITY ODS — Automated pull from OneData (bi.onedatasource.com)
-// Uses Playwright to authenticate and download the Above Store Report
+// VELOCITY ODS — Pull Above Store Report PDF from OneData (bi.onedatasource.com)
+//
+// Auth flow (3-step, no browser required):
+//   1. GET /asp/login.html          → JSESSIONID cookie
+//   2. POST /asp/JavaScriptServlet  → OWASP CSRF token (FETCH-CSRF-TOKEN: 1)
+//   3. POST /asp/j_spring_security_check → authenticated session
+//   4. Navigate to report + download PDF
 // =====================================================================
 'use strict';
 
@@ -12,135 +17,159 @@ const ODS_ORG  = process.env.ODS_ORG  || 'dgi';
 const ODS_USER = process.env.ODS_USER || 'hlacoste';
 const ODS_PASS = process.env.ODS_PASSWORD || '';
 
+// Lazy-load node-fetch (ships with the project)
+function fetch(...args) {
+  return require('node-fetch')(...args);
+}
+
+// ── Cookie helpers ─────────────────────────────────────────────────────────
+function parseCookies(response) {
+  const raw = response.headers.raw()['set-cookie'] || [];
+  return raw.map(c => c.split(';')[0]);
+}
+
+function mergeCookies(...arrays) {
+  // Last value wins for duplicate names
+  const map = new Map();
+  arrays.flat().forEach(c => {
+    const [name] = c.split('=');
+    map.set(name, c);
+  });
+  return Array.from(map.values()).join('; ');
+}
+
+// ── Step 1+2+3: Full login sequence ───────────────────────────────────────
+async function login() {
+  const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+
+  // Step 1: GET login page → session cookie
+  const loginPage = await fetch(`${ODS_URL}/asp/login.html`, {
+    headers: { 'User-Agent': UA }
+  });
+  if (!loginPage.ok && loginPage.status !== 200) {
+    throw new Error(`Login page returned ${loginPage.status}`);
+  }
+  const cookies1 = parseCookies(loginPage);
+  const sess1 = mergeCookies(cookies1);
+  console.log('[ODS] Step 1 OK — session:', sess1.substring(0, 40));
+
+  // Step 2: POST JavaScriptServlet with FETCH-CSRF-TOKEN: 1 → OWASP_CSRFTOKEN:value
+  const csrfRes = await fetch(`${ODS_URL}/asp/JavaScriptServlet`, {
+    method: 'POST',
+    headers: {
+      'Cookie': sess1,
+      'FETCH-CSRF-TOKEN': '1',
+      'X-Requested-With': 'XMLHttpRequest',
+      'User-Agent': UA
+    }
+  });
+  const cookies2 = parseCookies(csrfRes);
+  const sess2 = mergeCookies(cookies1, cookies2);
+  const csrfRaw = await csrfRes.text();
+  const colonIdx = csrfRaw.indexOf(':');
+  if (colonIdx < 0) throw new Error(`Unexpected CSRF response: ${csrfRaw.substring(0, 100)}`);
+  const csrfName  = csrfRaw.substring(0, colonIdx).trim();
+  const csrfValue = csrfRaw.substring(colonIdx + 1).trim();
+  console.log(`[ODS] Step 2 OK — ${csrfName}:${csrfValue.substring(0, 12)}...`);
+
+  // Step 3: POST j_spring_security_check → authenticated session
+  const formBody = [
+    `orgId=${encodeURIComponent(ODS_ORG)}`,
+    `j_username=${encodeURIComponent(ODS_USER)}`,
+    `j_password=${encodeURIComponent(ODS_PASS)}`,
+    `j_password_pseudo=${encodeURIComponent(ODS_PASS)}`,
+    `${csrfName}=${encodeURIComponent(csrfValue)}`
+  ].join('&');
+
+  const authRes = await fetch(`${ODS_URL}/asp/j_spring_security_check`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Cookie': sess2,
+      'Referer': `${ODS_URL}/asp/login.html`,
+      'Origin': ODS_URL,
+      'User-Agent': UA
+    },
+    body: formBody
+  });
+
+  const cookies3  = parseCookies(authRes);
+  const authCookie = mergeCookies(cookies1, cookies2, cookies3);
+  const location   = authRes.headers.get('location') || '';
+  console.log(`[ODS] Step 3 — status ${authRes.status}, location: ${location}`);
+
+  if (location.indexOf('error') >= 0) {
+    throw new Error(`ODS login failed (redirect to ${location}) — check ODS_USER / ODS_PASSWORD in Render env vars`);
+  }
+
+  console.log('[ODS] Login SUCCESS');
+  return { cookie: authCookie, location, ua: UA };
+}
+
+// ── Navigate to Above Store Report and download PDF ────────────────────────
+async function downloadAboveStoreReport(session, targetDate, outPath) {
+  const { cookie, ua } = session;
+
+  // The Daily Dispatch Performance report URL pattern for JasperReports Server
+  // These URL patterns are for JasperReports Server (JRS) which OneData uses
+  const reportUrl = `${ODS_URL}/asp/flow.html?_flowId=viewReportFlow`
+    + `&reportUnit=%2FReports%2FOperations%2FDailyDispatchPerformance`
+    + `&DATE=${encodeURIComponent(targetDate)}`
+    + `&output=pdf`;
+
+  console.log(`[ODS] Fetching report for ${targetDate}...`);
+  const reportRes = await fetch(reportUrl, {
+    headers: { 'Cookie': cookie, 'User-Agent': ua, 'Referer': `${ODS_URL}/asp/` }
+  });
+
+  if (reportRes.status === 200) {
+    const contentType = reportRes.headers.get('content-type') || '';
+    if (contentType.indexOf('pdf') >= 0 || contentType.indexOf('octet') >= 0) {
+      const buf = await reportRes.buffer();
+      fs.writeFileSync(outPath, buf);
+      console.log(`[ODS] PDF saved (${buf.length} bytes) → ${outPath}`);
+      return { success: true, bytes: buf.length };
+    }
+    // Got HTML — probably redirected to an error or a different page
+    const text = await reportRes.text();
+    console.log('[ODS] Report response is HTML, not PDF:', text.substring(0, 300));
+    return { success: false, error: 'Got HTML instead of PDF — report URL may need adjustment' };
+  }
+
+  return { success: false, error: `Report fetch returned ${reportRes.status}` };
+}
+
+// ── Public API ─────────────────────────────────────────────────────────────
 async function pullAboveStoreReport(targetDate) {
-  let browser = null;
   const tmpDir = path.join(__dirname, '..', 'uploads');
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+  const outPath = path.join(tmpDir, `above-store-${targetDate}.pdf`);
 
   try {
-    // Lazy-load playwright so startup isn't affected if not installed
-    const { chromium } = require('playwright');
-
-    console.log(`[ODS] Launching browser for date=${targetDate}`);
-    browser = await chromium.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-    });
-
-    const context = await browser.newContext({
-      acceptDownloads: true,
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    });
-    const page = await context.newPage();
-
-    // ── Step 1: Navigate to OneData ──────────────────────────────────
-    console.log(`[ODS] Navigating to ${ODS_URL}`);
-    await page.goto(ODS_URL, { waitUntil: 'networkidle', timeout: 30000 });
-
-    // ── Step 2: Select DGI organization ──────────────────────────────
-    console.log('[ODS] Selecting organization: DGI');
-    try {
-      // Look for org dropdown (may be select, input, or custom dropdown)
-      const orgSelector = await page.$('select[name*="org"], select[id*="org"], input[name*="org"]');
-      if (orgSelector) {
-        const tagName = await orgSelector.evaluate(el => el.tagName.toLowerCase());
-        if (tagName === 'select') {
-          await orgSelector.selectOption({ label: ODS_ORG.toUpperCase() });
-        } else {
-          await orgSelector.fill(ODS_ORG);
-        }
-      } else {
-        // Try clicking a dropdown that shows org options
-        const orgDropdown = await page.$('[data-org], .org-selector, #organization');
-        if (orgDropdown) {
-          await orgDropdown.click();
-          await page.waitForTimeout(500);
-          await page.click(`text=${ODS_ORG.toUpperCase()}`);
-        }
-      }
-    } catch (e) {
-      console.log('[ODS] Org select step:', e.message);
+    if (!ODS_PASS) {
+      throw new Error('ODS_PASSWORD env var is not set — add it to Render service env vars');
     }
 
-    // ── Step 3: Fill credentials and sign in ─────────────────────────
-    console.log('[ODS] Filling credentials');
-    try {
-      // Try standard login fields
-      const usernameField = await page.$('input[name="username"], input[name="j_username"], input[type="email"], input[id*="user"]');
-      const passwordField = await page.$('input[name="password"], input[name="j_password"], input[type="password"]');
-      
-      if (usernameField) await usernameField.fill(ODS_USER);
-      if (passwordField) await passwordField.fill(ODS_PASS);
-    } catch (e) {
-      console.log('[ODS] Credential fill step:', e.message);
+    console.log(`[ODS] Starting pull for date=${targetDate}, user=${ODS_USER}@${ODS_ORG}`);
+    const session = await login();
+
+    // Try the report download; if URL is wrong, the caller can still see the session worked
+    const result = await downloadAboveStoreReport(session, targetDate, outPath);
+    if (result.success) {
+      return { success: true, filePath: outPath, date: targetDate };
     }
 
-    // ── Step 4: Click Sign In ─────────────────────────────────────────
-    console.log('[ODS] Clicking sign in');
-    try {
-      const signInBtn = await page.$('button[type="submit"], input[type="submit"], button:has-text("Sign In"), button:has-text("Login")');
-      if (signInBtn) {
-        await signInBtn.click();
-      } else {
-        await page.keyboard.press('Enter');
-      }
-      await page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 });
-    } catch (e) {
-      console.log('[ODS] Sign in step:', e.message);
-    }
-
-    // ── Step 5: Navigate to Daily Dispatch Performance report ─────────
-    console.log('[ODS] Looking for Daily Dispatch Performance report');
-    await page.waitForTimeout(2000);
-
-    // Try to find the report in navigation
-    try {
-      const reportLink = await page.$('a:has-text("Daily Dispatch"), a:has-text("Above Store"), a:has-text("Dispatch Performance")');
-      if (reportLink) {
-        await reportLink.click();
-        await page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 });
-      }
-    } catch (e) {
-      console.log('[ODS] Report navigation:', e.message);
-    }
-
-    // ── Step 6: Set date parameter to targetDate ──────────────────────
-    console.log(`[ODS] Setting report date to ${targetDate}`);
-    await page.waitForTimeout(1000);
-    try {
-      const dateInput = await page.$('input[type="date"], input[name*="date"], input[id*="date"]');
-      if (dateInput) {
-        await dateInput.fill(targetDate);
-        await page.keyboard.press('Enter');
-        await page.waitForTimeout(1000);
-      }
-    } catch (e) {
-      console.log('[ODS] Date set step:', e.message);
-    }
-
-    // ── Step 7: Download PDF ──────────────────────────────────────────
-    console.log('[ODS] Attempting PDF download');
-    const downloadPath = path.join(tmpDir, `above-store-${targetDate}.pdf`);
-
-    const [download] = await Promise.all([
-      page.waitForEvent('download', { timeout: 60000 }),
-      page.click('button:has-text("Export"), button:has-text("Download"), a:has-text("PDF"), [data-format="pdf"]')
-        .catch(() => page.click('button:has-text("Run"), button:has-text("Submit")'))
-    ]);
-
-    const suggestedName = download.suggestedFilename();
-    console.log(`[ODS] Download started: ${suggestedName}`);
-    await download.saveAs(downloadPath);
-
-    await browser.close();
-    console.log(`[ODS] PDF saved to ${downloadPath}`);
-    return { success: true, filePath: downloadPath, date: targetDate };
-
+    // Session works but report URL needs tuning — return session info for debugging
+    return {
+      success: false,
+      error: result.error,
+      date: targetDate,
+      sessionOk: true,
+      cookie: session.cookie.substring(0, 60)
+    };
   } catch (e) {
     console.error('[ODS] Pull failed:', e.message);
-    if (browser) {
-      try { await browser.close(); } catch(_) {}
-    }
     return { success: false, error: e.message, date: targetDate };
   }
 }
