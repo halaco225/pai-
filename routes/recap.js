@@ -95,7 +95,6 @@ router.post('/email', requireAuth, async (req, res) => {
     const { generateRecapEmail } = require('../services/claude');
     const { data, tone, length } = req.body;
     if (data == null) return res.status(400).json({ error: 'No data provided.' });
-    await sleep(65000);
     const result = await withRetry(() => generateRecapEmail(data, { tone, length }));
     res.json(result);
   } catch (err) {
