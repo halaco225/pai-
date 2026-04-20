@@ -33,146 +33,132 @@ async function login() {
   if(loc.indexOf('error')>=0) throw new Error('Login failed: '+loc);
   return {cookie:mergeCookies(c1,c2,c3),ua:UA};
 }
-async function getFreshCsrf(cookie,ua) {
-  var r=await fetch(ODS_URL+'/asp/JavaScriptServlet',{method:'POST',
-    headers:{'Cookie':cookie,'FETCH-CSRF-TOKEN':'1','User-Agent':ua}});
-  var t=await r.text(); var colon=t.indexOf(':');
-  return {name:t.substring(0,colon).trim(), value:t.substring(colon+1).trim()};
-}
 
-function saveOutput(findings) {
-  // Save to public/ so it's accessible via HTTP at /debug-output.json
-  var publicPath = path.join('/opt/render/project/src/public/debug-output.json');
-  fs.writeFileSync(publicPath, JSON.stringify(findings, null, 2));
-  console.log('[save] Written to public/debug-output.json (accessible via HTTP)');
-
-  // Also try git push
+function save(findings) {
+  // Save to public/ for HTTP access
+  var pub = '/opt/render/project/src/public/debug-output.json';
+  fs.writeFileSync(pub, JSON.stringify(findings,null,2));
+  console.log('[save] public/debug-output.json written');
+  // Git push
   if (GH_TOKEN) {
     try {
       var exec = require('child_process').execSync;
-      var repoDir = '/opt/render/project/src';
-      // Copy to root for git
-      fs.writeFileSync(path.join(repoDir,'debug-output.json'), JSON.stringify(findings,null,2));
-      exec('git config user.email "harold@ayvaz.com"', {cwd:repoDir});
-      exec('git config user.name "PAi"', {cwd:repoDir});
-      exec('git add debug-output.json', {cwd:repoDir});
-      try { exec('git commit -m "debug v13 '+new Date().toISOString()+'"', {cwd:repoDir}); } catch(e){}
-      exec('git push https://'+GH_TOKEN+'@github.com/halaco225/pai-.git HEAD:main', {cwd:repoDir, timeout:30000});
+      var d = '/opt/render/project/src';
+      fs.writeFileSync(path.join(d,'debug-output.json'), JSON.stringify(findings,null,2));
+      exec('git config user.email "harold@ayvaz.com"', {cwd:d});
+      exec('git config user.name "PAi"', {cwd:d});
+      exec('git add debug-output.json', {cwd:d});
+      try { exec('git commit -m "debug v14 output"', {cwd:d}); } catch(e){}
+      exec('git push https://'+GH_TOKEN+'@github.com/halaco225/pai-.git HEAD:main 2>&1', {cwd:d, timeout:30000});
       console.log('[save] git push OK');
     } catch(e) {
-      console.log('[save] git push failed:', (e.stderr||e.message||'').toString().substring(0,100));
+      console.log('[save] git err:', (e.stderr||e.message||'').toString().substring(0,150));
     }
-  } else {
-    console.log('[save] GH_TOKEN not set -- file is in public/ only');
   }
 }
 
 async function main() {
   if (!ODS_PASS) { console.error('ODS_PASSWORD not set'); process.exit(1); }
-  console.log('[env] GH_TOKEN present:', !!GH_TOKEN, '| length:', GH_TOKEN.length);
+  console.log('[env] GH_TOKEN len:', GH_TOKEN.length);
   var sess=await login(); var cookie=sess.cookie; var ua=sess.ua;
-  console.log('[login] OK');
-  var findings = {ts: new Date().toISOString(), ghTokenLen: GH_TOKEN.length, sections:{}};
+  var findings = {ts: new Date().toISOString(), sections:{}};
   var jhdrs = {Cookie:cookie,'User-Agent':ua,'Accept':'application/json'};
+  var execHdrs = {Cookie:cookie,'User-Agent':ua,'Content-Type':'application/json','Accept':'application/json'};
 
-  // A. s1 HTML with categoryId=4 -- dump the aboveStore content section
-  console.log('\n--- A. s1 HTML with categoryId=4 ---');
-  var csrf = await getFreshCsrf(cookie, ua);
-  var hdrs = {Cookie:cookie,'User-Agent':ua,
-    'X-Requested-With':'OWASP CSRFGuard Project',
-    'Referer':ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow'};
-  hdrs[csrf.name] = csrf.value;
-  var s1Res = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&categoryId=4', {headers:hdrs});
-  var s1Html = await s1Res.text();
-  var s1Lines = s1Html.split('\n');
-  var s1Key = (s1Html.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/))||[];
-  s1Key = s1Key[1]||null;
-  console.log('s1Key:', s1Key, '| Total lines:', s1Lines.length);
-  // Dump lines 420-620 (aboveStore content region)
-  var contentSection = s1Lines.slice(419,620).join('\n');
-  console.log('\n== Lines 420-620 (aboveStore content region): ==');
-  console.log(contentSection);
-  // Also dump any script blocks that contain 'categoryId', 'date', 'store', 'ajax', 'flow'
-  console.log('\n== Inline scripts with flow/ajax/category: ==');
-  var scriptBlocks = s1Html.match(/<script[^>]*>[\s\S]*?<\/script>/gi)||[];
-  scriptBlocks.forEach(function(block){
-    var lc = block.toLowerCase();
-    if (lc.indexOf('categoryid')>=0 || lc.indexOf('ajax')>=0 || lc.indexOf('eventid')>=0 ||
-        lc.indexOf('flowexecutionkey')>=0 || lc.indexOf('abovestore')>=0) {
-      console.log('\n[SCRIPT BLOCK]: ' + block.substring(0,800));
-    }
-  });
-  // Look for any data- attributes that might hint at flow config
-  var dataAttrs = s1Html.match(/data-[a-z-]+="[^"]*"/gi)||[];
-  var relevantData = dataAttrs.filter(function(a){ return /category|store|date|report|flow|event/i.test(a); });
-  if (relevantData.length) {
-    console.log('\n== Relevant data-* attributes ==');
-    relevantData.forEach(function(a){ console.log('  '+a); });
-  }
-  findings.sections.s1WithCat = {
-    key: s1Key,
-    lines420_620: contentSection,
-    relevantDataAttrs: relevantData.slice(0,20)
-  };
+  // A. List ALL report units (sorted, no limit)
+  console.log('\n--- A. ALL report units ---');
+  var r = await fetch(ODS_URL+'/asp/rest_v2/resources?type=reportUnit&limit=500&sortBy=label', {headers:jhdrs});
+  var j = await r.json();
+  var items = j.resourceLookup || [];
+  console.log('Total:', items.length);
+  items.forEach(function(i){ console.log('  '+i.label+' -> '+i.uri); });
+  findings.sections.allReports = items.map(function(i){ return {label:i.label, uri:i.uri}; });
 
-  // B. Try aboveStore REST endpoints that might set session state
-  console.log('\n--- B. aboveStore REST endpoints ---');
-  var restEndpoints = [
-    '/asp/rest_v2/aboveStore/orgType?orgId='+ODS_ORG,
-    '/asp/rest_v2/aboveStore/orgType?org='+ODS_ORG+'&categoryId=4',
-    '/asp/rest_v2/aboveStore/stores?storeAccess=true&categoryId=4',
-    '/asp/rest_v2/aboveStore/categories',
-    '/asp/rest_v2/aboveStore/categories?orgId='+ODS_ORG,
-    '/asp/rest_v2/aboveStore/reports',
-    '/asp/rest_v2/aboveStore/reports?categoryId=4',
-    '/asp/rest_v2/aboveStore/reportConfig',
-    '/asp/rest_v2/aboveStore/reportConfig?categoryId=4',
-    '/asp/rest_v2/aboveStore/config',
-    '/asp/rest_v2/aboveStore/config?categoryId=4',
+  // B. Operations folder - FULL with recursive
+  console.log('\n--- B. All Operations items (recursive) ---');
+  var folders = [
+    '/Reports/Pizza_Hut/Operations',
+    '/Reports/Multibrand/Operations',
+    '/Reports/Cyclone_Anayas/Operations'
   ];
-  var restResults = {};
-  for (var i=0; i<restEndpoints.length; i++) {
-    var ep = restEndpoints[i];
-    var rr = await fetch(ODS_URL+ep, {headers:jhdrs});
-    var rct = rr.headers.get('content-type')||'';
-    var rt = await rr.text();
-    restResults[ep] = {status:rr.status, ct:rct, body:rt.substring(0,1000)};
-    console.log('  '+ep.replace('/asp/rest_v2/aboveStore','').padEnd(50)+' -> '+rr.status+' | '+rt.substring(0,150));
+  var allOps = {};
+  for (var fi=0; fi<folders.length; fi++) {
+    var fr = await fetch(ODS_URL+'/asp/rest_v2/resources?folderUri='+encodeURIComponent(folders[fi])+'&recursive=true&limit=500', {headers:jhdrs});
+    var fj = await fr.json();
+    var fitems = fj.resourceLookup || [];
+    allOps[folders[fi]] = fitems.map(function(i){ return {type:i.resourceType, label:i.label, uri:i.uri}; });
+    console.log('\n' + folders[fi] + ' (' + fitems.length + ' items):');
+    fitems.forEach(function(i){ console.log('  ['+i.resourceType+'] '+i.label+' -> '+i.uri); });
   }
-  findings.sections.restEndpoints = restResults;
+  findings.sections.allOps = allOps;
 
-  // C. Try posting to flow WITH JSON body (some JRS flows accept JSON)
-  console.log('\n--- C. POST flow with JSON body ---');
-  if (s1Key) {
-    csrf = await getFreshCsrf(cookie, ua);
-    var jsonHdrs = {Cookie:cookie,'User-Agent':ua,
-      'Content-Type':'application/json','Accept':'application/json',
-      'X-Requested-With':'OWASP CSRFGuard Project'};
-    jsonHdrs[csrf.name] = csrf.value;
-    var jsonBody = JSON.stringify({
-      _flowExecutionKey: s1Key,
-      _eventId: 'getReportsForView',
-      exportType: 'pdf',
-      contentDisposition: 'attachment',
-      categoryId: 4,
-      storeId: 29865,
-      date: '2026-04-18',
-      stores: [29865]
-    });
-    var jr = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow',
-      {method:'POST', headers:jsonHdrs, body:jsonBody});
-    var jct = jr.headers.get('content-type')||'';
-    var jtxt = await jr.text();
-    var jt = (jtxt.match(/<title>([^<]+)<\/title>/)||['','?'])[1];
-    console.log('JSON POST -> '+jr.status+' ct='+jct+' title='+jt);
-    findings.sections.jsonPost = {status:jr.status, ct:jct, title:jt};
-    if (jct.indexOf('pdf')>=0 || jct.indexOf('octet')>=0) {
-      fs.writeFileSync('/opt/render/project/src/public/debug-hit.pdf', Buffer.from(jtxt));
-      console.log('*** PDF saved to public/debug-hit.pdf ***');
+  // C. Try reportExecution with many IST guesses (SUS pattern)
+  console.log('\n--- C. IST URI brute-force ---');
+  var guesses = [
+    '/Reports/Pizza_Hut/Operations/SUS_IST',
+    '/Reports/Pizza_Hut/Operations/PH_IST',
+    '/Reports/Pizza_Hut/Operations/IST',
+    '/Reports/Pizza_Hut/Operations/InStoreTime',
+    '/Reports/Pizza_Hut/Operations/PH_InStoreTime',
+    '/Reports/Pizza_Hut/Operations/PH_Instore_Time_Report',
+    '/Reports/Pizza_Hut/Operations/PH_In_Store_Time',
+    '/Reports/Pizza_Hut/Operations/PH_Speed_of_Service',
+    '/Reports/Pizza_Hut/Operations/PH_SOS_Report',
+    '/Reports/Pizza_Hut/Operations/SUS_InStore',
+    '/Reports/Pizza_Hut/Operations/PH_Velocity',
+    '/Reports/Pizza_Hut/Operations/PH_OPS_IST',
+    '/Reports/Multibrand/Operations/IST',
+    '/Reports/Multibrand/Operations/InStoreTime',
+    '/Reports/Multibrand/Operations/SUS_IST',
+    '/Dashboards/widgets/multibrand/IST',
+  ];
+  var istHits = [];
+  for (var gi=0; gi<guesses.length; gi++) {
+    var uri = guesses[gi];
+    var er = await fetch(ODS_URL+'/asp/rest_v2/reportExecutions',
+      {method:'POST', headers:execHdrs,
+       body:JSON.stringify({reportUnitUri:uri, outputFormat:'pdf', async:false, freshData:false})});
+    var ej = await er.json();
+    var hit = er.status === 200 && ej.requestId;
+    console.log('  '+uri.split('/').pop().padEnd(35)+' -> '+er.status+(hit?' *** HIT! requestId='+ej.requestId:''));
+    if (hit) {
+      istHits.push({uri:uri, requestId:ej.requestId, pages:ej.totalPages});
+      if (ej.exports && ej.exports.length) {
+        var eid = ej.exports[0].id;
+        var dlR = await fetch(ODS_URL+'/asp/rest_v2/reportExecutions/'+ej.requestId+'/exports/'+eid+'/outputResource',
+          {headers:{Cookie:cookie,'User-Agent':ua,'Accept':'*/*'}});
+        var dlBuf = await dlR.buffer();
+        var dlCt = dlR.headers.get('content-type')||'';
+        console.log('  *** PDF: '+dlR.status+' '+dlCt+' '+dlBuf.length+' bytes ***');
+        if (dlBuf.length > 1000) {
+          fs.writeFileSync('/opt/render/project/src/public/ist-hit.pdf', dlBuf);
+          console.log('  *** SAVED to public/ist-hit.pdf ***');
+        }
+      }
     }
   }
+  findings.sections.istHits = istHits;
 
-  saveOutput(findings);
-  console.log('\nDone. Access output at: https://pai-ayvaz.onrender.com/debug-output.json');
+  // D. s1 lines 420-620 with categoryId=4
+  console.log('\n--- D. s1 HTML lines 420-620 (categoryId=4) ---');
+  var csrf4 = await (async function(){
+    var r=await fetch(ODS_URL+'/asp/JavaScriptServlet',{method:'POST',
+      headers:{'Cookie':cookie,'FETCH-CSRF-TOKEN':'1','User-Agent':ua}});
+    var t=await r.text(); var c=t.indexOf(':');
+    return {name:t.substring(0,c).trim(), value:t.substring(c+1).trim()};
+  })();
+  var dhdrs = {Cookie:cookie,'User-Agent':ua,'X-Requested-With':'OWASP CSRFGuard Project',
+    'Referer':ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow'};
+  dhdrs[csrf4.name] = csrf4.value;
+  var s1r = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&categoryId=4', {headers:dhdrs});
+  var s1html = await s1r.text();
+  var s1lines = s1html.split('\n');
+  var region = s1lines.slice(419,620).join('\n');
+  console.log(region);
+  findings.sections.s1Region = region;
+  findings.sections.s1TotalLines = s1lines.length;
+
+  save(findings);
+  console.log('\nDone.');
 }
-main().catch(function(e){ console.error('FATAL:', e.message, '\n', e.stack); process.exit(1); });
+main().catch(function(e){ console.error('FATAL:', e.message); process.exit(1); });
