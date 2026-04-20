@@ -34,174 +34,130 @@ async function login() {
   if(loc.indexOf('error')>=0) throw new Error('Login failed: '+loc);
   return {cookie:mergeCookies(c1,c2,c3),ua:UA};
 }
-async function getFreshCsrf(cookie,ua) {
-  var r=await fetch(ODS_URL+'/asp/JavaScriptServlet',{method:'POST',
-    headers:{'Cookie':cookie,'FETCH-CSRF-TOKEN':'1','User-Agent':ua}});
-  var t=await r.text(); var colon=t.indexOf(':');
-  return {name:t.substring(0,colon).trim(), value:t.substring(colon+1).trim()};
-}
 async function pushToGitHub(findings) {
-  if (!GH_TOKEN) { console.log('No GH_TOKEN, skipping push'); return; }
+  if (!GH_TOKEN) { console.log('No GH_TOKEN'); return; }
   var content64 = Buffer.from(JSON.stringify(findings,null,2)).toString('base64');
   var shaRes = await fetch('https://api.github.com/repos/'+GH_REPO+'/contents/debug-output.json',
     {headers:{'Authorization':'Bearer '+GH_TOKEN,'User-Agent':'PAi-debug','Accept':'application/vnd.github+json'}});
   var shaJson = shaRes.ok ? await shaRes.json() : {};
-  var body = {message:'debug v10 output '+new Date().toISOString(), content:content64};
+  var body = {message:'debug v11 '+new Date().toISOString(), content:content64};
   if (shaJson.sha) body.sha = shaJson.sha;
-  var pushRes = await fetch('https://api.github.com/repos/'+GH_REPO+'/contents/debug-output.json',
+  var pr = await fetch('https://api.github.com/repos/'+GH_REPO+'/contents/debug-output.json',
     {method:'PUT',headers:{'Authorization':'Bearer '+GH_TOKEN,'User-Agent':'PAi-debug',
       'Content-Type':'application/json','Accept':'application/vnd.github+json'},
      body:JSON.stringify(body)});
-  var pj = await pushRes.json();
-  console.log(pushRes.ok ? 'GitHub push OK' : 'GitHub push FAILED: '+JSON.stringify(pj));
+  console.log(pr.ok ? 'GitHub push OK' : 'GitHub push FAILED');
 }
 
 async function main() {
   if (!ODS_PASS) { console.error('ODS_PASSWORD not set'); process.exit(1); }
   var sess=await login(); var cookie=sess.cookie; var ua=sess.ua;
   var findings = {ts: new Date().toISOString(), sections:{}};
-  var hdrs = function(csrf) {
-    var h = {Cookie:cookie,'User-Agent':ua,'Accept':'application/json, */*',
-      'X-Requested-With':'XMLHttpRequest'};
-    if (csrf) h[csrf.name]=csrf.value;
-    return h;
-  };
+  var jhdrs = {Cookie:cookie,'User-Agent':ua,'Accept':'application/json'};
 
-  // A. Fetch aboveStore.formValidation and app bundles
-  console.log('\n--- A. aboveStore module files ---');
-  var modPaths = [
-    'aboveStore/dist/aboveStore.formValidation',
-    'aboveStore/dist/apps/employeeHomeStore/app',
-    'aboveStore/dist/apps/bucketViewer/app',
-    'aboveStore/dist/apps/pollingAdmin/app',
-    'aboveStore/dist/apps/bankingAdmin/app',
-  ];
-  var modContents = {};
-  for (var i=0; i<modPaths.length; i++) {
-    var mp = modPaths[i];
-    var mr = await fetch(ODS_URL+'/asp/optimized-scripts/'+mp+'.js',
-      {headers:{Cookie:cookie,'User-Agent':ua}});
-    if (mr.ok) {
-      var mt = await mr.text();
-      modContents[mp] = mt;
-      console.log('\n['+mp+'] '+mt.length+' bytes');
-      // Search for flow/event patterns
-      ['getReportsForView','eventId','flowExecutionKey','_eventId','categoryId','storeId',
-       'date','export','pdf','contentDisposition','reportDate','run','submit'].forEach(function(term){
-        var idx = mt.indexOf(term);
-        if (idx>=0) {
-          var ctx = mt.substring(Math.max(0,idx-80),Math.min(mt.length,idx+120));
-          console.log('  FOUND "'+term+'": ...'+ctx.replace(/\n/g,' ')+'...');
-        }
-      });
-      if (mt.length < 5000) { console.log('  Full:\n'+mt); }
-    } else {
-      console.log('['+mp+'] -> '+mr.status);
-      modContents[mp] = null;
+  // A. Full Operations folder
+  console.log('\n--- A. Full Operations folder (all items) ---');
+  var opRes = await fetch(ODS_URL+'/asp/rest_v2/resources?folderUri=/Reports/Pizza_Hut/Operations&recursive=true&limit=500', {headers:jhdrs});
+  var opJson = await opRes.json();
+  var opItems = opJson.resourceLookup || [];
+  console.log('Total items:', opItems.length);
+  opItems.forEach(function(item){
+    console.log('  ['+item.resourceType+'] '+item.label+' -> '+item.uri);
+  });
+  findings.sections.operations = opItems;
+
+  // B. Search with many more terms
+  console.log('\n--- B. Broad report search ---');
+  var searchTerms = ['SUS','InStore','InStore Time','IST','Speed','Service','Velocity',
+    'Above','Manager','Store','Operations','Report','PH_I','Summary','Ops'];
+  var searchResults = {};
+  for (var i=0; i<searchTerms.length; i++) {
+    var term = searchTerms[i];
+    var sr = await fetch(ODS_URL+'/asp/rest_v2/resources?q='+encodeURIComponent(term)+'&type=reportUnit&limit=50', {headers:jhdrs});
+    var sj = await sr.json();
+    var items = sj.resourceLookup || [];
+    if (items.length) {
+      searchResults[term] = items;
+      console.log('\n['+term+'] '+items.length+' results:');
+      items.forEach(function(item){ console.log('  '+item.label+' -> '+item.uri); });
     }
   }
-  findings.sections.modContents = modContents;
+  findings.sections.searchResults = searchResults;
 
-  // B. Browse JRS repository structure
-  console.log('\n--- B. JRS repository browse ---');
-  var browsePaths = [
-    '/asp/rest_v2/resources?folderUri=/Reports&recursive=false&limit=100',
-    '/asp/rest_v2/resources?folderUri=/Reports/Pizza_Hut&recursive=false&limit=100',
-    '/asp/rest_v2/resources?folderUri=/Reports/Pizza_Hut/Operations&recursive=false&limit=100',
-    '/asp/rest_v2/resources?folderUri=/aboveStore&recursive=false&limit=100',
-    '/asp/rest_v2/resources?q=IST&limit=20',
-    '/asp/rest_v2/resources?q=Velocity&limit=20',
-    '/asp/rest_v2/resources?q=Time&type=reportUnit&limit=20',
-    '/asp/rest_v2/resources?q=Above&type=reportUnit&limit=20',
-    '/asp/rest_v2/resources?q=Labor&type=reportUnit&limit=20',
-    '/asp/rest_v2/resources?q=Performance&type=reportUnit&limit=20',
-    '/asp/rest_v2/resources?q=Daily&type=reportUnit&limit=20',
-  ];
-  var browseResults = {};
-  for (var bi=0; bi<browsePaths.length; bi++) {
-    var bp = browsePaths[bi];
-    var br = await fetch(ODS_URL+bp,
-      {headers:{Cookie:cookie,'User-Agent':ua,'Accept':'application/json'}});
-    var bct = br.headers.get('content-type')||'';
-    var bt = await br.text();
-    browseResults[bp] = {status:br.status, body:bt.substring(0,3000)};
-    console.log('\n'+bp.replace('/asp/rest_v2/resources','').substring(0,70)+' -> '+br.status);
-    if (br.status===200) {
-      try {
-        var bj = JSON.parse(bt);
-        var items = bj.resourceLookup || bj.folder || [];
-        if (!Array.isArray(items)) items = [bj];
-        items.forEach(function(item){
-          console.log('  ['+item.resourceType+'] '+item.label+' -> '+item.uri);
-        });
-      } catch(e){ console.log('  '+bt.substring(0,500)); }
+  // C. List ALL report units accessible to this user
+  console.log('\n--- C. ALL accessible report units ---');
+  var allRes = await fetch(ODS_URL+'/asp/rest_v2/resources?type=reportUnit&limit=500&sortBy=label', {headers:jhdrs});
+  var allJson = await allRes.json();
+  var allItems = allJson.resourceLookup || [];
+  console.log('Total reportUnits:', allItems.length);
+  allItems.forEach(function(item){ console.log('  '+item.label+' -> '+item.uri); });
+  findings.sections.allReportUnits = allItems;
+
+  // D. Prove reportExecutions works: download PH_DriverHistory PDF
+  console.log('\n--- D. reportExecution proof: PH_DriverHistory ---');
+  var execHdrs = {Cookie:cookie,'User-Agent':ua,'Content-Type':'application/json','Accept':'application/json'};
+  var exBody = {reportUnitUri:'/Reports/Pizza_Hut/Operations/PH_DriverHistory',
+    outputFormat:'pdf', async:false, freshData:false};
+  var exRes = await fetch(ODS_URL+'/asp/rest_v2/reportExecutions',
+    {method:'POST', headers:execHdrs, body:JSON.stringify(exBody)});
+  var exJson = await exRes.json();
+  console.log('Status:', exJson.status, 'requestId:', exJson.requestId, 'pages:', exJson.totalPages);
+  if (exJson.requestId && exJson.exports && exJson.exports.length) {
+    var exportId = exJson.exports[0].id;
+    var dlUrl = ODS_URL+'/asp/rest_v2/reportExecutions/'+exJson.requestId+'/exports/'+exportId+'/outputResource';
+    var dlRes = await fetch(dlUrl, {headers:{Cookie:cookie,'User-Agent':ua,'Accept':'*/*'}});
+    var dlCt = dlRes.headers.get('content-type')||'';
+    var dlBuf = await dlRes.buffer();
+    console.log('Download:', dlRes.status, 'ct='+dlCt, 'size='+dlBuf.length);
+    if (dlCt.indexOf('pdf')>=0 || dlBuf.length > 5000) {
+      var pdfPath = '/opt/render/project/src/uploads/driver-history.pdf';
+      fs.writeFileSync(pdfPath, dlBuf);
+      console.log('*** SAVED proof PDF to uploads/driver-history.pdf ***');
+      findings.sections.proofPdf = {status:dlRes.status, ct:dlCt, size:dlBuf.length, saved:pdfPath};
     }
   }
-  findings.sections.browseResults = browseResults;
 
-  // C. Try REST Report Execution API with discovered/guessed report URIs
-  console.log('\n--- C. REST Report Execution attempts ---');
-  var csrf = await getFreshCsrf(cookie, ua);
-  var execHeaders = {Cookie:cookie,'User-Agent':ua,
-    'Content-Type':'application/json','Accept':'application/json',
-    'X-Requested-With':'XMLHttpRequest'};
-  execHeaders[csrf.name] = csrf.value;
-
-  var reportUris = [
-    '/Reports/Pizza_Hut/Operations/PH_DriverHistory',
-    '/aboveStore/reports/inStoreTime',
-    '/aboveStore/reports/IST',
-    '/aboveStore/inStoreTime',
-    '/Reports/aboveStore/inStoreTime',
-    '/Reports/InStoreTime',
-    '/Reports/IST',
+  // E. Try guessed IST URIs with reportExecution
+  console.log('\n--- E. IST report URI guesses ---');
+  var istUris = [
+    '/Reports/Pizza_Hut/Operations/PH_IST',
+    '/Reports/Pizza_Hut/Operations/SUS_IST',
+    '/Reports/Pizza_Hut/Operations/PH_InStoreTime',
+    '/Reports/Pizza_Hut/Operations/InStoreTime',
+    '/Reports/Pizza_Hut/Operations/PH_Instore_Time',
+    '/Reports/Pizza_Hut/Operations/IST',
+    '/Reports/Pizza_Hut/Operations/PH_Speed_of_Service',
+    '/Reports/Pizza_Hut/Operations/SpeedOfService',
+    '/Reports/Pizza_Hut/Operations/PH_SOS',
+    '/Reports/Pizza_Hut/Operations/PH_Velocity',
+    '/Reports/Multibrand/Operations/InStoreTime',
+    '/Reports/Multibrand/Operations/IST',
   ];
-  var execResults = {};
-  for (var ei=0; ei<reportUris.length; ei++) {
-    var uri = reportUris[ei];
-    var execBody = JSON.stringify({
-      reportUnitUri: uri,
-      outputFormat: 'pdf',
-      parameters: {
-        reportParameter: [
-          {name:'STORE_ID', value:['29865']},
-          {name:'DATE', value:['2026-04-18']},
-          {name:'storeId', value:['29865']},
-          {name:'date', value:['2026-04-18']},
-          {name:'reportDate', value:['2026-04-18']},
-          {name:'categoryId', value:['1']}
-        ]
-      },
-      async: false, freshData: true
-    });
-    var er = await fetch(ODS_URL+'/asp/rest_v2/reportExecutions',
-      {method:'POST', headers:execHeaders, body:execBody});
-    var ect = er.headers.get('content-type')||'';
-    var et = await er.text();
-    execResults[uri] = {status:er.status, ct:ect, body:et.substring(0,500)};
-    console.log('  POST reportExecutions uri='+uri+' -> '+er.status+' | '+et.substring(0,200));
-    if (er.status===200) {
-      try {
-        var ej = JSON.parse(et);
-        console.log('  requestId='+ej.requestId+' status='+ej.status);
-        // If we got a requestId, try to get the export
-        if (ej.requestId) {
-          var expR = await fetch(ODS_URL+'/asp/rest_v2/reportExecutions/'+ej.requestId+'/exports/pdf/outputResource',
-            {headers:{Cookie:cookie,'User-Agent':ua,'Accept':'application/pdf, */*'}});
-          var expCt = expR.headers.get('content-type')||'';
-          var expBuf = await expR.buffer();
-          console.log('  Export -> '+expR.status+' ct='+expCt+' size='+expBuf.length);
-          if (expCt.indexOf('pdf')>=0 || expBuf.length > 10000) {
-            fs.writeFileSync('/opt/render/project/src/uploads/hit.pdf', expBuf);
-            console.log('  *** PDF SAVED ***');
-          }
-        }
-      } catch(e){ console.log('  Parse error: '+e.message); }
+  var istResults = {};
+  for (var ii=0; ii<istUris.length; ii++) {
+    var uri = istUris[ii];
+    var ir = await fetch(ODS_URL+'/asp/rest_v2/reportExecutions',
+      {method:'POST', headers:execHdrs,
+       body:JSON.stringify({reportUnitUri:uri, outputFormat:'pdf', async:false, freshData:false})});
+    var ij = await ir.json();
+    istResults[uri] = {status:ir.status, body:JSON.stringify(ij).substring(0,200)};
+    console.log('  '+uri.split('/').pop().padEnd(30)+' -> '+ir.status+' '+JSON.stringify(ij).substring(0,100));
+    if (ir.status===200 && ij.requestId) {
+      console.log('  *** FOUND! requestId='+ij.requestId+' pages='+ij.totalPages+' ***');
+      // Download it
+      if (ij.exports && ij.exports.length) {
+        var eid = ij.exports[0].id;
+        var edl = await fetch(ODS_URL+'/asp/rest_v2/reportExecutions/'+ij.requestId+'/exports/'+eid+'/outputResource',
+          {headers:{Cookie:cookie,'User-Agent':ua}});
+        var ebuf = await edl.buffer();
+        fs.writeFileSync('/opt/render/project/src/uploads/ist-hit.pdf', ebuf);
+        console.log('  *** IST PDF SAVED to uploads/ist-hit.pdf ***');
+      }
     }
   }
-  findings.sections.execResults = execResults;
+  findings.sections.istResults = istResults;
 
   await pushToGitHub(findings);
   console.log('\nDone.');
 }
-main().catch(function(e){ console.error('FATAL:', e.message); process.exit(1); });
+main().catch(function(e){ console.error('FATAL:', e.message, e.stack); process.exit(1); });
