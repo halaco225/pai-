@@ -458,4 +458,19 @@ router.post('/export', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+
+// ── POST /api/velocity/debug-run — one-shot debug script trigger ─────────────
+router.post('/debug-run', async (req, res) => {
+  const { spawn } = require('child_process');
+  const path = require('path');
+  const scriptPath = path.join(__dirname, '..', 'scripts', 'velocity-ods-debug.js');
+  res.json({ ok: true, msg: 'Debug script started — check debug-output.json in 60s' });
+  const child = spawn('node', [scriptPath], {
+    env: process.env,
+    detached: true,
+    stdio: 'ignore'
+  });
+  child.unref();
+});
+
 module.exports = router;
