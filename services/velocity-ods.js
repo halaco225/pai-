@@ -111,33 +111,74 @@ async function login() {
 async function downloadAboveStoreReport(session, targetDate, outPath) {
   const { cookie, ua } = session;
 
-  // The Daily Dispatch Performance report URL pattern for JasperReports Server
-  // These URL patterns are for JasperReports Server (JRS) which OneData uses
-  const reportUrl = `${ODS_URL}/asp/flow.html?_flowId=viewReportFlow`
-    + `&reportUnit=%2FReports%2FOperations%2FDailyDispatchPerformance`
-    + `&DATE=${encodeURIComponent(targetDate)}`
-    + `&output=pdf`;
-
-  console.log(`[ODS] Fetching report for ${targetDate}...`);
-  const reportRes = await fetch(reportUrl, {
+  // Step 1: Start the aboveStoreInStoreReportsFlow → get a fresh _flowExecutionKey
+  console.log(`[ODS] Starting aboveStoreInStoreReportsFlow for ${targetDate}...`);
+  const flowStart = await fetch(`${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`, {
     headers: { 'Cookie': cookie, 'User-Agent': ua, 'Referer': `${ODS_URL}/asp/` }
   });
 
-  if (reportRes.status === 200) {
-    const contentType = reportRes.headers.get('content-type') || '';
-    if (contentType.indexOf('pdf') >= 0 || contentType.indexOf('octet') >= 0) {
-      const buf = await reportRes.buffer();
-      fs.writeFileSync(outPath, buf);
-      console.log(`[ODS] PDF saved (${buf.length} bytes) → ${outPath}`);
-      return { success: true, bytes: buf.length };
-    }
-    // Got HTML — probably redirected to an error or a different page
-    const text = await reportRes.text();
-    console.log('[ODS] Report response is HTML, not PDF:', text.substring(0, 300));
-    return { success: false, error: 'Got HTML instead of PDF — report URL may need adjustment' };
+  if (!flowStart.ok) {
+    return { success: false, error: `Flow start returned ${flowStart.status}` };
   }
 
-  return { success: false, error: `Report fetch returned ${reportRes.status}` };
+  const flowHtml = await flowStart.text();
+
+  // Extract _flowExecutionKey from hidden input field
+  const keyMatch = flowHtml.match(/name=["']_flowExecutionKey["'][^>]*value=["']([^"']+)["']/i)
+    || flowHtml.match(/value=["']([^"']+)["'][^>]*name=["']_flowExecutionKey["']/i);
+
+  if (!keyMatch) {
+    console.log('[ODS] Flow HTML snippet (no key found):', flowHtml.substring(0, 2000));
+    return { success: false, error: 'Could not extract _flowExecutionKey from flow page — check logs' };
+  }
+
+  const flowKey = keyMatch[1];
+  console.log(`[ODS] Flow execution key: ${flowKey}`);
+
+  // Grab CSRF token if present on the form page
+  const csrfOnPage = flowHtml.match(/name=["']OWASP_CSRFTOKEN["'][^>]*value=["']([^"']+)["']/i)
+    || flowHtml.match(/value=["']([^"']+)["'][^>]*name=["']OWASP_CSRFTOKEN["']/i);
+  const csrfToken = csrfOnPage ? csrfOnPage[1] : null;
+  if (csrfToken) console.log(`[ODS] Page CSRF token: ${csrfToken.substring(0, 12)}...`);
+
+  // Step 2: POST to run the report with the target date → PDF
+  const formFields = [
+    `_flowExecutionKey=${encodeURIComponent(flowKey)}`,
+    `_eventId=run`,
+    `DATE=${encodeURIComponent(targetDate)}`,
+    `output=pdf`
+  ];
+  if (csrfToken) formFields.push(`OWASP_CSRFTOKEN=${encodeURIComponent(csrfToken)}`);
+
+  const reportRes = await fetch(`${ODS_URL}/asp/flow.html`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Cookie': cookie,
+      'User-Agent': ua,
+      'Referer': `${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`
+    },
+    body: formFields.join('&')
+  });
+
+  const contentType = reportRes.headers.get('content-type') || '';
+  console.log(`[ODS] Report response: status=${reportRes.status} content-type=${contentType}`);
+
+  if (contentType.indexOf('pdf') >= 0 || contentType.indexOf('octet') >= 0) {
+    const buf = await reportRes.buffer();
+    fs.writeFileSync(outPath, buf);
+    console.log(`[ODS] PDF saved (${buf.length} bytes) → ${outPath}`);
+    return { success: true, bytes: buf.length };
+  }
+
+  // Got HTML — log snippet so we can see what the form actually expects
+  const html = await reportRes.text();
+  console.log('[ODS] Got HTML instead of PDF. Snippet:', html.substring(0, 1500).replace(/\s+/g, ' '));
+  return {
+    success: false,
+    error: `Got HTML instead of PDF (status=${reportRes.status}) — check Render logs for form structure`,
+    flowKey
+  };
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────
