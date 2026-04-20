@@ -34,26 +34,28 @@ async function login() {
   return {cookie:mergeCookies(c1,c2,c3),ua:UA};
 }
 
-function save(findings) {
+async function save(findings) {
   // Save to public/ for HTTP access
   var pub = '/opt/render/project/src/public/debug-output.json';
   fs.writeFileSync(pub, JSON.stringify(findings,null,2));
-  console.log('[save] public/debug-output.json written');
-  // Git push
-  if (GH_TOKEN) {
-    try {
-      var exec = require('child_process').execSync;
-      var d = '/opt/render/project/src';
-      fs.writeFileSync(path.join(d,'debug-output.json'), JSON.stringify(findings,null,2));
-      exec('git config user.email "harold@ayvaz.com"', {cwd:d});
-      exec('git config user.name "PAi"', {cwd:d});
-      exec('git add debug-output.json', {cwd:d});
-      try { exec('git commit -m "debug v14 output"', {cwd:d}); } catch(e){}
-      exec('git push https://'+GH_TOKEN+'@github.com/halaco225/pai-.git HEAD:main 2>&1', {cwd:d, timeout:30000});
-      console.log('[save] git push OK');
-    } catch(e) {
-      console.log('[save] git err:', (e.stderr||e.message||'').toString().substring(0,150));
-    }
+  console.log('[save] Written to public/debug-output.json');
+  // GitHub API push -- no local git state dependency
+  if (!GH_TOKEN) { console.log('[save] GH_TOKEN not set (len=0)'); return; }
+  console.log('[save] Pushing via GitHub API...');
+  var content64 = Buffer.from(JSON.stringify(findings,null,2)).toString('base64');
+  var apiUrl = 'https://api.github.com/repos/halaco225/pai-/contents/debug-output.json';
+  var ghHdrs = {'Authorization':'Bearer '+GH_TOKEN,'User-Agent':'PAi-debug',
+    'Content-Type':'application/json','Accept':'application/vnd.github+json'};
+  try {
+    var shaRes = await fetch(apiUrl, {headers:ghHdrs});
+    var shaJson = shaRes.ok ? await shaRes.json() : {};
+    var body = {message:'debug output '+new Date().toISOString(), content:content64};
+    if (shaJson.sha) body.sha = shaJson.sha;
+    var putRes = await fetch(apiUrl, {method:'PUT', headers:ghHdrs, body:JSON.stringify(body)});
+    var putJson = await putRes.json();
+    console.log('[save] GitHub API:', putRes.status, putRes.ok ? 'OK' : JSON.stringify(putJson).substring(0,100));
+  } catch(e) {
+    console.log('[save] GitHub API error:', e.message);
   }
 }
 
@@ -61,11 +63,11 @@ async function main() {
   if (!ODS_PASS) { console.error('ODS_PASSWORD not set'); process.exit(1); }
   console.log('[env] GH_TOKEN len:', GH_TOKEN.length);
   var sess=await login(); var cookie=sess.cookie; var ua=sess.ua;
-  var findings = {ts: new Date().toISOString(), sections:{}};
+  var findings = {ts: new Date().toISOString(), ghTokenLen: GH_TOKEN.length, sections:{}};
   var jhdrs = {Cookie:cookie,'User-Agent':ua,'Accept':'application/json'};
   var execHdrs = {Cookie:cookie,'User-Agent':ua,'Content-Type':'application/json','Accept':'application/json'};
 
-  // A. List ALL report units (sorted, no limit)
+  // A. ALL accessible report units
   console.log('\n--- A. ALL report units ---');
   var r = await fetch(ODS_URL+'/asp/rest_v2/resources?type=reportUnit&limit=500&sortBy=label', {headers:jhdrs});
   var j = await r.json();
@@ -74,43 +76,32 @@ async function main() {
   items.forEach(function(i){ console.log('  '+i.label+' -> '+i.uri); });
   findings.sections.allReports = items.map(function(i){ return {label:i.label, uri:i.uri}; });
 
-  // B. Operations folder - FULL with recursive
-  console.log('\n--- B. All Operations items (recursive) ---');
-  var folders = [
-    '/Reports/Pizza_Hut/Operations',
-    '/Reports/Multibrand/Operations',
-    '/Reports/Cyclone_Anayas/Operations'
-  ];
+  // B. Full folder listings (recursive)
+  console.log('\n--- B. Folder listings ---');
+  var folders = ['/Reports/Pizza_Hut/Operations','/Reports/Multibrand/Operations','/Reports/Cyclone_Anayas/Operations'];
   var allOps = {};
   for (var fi=0; fi<folders.length; fi++) {
     var fr = await fetch(ODS_URL+'/asp/rest_v2/resources?folderUri='+encodeURIComponent(folders[fi])+'&recursive=true&limit=500', {headers:jhdrs});
     var fj = await fr.json();
-    var fitems = fj.resourceLookup || [];
-    allOps[folders[fi]] = fitems.map(function(i){ return {type:i.resourceType, label:i.label, uri:i.uri}; });
-    console.log('\n' + folders[fi] + ' (' + fitems.length + ' items):');
-    fitems.forEach(function(i){ console.log('  ['+i.resourceType+'] '+i.label+' -> '+i.uri); });
+    var fi2 = fj.resourceLookup || [];
+    allOps[folders[fi]] = fi2.map(function(i){ return {type:i.resourceType, label:i.label, uri:i.uri}; });
+    console.log('\n'+folders[fi]+' ('+fi2.length+'):');
+    fi2.forEach(function(i){ console.log('  ['+i.resourceType+'] '+i.label+' -> '+i.uri); });
   }
   findings.sections.allOps = allOps;
 
-  // C. Try reportExecution with many IST guesses (SUS pattern)
-  console.log('\n--- C. IST URI brute-force ---');
+  // C. IST URI brute-force via reportExecutions
+  console.log('\n--- C. IST brute-force ---');
   var guesses = [
     '/Reports/Pizza_Hut/Operations/SUS_IST',
     '/Reports/Pizza_Hut/Operations/PH_IST',
-    '/Reports/Pizza_Hut/Operations/IST',
-    '/Reports/Pizza_Hut/Operations/InStoreTime',
     '/Reports/Pizza_Hut/Operations/PH_InStoreTime',
-    '/Reports/Pizza_Hut/Operations/PH_Instore_Time_Report',
-    '/Reports/Pizza_Hut/Operations/PH_In_Store_Time',
     '/Reports/Pizza_Hut/Operations/PH_Speed_of_Service',
-    '/Reports/Pizza_Hut/Operations/PH_SOS_Report',
+    '/Reports/Pizza_Hut/Operations/PH_Instore',
     '/Reports/Pizza_Hut/Operations/SUS_InStore',
-    '/Reports/Pizza_Hut/Operations/PH_Velocity',
-    '/Reports/Pizza_Hut/Operations/PH_OPS_IST',
+    '/Reports/Pizza_Hut/Operations/PH_OpsIST',
     '/Reports/Multibrand/Operations/IST',
     '/Reports/Multibrand/Operations/InStoreTime',
-    '/Reports/Multibrand/Operations/SUS_IST',
-    '/Dashboards/widgets/multibrand/IST',
   ];
   var istHits = [];
   for (var gi=0; gi<guesses.length; gi++) {
@@ -119,46 +110,33 @@ async function main() {
       {method:'POST', headers:execHdrs,
        body:JSON.stringify({reportUnitUri:uri, outputFormat:'pdf', async:false, freshData:false})});
     var ej = await er.json();
-    var hit = er.status === 200 && ej.requestId;
-    console.log('  '+uri.split('/').pop().padEnd(35)+' -> '+er.status+(hit?' *** HIT! requestId='+ej.requestId:''));
-    if (hit) {
-      istHits.push({uri:uri, requestId:ej.requestId, pages:ej.totalPages});
-      if (ej.exports && ej.exports.length) {
-        var eid = ej.exports[0].id;
-        var dlR = await fetch(ODS_URL+'/asp/rest_v2/reportExecutions/'+ej.requestId+'/exports/'+eid+'/outputResource',
-          {headers:{Cookie:cookie,'User-Agent':ua,'Accept':'*/*'}});
-        var dlBuf = await dlR.buffer();
-        var dlCt = dlR.headers.get('content-type')||'';
-        console.log('  *** PDF: '+dlR.status+' '+dlCt+' '+dlBuf.length+' bytes ***');
-        if (dlBuf.length > 1000) {
-          fs.writeFileSync('/opt/render/project/src/public/ist-hit.pdf', dlBuf);
-          console.log('  *** SAVED to public/ist-hit.pdf ***');
-        }
-      }
-    }
+    var hit = er.status===200 && ej.requestId;
+    console.log('  '+uri.split('/').pop().padEnd(30)+' -> '+er.status+(hit?' *** HIT requestId='+ej.requestId:''));
+    if (hit) { istHits.push({uri:uri, requestId:ej.requestId, pages:ej.totalPages}); }
   }
   findings.sections.istHits = istHits;
 
-  // D. s1 lines 420-620 with categoryId=4
-  console.log('\n--- D. s1 HTML lines 420-620 (categoryId=4) ---');
-  var csrf4 = await (async function(){
-    var r=await fetch(ODS_URL+'/asp/JavaScriptServlet',{method:'POST',
+  // D. s1 HTML lines 420-620 with categoryId=4
+  console.log('\n--- D. s1 lines 420-620 (categoryId=4) ---');
+  var csrf = await (async function(){
+    var rr=await fetch(ODS_URL+'/asp/JavaScriptServlet',{method:'POST',
       headers:{'Cookie':cookie,'FETCH-CSRF-TOKEN':'1','User-Agent':ua}});
-    var t=await r.text(); var c=t.indexOf(':');
-    return {name:t.substring(0,c).trim(), value:t.substring(c+1).trim()};
+    var t=await rr.text(); var c=t.indexOf(':');
+    return {name:t.substring(0,c).trim(),value:t.substring(c+1).trim()};
   })();
-  var dhdrs = {Cookie:cookie,'User-Agent':ua,'X-Requested-With':'OWASP CSRFGuard Project',
+  var dh = {Cookie:cookie,'User-Agent':ua,'X-Requested-With':'OWASP CSRFGuard Project',
     'Referer':ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow'};
-  dhdrs[csrf4.name] = csrf4.value;
-  var s1r = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&categoryId=4', {headers:dhdrs});
+  dh[csrf.name]=csrf.value;
+  var s1r = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&categoryId=4', {headers:dh});
   var s1html = await s1r.text();
   var s1lines = s1html.split('\n');
   var region = s1lines.slice(419,620).join('\n');
-  console.log(region);
+  console.log(region.substring(0,3000));
   findings.sections.s1Region = region;
-  findings.sections.s1TotalLines = s1lines.length;
 
-  save(findings);
+  await save(findings);
+  // Allow async GitHub API call to complete
+  await new Promise(function(r){ setTimeout(r,4000); });
   console.log('\nDone.');
 }
 main().catch(function(e){ console.error('FATAL:', e.message); process.exit(1); });
