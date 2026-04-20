@@ -5,6 +5,8 @@ var ODS_URL  = 'https://bi.onedatasource.com';
 var ODS_ORG  = process.env.ODS_ORG  || 'dgi';
 var ODS_USER = process.env.ODS_USER || 'hlacoste';
 var ODS_PASS = process.env.ODS_PASSWORD || '';
+var GH_TOKEN = process.env.GH_TOKEN || '';
+var GH_REPO  = 'halaco225/pai-';
 function fetch() { return require('node-fetch').apply(null, arguments); }
 function parseCookies(r) {
   return (r.headers.raw()['set-cookie']||[]).map(function(c){return c.split(';')[0];});
@@ -38,212 +40,187 @@ async function getFreshCsrf(cookie,ua) {
   var t=await r.text(); var colon=t.indexOf(':');
   return {name:t.substring(0,colon).trim(), value:t.substring(colon+1).trim()};
 }
+async function pushToGitHub(findings) {
+  console.log('\nPushing findings to GitHub...');
+  var content64 = Buffer.from(JSON.stringify(findings,null,2)).toString('base64');
+  // Get existing SHA if file exists
+  var shaRes = await fetch('https://api.github.com/repos/'+GH_REPO+'/contents/debug-output.json',
+    {headers:{'Authorization':'Bearer '+GH_TOKEN,'User-Agent':'PAi-debug','Accept':'application/vnd.github+json'}});
+  var shaJson = shaRes.ok ? await shaRes.json() : {};
+  var body = {message:'auto debug output '+new Date().toISOString(), content:content64};
+  if (shaJson.sha) body.sha = shaJson.sha;
+  var pushRes = await fetch('https://api.github.com/repos/'+GH_REPO+'/contents/debug-output.json',
+    {method:'PUT',
+     headers:{'Authorization':'Bearer '+GH_TOKEN,'User-Agent':'PAi-debug',
+               'Content-Type':'application/json','Accept':'application/vnd.github+json'},
+     body:JSON.stringify(body)});
+  var pushJson = await pushRes.json();
+  if (pushRes.ok) {
+    console.log('GitHub push OK: '+pushJson.content.html_url);
+  } else {
+    console.log('GitHub push FAILED: '+JSON.stringify(pushJson));
+  }
+}
 
 async function main() {
   if (!ODS_PASS) { console.error('ODS_PASSWORD not set'); process.exit(1); }
   var sess=await login(); var cookie=sess.cookie; var ua=sess.ua;
+  var findings = {ts: new Date().toISOString(), sections:{}};
 
-  // =====================================================================
-  // A. Full require.config.js -- all aboveStore entries + all paths
-  // =====================================================================
-  console.log('\n--- A. require.config.js full aboveStore entries ---');
+  // A. Require config - full aboveStore entries
+  console.log('\n--- A. require.config.js ---');
   var rcRes = await fetch(ODS_URL+'/asp/optimized-scripts/require.config.js',
     {headers:{Cookie:cookie,'User-Agent':ua}});
   var rcText = await rcRes.text();
-  var rcLines = rcText.split('\n');
-  var abLines = rcLines.filter(function(l){ return /aboveStore/i.test(l); });
-  console.log('aboveStore lines ('+abLines.length+'):');
+  var abLines = rcText.split('\n').filter(function(l){ return /aboveStore/i.test(l); });
+  console.log('aboveStore entries ('+abLines.length+'):');
   abLines.forEach(function(l){ console.log('  '+l.trim()); });
+  findings.sections.requireConfig = abLines;
 
-  // Fetch ALL aboveStore dist files referenced
-  console.log('\nFetching all aboveStore dist files...');
-  var distPaths = [];
-  abLines.forEach(function(l){
-    var m = l.match(/"([^"]*aboveStore[^"]*)"/gi);
-    if (m) m.forEach(function(p){ distPaths.push(p.replace(/"/g,'')); });
+  // Fetch all aboveStore dist files
+  var distFiles = {};
+  var seen = {};
+  abLines.forEach(function(line){
+    var m = line.match(/"aboveStore\/dist\/([^"]+)"/);
+    if (m && !seen[m[1]]) { seen[m[1]]=true; distFiles[m[0]]=m[1]; }
   });
-  var uniquePaths = distPaths.filter(function(v,i,a){ return a.indexOf(v)===i; });
-  for (var i=0; i<uniquePaths.length; i++) {
-    var dp = uniquePaths[i];
-    var url = ODS_URL+'/asp/optimized-scripts/'+dp+'.js';
-    var dr = await fetch(url, {headers:{Cookie:cookie,'User-Agent':ua}});
-    var dt = await dr.text();
+  for (var key in distFiles) {
+    var modName = distFiles[key];
+    var url = ODS_URL+'/asp/optimized-scripts/aboveStore/dist/'+modName+'.js';
+    var dr = await fetch(url,{headers:{Cookie:cookie,'User-Agent':ua}});
     if (dr.ok) {
-      console.log('\n  ['+dp+'] '+dt.length+' bytes:');
-      // Search for key terms
-      ['getReportsForView','eventId','flowExecutionKey','categoryId','storeId','date','export','pdf'].forEach(function(term){
-        var idx = dt.indexOf(term);
-        if (idx>=0) {
-          var ctx = dt.substring(Math.max(0,idx-80), Math.min(dt.length,idx+100));
-          console.log('    FOUND "'+term+'": ...'+ctx.replace(/\n/g,' ')+'...');
-        }
-      });
-      if (dt.length < 3000) console.log('  Full content: '+dt.trim());
+      var dt = await dr.text();
+      console.log('\n['+modName+'] '+dt.length+' bytes full content:');
+      console.log(dt);
+      findings.sections['dist_'+modName] = dt;
     }
   }
 
-  // =====================================================================
-  // B. commons.main.js -- deep search for categoryId + IST patterns
-  // =====================================================================
-  console.log('\n--- B. commons.main.js deep search ---');
+  // B. commons.main.js deep search
+  console.log('\n--- B. commons.main.js ---');
   var cmRes = await fetch(ODS_URL+'/asp/optimized-scripts/commons.main.js',
     {headers:{Cookie:cookie,'User-Agent':ua}});
   var cmText = await cmRes.text();
 
-  // Find ALL categoryId references
-  console.log('\ncategoryId occurrences:');
-  var idx=0; var count=0;
-  while((idx=cmText.indexOf('categoryId',idx))>=0 && count<20) {
-    var ctx = cmText.substring(Math.max(0,idx-100),Math.min(cmText.length,idx+150));
-    console.log('  ['+count+'] ...'+ctx.replace(/\n/g,' ')+'...');
-    idx+=10; count++;
-  }
+  var cmFindings = {};
+  var searchTerms = ['categoryId','getReportsForView','aboveStoreInStore','exportType',
+    'contentDisposition','InStoreTime','inStoreTime','storeId','reportDate','startDate'];
+  searchTerms.forEach(function(term){
+    var snippets=[]; var idx=0;
+    while((idx=cmText.indexOf(term,idx))>=0 && snippets.length<5) {
+      snippets.push(cmText.substring(Math.max(0,idx-120),Math.min(cmText.length,idx+200)));
+      idx+=term.length;
+    }
+    cmFindings[term]=snippets;
+    if(snippets.length) {
+      console.log('\n['+term+'] found '+snippets.length+'x:');
+      snippets.forEach(function(s){ console.log('  ...'+s.replace(/\n/g,' ')+'...'); });
+    }
+  });
+  findings.sections.commonsMain = cmFindings;
 
-  // Find aboveStoreInStore* entries with full context
-  console.log('\naboveStoreInStore* full context:');
-  idx=0; count=0;
-  while((idx=cmText.indexOf('aboveStoreInStore',idx))>=0 && count<10) {
-    var ctx = cmText.substring(Math.max(0,idx-20),Math.min(cmText.length,idx+200));
-    console.log('  ...'+ctx.replace(/\n/g,' ')+'...');
-    idx+=20; count++;
-  }
-
-  // Find getReportsForView
-  console.log('\ngetReportsForView occurrences:');
-  idx=0; count=0;
-  while((idx=cmText.indexOf('getReportsForView',idx))>=0 && count<5) {
-    var ctx = cmText.substring(Math.max(0,idx-150),Math.min(cmText.length,idx+200));
-    console.log('  ...'+ctx.replace(/\n/g,' ')+'...');
-    idx+=20; count++;
-  }
-
-  // Find exportType
-  console.log('\nexportType occurrences:');
-  idx=0; count=0;
-  while((idx=cmText.indexOf('exportType',idx))>=0 && count<5) {
-    var ctx = cmText.substring(Math.max(0,idx-100),Math.min(cmText.length,idx+150));
-    console.log('  ...'+ctx.replace(/\n/g,' ')+'...');
-    idx+=12; count++;
-  }
-
-  // =====================================================================
-  // C. Try flow init WITH categoryId=1 through 8
-  //    Immediately try getReportsForView + export params
-  // =====================================================================
-  console.log('\n--- C. Flow init with categoryId ---');
-  var storeId = 29865;
-  var dateStr = '2026-04-18';
-
+  // C. Flow init with each categoryId
+  console.log('\n--- C. categoryId init + getReportsForView ---');
+  var catResults = [];
+  var storeId=29865, dateStr='2026-04-18';
   for (var cat=1; cat<=8; cat++) {
     var csrf = await getFreshCsrf(cookie, ua);
     var hdrs = {Cookie:cookie,'User-Agent':ua,
       'X-Requested-With':'OWASP CSRFGuard Project',
       'Referer':ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow'};
-    hdrs[csrf.name] = csrf.value;
+    hdrs[csrf.name]=csrf.value;
 
-    // Init with categoryId
     var initUrl = ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&categoryId='+cat;
-    var ir = await fetch(initUrl, {headers:hdrs});
-    var ict = ir.headers.get('content-type')||'';
+    var ir = await fetch(initUrl,{headers:hdrs});
     var ihtml = await ir.text();
-    var ikm = ihtml.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/);
-    var iKey = ikm ? ikm[1] : null;
+    var iKey = (ihtml.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/))||[];
+    iKey = iKey[1]||null;
     var iTitle = (ihtml.match(/<title>([^<]+)<\/title>/)||['','?'])[1];
-    var isErr = iTitle.indexOf('Error')>=0 || iTitle.indexOf('error')>=0;
-    console.log('\ncategoryId='+cat+': key='+iKey+' title="'+iTitle+'"');
+    var catRes = {cat:cat,key:iKey,title:iTitle,getReportsForView:null};
+    console.log('categoryId='+cat+': key='+iKey+' title="'+iTitle+'"');
 
-    if (!iKey) { console.log('  No key extracted, skipping'); continue; }
+    if (!iKey) { catResults.push(catRes); continue; }
 
-    // Try getReportsForView as GET with export params
+    // Try getReportsForView GET
     csrf = await getFreshCsrf(cookie, ua);
-    hdrs[csrf.name] = csrf.value;
-    var pdfUrl1 = ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow'
+    hdrs[csrf.name]=csrf.value;
+    var pdfUrl = ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow'
       +'&_flowExecutionKey='+encodeURIComponent(iKey)
-      +'&_eventId=getReportsForView'
-      +'&exportType=pdf&contentDisposition=attachment'
-      +'&storeId='+storeId+'&date='+dateStr;
-    var pr1 = await fetch(pdfUrl1, {headers:hdrs});
-    var pct1 = pr1.headers.get('content-type')||'';
-    var ptxt1 = await pr1.text();
-    var pt1 = (ptxt1.match(/<title>([^<]+)<\/title>/)||['','?'])[1];
-    console.log('  getReportsForView GET: '+pr1.status+' ct='+pct1.substring(0,40)+' title="'+pt1+'"');
-    if (pct1.indexOf('pdf')>=0||pct1.indexOf('octet')>=0) {
-      fs.writeFileSync('/opt/render/project/src/uploads/hit.pdf',Buffer.from(ptxt1));
-      console.log('  *** PDF SAVED ***'); return;
+      +'&_eventId=getReportsForView&exportType=pdf&contentDisposition=attachment'
+      +'&storeId='+storeId+'&date='+dateStr+'&categoryId='+cat;
+    var pr = await fetch(pdfUrl,{headers:hdrs});
+    var pct = pr.headers.get('content-type')||'';
+    var ptxt = await pr.text();
+    var pt = (ptxt.match(/<title>([^<]+)<\/title>/)||['','?'])[1];
+    var pnk = (ptxt.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/))||[];
+    pnk=pnk[1]||null;
+    catRes.getReportsForView = {status:pr.status,ct:pct,title:pt,newKey:pnk};
+    console.log('  getReportsForView -> '+pr.status+' ct='+pct.substring(0,40)+' title="'+pt+'" newKey='+pnk);
+
+    if (pct.indexOf('pdf')>=0||pct.indexOf('octet')>=0) {
+      fs.writeFileSync('/opt/render/project/src/uploads/hit.pdf',Buffer.from(ptxt));
+      catRes.getReportsForView.PDF_SAVED=true;
+      catResults.push(catRes);
+      findings.sections.catResults=catResults;
+      await pushToGitHub(findings);
+      console.log('*** PDF SAVED ***'); return;
     }
 
-    // Try getReportsForView as POST
-    csrf = await getFreshCsrf(cookie, ua);
-    var postHdrs = {Cookie:cookie,'User-Agent':ua,
-      'Content-Type':'application/x-www-form-urlencoded',
-      'X-Requested-With':'OWASP CSRFGuard Project',
-      'Referer':ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow'};
-    postHdrs[csrf.name] = csrf.value;
-    var pbody = '_flowExecutionKey='+encodeURIComponent(iKey)
-      +'&_eventId=getReportsForView'
-      +'&exportType=pdf&contentDisposition=attachment'
-      +'&storeId='+storeId+'&date='+dateStr+'&categoryId='+cat
-      +'&'+csrf.name+'='+encodeURIComponent(csrf.value);
-    var pr2 = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow',
-      {method:'POST',headers:postHdrs,body:pbody});
-    var pct2 = pr2.headers.get('content-type')||'';
-    var ptxt2 = await pr2.text();
-    var pt2 = (ptxt2.match(/<title>([^<]+)<\/title>/)||['','?'])[1];
-    var pk2 = (ptxt2.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/))||[];
-    pk2 = pk2[1]||null;
-    console.log('  getReportsForView POST: '+pr2.status+' ct='+pct2.substring(0,40)+' title="'+pt2+'" newKey='+pk2);
-    if (pct2.indexOf('pdf')>=0||pct2.indexOf('octet')>=0) {
-      fs.writeFileSync('/opt/render/project/src/uploads/hit.pdf',Buffer.from(ptxt2));
-      console.log('  *** PDF SAVED ***'); return;
+    // If non-error new key, dump the response HTML key section
+    if (pnk && pt.indexOf('Error')<0 && pt.indexOf('Login')<0) {
+      var respLines = ptxt.split('\n');
+      var keyLines = [];
+      respLines.forEach(function(line,idx){
+        var lc=line.toLowerCase();
+        if(lc.indexOf('<input')>=0||lc.indexOf('<button')>=0||lc.indexOf('_eventid')>=0
+           ||lc.indexOf('data-event')>=0||lc.indexOf('abovestore')>=0||lc.indexOf('categoryid')>=0) {
+          keyLines.push('L'+(idx+1)+': '+line.trim().substring(0,200));
+        }
+      });
+      catRes.getReportsForView.interestingLines = keyLines;
+      console.log('  Interesting lines in response:');
+      keyLines.slice(0,10).forEach(function(l){ console.log('    '+l); });
     }
-
-    // If POST advanced the key to a non-error state, try getReportsForView from there
-    if (pk2 && pk2!==iKey && pt2.indexOf('Error')<0 && pt2.indexOf('Login')<0) {
-      console.log('  Non-error new key '+pk2+' from POST, trying getReportsForView...');
-      csrf = await getFreshCsrf(cookie, ua);
-      hdrs[csrf.name] = csrf.value;
-      var pdfUrl3 = ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow'
-        +'&_flowExecutionKey='+encodeURIComponent(pk2)
-        +'&_eventId=getReportsForView&exportType=pdf&contentDisposition=attachment';
-      var pr3 = await fetch(pdfUrl3, {headers:hdrs});
-      var pct3 = pr3.headers.get('content-type')||'';
-      var ptxt3 = await pr3.text();
-      var pt3 = (ptxt3.match(/<title>([^<]+)<\/title>/)||['','?'])[1];
-      console.log('    -> '+pr3.status+' ct='+pct3.substring(0,40)+' title="'+pt3+'"');
-      if (pct3.indexOf('pdf')>=0||pct3.indexOf('octet')>=0) {
-        fs.writeFileSync('/opt/render/project/src/uploads/hit.pdf',Buffer.from(ptxt3));
-        console.log('    *** PDF SAVED ***'); return;
-      }
-    }
+    catResults.push(catRes);
   }
+  findings.sections.catResults = catResults;
 
-  // =====================================================================
-  // D. aboveStore REST API -- try inStoreTime with storeId and date
-  // =====================================================================
-  console.log('\n--- D. aboveStore REST API variants ---');
-  var restPaths = [
-    '/asp/rest_v2/aboveStore/inStoreTime?storeId=29865&date=2026-04-18',
-    '/asp/rest_v2/aboveStore/inStoreTime?storeId=29865&startDate=2026-04-18&endDate=2026-04-18',
-    '/asp/rest_v2/aboveStore/report?storeId=29865&date=2026-04-18&categoryId=4',
-    '/asp/rest_v2/aboveStore/report?storeId=29865&date=2026-04-18&categoryId=1',
-    '/asp/rest_v2/aboveStore/export?storeId=29865&date=2026-04-18',
-    '/asp/rest_v2/aboveStore/run?storeId=29865&date=2026-04-18',
-    '/asp/rest_v2/aboveStore?storeId=29865&date=2026-04-18',
-    '/asp/rest_v2/aboveStore/stores/29865',
-    '/asp/rest_v2/aboveStore/stores/29865/inStoreTime?date=2026-04-18',
+  // D. REST API + direct JRS report execution endpoint
+  console.log('\n--- D. JRS REST report execution ---');
+  var jrsPaths = [
+    '/asp/rest_v2/reports/aboveStore/InStoreTime.pdf?storeId=29865&date=2026-04-18',
+    '/asp/rest_v2/reports/aboveStore/inStoreTime.pdf?storeId=29865&date=2026-04-18',
+    '/asp/rest_v2/reports/IST.pdf?storeId=29865&date=2026-04-18',
+    '/asp/rest_v2/reportExecutions',
+    '/asp/rest_v2/resources?type=reportUnit&q=inStore',
+    '/asp/rest_v2/resources?type=reportUnit&q=aboveStore',
+    '/asp/rest_v2/resources?type=reportUnit&q=InStore',
+    '/asp/rest_v2/resources/aboveStore',
+    '/asp/rest_v2/resources/reports/aboveStore',
   ];
-  for (var ri=0; ri<restPaths.length; ri++) {
-    var rp = restPaths[ri];
-    var rr = await fetch(ODS_URL+rp, {headers:{Cookie:cookie,'User-Agent':ua}});
-    var rct = rr.headers.get('content-type')||'';
-    var rt = await rr.text();
-    console.log('  '+rp.replace('/asp/rest_v2/aboveStore','').padEnd(50)+' -> '+rr.status+' '+rct.substring(0,30)+' | '+rt.substring(0,100));
-    if (rr.status===200 && (rct.indexOf('json')>=0 || rct.indexOf('pdf')>=0)) {
-      console.log('    FULL: '+rt.substring(0,500));
+  var restResults = {};
+  for (var ri=0; ri<jrsPaths.length; ri++) {
+    var rp=jrsPaths[ri];
+    var csrf2=await getFreshCsrf(cookie,ua);
+    var rhdrs={Cookie:cookie,'User-Agent':ua,'X-Requested-With':'OWASP CSRFGuard Project',
+               'Accept':'application/json'};
+    rhdrs[csrf2.name]=csrf2.value;
+    var rr=await fetch(ODS_URL+rp,{headers:rhdrs});
+    var rct=rr.headers.get('content-type')||'';
+    var rt=await rr.text();
+    restResults[rp]={status:rr.status,ct:rct,body:rt.substring(0,2000)};
+    console.log('  '+rp.padEnd(60)+' -> '+rr.status+' '+rct.substring(0,30)+'  '+rt.substring(0,100));
+    if(rr.status===200&&(rct.indexOf('json')>=0||rct.indexOf('xml')>=0)) {
+      console.log('    BODY: '+rt.substring(0,500));
+    }
+    if(rct.indexOf('pdf')>=0||rct.indexOf('octet')>=0) {
+      fs.writeFileSync('/opt/render/project/src/uploads/hit.pdf',Buffer.from(rt));
+      console.log('  *** PDF SAVED ***');
     }
   }
+  findings.sections.jrsRest = restResults;
 
+  await pushToGitHub(findings);
   console.log('\nDone.');
 }
-
 main().catch(function(e){ console.error('FATAL:', e.message); process.exit(1); });
