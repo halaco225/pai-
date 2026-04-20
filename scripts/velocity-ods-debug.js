@@ -93,66 +93,70 @@ async function main() {
   console.log(foldersText.substring(0, 1000));
   fs.writeFileSync('/tmp/ods-folders.json', foldersText);
 
-  // ── 3. REST v2 — search for reportUnits matching "store" or "IST" ────────
-  console.log('\n── REST v2 search: reportUnit q=InStore ─────────────');
-  const searchRes  = await fetch(
-    `${ODS_URL}/asp/rest_v2/resources?type=reportUnit&q=InStore&limit=20`, {
+  // ── 3. List all reports in Pizza_Hut/Operations ──────────────────────────
+  console.log('\n── REST v2: /Reports/Pizza_Hut/Operations reports ───');
+  const opsRes  = await fetch(
+    `${ODS_URL}/asp/rest_v2/resources?folderUri=/Reports/Pizza_Hut/Operations&type=reportUnit&limit=100`, {
     headers: { Cookie: cookie, 'User-Agent': ua, Accept: 'application/json' }
   });
-  const searchText = await searchRes.text();
-  console.log('Status:', searchRes.status);
-  console.log(searchText.substring(0, 2000));
-  fs.writeFileSync('/tmp/ods-search-instore.json', searchText);
+  const opsText = await opsRes.text();
+  console.log('Status:', opsRes.status);
+  console.log(opsText);
+  fs.writeFileSync('/tmp/ods-ops-reports.json', opsText);
 
-  // ── 4. REST v2 — search for reportUnits matching "above" ─────────────────
-  console.log('\n── REST v2 search: reportUnit q=above ───────────────');
-  const s2Res  = await fetch(
-    `${ODS_URL}/asp/rest_v2/resources?type=reportUnit&q=above&limit=20`, {
-    headers: { Cookie: cookie, 'User-Agent': ua, Accept: 'application/json' }
-  });
-  const s2Text = await s2Res.text();
-  console.log('Status:', s2Res.status);
-  console.log(s2Text.substring(0, 2000));
-  fs.writeFileSync('/tmp/ods-search-above.json', s2Text);
-
-  // ── 5. Try the aboveStore JS bundle ──────────────────────────────────────
-  console.log('\n── aboveStore JS bundle ─────────────────────────────');
-  for (const jsPath of [
-    '/asp/aboveStore/js/aboveStore.min.js',
-    '/asp/aboveStore/js/app.js',
-    '/asp/aboveStore/js/aboveStore.js',
-  ]) {
-    const jRes = await fetch(`${ODS_URL}${jsPath}`, {
-      headers: { Cookie: cookie, 'User-Agent': ua }
+  // ── 4. Search by multiple terms ──────────────────────────────────────────
+  for (const q of ['IST', 'speed', 'dispatch', 'store', 'velocity', 'performance']) {
+    const r = await fetch(
+      `${ODS_URL}/asp/rest_v2/resources?type=reportUnit&q=${q}&limit=10`, {
+      headers: { Cookie: cookie, 'User-Agent': ua, Accept: 'application/json' }
     });
-    console.log(jsPath, '→', jRes.status);
-    if (jRes.ok) {
-      const jText = await jRes.text();
-      // Look for PDF/export URL patterns
-      const lines = jText.split('\n');
-      const hits  = lines.filter(l => /pdf|export|reportUnit|flow\.html|rest_v2/i.test(l));
-      console.log('Relevant lines:', hits.slice(0, 20).join('\n'));
-      fs.writeFileSync('/tmp/ods-abovestore.js', jText.substring(0, 50000));
-      break;
+    const t = await r.text();
+    if (r.status === 200 && t.includes('uri')) {
+      console.log(`\n── q=${q} (${r.status}) ──`);
+      // Extract just the URIs
+      const uris = [...t.matchAll(/"uri":"([^"]+)"/g)].map(m => m[1]);
+      console.log(uris.join('\n'));
     }
   }
 
-  // ── 6. Try the flow page HTML (full) ─────────────────────────────────────
-  console.log('\n── Flow page full HTML ──────────────────────────────');
+  // ── 5. List all top-level report folders (more complete) ─────────────────
+  console.log('\n── All folders (limit 50) ───────────────────────────');
+  const allFolders = await fetch(
+    `${ODS_URL}/asp/rest_v2/resources?type=folder&limit=50`, {
+    headers: { Cookie: cookie, 'User-Agent': ua, Accept: 'application/json' }
+  });
+  const af = await allFolders.text();
+  const folderUris = [...af.matchAll(/"uri":"([^"]+)"/g)].map(m => m[1]);
+  console.log(folderUris.join('\n'));
+  fs.writeFileSync('/tmp/ods-all-folders.json', af);
+
+  // ── 6. Flow page — extract flowExecutionKey and relevant JS ──────────────
+  console.log('\n── Flow page key lines ──────────────────────────────');
   const flowRes  = await fetch(
     `${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`, {
     headers: { Cookie: cookie, 'User-Agent': ua }
   });
   const flowHtml = await flowRes.text();
-  console.log('Status:', flowRes.status, '  Final URL:', flowRes.url);
-  // Print lines containing key patterns
-  const flowLines = flowHtml.split('\n');
-  const keyLines  = flowLines.filter(l =>
-    /flowExecution|e\ds\d|pdf|export|report|api|ajax|url/i.test(l));
-  console.log('Key lines from flow HTML:\n', keyLines.slice(0, 40).join('\n'));
+  const keyLines = flowHtml.split('\n').filter(l =>
+    /flowExecution|reportUnit|rest_v2|aboveStore|pdf|export|selectReport|IST/i.test(l));
+  console.log(keyLines.slice(0, 30).join('\n'));
   fs.writeFileSync('/tmp/ods-flow.html', flowHtml);
-  console.log('\nFull files saved to /tmp/ods-*.html and /tmp/ods-*.json');
-  console.log('Run: cat /tmp/ods-search-instore.json | python3 -m json.tool');
+
+  // ── 7. Try REST v2 async report run (alternative to direct PDF) ──────────
+  console.log('\n── REST v2 async run test (PH_AboveStoreInStoreTime) ─');
+  const asyncRes = await fetch(
+    `${ODS_URL}/asp/rest_v2/reports/Reports/Pizza_Hut/Operations/PH_AboveStoreInStoreTime.pdf?DATE=2026-04-18`, {
+    headers: { Cookie: cookie, 'User-Agent': ua }
+  });
+  console.log('Status:', asyncRes.status, 'ct:', asyncRes.headers.get('content-type'));
+  if (!asyncRes.ok) {
+    const t = await asyncRes.text();
+    console.log(t.substring(0, 300));
+  } else {
+    console.log('Got PDF!', (await asyncRes.buffer()).length, 'bytes');
+  }
+
+  console.log('\nFiles saved to /tmp/ods-*.  Run: ls /tmp/ods-*');
 }
 
 main().catch(e => { console.error('FATAL:', e.message); process.exit(1); });

@@ -111,103 +111,61 @@ async function login() {
 async function downloadAboveStoreReport(session, targetDate, outPath) {
   const { cookie, ua } = session;
 
-  // Step 1: Start the flow.
-  // The server redirects to a URL containing ?_flowExecutionKey=eNsN — extract it from the
-  // *final* URL after node-fetch follows the redirect (flowStart.url), not from the HTML body.
-  console.log(`[ODS] Starting aboveStoreInStoreReportsFlow for ${targetDate}...`);
-  const flowStart = await fetch(`${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`, {
+  // Step 1: Load the InStore Reports flow page.
+  // JRS embeds the server-generated flowExecutionKey as a JS variable:
+  //   __jrsConfigs__.flowExecutionKey = "e2s1";
+  console.log(`[ODS] Loading aboveStoreInStoreReportsFlow for ${targetDate}...`);
+  const flowRes = await fetch(`${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`, {
     headers: { 'Cookie': cookie, 'User-Agent': ua, 'Referer': `${ODS_URL}/asp/` }
   });
 
-  if (!flowStart.ok) {
-    return { success: false, error: `Flow start returned ${flowStart.status}` };
+  if (!flowRes.ok) {
+    return { success: false, error: `Flow page returned ${flowRes.status}` };
   }
 
-  // Final URL after redirect contains the execution key
-  const finalUrl = flowStart.url;
-  console.log(`[ODS] Flow final URL: ${finalUrl}`);
-
-  let flowKey = null;
-
-  // 1. Try the redirect URL (most reliable for JRS flows)
-  const urlKeyMatch = finalUrl.match(/_flowExecutionKey=([^&]+)/);
-  if (urlKeyMatch) flowKey = decodeURIComponent(urlKeyMatch[1]);
-
-  // 2. Fallback: scan HTML for eNsN pattern anywhere
-  if (!flowKey) {
-    const flowHtml = await flowStart.text();
-    const htmlKeyMatch = flowHtml.match(/['"=](\s*e\d+s\d+)['"&]/i);
-    if (htmlKeyMatch) flowKey = htmlKeyMatch[1].trim();
-    if (!flowKey) {
-      // Last resort: any eNsN token
-      const loose = flowHtml.match(/\b(e\d+s\d+)\b/);
-      if (loose) flowKey = loose[1];
-    }
-    if (!flowKey) {
-      console.log('[ODS] Flow HTML (no key found):', flowHtml.substring(0, 2000));
-      return { success: false, error: 'Could not extract _flowExecutionKey — check logs' };
-    }
+  const flowHtml = await flowRes.text();
+  const keyMatch  = flowHtml.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/);
+  if (!keyMatch) {
+    console.log('[ODS] No __jrsConfigs__.flowExecutionKey found. Snippet:', flowHtml.substring(0, 500));
+    return { success: false, error: 'Could not find flowExecutionKey in page JS' };
   }
-
+  const flowKey = keyMatch[1];
   console.log(`[ODS] Flow execution key: ${flowKey}`);
 
-  // Step 2: Request PDF export using the flow key.
-  // Try GET first (standard JRS export pattern), then POST fallback.
-  const exportUrl = `${ODS_URL}/asp/flow.html`
-    + `?_flowId=aboveStoreInStoreReportsFlow`
-    + `&_flowExecutionKey=${encodeURIComponent(flowKey)}`
-    + `&_eventId=export`
-    + `&output=pdf`
-    + `&DATE=${encodeURIComponent(targetDate)}`;
+  // Step 2: Use JRS REST v2 API to run the report directly as PDF.
+  // This is cleaner than navigating the SPA flow — REST v2 accepts the session cookie.
+  // ODS_REPORT_URI can be set as an env var once the correct path is confirmed.
+  const reportUri = process.env.ODS_REPORT_URI
+    || '/Reports/Pizza_Hut/Operations/PH_AboveStoreInStoreTime';
 
-  console.log(`[ODS] Requesting PDF export...`);
-  let pdfRes = await fetch(exportUrl, {
-    headers: { 'Cookie': cookie, 'User-Agent': ua, 'Referer': finalUrl }
+  const restUrl = `${ODS_URL}/asp/rest_v2/reports${reportUri}.pdf`
+    + `?DATE=${encodeURIComponent(targetDate)}`;
+  console.log(`[ODS] REST v2 attempt: ${restUrl}`);
+
+  let pdfRes = await fetch(restUrl, {
+    headers: { 'Cookie': cookie, 'User-Agent': ua }
   });
   let ct = pdfRes.headers.get('content-type') || '';
-  console.log(`[ODS] GET export: status=${pdfRes.status} ct=${ct}`);
+  console.log(`[ODS] REST v2: status=${pdfRes.status} ct=${ct}`);
 
   if (ct.includes('pdf') || ct.includes('octet')) {
     const buf = await pdfRes.buffer();
     fs.writeFileSync(outPath, buf);
-    console.log(`[ODS] PDF saved via GET export (${buf.length} bytes)`);
-    return { success: true, bytes: buf.length };
+    console.log(`[ODS] PDF saved via REST v2 (${buf.length} bytes)`);
+    return { success: true, bytes: buf.length, method: 'rest_v2' };
   }
 
-  // POST fallback — some JRS setups require POST for export
-  const postBody = [
-    `_flowExecutionKey=${encodeURIComponent(flowKey)}`,
-    `_eventId=export`,
-    `output=pdf`,
-    `DATE=${encodeURIComponent(targetDate)}`
-  ].join('&');
+  // REST v2 path was wrong — log what it returned and the flow key so we can debug further
+  const restSnippet = (await pdfRes.text()).substring(0, 300).replace(/\s+/g, ' ');
+  console.log('[ODS] REST v2 non-PDF response:', restSnippet);
+  console.log('[ODS] Tried URI:', reportUri);
+  console.log('[ODS] Set ODS_REPORT_URI env var to the correct JRS report path to fix this.');
 
-  pdfRes = await fetch(`${ODS_URL}/asp/flow.html`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Cookie': cookie, 'User-Agent': ua, 'Referer': finalUrl
-    },
-    body: postBody
-  });
-  ct = pdfRes.headers.get('content-type') || '';
-  console.log(`[ODS] POST export: status=${pdfRes.status} ct=${ct}`);
-
-  if (ct.includes('pdf') || ct.includes('octet')) {
-    const buf = await pdfRes.buffer();
-    fs.writeFileSync(outPath, buf);
-    console.log(`[ODS] PDF saved via POST export (${buf.length} bytes)`);
-    return { success: true, bytes: buf.length };
-  }
-
-  // Still HTML — dump it so we can see what the app actually returns
-  const html = await pdfRes.text();
-  console.log('[ODS] POST export HTML snippet:', html.substring(0, 2000).replace(/\s+/g, ' '));
   return {
     success: false,
-    error: `PDF export returned HTML (status=${pdfRes.status}) — see Render logs`,
+    error: `REST v2 returned non-PDF (status=${pdfRes.status}) — ODS_REPORT_URI needs to be set`,
     flowKey,
-    finalUrl
+    triedUri: reportUri
   };
 }
 
