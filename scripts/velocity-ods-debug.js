@@ -67,11 +67,88 @@ async function login() {
   return { cookie: mergeCookies(c1, c2, c3), ua: UA, csrfName, csrfValue };
 }
 
+async function tryEvent(cookie, ua, flowKey, eventId, extraParams = '') {
+  const url = `${ODS_URL}/asp/flow.html`
+    + `?_flowId=aboveStoreInStoreReportsFlow`
+    + `&_flowExecutionKey=${encodeURIComponent(flowKey)}`
+    + `&_eventId=${eventId}`
+    + (extraParams ? '&' + extraParams : '');
+  const res  = await fetch(url, { headers: { Cookie: cookie, 'User-Agent': ua } });
+  const html = await res.text();
+  const isLogin  = html.includes('oneVIEW: Login');
+  const isInStore = html.includes('InStore') || html.includes('instore');
+  const newKey   = html.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/)?.[1];
+  const title    = html.match(/<title>([^<]+)<\/title>/)?.[1] || '?';
+  return { eventId, status: res.status, isLogin, isInStore, newKey, title };
+}
+
 async function main() {
   if (!ODS_PASS) { console.error('ODS_PASSWORD not set'); process.exit(1); }
 
   const session = await login();
   const { cookie, ua } = session;
+
+  // ── 0. FLOW NAVIGATION DISCOVERY ─────────────────────────────────────────
+  // Try every plausible event from s1 and see which ones don't return the login page.
+  // The ones that return a real page are valid transitions we can use to reach s4.
+  console.log('\n── Flow event discovery from s1 ─────────────────────');
+  const flowLoad = await fetch(
+    `${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`, {
+    headers: { Cookie: cookie, 'User-Agent': ua }
+  });
+  const flowHtml0 = await flowLoad.text();
+  const s1Key = flowHtml0.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/)?.[1];
+  console.log('s1 key:', s1Key);
+
+  const candidateEvents = [
+    'view', 'select', 'run', 'next', 'start', 'load', 'init', 'open',
+    'InStoreTime', 'inStoreTime', 'instore', 'InStore', 'viewInStore',
+    'selectReport', 'runReport', 'viewReport', 'loadReport',
+    'getReports', 'getReportsForView', 'loadReports', 'showReports',
+    'Speed_Of_Service', 'SpeedOfService', 'sos', 'SOS',
+    'AboveStore', 'aboveStore', 'above_store',
+    'DailyReport', 'dailyReport', 'daily',
+    'reportView', 'viewReports', 'displayReport',
+  ];
+
+  const hits = [];
+  for (const ev of candidateEvents) {
+    const r = await tryEvent(cookie, ua, s1Key, ev);
+    const mark = r.isLogin ? '✗ login' : `✓ title="${r.title}" newKey=${r.newKey}`;
+    console.log(`  ${ev.padEnd(25)} → ${mark}`);
+    if (!r.isLogin) {
+      hits.push(r);
+      // If we got a new key, try getReportsForView from there
+      if (r.newKey) {
+        const pdfUrl = `${ODS_URL}/asp/flow.html`
+          + `?_flowId=aboveStoreInStoreReportsFlow`
+          + `&_flowExecutionKey=${encodeURIComponent(r.newKey)}`
+          + `&_eventId=getReportsForView&exportType=pdf&contentDisposition=attachment`;
+        const pdfRes = await fetch(pdfUrl, { headers: { Cookie: cookie, 'User-Agent': ua } });
+        const pdfCt = pdfRes.headers.get('content-type') || '';
+        console.log(`    → getReportsForView from ${r.newKey}: status=${pdfRes.status} ct=${pdfCt}`);
+        if (pdfCt.includes('pdf') || pdfCt.includes('octet')) {
+          console.log('    *** PDF HIT! event chain:', ev, '→ getReportsForView ***');
+          const buf = await pdfRes.buffer();
+          fs.writeFileSync('/tmp/ods-test.pdf', buf);
+          console.log('    Saved to /tmp/ods-test.pdf');
+        }
+      }
+    }
+  }
+  console.log('\nNon-login hits:', hits.map(h => h.eventId));
+  if (hits.length === 0) {
+    console.log('All events returned login page — session cookie may not carry across requests');
+    // Check if cookie changes
+    const check = await fetch(`${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`, {
+      headers: { Cookie: cookie, 'User-Agent': ua }
+    });
+    console.log('Fresh flow load status:', check.status, 'final url:', check.url);
+    const checkHtml = await check.text();
+    console.log('Title:', checkHtml.match(/<title>([^<]+)<\/title>/)?.[1]);
+  }
+  console.log('\n(Skipping remaining sections — discovery above is the key output)');
+  return;
 
   // ── 1. loginsuccess.html ──────────────────────────────────────────────────
   console.log('\n── loginsuccess.html ────────────────────────────────');
