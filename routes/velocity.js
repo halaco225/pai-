@@ -144,7 +144,8 @@ router.get('/run-backfill', (req, res) => {
   const { spawn } = require('child_process');
   const scriptPath = require('path').join(__dirname, '..', 'scripts', 'velocity-backfill.js');
   const env = Object.assign({}, process.env, {
-    PAI_BASE_URL: 'https://pai-ayvaz.onrender.com'
+    PAI_BASE_URL: 'https://pai-ayvaz.onrender.com',
+    VELOCITY_AUTOMATION_TOKEN: process.env.VELOCITY_AUTOMATION_TOKEN || 'velocity-auto-2024'
   });
   res.json({ ok: true, msg: 'Backfill started — P1-P3 historical data loading. Monitor at /api/velocity/automation/status' });
   const child = spawn('node', [scriptPath], { env, detached: true, stdio: 'ignore' });
