@@ -136,6 +136,111 @@ router.get('/automation/status', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── GET /api/velocity/debug-run — unauthenticated, one-shot trigger ────────
+router.get('/debug-run', (req, res) => {
+  const { spawn } = require('child_process');
+  const scriptPath = require('path').join(__dirname, '..', 'scripts', 'velocity-ods-debug.js');
+  res.json({ ok: true, msg: 'Debug script started — output in ~60s at /debug-output.json' });
+  const child = spawn('node', [scriptPath], { env: process.env, detached: true, stdio: 'ignore' });
+  child.unref();
+});
+
+
+// ── GET /api/velocity/run-backfill — unauthenticated, one-shot backfill trigger ──
+router.get('/run-backfill', (req, res) => {
+  const { spawn } = require('child_process');
+  const scriptPath = require('path').join(__dirname, '..', 'scripts', 'velocity-backfill.js');
+  const env = Object.assign({}, process.env, {
+    PAI_BASE_URL: 'https://pai-ayvaz.onrender.com',
+    VELOCITY_AUTOMATION_TOKEN: process.env.VELOCITY_AUTOMATION_TOKEN || 'velocity-auto-2024'
+  });
+  res.json({ ok: true, msg: 'Backfill started — P1-P3 historical data loading. Monitor at /api/velocity/automation/status' });
+  const child = spawn('node', [scriptPath], { env, detached: true, stdio: 'ignore' });
+  child.unref();
+});
+
+
+// ── GET /api/velocity/diag — env + DB table check ─────────────────────────
+router.get('/diag', async (req, res) => {
+  const info = {
+    ODS_USER:     process.env.ODS_USER     || '(not set)',
+    ODS_ORG:      process.env.ODS_ORG      || '(not set)',
+    ODS_PASSWORD: process.env.ODS_PASSWORD ? '(set, ' + process.env.ODS_PASSWORD.length + ' chars)' : '(NOT SET)',
+    VELOCITY_AUTOMATION_TOKEN: process.env.VELOCITY_AUTOMATION_TOKEN ? '(set)' : '(not set — using default)',
+    tables: {}
+  };
+  try {
+    const p = require('../services/db').pool || null;
+    const { Pool } = require('pg');
+    const pool2 = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+    for (const t of ['velocity_daily_records','velocity_automation_log']) {
+      try {
+        const r = await pool2.query('SELECT COUNT(*) FROM ' + t);
+        info.tables[t] = parseInt(r.rows[0].count) + ' rows';
+      } catch(e) { info.tables[t] = 'ERROR: ' + e.message; }
+    }
+    await pool2.end();
+  } catch(e) { info.db_error = e.message; }
+  res.json(info);
+});
+
+
+// ── GET /api/velocity/init-db — force create velocity tables ──────────────
+router.get('/init-db', async (req, res) => {
+  try {
+    const { Pool } = require('pg');
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS velocity_daily_records (
+        id           SERIAL PRIMARY KEY,
+        store_id     VARCHAR(10)   NOT NULL,
+        record_date  DATE          NOT NULL,
+        week_key     DATE          NOT NULL,
+        period_week  VARCHAR(10),
+        ist_avg      DECIMAL(5,2),
+        ist_lt10     INTEGER       DEFAULT 0,
+        ist_1014     INTEGER       DEFAULT 0,
+        ist_1518     INTEGER       DEFAULT 0,
+        ist_1925     INTEGER       DEFAULT 0,
+        ist_gt25     INTEGER       DEFAULT 0,
+        ist_lt19_pct DECIMAL(5,2),
+        total_orders INTEGER       DEFAULT 0,
+        make_time    VARCHAR(10),
+        pct_lt4      DECIMAL(5,2),
+        production_time VARCHAR(10),
+        pct_lt15     DECIMAL(5,2),
+        on_time_pct  DECIMAL(5,2),
+        data_source  VARCHAR(20)   DEFAULT 'pdf',
+        uploader     VARCHAR(100)  DEFAULT 'system',
+        created_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        UNIQUE(store_id, record_date)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_velocity_date ON velocity_daily_records (record_date DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_velocity_store_date ON velocity_daily_records (store_id, record_date DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_velocity_week ON velocity_daily_records (week_key DESC)`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS velocity_automation_log (
+        id               SERIAL PRIMARY KEY,
+        job_type         VARCHAR(30)  NOT NULL,
+        target_date      DATE,
+        status           VARCHAR(20)  NOT NULL,
+        stores_processed INTEGER      DEFAULT 0,
+        message          TEXT,
+        created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_velocity_log_date ON velocity_automation_log (created_at DESC)`);
+    const r1 = await pool.query('SELECT COUNT(*) FROM velocity_daily_records');
+    const r2 = await pool.query('SELECT COUNT(*) FROM velocity_automation_log');
+    await pool.end();
+    res.json({ ok: true, velocity_daily_records: r1.rows[0].count + ' rows', velocity_automation_log: r2.rows[0].count + ' rows' });
+  } catch(e) {
+    res.status(500).json({ error: e.message, stack: e.stack });
+  }
+});
+
 // All other velocity routes require session auth
 router.use(requireAuth);
 
@@ -464,5 +569,8 @@ router.post('/export', async (req, res) => {
     res.send(buffer);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+
+
 
 module.exports = router;

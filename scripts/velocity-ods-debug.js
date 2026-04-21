@@ -1,297 +1,187 @@
-/**
- * velocity-ods-debug.js  — v3
- *
- * Four new attack vectors for reaching s4:
- *   A. Deep HTML parse of s1 — extract data-eventid attrs, JS bindings, inline require() calls
- *   B. JavaScriptServlet — attempt to pull aboveStore.main via the JRS script servlet
- *   C. Spring Web Flow button-name pattern: _eventId_X (submit buttons fire events this way)
- *   D. POST with CSRF token header — all prior GETs may have been silently rejected by CSRFGuard
- *   E. AJAX-style (X-Requested-With) variants of getReportsForView from s1
- *   F. Direct aboveStore REST / PDF endpoints (broader sweep)
- *
- * Run from Render shell:
- *   node scripts/velocity-ods-debug.js
- */
 'use strict';
+var fs = require('fs');
+var ODS_URL  = 'https://bi.onedatasource.com';
+var ODS_USER = process.env.ODS_USER || 'hlacoste';
+var ODS_PASS = process.env.ODS_PASSWORD || '';
+var ODS_ORG  = process.env.ODS_ORG  || 'dgi';
+var GH_TOKEN = process.env.GH_TOKEN || '';
+var REPORT_ID = '457';
 
-const fs = require('fs');
-const ODS_URL  = 'https://bi.onedatasource.com';
-const ODS_ORG  = process.env.ODS_ORG  || 'dgi';
-const ODS_USER = process.env.ODS_USER || 'hlacoste';
-const ODS_PASS = process.env.ODS_PASSWORD || '';
-
-function fetch(...args) { return require('node-fetch')(...args); }
-
+function fetch() { return require('node-fetch').apply(null, arguments); }
 function parseCookies(r) {
-  return (r.headers.raw()['set-cookie'] || []).map(c => c.split(';')[0]);
+  return (r.headers.raw()['set-cookie']||[]).map(function(c){return c.split(';')[0];});
 }
-function mergeCookies(...arrays) {
-  const map = new Map();
-  arrays.flat().forEach(c => { const [n] = c.split('='); map.set(n, c); });
+function mergeCookies() {
+  var map = new Map();
+  [].concat.apply([], Array.from(arguments)).forEach(function(ck){
+    if(ck){ var n=ck.split('=')[0]; map.set(n,ck); }
+  });
   return Array.from(map.values()).join('; ');
 }
-
 async function login() {
-  const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
-  const r1 = await fetch(`${ODS_URL}/asp/login.html`, { headers: { 'User-Agent': UA } });
-  const c1 = parseCookies(r1);
-  const r2 = await fetch(`${ODS_URL}/asp/JavaScriptServlet`, {
-    method: 'POST',
-    headers: { 'Cookie': mergeCookies(c1), 'FETCH-CSRF-TOKEN': '1',
-               'X-Requested-With': 'XMLHttpRequest', 'User-Agent': UA }
-  });
-  const c2  = parseCookies(r2);
-  const raw = await r2.text();
-  const colon = raw.indexOf(':');
-  const csrfName  = raw.substring(0, colon).trim();
-  const csrfValue = raw.substring(colon + 1).trim();
-
-  const body = [
-    `orgId=${encodeURIComponent(ODS_ORG)}`,
-    `j_username=${encodeURIComponent(ODS_USER)}`,
-    `j_password=${encodeURIComponent(ODS_PASS)}`,
-    `j_password_pseudo=${encodeURIComponent(ODS_PASS)}`,
-    `${csrfName}=${encodeURIComponent(csrfValue)}`
-  ].join('&');
-
-  const r3 = await fetch(`${ODS_URL}/asp/j_spring_security_check`, {
-    method: 'POST', redirect: 'manual',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded',
-               'Cookie': mergeCookies(c1, c2), 'Referer': `${ODS_URL}/asp/login.html`,
-               'Origin': ODS_URL, 'User-Agent': UA },
-    body
-  });
-  const c3  = parseCookies(r3);
-  const loc = r3.headers.get('location') || '';
-  if (loc.includes('error')) throw new Error(`Login failed: ${loc}`);
-  console.log('[LOGIN] OK →', loc);
-  return { cookie: mergeCookies(c1, c2, c3), ua: UA, csrfName, csrfValue };
+  var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+  var r1 = await fetch(ODS_URL+'/asp/login.html', {headers:{'User-Agent':UA}});
+  var c1 = parseCookies(r1);
+  var r2 = await fetch(ODS_URL+'/asp/JavaScriptServlet', {method:'POST',
+    headers:{'Cookie':mergeCookies(c1),'FETCH-CSRF-TOKEN':'1','X-Requested-With':'XMLHttpRequest','User-Agent':UA}});
+  var c2 = parseCookies(r2); var raw = await r2.text(); var colon = raw.indexOf(':');
+  var cn = raw.substring(0,colon).trim(); var cv = raw.substring(colon+1).trim();
+  var fb = ['orgId='+encodeURIComponent(ODS_ORG),'j_username='+encodeURIComponent(ODS_USER),
+    'j_password='+encodeURIComponent(ODS_PASS),'j_password_pseudo='+encodeURIComponent(ODS_PASS),
+    cn+'='+encodeURIComponent(cv)].join('&');
+  var r3 = await fetch(ODS_URL+'/asp/j_spring_security_check', {method:'POST',redirect:'manual',
+    headers:{'Content-Type':'application/x-www-form-urlencoded','Cookie':mergeCookies(c1,c2),
+             'Referer':ODS_URL+'/asp/login.html','Origin':ODS_URL,'User-Agent':UA}, body:fb});
+  var c3 = parseCookies(r3); var loc = r3.headers.get('location')||'';
+  if (loc.indexOf('error')>=0) throw new Error('Login failed: '+loc);
+  return {cookie:mergeCookies(c1,c2,c3), ua:UA};
+}
+async function freshCsrf(cookie, ua) {
+  var r = await fetch(ODS_URL+'/asp/JavaScriptServlet', {method:'POST',
+    headers:{'Cookie':cookie,'FETCH-CSRF-TOKEN':'1','User-Agent':ua}});
+  var t = await r.text(); var c = t.indexOf(':');
+  return {name:t.substring(0,c).trim(), value:t.substring(c+1).trim()};
+}
+async function save(findings) {
+  var pub = '/opt/render/project/src/public/debug-output.json';
+  try { fs.writeFileSync(pub, JSON.stringify(findings,null,2)); } catch(e){}
+  if (GH_TOKEN.length < 5) return;
+  var content64 = Buffer.from(JSON.stringify(findings,null,2)).toString('base64');
+  var apiUrl = 'https://api.github.com/repos/halaco225/pai-/contents/debug-output.json';
+  var ghHdrs = {'Authorization':'Bearer '+GH_TOKEN,'User-Agent':'PAi-debug',
+    'Content-Type':'application/json','Accept':'application/vnd.github+json'};
+  try {
+    var shaRes = await fetch(apiUrl, {headers:ghHdrs});
+    var shaJson = shaRes.ok ? await shaRes.json() : {};
+    var body = {message:'debug v15g '+new Date().toISOString(), content:content64};
+    if (shaJson.sha) body.sha = shaJson.sha;
+    var putRes = await fetch(apiUrl, {method:'PUT', headers:ghHdrs, body:JSON.stringify(body)});
+    console.log('[save] GitHub:', putRes.status, putRes.ok?'OK':'FAIL');
+  } catch(e){ console.log('[save] err:', e.message); }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 async function main() {
-  if (!ODS_PASS) { console.error('ODS_PASSWORD not set'); process.exit(1); }
-  const { cookie, ua, csrfName, csrfValue } = await login();
+  if (ODS_PASS.length < 2) { console.error('ODS_PASSWORD not set'); process.exit(1); }
+  var sess = await login(); var cookie = sess.cookie; var ua = sess.ua;
+  var findings = {ts:new Date().toISOString(), version:'v15g', sections:{}};
+  var jhdrs = {Cookie:cookie,'User-Agent':ua,'Accept':'application/json'};
 
-  // ── LOAD s1 ───────────────────────────────────────────────────────────────
-  const flowRes = await fetch(
-    `${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`,
-    { headers: { Cookie: cookie, 'User-Agent': ua } }
-  );
-  const flowHtml = await flowRes.text();
-  fs.writeFileSync('/tmp/ods-s1.html', flowHtml);
-  const s1Key = flowHtml.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/)?.[1];
-  console.log('\ns1 key:', s1Key);
-
-  // ── A. Deep HTML parse ────────────────────────────────────────────────────
-  console.log('\n══ A. Deep HTML parse of s1 ══════════════════════════════════');
-
-  // data-* event attributes
-  const dataAttrs = [...flowHtml.matchAll(/data-[a-z-]*event[a-z-]*=["']([^"']+)["']/gi)].map(m => m[0]);
-  console.log('data-*event* attrs:', dataAttrs.length ? dataAttrs.join('\n  ') : 'none');
-
-  // _eventId references (URL or form)
-  const eventIdRefs = [...new Set(
-    [...flowHtml.matchAll(/_eventId[=&"'\s:]+([a-zA-Z_][a-zA-Z0-9_]{1,40})/g)].map(m => m[1])
-  )];
-  console.log('\n_eventId values found in HTML:', eventIdRefs.length ? eventIdRefs.join(', ') : 'none');
-
-  // inline aboveStore / flow JS
-  const jsLines = flowHtml.split('\n').filter(l =>
-    /aboveStore|inStore|InStore|_eventId|eventId|flowExec|selectReport|getReport|runReport|IST|SOS/i.test(l)
-  );
-  console.log('\nRelevant JS lines in s1 HTML (first 40):');
-  jsLines.slice(0, 40).forEach(l => console.log(' ', l.trim().substring(0, 150)));
-
-  // require() calls
-  const requireCalls = [...flowHtml.matchAll(/require\s*\(\s*\[([^\]]+)\]/g)].map(m => m[0]);
-  console.log('\nrequire() calls:', requireCalls.length ? requireCalls.slice(0,5).join('\n  ') : 'none');
-
-  // __jrsConfigs__ object
-  const jrsCfg = flowHtml.match(/__jrsConfigs__\s*=\s*(\{[\s\S]{0,3000}?\});/);
-  if (jrsCfg) {
-    console.log('\n__jrsConfigs__ =', jrsCfg[1].substring(0, 800));
-  }
-
-  // ── B. JavaScriptServlet module fetches ──────────────────────────────────
-  console.log('\n══ B. JavaScriptServlet — aboveStore module attempts ══════════');
-  const jsPaths = [
-    `/asp/JavaScriptServlet?module=aboveStore.main`,
-    `/asp/JavaScriptServlet?module=aboveStore%2Fmain`,
-    `/asp/JavaScriptServlet?scripts=aboveStore.main`,
-    `/asp/JavaScriptServlet?scripts=aboveStore%2Fmain`,
-    `/asp/JavaScriptServlet?noext=aboveStore.main`,
-    `/asp/JavaScriptServlet?scripts=aboveStore`,
-    `/asp/optimized-scripts/aboveStore/main.js`,
-    `/asp/optimized-scripts/aboveStore.min.js`,
-    `/asp/scripts/aboveStore.js`,
-  ];
-  for (const p of jsPaths) {
-    const r = await fetch(`${ODS_URL}${p}`, { headers: { Cookie: cookie, 'User-Agent': ua } });
-    const text = await r.text();
-    console.log(p.substring(0, 60).padEnd(62), '→', r.status, text.length, 'bytes');
-    if (r.ok && text.length > 200) {
-      fs.writeFileSync('/tmp/ods-aboveStore-module.js', text.substring(0, 200000));
-      const hits = text.split('\n').filter(l =>
-        /eventId|_event|getReport|selectReport|inStoreTime|IST|SOS|pdf|export|download/i.test(l)
-      );
-      console.log('  → Event/PDF refs:', hits.slice(0, 12).map(l => l.trim().substring(0, 120)).join('\n    '));
+  // Step 1: call the same XHR the browser calls to get company list
+  console.log('Step 1: fetch orgType company list (brandId=1)...');
+  var brandIds = ['1','71','8','30'];
+  var companyId = null;
+  for (var bi=0; bi<brandIds.length; bi++) {
+    var or = await fetch(ODS_URL+'/asp/rest_v2/aboveStore/orgType?brandId='+brandIds[bi]+'&orgType=company', {headers:jhdrs});
+    var oct = or.headers.get('content-type')||'';
+    var obody = await or.text();
+    console.log('  brandId='+brandIds[bi]+': '+or.status+' '+oct.substring(0,30)+' -> '+obody.substring(0,300));
+    findings.sections['orgType_brandId_'+brandIds[bi]] = {status:or.status, body:obody.substring(0,500)};
+    if (or.status===200 && oct.includes('json')) {
+      try {
+        var oj = JSON.parse(obody);
+        // Find Ayvaz entry
+        var items = oj.item || oj.items || oj.companies || oj.data || [];
+        items.forEach(function(item) {
+          console.log('    item:', JSON.stringify(item));
+          var n = (item.name||item.label||item.orgValue||'').toLowerCase();
+          if (n.indexOf('ayvaz')>=0 || n.indexOf('pizza')>=0) {
+            companyId = item.id || item.value || item.orgValueId || item.storeId || null;
+            console.log('    *** AYVAZ found, id='+companyId);
+          }
+        });
+      } catch(e) { console.log('  parse err:', e.message); }
     }
   }
+  findings.sections.detectedCompanyId = companyId;
 
-  // ── C. Spring Web Flow button-name pattern (_eventId_X) ─────────────────
-  // Spring MVC allows submit buttons named "_eventId_X" to trigger event X
-  console.log('\n══ C. Spring Web Flow _eventId_X button-name POST pattern ════');
-  const swfEvents = [
-    'getReportsForView', 'inStoreTime', 'InStoreTime',
-    'view', 'run', 'select', 'next', 'submit', 'start',
-    'viewReport', 'selectReport', 'runReport', 'loadReport',
-    'aboveStore', 'IST', 'SOS',
-  ];
-  for (const ev of swfEvents) {
-    // POST with _eventId_X=x (button-name pattern) + CSRF token
-    const postBody = [
-      `_flowExecutionKey=${encodeURIComponent(s1Key)}`,
-      `_eventId_${ev}=x`,
-      `${csrfName}=${encodeURIComponent(csrfValue)}`
-    ].join('&');
-    const r = await fetch(`${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Cookie': cookie, 'User-Agent': ua,
-        'Referer': `${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`,
-        'X-Requested-With': 'XMLHttpRequest'
-      },
-      body: postBody
-    });
-    const ct   = r.headers.get('content-type') || '';
-    const text = await r.text();
-    const newKey = text.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/)?.[1];
-    const title  = text.match(/<title>([^<]+)<\/title>/)?.[1] || '?';
-    const isErr  = title.includes('Error') || text.includes('Server Error');
-    const mark   = ct.includes('pdf') ? '*** PDF ***'
-                 : ct.includes('octet') ? '*** OCTET ***'
-                 : isErr ? 'error-page'
-                 : `title="${title}" key=${newKey}`;
-    console.log(`  _eventId_${ev.padEnd(22)} → ${r.status} ${mark}`);
-    if (ct.includes('pdf') || ct.includes('octet')) {
-      const buf = await r.buffer();
-      fs.writeFileSync('/tmp/ods-hit.pdf', buf);
-      console.log('  *** SAVED /tmp/ods-hit.pdf ***');
+  // Also try orgTypeValue endpoint (the second XHR from browser)
+  console.log('\nFetching orgTypeValue stores...');
+  var ovr = await fetch(ODS_URL+'/asp/rest_v2/aboveStore/orgTypeValue?storeAccess=true&brandId=1&orgType=company', {headers:jhdrs});
+  var ovbody = await ovr.text();
+  console.log('  orgTypeValue:', ovr.status, ovbody.substring(0,400));
+  findings.sections.orgTypeValueEndpoint = {status:ovr.status, body:ovbody.substring(0,1000)};
+
+  // Step 2: get to s2
+  console.log('\nStep 2: get s2...');
+  var csrf = await freshCsrf(cookie, ua);
+  var h1 = {Cookie:cookie,'User-Agent':ua,'X-Requested-With':'OWASP CSRFGuard Project',
+    'Referer':ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow'};
+  h1[csrf.name] = csrf.value;
+  var s1r = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&categoryId=4', {headers:h1});
+  var s1html = await s1r.text();
+  var km = s1html.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/);
+  var s1Key = km ? km[1] : 'e1s1';
+  csrf = await freshCsrf(cookie, ua);
+  var h2 = {Cookie:cookie,'User-Agent':ua,'X-Requested-With':'OWASP CSRFGuard Project',
+    'Referer':ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&categoryId=4'};
+  h2[csrf.name] = csrf.value;
+  var s2r = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow'
+    +'&_flowExecutionKey='+encodeURIComponent(s1Key)
+    +'&_eventId=selectParameters&selectedReportId='+REPORT_ID, {headers:h2});
+  var s2html = await s2r.text();
+  var km2 = s2html.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/);
+  var s2Key = km2 ? km2[1] : 'e1s2';
+  console.log('  s2Key:', s2Key);
+
+  // Step 3: POST with company + all stores
+  var orgTypeValsToTry = companyId ? [String(companyId)] : [];
+  orgTypeValsToTry = orgTypeValsToTry.concat(['8','206','71','1','30','0','all']);
+  var postResults = [];
+  for (var oi=0; oi<orgTypeValsToTry.length; oi++) {
+    var ov = orgTypeValsToTry[oi];
+    // Get fresh s2 each time
+    csrf = await freshCsrf(cookie, ua);
+    var h1b = {Cookie:cookie,'User-Agent':ua,'X-Requested-With':'OWASP CSRFGuard Project',
+      'Referer':ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow'};
+    h1b[csrf.name] = csrf.value;
+    var s1rb = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&categoryId=4', {headers:h1b});
+    var s1hb = await s1rb.text();
+    var kmb = s1hb.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/);
+    var s1kb = kmb ? kmb[1] : 'e1s1';
+    csrf = await freshCsrf(cookie, ua);
+    var h2b = {Cookie:cookie,'User-Agent':ua,'X-Requested-With':'OWASP CSRFGuard Project',
+      'Referer':ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&categoryId=4'};
+    h2b[csrf.name] = csrf.value;
+    var s2rb = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow'
+      +'&_flowExecutionKey='+encodeURIComponent(s1kb)+'&_eventId=selectParameters&selectedReportId='+REPORT_ID, {headers:h2b});
+    var s2hb = await s2rb.text();
+    var km2b = s2hb.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/);
+    var s2kb = km2b ? km2b[1] : 'e1s2';
+
+    csrf = await freshCsrf(cookie, ua);
+    var hp = {Cookie:cookie,'User-Agent':ua,'Content-Type':'application/x-www-form-urlencoded',
+      'X-Requested-With':'OWASP CSRFGuard Project',
+      'Referer':ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&_flowExecutionKey='+s2kb};
+    hp[csrf.name] = csrf.value;
+    var pb = '_eventId=retrieveReports&orgTypes=company&orgTypeValues='+encodeURIComponent(ov)+'&storesInOrgType=all&selectedDate=2026-04-19';
+    var pr = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&_flowExecutionKey='+encodeURIComponent(s2kb),
+      {method:'POST', headers:hp, body:pb, redirect:'follow'});
+    var pct = pr.headers.get('content-type')||'';
+    var ploc = pr.headers.get('location')||'';
+    if (pct.includes('pdf') || pct.includes('octet')) {
+      var buf = await pr.buffer();
+      console.log('*** PDF HIT: orgTypeValues='+ov+' ('+buf.length+' bytes)');
+      findings.pdfHit = {orgTypeValues:ov, bytes:buf.length};
+      try { fs.writeFileSync('/opt/render/project/src/public/test-dispatch.pdf', buf); } catch(e){}
+      await save(findings);
+      await new Promise(function(r){ setTimeout(r,6000); });
       return;
     }
-    // If we got a new key that's not s1, log it and try getReportsForView from there
-    if (newKey && newKey !== s1Key && !isErr) {
-      console.log(`    !! Non-error new key ${newKey} — trying getReportsForView from there`);
-      const pdfUrl = `${ODS_URL}/asp/flow.html`
-        + `?_flowId=aboveStoreInStoreReportsFlow`
-        + `&_flowExecutionKey=${encodeURIComponent(newKey)}`
-        + `&_eventId=getReportsForView&exportType=pdf&contentDisposition=attachment`;
-      const pdfR = await fetch(pdfUrl, { headers: { Cookie: cookie, 'User-Agent': ua } });
-      const pdfCt = pdfR.headers.get('content-type') || '';
-      console.log(`    → getReportsForView: ${pdfR.status} ${pdfCt}`);
-      if (pdfCt.includes('pdf') || pdfCt.includes('octet')) {
-        const buf = await pdfR.buffer();
-        fs.writeFileSync('/tmp/ods-hit.pdf', buf);
-        console.log('    *** SAVED /tmp/ods-hit.pdf ***');
-        return;
-      }
-    }
+    var phtml = await pr.text();
+    var ptitle = (phtml.match(/<title>([^<]+)<\/title>/i)||['','?'])[1];
+    var pkey = (phtml.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/) || ['',''])[1];
+    // Save full HTML for first attempt
+    if (oi===0) findings.sections.firstAttemptHtml = phtml.substring(0,30000);
+    // Look for iframes, JS window.open, report URLs
+    var iframes = (phtml.match(/src="([^"]*(?:report|viewer|execute|pdf)[^"]*)"/gi)||[]).slice(0,5);
+    var jsurls = (phtml.match(/(?:window\.open|location\.href)\s*[=(]\s*['"]([^'"]+)['"]/g)||[]).slice(0,5);
+    console.log('  orgTypeValues='+ov+': status='+pr.status+' title='+ptitle+' key='+pkey+' iframes='+iframes.length+' jsurls='+jsurls.length);
+    postResults.push({ov:ov, status:pr.status, title:ptitle, key:pkey, iframes:iframes, jsurls:jsurls, htmlLen:phtml.length});
   }
+  findings.sections.postResults = postResults;
 
-  // ── D. GET requests WITH CSRF token in header ────────────────────────────
-  console.log('\n══ D. GET _eventId with CSRF token in header ═════════════════');
-  const csrfHeader = {};
-  csrfHeader[csrfName] = csrfValue;
-  const csrfEvents = ['getReportsForView', 'inStoreTime', 'InStoreTime', 'view', 'run', 'next'];
-  for (const ev of csrfEvents) {
-    const url = `${ODS_URL}/asp/flow.html`
-      + `?_flowId=aboveStoreInStoreReportsFlow`
-      + `&_flowExecutionKey=${encodeURIComponent(s1Key)}`
-      + `&_eventId=${ev}`
-      + (ev === 'getReportsForView' ? '&exportType=pdf&contentDisposition=attachment' : '');
-    const r = await fetch(url, { headers: { Cookie: cookie, 'User-Agent': ua, ...csrfHeader } });
-    const ct   = r.headers.get('content-type') || '';
-    const text = await r.text();
-    const title = text.match(/<title>([^<]+)<\/title>/)?.[1] || '?';
-    console.log(`  ${ev.padEnd(25)} → ${r.status} ct=${ct.substring(0,30)} title="${title}"`);
-    if (ct.includes('pdf') || ct.includes('octet')) {
-      const buf = await r.buffer();
-      fs.writeFileSync('/tmp/ods-hit.pdf', buf);
-      console.log('  *** SAVED /tmp/ods-hit.pdf ***');
-      return;
-    }
-  }
-
-  // ── E. AJAX-style (X-Requested-With) from s1 ────────────────────────────
-  console.log('\n══ E. AJAX-style getReportsForView from s1 ═══════════════════');
-  const ajaxVariants = [
-    // GET, JSON accept
-    { method: 'GET', accept: 'application/json', extra: '&exportType=pdf&contentDisposition=attachment' },
-    // GET, PDF accept
-    { method: 'GET', accept: 'application/pdf', extra: '&exportType=pdf&contentDisposition=attachment' },
-    // POST, JSON
-    { method: 'POST', accept: 'application/json', extra: '' },
-  ];
-  for (const v of ajaxVariants) {
-    const url = `${ODS_URL}/asp/flow.html`
-      + `?_flowId=aboveStoreInStoreReportsFlow`
-      + `&_flowExecutionKey=${encodeURIComponent(s1Key)}`
-      + `&_eventId=getReportsForView`
-      + v.extra;
-    const opts = {
-      method: v.method,
-      headers: {
-        Cookie: cookie, 'User-Agent': ua,
-        'X-Requested-With': 'XMLHttpRequest',
-        'Accept': v.accept,
-      }
-    };
-    if (v.method === 'POST') {
-      opts.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-      opts.body = `_flowExecutionKey=${encodeURIComponent(s1Key)}&_eventId=getReportsForView&exportType=pdf&contentDisposition=attachment`;
-    }
-    const r   = await fetch(url, opts);
-    const ct  = r.headers.get('content-type') || '';
-    const loc = r.headers.get('location') || '';
-    const txt = await r.text();
-    console.log(`  ${v.method} accept=${v.accept.substring(0,20).padEnd(20)} → ${r.status} ct=${ct.substring(0,30)}`);
-    if (txt.length < 600) console.log('   body:', txt.replace(/\s+/g, ' '));
-    if (ct.includes('pdf') || ct.includes('octet')) {
-      fs.writeFileSync('/tmp/ods-hit.pdf', Buffer.from(txt));
-      console.log('  *** PDF HIT ***');
-      return;
-    }
-  }
-
-  // ── F. aboveStore REST + broader PDF attempts ────────────────────────────
-  console.log('\n══ F. aboveStore REST / alternative PDF endpoints ════════════');
-  const restAttempts = [
-    `/asp/aboveStore/inStoreTime.pdf`,
-    `/asp/aboveStore/inStoreTime?format=pdf`,
-    `/asp/aboveStore/rest/inStoreTime.pdf`,
-    `/asp/aboveStore/report?type=IST&format=pdf`,
-    `/asp/rest_v2/reports/Reports/Pizza_Hut/Operations/AboveStore_IST.pdf`,
-    `/asp/rest_v2/reports/Reports/Pizza_Hut/Operations/IST.pdf`,
-    `/asp/rest_v2/reports/Reports/dgi/aboveStore/IST.pdf`,
-    `/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&_eventId=getReportsForView&exportType=pdf&contentDisposition=attachment`,
-  ];
-  for (const p of restAttempts) {
-    const r = await fetch(`${ODS_URL}${p}`, { headers: { Cookie: cookie, 'User-Agent': ua } });
-    const ct = r.headers.get('content-type') || '';
-    console.log(p.substring(0, 70).padEnd(72), '→', r.status, ct.substring(0, 30));
-    if (ct.includes('pdf') || ct.includes('octet')) {
-      const buf = await r.buffer();
-      fs.writeFileSync('/tmp/ods-hit.pdf', buf);
-      console.log('  *** SAVED /tmp/ods-hit.pdf ***');
-      return;
-    }
-  }
-
-  console.log('\n── DONE. Key file: /tmp/ods-s1.html ──');
-  console.log('If no PDF hit, look at Section A output for _eventId values in the s1 HTML,');
-  console.log('and check /tmp/ods-s1.html for aboveStore module init code.');
+  await save(findings);
+  await new Promise(function(r){ setTimeout(r,6000); });
+  console.log('v15g done');
 }
-
-main().catch(e => { console.error('FATAL:', e.message); process.exit(1); });
+main().catch(function(e){ console.error('FATAL:', e.message); process.exit(1); });

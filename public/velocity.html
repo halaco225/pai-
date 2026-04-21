@@ -1,4 +1,4 @@
-<\!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -122,7 +122,7 @@
   .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--red); border-radius: 50%; animation: spin .7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .hidden { display: none \!important; }
+  .hidden { display: none !important; }
   .text-muted { color: var(--muted); }
   .text-right { text-align: right; }
   .mt-8 { margin-top: 8px; }
@@ -140,7 +140,7 @@
 
 <div class="container">
 
-  <\!-- Status bar -->
+  <!-- Status bar -->
   <div class="status-bar">
     <span class="status-dot" id="statusDot"></span>
     <span id="statusText">Loading...</span>
@@ -150,7 +150,7 @@
     </span>
   </div>
 
-  <\!-- Filter bar -->
+  <!-- Filter bar -->
   <div class="filter-bar">
     <div>
       <label>View</label><br>
@@ -182,7 +182,7 @@
     </div>
   </div>
 
-  <\!-- Scorecard strip -->
+  <!-- Scorecard strip -->
   <div class="scorecard-row" id="scorecards">
     <div class="scorecard"><div class="val ist-none">—</div><div class="lbl">Avg IST</div></div>
     <div class="scorecard"><div class="val ist-none">—</div><div class="lbl">% Under 19 min</div></div>
@@ -191,16 +191,16 @@
     <div class="scorecard"><div class="val ist-none">—</div><div class="lbl">Stores ≥19 min</div></div>
   </div>
 
-  <\!-- Day pills (shown in WTD + Daily view) -->
+  <!-- Day pills (shown in WTD + Daily view) -->
   <div class="day-pills" id="dayPills"></div>
 
-  <\!-- AI Insights panel (shown when area filtered) -->
+  <!-- AI Insights panel (shown when area filtered) -->
   <div class="insights-panel hidden" id="insightsPanel">
     <h3>🤖 Velocity Insights <span id="insightsFilter"></span></h3>
     <div class="insights-text" id="insightsText"><span class="insights-loading"><span class="spinner"></span> Analyzing...</span></div>
   </div>
 
-  <\!-- Trend view -->
+  <!-- Trend view -->
   <div class="trend-section hidden" id="trendSection">
     <div class="trend-header">
       <h3>Week-over-Week IST Trend</h3>
@@ -214,14 +214,14 @@
     <div id="trendChart" style="overflow-x:auto"></div>
   </div>
 
-  <\!-- DOW pattern view -->
+  <!-- DOW pattern view -->
   <div class="trend-section hidden" id="dowSection">
     <div class="trend-header"><h3>Day-of-Week IST Patterns</h3></div>
     <div class="dow-grid" id="dowGrid"></div>
     <p class="mt-8 text-muted" style="font-size:12px">Based on last 12 weeks of data. Helps identify structurally high/low days.</p>
   </div>
 
-  <\!-- Main data table -->
+  <!-- Main data table -->
   <div class="table-wrap" id="tableWrap">
     <table class="ist-table">
       <thead>
@@ -244,7 +244,7 @@
 
 </div>
 
-<\!-- Upload modal -->
+<!-- Upload modal -->
 <div id="uploadModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:480px;max-width:95vw">
     <h3 style="margin-bottom:16px">Upload SOS Report</h3>
@@ -300,7 +300,7 @@ async function loadWeeks() {
     state.weeks = r.weeks || [];
     const sel = document.getElementById('weekSelect');
     sel.innerHTML = '';
-    if (\!state.weeks.length) {
+    if (!state.weeks.length) {
       sel.innerHTML = '<option>No data yet</option>';
       setStatus('No data loaded yet — upload an Above Store Report to begin', 'warn');
       return;
@@ -374,7 +374,7 @@ async function maybeLoadInsights() {
   const region = state.filters.region;
   const panel  = document.getElementById('insightsPanel');
 
-  if (\!area && \!region) { panel.classList.add('hidden'); return; }
+  if (!area && !region) { panel.classList.add('hidden'); return; }
 
   panel.classList.remove('hidden');
   document.getElementById('insightsText').innerHTML = '<span class="spinner"></span> Analyzing performance...';
@@ -395,8 +395,8 @@ async function maybeLoadInsights() {
 function switchView(view) {
   state.view = view;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
-  document.getElementById('trendSection').classList.toggle('hidden', view \!== 'trend');
-  document.getElementById('dowSection').classList.toggle('hidden', view \!== 'dow');
+  document.getElementById('trendSection').classList.toggle('hidden', view !== 'trend');
+  document.getElementById('dowSection').classList.toggle('hidden', view !== 'dow');
   document.getElementById('tableWrap').classList.toggle('hidden', view === 'trend' || view === 'dow');
   document.getElementById('dayPills').classList.toggle('hidden', view === 'trend' || view === 'dow');
 
@@ -408,7 +408,7 @@ function switchView(view) {
 
 // ── Render functions ──────────────────────────────────────────────────
 function renderScorecards(stores, isDay = false) {
-  const valid = stores.filter(s => s.wtd_ist \!= null || s.ist_avg \!= null);
+  const valid = stores.filter(s => s.wtd_ist != null || s.ist_avg != null);
   const istField = isDay ? 'ist_avg' : 'wtd_ist';
   const lt19Field = isDay ? 'ist_lt19_pct' : 'wtd_lt19_pct';
   const ordField = isDay ? 'total_orders' : 'wtd_orders';
@@ -431,7 +431,7 @@ function renderScorecards(stores, isDay = false) {
 function renderDayPills(days) {
   const container = document.getElementById('dayPills');
   container.innerHTML = '';
-  if (\!days.length) return;
+  if (!days.length) return;
 
   // WTD pill
   const wtdPill = document.createElement('div');
@@ -508,11 +508,11 @@ function renderTable(stores) {
   });
 
   const tbody = document.getElementById('tableBody');
-  if (\!filtered.length) { tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted)">No stores match current filters</td></tr>'; return; }
+  if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted)">No stores match current filters</td></tr>'; return; }
 
   // Build hierarchical rows
   const rows = [];
-  if (\!area && \!region && \!search) {
+  if (!area && !region && !search) {
     // Group hierarchy
     const byRegion = {};
     filtered.forEach(s => { (byRegion[s.region_coach] = byRegion[s.region_coach]||[]).push(s); });
@@ -546,15 +546,15 @@ function renderTableDay(stores) {
   filtered = [...filtered].sort((a, b) => (a.ist_avg||99) - (b.ist_avg||99));
 
   const tbody = document.getElementById('tableBody');
-  if (\!filtered.length) { tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted)">No data for this day</td></tr>'; return; }
+  if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted)">No data for this day</td></tr>'; return; }
 
   tbody.innerHTML = filtered.map(s => `
     <tr class="row-store">
       <td><strong>${s.name||s.store_id}</strong><br><small style="color:var(--muted)">${s.store_id}</small></td>
       <td>${s.area_coach||'—'}</td>
       <td style="color:var(--muted);font-size:12px">${s.region_coach||'—'}</td>
-      <td><span class="${istColorClass(s.ist_avg)}">${s.ist_avg \!= null ? s.ist_avg + ' min' : '—'}</span></td>
-      <td>${s.ist_lt19_pct \!= null ? s.ist_lt19_pct.toFixed(1)+'%' : '—'}</td>
+      <td><span class="${istColorClass(s.ist_avg)}">${s.ist_avg != null ? s.ist_avg + ' min' : '—'}</span></td>
+      <td>${s.ist_lt19_pct != null ? s.ist_lt19_pct.toFixed(1)+'%' : '—'}</td>
       <td>${s.ist_lt10||0}</td><td>${s.ist_1014||0}</td><td>${s.ist_1518||0}</td>
       <td>${s.ist_1925||0}</td><td class="${(s.ist_gt25||0)>0?'ist-orange':''}">${s.ist_gt25||0}</td>
       <td>${s.total_orders||0}</td>
@@ -567,8 +567,8 @@ function storeRow(s, cls) {
     <td><strong>${s.name||s.store_id}</strong><br><small style="color:var(--muted)">${s.store_id}</small></td>
     <td>${s.area_coach||'—'}</td>
     <td style="color:var(--muted);font-size:12px">${s.region_coach||'—'}</td>
-    <td><span class="${istColorClass(s.wtd_ist)}">${s.wtd_ist \!= null ? s.wtd_ist + ' min' : '—'}</span></td>
-    <td>${s.wtd_lt19_pct \!= null ? s.wtd_lt19_pct.toFixed(1)+'%' : '—'}</td>
+    <td><span class="${istColorClass(s.wtd_ist)}">${s.wtd_ist != null ? s.wtd_ist + ' min' : '—'}</span></td>
+    <td>${s.wtd_lt19_pct != null ? s.wtd_lt19_pct.toFixed(1)+'%' : '—'}</td>
     <td>${s.wtd_lt10||0}</td><td>${s.wtd_1014||0}</td><td>${s.wtd_1518||0}</td>
     <td>${s.wtd_1925||0}</td><td class="${(s.wtd_gt25||0)>0?'ist-orange':''}">${s.wtd_gt25||0}</td>
     <td>${s.wtd_orders||0}</td>
@@ -577,7 +577,7 @@ function storeRow(s, cls) {
 }
 
 function summaryRow(stores, level, region, area, cls) {
-  const valid = stores.filter(s => s.wtd_ist \!= null);
+  const valid = stores.filter(s => s.wtd_ist != null);
   const avgIST = valid.length ? (valid.reduce((a,s)=>a+s.wtd_ist,0)/valid.length).toFixed(1) : null;
   const avgLt19 = valid.length ? (valid.reduce((a,s)=>a+(s.wtd_lt19_pct||0),0)/valid.length).toFixed(1) : null;
   const orders = stores.reduce((a,s)=>a+(s.wtd_orders||0),0);
@@ -593,8 +593,8 @@ function summaryRow(stores, level, region, area, cls) {
   return `<tr class="${cls}">
     <td colspan="2"><strong>${label}</strong> <small style="color:var(--muted)">${sub}</small></td>
     <td style="color:var(--muted);font-size:12px">${level === 'AREA' ? region : ''}</td>
-    <td><span class="${istColorClass(parseFloat(avgIST))}">${avgIST \!= null ? avgIST + ' min' : '—'}</span></td>
-    <td>${avgLt19 \!= null ? avgLt19+'%' : '—'}</td>
+    <td><span class="${istColorClass(parseFloat(avgIST))}">${avgIST != null ? avgIST + ' min' : '—'}</span></td>
+    <td>${avgLt19 != null ? avgLt19+'%' : '—'}</td>
     <td>${lt10}</td><td>${t1014}</td><td>${t1518}</td>
     <td>${t1925}</td><td class="${gt25>0?'ist-orange':''}">${gt25}</td>
     <td>${orders.toLocaleString()}</td>
@@ -603,7 +603,7 @@ function summaryRow(stores, level, region, area, cls) {
 }
 
 function renderTrendChart(weeks) {
-  if (\!weeks.length) { document.getElementById('trendChart').innerHTML = '<p style="color:var(--muted);font-size:13px">No trend data available</p>'; return; }
+  if (!weeks.length) { document.getElementById('trendChart').innerHTML = '<p style="color:var(--muted);font-size:13px">No trend data available</p>'; return; }
 
   const maxIST = Math.max(...weeks.filter(w=>w.avg_ist).map(w=>w.avg_ist), 25);
   const minIST = Math.min(...weeks.filter(w=>w.avg_ist).map(w=>w.avg_ist), 15);
@@ -612,11 +612,11 @@ function renderTrendChart(weeks) {
   const bars = weeks.map(w => {
     const pct = w.avg_ist ? ((w.avg_ist - minIST) / range * 60 + 10).toFixed(0) : 0;
     const cls = istColorClass(w.avg_ist);
-    const delta = w.delta \!= null ? (w.delta > 0 ? `<span class="delta-bad">▲ +${w.delta}</span>` : w.delta < 0 ? `<span class="delta-good">▼ ${w.delta}</span>` : '<span class="delta-flat">—</span>') : '';
+    const delta = w.delta != null ? (w.delta > 0 ? `<span class="delta-bad">▲ +${w.delta}</span>` : w.delta < 0 ? `<span class="delta-good">▼ ${w.delta}</span>` : '<span class="delta-flat">—</span>') : '';
     return `<div style="flex:1;min-width:80px;text-align:center">
       <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${delta}</div>
       <div style="height:${pct}px;background:${istColorHex(w.avg_ist)};border-radius:4px 4px 0 0;margin:0 4px"></div>
-      <div style="margin-top:4px;font-size:13px;font-weight:700;color:${istColorHex(w.avg_ist)}">${w.avg_ist \!= null ? w.avg_ist : '—'}</div>
+      <div style="margin-top:4px;font-size:13px;font-weight:700;color:${istColorHex(w.avg_ist)}">${w.avg_ist != null ? w.avg_ist : '—'}</div>
       <div style="font-size:10px;color:var(--muted)">${w.period_week||w.week_key}</div>
       <div style="font-size:10px;color:var(--muted)">${w.date_range||''}</div>
     </div>`;
@@ -633,11 +633,11 @@ function renderTrendChart(weeks) {
 
 function renderDOW(patterns) {
   const grid = document.getElementById('dowGrid');
-  if (\!patterns.length) { grid.innerHTML = '<p style="color:var(--muted)">No pattern data yet</p>'; return; }
+  if (!patterns.length) { grid.innerHTML = '<p style="color:var(--muted)">No pattern data yet</p>'; return; }
   const allDays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   grid.innerHTML = allDays.map(day => {
     const p = patterns.find(p => p.day_name.trim() === day);
-    if (\!p) return `<div class="dow-card"><div class="day">${day}</div><div class="ist ist-none">—</div><div class="insight">no data</div></div>`;
+    if (!p) return `<div class="dow-card"><div class="day">${day}</div><div class="ist ist-none">—</div><div class="insight">no data</div></div>`;
     return `<div class="dow-card">
       <div class="day">${day}</div>
       <div class="ist ${istColorClass(p.avg_ist)}">${p.avg_ist}</div>
@@ -653,7 +653,7 @@ function closeUpload() { document.getElementById('uploadModal').style.display = 
 
 async function handleFiles(fileList) {
   const files = Array.from(fileList);
-  if (\!files.length) return;
+  if (!files.length) return;
   const resultsDiv = document.getElementById('uploadResults');
   resultsDiv.innerHTML = '<span class="spinner"></span> Uploading...';
 
@@ -680,13 +680,13 @@ dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.style.bord
 // ── Excel export ──────────────────────────────────────────────────────
 async function exportExcel() {
   const weekKey = state.currentWeek;
-  if (\!weekKey) return;
+  if (!weekKey) return;
   try {
     const r = await fetch('/api/velocity/export', {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ week: weekKey })
     });
-    if (\!r.ok) throw new Error('Export failed');
+    if (!r.ok) throw new Error('Export failed');
     const blob = await r.blob();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -697,14 +697,14 @@ async function exportExcel() {
 
 // ── Helpers ───────────────────────────────────────────────────────────
 function istColorClass(ist) {
-  if (\!ist || isNaN(ist)) return 'ist-none';
+  if (!ist || isNaN(ist)) return 'ist-none';
   if (ist <= 18) return 'ist-green';
   if (ist <= 20) return 'ist-yellow';
   if (ist <= 25) return 'ist-orange';
   return 'ist-red';
 }
 function istColorHex(ist) {
-  if (\!ist) return '#555';
+  if (!ist) return '#555';
   if (ist <= 18) return '#28a745';
   if (ist <= 20) return '#ffc107';
   if (ist <= 25) return '#fd7e14';
@@ -725,7 +725,7 @@ function setStatus(msg, type) {
 }
 async function api(url, opts = {}) {
   const r = await fetch(url, opts);
-  if (\!r.ok) throw new Error(await r.text());
+  if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 
