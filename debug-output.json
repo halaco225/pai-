@@ -1,261 +1,195 @@
 {
-  "ts": "2026-04-21T03:09:37.297Z",
-  "version": "v15b",
-  "reportId": "457",
-  "targetDate": "04/19/2026",
-  "steps": {
-    "s1": {
-      "status": 200,
-      "key": "e1s1",
-      "htmlLen": 116254,
-      "snippet": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</title> <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"> <!-- <meta http-equiv=\"X-UA-Compatible\" content=\"IE=8\"/> --> <link rel=\"s"
-    },
-    "s2": {
-      "status": 200,
-      "key": "e1s2",
-      "loc": "",
-      "htmlLen": 67037,
-      "formFields": [
-        "apple-mobile-web-app-capable",
-        "tabbed",
-        "ariastatus",
-        "IECM",
-        "banner",
-        "systemMessageConsole",
-        "systemMessage",
-        "logo",
-        "mainNavigation",
-        "navigationOptions",
-        "main_home",
-        "main_library",
-        "metaLinks",
-        "userID",
-        "casted",
-        "help",
-        "helpLink",
-        "main_logOut",
-        "main_logOut_link",
-        "globalSearch",
-        "searchInput",
-        "frame",
-        "display",
-        "maincontent",
-        "step1",
-        "step2",
-        "retrieveReportsForm",
-        "orgTypes",
-        "orgTypeValues",
-        "storesInOrgType",
-        "selectedDate",
-        "viewReportsButton",
-        "modalLoading",
-        "frameFooter",
-        "about",
-        "copyright",
-        "templateElements",
-        "commonMenu",
-        "menuList_template",
-        "menuList_simpleAction",
-        "menuList_separator",
-        "menuList_flyout",
-        "menuList_extraInput",
-        "menuList_listItem",
-        "navigation_mutton",
-        "listTemplateHolder",
-        "defaultListTemplate",
-        "dynamicListItemTemplate",
-        "list_control_path",
-        "list_control_path:label",
-        "list_control_path:step",
-        "tabSet_control_horizontal_responsive",
-        "tabSet_control_horizontal_responsive:label",
-        "tabSet_control_horizontal_responsive:tab",
-        "tabular_fourColumn_resources",
-        "tabular_fourColumn_resources:leaf",
-        "tabular_fourColumn_resources_sublist",
-        "tabular_fourColumn_resources_sublist:leaf",
-        "tabular_threeColumn",
-        "tabular_threeColumn:leaf",
-        "tabular_twoColumn",
-        "tabular_twoColumn:leaf",
-        "tabular_oneColumn",
-        "tabular_oneColumn:leaf",
-        "tabular_twoColumn:roles",
-        "tabular_twoColumn:roles:leaf",
-        "tabular_oneColumn:roles",
-        "tabular_oneColumn:roles:leaf",
-        "tabular_twoColumn_resources",
-        "tabular_twoColumn_resources:leaf",
-        "tabular_twoColumn_setLeft",
-        "tabular_twoColumn_setLeft:leaf",
-        "tabular_twoColumn_setLeft:loading",
-        "inputControls_option_list",
-        "inputControls_option_list:header",
-        "inputControls_option_list:control",
-        "label_for_param_1",
-        "parameter_1",
-        "label_for_param_1_value",
-        "parameter_1_value",
-        "list_responsive_filters",
-        "list_responsive_filters:leaf",
-        "list_responsive_filters:node",
-        "list_responsive_filters:separator",
-        "list_domain_bundles",
-        "list_domain_bundles:leaf",
-        "list_fourColumn_type_message",
-        "list_fourColumn_type_message:header",
-        "list_fourColumn_type_message:unread",
-        "list_fourColumn_type_message:read",
-        "list_responsive_fields",
-        "list_responsive_fields:leaf",
-        "list_type_attributes",
-        "list_type_attributes:role",
-        "list_type_attributes:role:last",
-        "list_type_attributes:user",
-        "list_type_attributes:user:last",
-        "list_type_attributes:profileAttribute",
-        "list_type_attributes:profileAttribute:last",
-        "list_domain_chooser_filter",
-        "list_domain_chooser_filter:leaf",
-        "list_domain_designer_joins",
-        "list_domain_designer_joins:leaf",
-        "list_fields_hideRoot_column_simple",
-        "list_fields_hideRoot_column_simple:leaf",
-        "treeTemplateHolder",
-        "list_responsive_collapsible",
-        "list_responsive_collapsible:leaf",
-        "list_responsive_collapsible:loading",
-        "list_responsive_collapsible_folders",
-        "list_responsive_collapsible_folders:folders",
-        "list_responsive_collapsible_folders_specialContent",
-        "list_responsive_collapsible_folders_specialContent:folders",
-        "list_responsive_collapsible_folders_specialContent:leaf",
-        "list_responsive_collapsible_fields",
-        "list_responsive_collapsible_fields:fields",
-        "list_responsive_collapsible_type_tables",
-        "list_responsive_collapsible_type_tables:tables",
-        "list_responsive_collapsible_type_tables:fields",
-        "list_responsive_collapsible_type_sets",
-        "list_responsive_collapsible_type_sets:sets",
-        "list_responsive",
-        "list_responsive:twoColumn",
-        "list_responsive_collapsible:input",
-        "jsTooltip",
-        "orgTooltip",
-        "fullNameTooltip",
-        "fullNameAndOrgTooltip",
-        "resourceNameTooltip",
-        "column_two",
-        "column_two:resourceName",
-        "saveAs",
-        "saveAsInputName",
-        "saveAsInputDescription",
-        "saveAsFoldersTree",
-        "saveAsBtnSave",
-        "saveAsBtnCancel",
-        "repositorySelectionDialog",
-        "reportGeneratorForm",
-        "action",
-        "advUri",
-        "template",
-        "generator",
-        "exportFormat",
-        "reportGeneratorProperties",
-        "advTreePanel",
-        "advLocationTree",
-        "commonGeneratorSelect",
-        "commonGeneratorSelectDefaultTemplateRadio",
-        "commonGeneratorSelectReportTemplateRadio",
-        "browseTemplate",
-        "commonGeneratorSelectReportTemplate",
-        "customTemplateBrowser",
-        "commonGeneratorSelectReportGeneratorRadio",
-        "selectGeneratorControl",
-        "commonGeneratorSelectReportGenerator",
-        "commonGeneratorSelectTemplateDialog",
-        "commonGeneratorSelectTemplateDialogTree",
-        "commonGeneratorSelectTemplateDialogOkTemplate",
-        "commonGeneratorSelectTemplateDialogCloseTemplate",
-        "reportGeneratorPropertiesBtnOk",
-        "reportGeneratorPropertiesBtnCancel",
-        "pageDimmer",
-        "loading",
-        "cancel",
-        "standardAlert",
-        "errorPopupContents",
-        "ajax-download-iframe",
-        "ajax-upload-iframe",
-        "heartbeatOptin",
-        "heartbeatCheck",
-        "aboutBox",
-        "navigationActionModel"
-      ],
-      "html": "\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n\r\n\r\n    \r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        \r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<html>\r\n    <head>\r\n        <title>oneVIEW: InStore Reports</title>\r\n        <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\r\n\r\n        <!--\r\n                <meta http-equiv=\"X-UA-Compatible\" content=\"IE=8\"/>\r\n        -->\r\n        <link rel=\"shortcut icon\" href='/asp/_themes/444DCAD3/images/favicon.ico' />\r\n\r\n        <!--\r\n                <link rel=\"shortcut icon\" href=\"favicon.ico\" />\r\n        -->\r\n        \n\n\n\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<meta name = \"viewport\" content=\"user-scalable=no, initial-scale=1.0, maximum-scale=1.0, width=device-width\">\r\n<meta name=\"apple-mobile-web-app-capable\" content=\"yes\"/>\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n                \r\n        <!-- Added by Monolith -->\r\n        <link rel=\"stylesheet\" href=\"/asp/aboveStore/css/fontawesome/font-awesome.min.css\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/aboveStore/css/aboveStore.min.css\"/>\r\n        <!-- /Added by Monolith -->        \r\n        \r\n        <link rel=\"stylesheet\" href=\"/asp/themes/reset.css\" type=\"text/css\" media=\"screen\">\r\n\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/theme.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/pages.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/containers.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/dialog.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/buttons.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/lists.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/controls.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/dataDisplays.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/pageSpecific.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/dialogSpecific.css\" type=\"text/css\" media=\"screen,print\"/>\r\n\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/forPrint.css\" type=\"text/css\" media=\"print\"/>\r\n\r\n        <!--[if IE 7.0]>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/overrides_ie7.css\" type=\"text/css\" media=\"screen\"/>\r\n        <![endif]-->\r\n\r\n        <!--[if IE 8.0]>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/overrides_ie8.css\" type=\"text/css\" media=\"screen\"/>\r\n        <![endif]-->\r\n\r\n        <!--[if IE]>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/overrides_ie.css\" type=\"text/css\" media=\"screen\"/>\r\n        <![endif]-->\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/overrides_custom.css\" type=\"text/css\" media=\"screen\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/scripts/bower_components/jquery-ui/themes/redmond/jquery-ui-1.10.4-custom.css\" type=\"text/css\" media=\"screen\">\r\n    \r\n\r\n\r\n\n\n\n\n\n\n\n\n\n\n<script type=\"text/javascript\">\n    var JRS = {};\n\n    var __jrsConfigs__ = {\n\n        i18n: {},\n        localContext: {},\n        isIPad: \"\",\n        contextPath: \"/asp\",\n        publicFolderUri: \"/public\",\n        tempFolderUri: \"/temp\",\n        enableAccessibility: \"true\",\n        organizationId: \"dgi\",\n        commonReportGeneratorsMetadata: [],\n        templatesFolderUri: '/public/templates',\n        defaultTemplateUri: '/public/templates/actual_size.510.jrxml',\n        advNotSelected: \"To generate a report, first select an Ad Hoc view.\",\n        templateNotSelected: \"To generate a report using template generator, first select an Template.\",\n        calendar: {\n\n            userLocale: \"en\",\n\n            timepicker: {\n                timeText: 'Time:',\n                hourText: 'Hour',\n                minuteText: 'Minute',\n                secondText: 'Second',\n                currentText: 'Now',\n                closeText: 'Close',\n                timeFormat: 'HH:mm:ss',\n                dateFormat: 'yy-mm-dd',\n                separator:' '\n            },\n\n            i18n: {\n                bundledCalendarTimeFormat: 'HH:mm:ss',\n                bundledCalendarFormat: 'yy-mm-dd'\n            }\n        },\n\n        webHelpModuleState: {\n            contextMap: {\"default\":\"100\",\"bi_overview\":\"100\",\"login\":\"150\",\"legacy_dashboard\":\"200\",\"ad_hoc\":\"300\",\"domain\":\"500\",\"search\":\"600\",\"analysis\":\"700\",\"admin\":\"800\",\"repo\":\"900\",\"dashboard\":\"1000\"},\n            hostURL: 'http://help.jaspersoft.com/js-help-v6-en/',\n            pagePrefix: 'Default_CSH.htm#'\n        },\n\n        urlContext: \"/asp\",\n        defaultSearchText: \"\",\n        serverIsNotResponding: \"The server is slow or isn't responding. Confirm that you want to continue.\"\n    };\n\n    // dirty hack to get path to current theme\n    __jrsConfigs__.currentThemePath = \"_themes/444DCAD3/theme.css\".split(\"/\").slice(0, -1).join(\"/\");\n\n    __jrsConfigs__.isProVersion = \"true\" === \"true\" ? true : false;\n\n    __jrsConfigs__.userLocale = \"en\";\n\n    __jrsConfigs__.isFreeOrLimitedEdition = false;\n\n    //TODO: get it from the server\n    __jrsConfigs__.avaliableLocales = [\"de\", \"en\", \"es\", \"fr\", \"it\", \"ja\", \"ro\", \"zh_TW\", \"zh_CN\"];\n\n\n    __jrsConfigs__.localeSettings = {\n        locale: \"en\",\n        decimalSeparator: \"\" || \".\",\n        groupingSeparator: \"\" || \",\",\n        timeFormat: \"HH:mm:ss\",\n        dateFormat: \"yy-mm-dd\",\n        timestampSeparator: \" \"\n    };\n    //Heartbeat\n\n    __jrsConfigs__.heartbeatInitOptions = {\n        baseUrl: \"/asp\",\n        showDialog: false,\n        sendClientInfo: false\n    };\n\n    \n        \n        \n            __jrsConfigs__.initAdditionalUIComponents = true;\n        \n    \n\n    \n    \n    \n    \n    \n\n    __jrsConfigs__.flowExecutionKey = \"e1s2\";\n\n    if (window.localStorage && window.localStorage.previousPageHash){\n        window.location.hash = window.localStorage.previousPageHash;\n        delete window.localStorage.previousPageHash;\n    }\n\n</script>\n\r\n\n\n\n\r\n        <script type=\"text/javascript\" src=\"/asp/optimized-scripts/bower_components/requirejs/require.js\"></script>\r\n<script type=\"text/javascript\" src=\"/asp/optimized-scripts/require.config.js\"></script>\r\n<script type=\"text/javascript\">\r\n\r\n    require.config({\r\n        baseUrl: \"/asp/optimized-scripts\"\r\n    });\r\n</script>\r\n\r\n\r\n<script type=\"text/javascript\" src=\"/asp/optimized-scripts/bower_components/jquery/dist/jquery.js\"></script>\r\n\r\n<script type=\"text/javascript\" src=\"/asp/JavaScriptServlet\"></script>\r\n\r\n\r\n    \r\n    <script type=\"text/javascript\" src=\"/asp/scripts/bower_components/prototype/dist/prototype.js\"></script>\r\n\r\n    \r\n    <script type=\"text/javascript\">\r\n        define(\"prototype\", $);\r\n    </script>\r\n\r\n\r\n\r\n        \r\n        \r\n            \r\n            \r\n        \r\n\r\n        <script type=\"text/javascript\">\r\n            require([\"aboveStore.main\"]);\r\n        </script>\r\n    </head>\r\n\r\n    \r\n        \r\n            \r\n\r\n            \r\n\r\n\r\n\r\n\r\n\r\n            <body id=\"tabbed\" class=\"\" js-stdnav=\"true\" role=\"application\" aria-label=\"Jasper reports server.\" aria-busy=\"true\">\r\n                <div id=\"ariastatus\" role=\"alert\" aria-live=\"assertive\" aria-label=\"Loading jasper-reports server web client, please stand by. \"></div>\r\n                <!-- Internet Explorer Countermeasures.  This element is used to force DOM changes to cause user-agent logic to re-evaluate the DOM. -->\r\n                <div id=\"IECM\" aria-hidden=\"true\" style=\"display:block; height:0px; background-color:transparent;\">&nbsp;&nbsp;&nbsp;</div>\r\n                <div id=\"banner\" class=\"banner\" style=\"\">\r\n                    <div id=\"systemMessageConsole\" style=\"display:none\">\r\n                        <p id=\"systemMessage\">Close</p>\r\n          "
-    },
-    "s3": [
+  "ts": "2026-04-21T03:13:51.497Z",
+  "version": "v15c",
+  "sections": {
+    "s2FormSnippet": "g the 'View' button\");\r\n                                                ev.preventDefault();\r\n                                            } else {\r\n                                                $(\"#retrieveReportsForm\").submit();\r\n                                            }\r\n                                        });\r\n\r\n                                $('#orgTypes').change(\r\n                                        function (ev) {\r\n                                            OrgType.orgTypeChanged('1');\r\n                                        });\r\n                                $('#orgTypeValues').change(\r\n                                        function (ev) {\r\n                                            OrgType.orgTypeValueChanged({brandId: \"1\"});\r\n                                        });\r\n                            });\r\n                </script>\r\n\r\n                <div class=\"tabs\">\r\n                    \r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<ul  class=\"control tabSet buttons horizontal \">\r\n    \r\n        \r\n        \r\n\r\n        \r\n\r\n        \r\n            \r\n                \r\n            \r\n            \r\n        \r\n\r\n        <li class=\"tab first \">\r\n            <a id=\"step1\" class=\"button\">\r\n                <span class=\"wrap\">InStore Reports</span>\r\n            </a>\r\n        </li><!--/.tab-->\r\n\r\n    \r\n        \r\n        \r\n\r\n        \r\n            \r\n            \r\n        \r\n\r\n        \r\n            \r\n            \r\n                \r\n            \r\n        \r\n\r\n        <li class=\"tab last selected\">\r\n            <a id=\"step2\" class=\"button\">\r\n                <span class=\"wrap\">Parameters</span>\r\n            </a>\r\n        </li><!--/.tab-->\r\n\r\n    \r\n</ul><!--/.control-->\r\n\r\n                </div>\r\n\r\n            \r\n            \r\n\t\t</div>\r\n        \r\n\t\t<div  class=\"body  \" >\r\n            \r\n\t\t\t    \r\n\r\n                <div class=\"instore__parameters\">\r\n                    <div class=\"heading\">\r\n                        <h1>Daily Dispatch Performance</h1>\r\n                    </div>\r\n                    <div class=\"instore__parameters__form\">\r\n                        <form name=\"retrieveReportsForm\" id=\"retrieveReportsForm\" method='POST' action='/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&_flowExecutionKey=e1s2'>\r\n                            <input type='hidden' name='_eventId' value='retrieveReports' />\r\n\r\n                            <label class=\"control select\" title=\"OrgType Select\" for=\"orgTypes\">\r\n                                <!-- <span class=\"wrap\">Label</span> -->\r\n                                <select class=\"instore__input--select\" id=\"orgTypes\" name=\"orgTypes\" style=\"text-transform: capitalize;\">\r\n                                    <option value=\"none\">--- Select By ---</option>\r\n                                    \r\n                                        <option value=\"concept\"> concept</option>\r\n                                    \r\n                                        <option value=\"client\"> client</option>\r\n                                    \r\n                                        <option value=\"company\"> company</option>\r\n                                    \r\n                                        <option value=\"terri",
+    "aboveStoreConfig": "",
+    "flowRefs": [
+      "/asp/reportGenerator.html"
+    ],
+    "aboveStoreMainSnippet": "",
+    "getAttempts": [
       {
-        "hit": false,
-        "param": "BUSINESS_DATE",
-        "dateVal": "04/19/2026",
+        "event": "getReportsForView",
+        "date": "04/19/2026",
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "snippet": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> "
+        "ct": "text/html;charset=UTF-8"
       },
       {
-        "hit": false,
-        "param": "business_date",
-        "dateVal": "04/19/2026",
+        "event": "getReportsForView",
+        "date": "2026-04-19",
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "snippet": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> "
+        "ct": "text/html;charset=UTF-8"
       },
       {
-        "hit": false,
-        "param": "DATE",
-        "dateVal": "04/19/2026",
+        "event": "getReportsForView",
+        "date": "04-19-2026",
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "snippet": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> "
+        "ct": "text/html;charset=UTF-8"
       },
       {
-        "hit": false,
-        "param": "date",
-        "dateVal": "04/19/2026",
+        "event": "viewReports",
+        "date": "04/19/2026",
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "snippet": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> "
+        "ct": "text/html;charset=UTF-8"
       },
       {
-        "hit": false,
-        "param": "p_date",
-        "dateVal": "04/19/2026",
+        "event": "viewReports",
+        "date": "2026-04-19",
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "snippet": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> "
+        "ct": "text/html;charset=UTF-8"
       },
       {
-        "hit": false,
-        "param": "p_business_date",
-        "dateVal": "04/19/2026",
+        "event": "viewReports",
+        "date": "04-19-2026",
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "snippet": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> "
+        "ct": "text/html;charset=UTF-8"
       },
       {
-        "hit": false,
-        "param": "startDate",
-        "dateVal": "04/19/2026",
+        "event": "downloadReport",
+        "date": "04/19/2026",
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "snippet": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> "
+        "ct": "text/html;charset=UTF-8"
       },
       {
-        "hit": false,
-        "param": "start_date",
-        "dateVal": "04/19/2026",
+        "event": "downloadReport",
+        "date": "2026-04-19",
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "snippet": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> "
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "downloadReport",
+        "date": "04-19-2026",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "getReport",
+        "date": "04/19/2026",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "getReport",
+        "date": "2026-04-19",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "getReport",
+        "date": "04-19-2026",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "viewReport",
+        "date": "04/19/2026",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "viewReport",
+        "date": "2026-04-19",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "viewReport",
+        "date": "04-19-2026",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      }
+    ],
+    "postAttempts": [
+      {
+        "event": "getReportsForView",
+        "date": "04/19/2026",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "getReportsForView",
+        "date": "2026-04-19",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "getReportsForView",
+        "date": "04-19-2026",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "viewReports",
+        "date": "04/19/2026",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "viewReports",
+        "date": "2026-04-19",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "viewReports",
+        "date": "04-19-2026",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "downloadReport",
+        "date": "04/19/2026",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "downloadReport",
+        "date": "2026-04-19",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "downloadReport",
+        "date": "04-19-2026",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "getReport",
+        "date": "04/19/2026",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "getReport",
+        "date": "2026-04-19",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "getReport",
+        "date": "04-19-2026",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "viewReport",
+        "date": "04/19/2026",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "viewReport",
+        "date": "2026-04-19",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
+      },
+      {
+        "event": "viewReport",
+        "date": "04-19-2026",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8"
       }
     ]
   }
