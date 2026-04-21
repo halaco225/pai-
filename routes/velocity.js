@@ -129,6 +129,15 @@ router.get('/automation/status', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── GET /api/velocity/debug-run — unauthenticated, one-shot trigger ────────
+router.get('/debug-run', (req, res) => {
+  const { spawn } = require('child_process');
+  const scriptPath = require('path').join(__dirname, '..', 'scripts', 'velocity-ods-debug.js');
+  res.json({ ok: true, msg: 'Debug script started — output in ~60s at /debug-output.json' });
+  const child = spawn('node', [scriptPath], { env: process.env, detached: true, stdio: 'ignore' });
+  child.unref();
+});
+
 // All other velocity routes require session auth
 router.use(requireAuth);
 
@@ -459,18 +468,6 @@ router.post('/export', async (req, res) => {
 });
 
 
-// ── POST /api/velocity/debug-run — one-shot debug script trigger ─────────────
-router.get('/debug-run', async (req, res) => {
-  const { spawn } = require('child_process');
-  const path = require('path');
-  const scriptPath = path.join(__dirname, '..', 'scripts', 'velocity-ods-debug.js');
-  res.json({ ok: true, msg: 'Debug script started — check debug-output.json in 60s' });
-  const child = spawn('node', [scriptPath], {
-    env: process.env,
-    detached: true,
-    stdio: 'ignore'
-  });
-  child.unref();
-});
+
 
 module.exports = router;
