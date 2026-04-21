@@ -177,6 +177,63 @@ router.get('/diag', async (req, res) => {
   res.json(info);
 });
 
+
+// ── GET /api/velocity/init-db — force create velocity tables ──────────────
+router.get('/init-db', async (req, res) => {
+  try {
+    const { Pool } = require('pg');
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS velocity_daily_records (
+        id           SERIAL PRIMARY KEY,
+        store_id     VARCHAR(10)   NOT NULL,
+        record_date  DATE          NOT NULL,
+        week_key     DATE          NOT NULL,
+        period_week  VARCHAR(10),
+        ist_avg      DECIMAL(5,2),
+        ist_lt10     INTEGER       DEFAULT 0,
+        ist_1014     INTEGER       DEFAULT 0,
+        ist_1518     INTEGER       DEFAULT 0,
+        ist_1925     INTEGER       DEFAULT 0,
+        ist_gt25     INTEGER       DEFAULT 0,
+        ist_lt19_pct DECIMAL(5,2),
+        total_orders INTEGER       DEFAULT 0,
+        make_time    VARCHAR(10),
+        pct_lt4      DECIMAL(5,2),
+        production_time VARCHAR(10),
+        pct_lt15     DECIMAL(5,2),
+        on_time_pct  DECIMAL(5,2),
+        data_source  VARCHAR(20)   DEFAULT 'pdf',
+        uploader     VARCHAR(100)  DEFAULT 'system',
+        created_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        UNIQUE(store_id, record_date)
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_velocity_date ON velocity_daily_records (record_date DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_velocity_store_date ON velocity_daily_records (store_id, record_date DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_velocity_week ON velocity_daily_records (week_key DESC)`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS velocity_automation_log (
+        id               SERIAL PRIMARY KEY,
+        job_type         VARCHAR(30)  NOT NULL,
+        target_date      DATE,
+        status           VARCHAR(20)  NOT NULL,
+        stores_processed INTEGER      DEFAULT 0,
+        message          TEXT,
+        created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_velocity_log_date ON velocity_automation_log (created_at DESC)`);
+    const r1 = await pool.query('SELECT COUNT(*) FROM velocity_daily_records');
+    const r2 = await pool.query('SELECT COUNT(*) FROM velocity_automation_log');
+    await pool.end();
+    res.json({ ok: true, velocity_daily_records: r1.rows[0].count + ' rows', velocity_automation_log: r2.rows[0].count + ' rows' });
+  } catch(e) {
+    res.status(500).json({ error: e.message, stack: e.stack });
+  }
+});
+
 // All other velocity routes require session auth
 router.use(requireAuth);
 
