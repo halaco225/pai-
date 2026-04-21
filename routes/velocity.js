@@ -152,6 +152,31 @@ router.get('/run-backfill', (req, res) => {
   child.unref();
 });
 
+
+// ── GET /api/velocity/diag — env + DB table check ─────────────────────────
+router.get('/diag', async (req, res) => {
+  const info = {
+    ODS_USER:     process.env.ODS_USER     || '(not set)',
+    ODS_ORG:      process.env.ODS_ORG      || '(not set)',
+    ODS_PASSWORD: process.env.ODS_PASSWORD ? '(set, ' + process.env.ODS_PASSWORD.length + ' chars)' : '(NOT SET)',
+    VELOCITY_AUTOMATION_TOKEN: process.env.VELOCITY_AUTOMATION_TOKEN ? '(set)' : '(not set — using default)',
+    tables: {}
+  };
+  try {
+    const p = require('../services/db').pool || null;
+    const { Pool } = require('pg');
+    const pool2 = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+    for (const t of ['velocity_daily_records','velocity_automation_log']) {
+      try {
+        const r = await pool2.query('SELECT COUNT(*) FROM ' + t);
+        info.tables[t] = parseInt(r.rows[0].count) + ' rows';
+      } catch(e) { info.tables[t] = 'ERROR: ' + e.message; }
+    }
+    await pool2.end();
+  } catch(e) { info.db_error = e.message; }
+  res.json(info);
+});
+
 // All other velocity routes require session auth
 router.use(requireAuth);
 
