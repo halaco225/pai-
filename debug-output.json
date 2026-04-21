@@ -1,171 +1,204 @@
 {
-  "ts": "2026-04-21T05:28:51.496Z",
-  "version": "v15d",
+  "ts": "2026-04-21T05:34:12.857Z",
+  "version": "v15e",
   "sections": {
-    "fullForm": "<form name=\"retrieveReportsForm\" id=\"retrieveReportsForm\" method='POST' action='/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&_flowExecutionKey=e1s2'>\r\n                            <input type='hidden' name='_eventId' value='retrieveReports' />\r\n\r\n                            <label class=\"control select\" title=\"OrgType Select\" for=\"orgTypes\">\r\n                                <!-- <span class=\"wrap\">Label</span> -->\r\n                                <select class=\"instore__input--select\" id=\"orgTypes\" name=\"orgTypes\" style=\"text-transform: capitalize;\">\r\n                                    <option value=\"none\">--- Select By ---</option>\r\n                                    \r\n                                        <option value=\"concept\"> concept</option>\r\n                                    \r\n                                        <option value=\"client\"> client</option>\r\n                                    \r\n                                        <option value=\"company\"> company</option>\r\n                                    \r\n                                        <option value=\"territory\"> territory</option>\r\n                                    \r\n                                        <option value=\"region\"> region</option>\r\n                                    \r\n                                        <option value=\"market\"> market</option>\r\n                                    \r\n                                        <option value=\"area\"> area</option>\r\n                                    \r\n                                        <option value=\"dma\"> dma</option>\r\n                                    \r\n                                        <option value=\"payroll\"> payroll</option>\r\n                                    \r\n                                        <option value=\"gl\"> gl</option>\r\n                                    \r\n                                </select>\r\n                                <!-- <span class=\"message warning\">error message here</span> -->\r\n                            </label>\r\n                            <label class=\"control select\" title=\"OrgTypeValue Select\" for=\"orgTypeValues\">\r\n                                <!-- <span class=\"wrap\">Label</span> -->\r\n                                <select class=\"instore__input--select\" id=\"orgTypeValues\" name=\"orgTypeValues\">\r\n                                    <option value=\"0\">--- Select Group ---</option>\r\n                                </select>\r\n                                <!-- <span class=\"message warning\">error message here</span> -->\r\n                            </label>\r\n                            <label class=\"control select\" title=\"StoresInOrgType Select\" for=\"storesInOrgType\">\r\n                                <!-- <span class=\"wrap\">Label</span> -->\r\n                                <select class=\"instore__input--select\" id=\"storesInOrgType\" name=\"storesInOrgType\">\r\n                                    <option value=\"all\">--- All Stores ---</option>\r\n                                </select>\r\n                                <!-- <span class=\"message warning\">error message here</span> -->\r\n                            </label>\r\n                            <script>\r\n                                require([\"jquery\", \"jquery.ui\"],\r\n                                        function ($) {\r\n                                            $(\"#selectedDate\").datepicker({dateFormat: 'yy-mm-dd'});\r\n                                        });\r\n                            </script>\r\n                            <div class=\"instore__input--datepicker inline flex-row\">\r\n                                <i class=\"fa fa-calendar\" aria-hidden=\"true\"></i>\r\n                                <input class=\"instore__input datepicker\" id=\"selectedDate\" type=\"text\" name=\"selectedDate\" value=\"2026-04-20\"/>\r\n                            </div>\r\n                            <div class=\"instore__buttons flex-row-center\">\r\n                                <button id=\"viewReportsButton\" class=\"instore__buttons__button--save\">\r\n                                    <span class=\"wrap\">View Report</span>\r\n                                </button>\r\n                            </div>\r\n                        </form>",
-    "orgTypesOptions": [
-      {
-        "val": "none",
-        "label": "--- Select By ---"
+    "restProbe": {
+      "/asp/rest_v2/aboveStore/orgTypeValues?orgType=area&categoryId=4&storeAccess=true": {
+        "status": 404,
+        "ct": "text/html;charset=ISO-8859-1",
+        "body": "\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n\r\n\r\n    \r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        \r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<html>\r\n    <head>\r\n        <title>oneVIEW: Page Not Found</title>\r\n        <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\r\n\r\n        <!--\r\n                <meta http-equiv=\"X-UA-Compatible\" content=\"IE=8\"/>\r\n        -->\r\n        <link rel=\"sh",
+        "isJson": false
       },
-      {
-        "val": "concept",
-        "label": "concept"
+      "/asp/rest_v2/aboveStore/orgTypeValues?orgType=area&categoryId=1&storeAccess=true": {
+        "status": 404,
+        "ct": "text/html;charset=ISO-8859-1",
+        "body": "\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n\r\n\r\n    \r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        \r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<html>\r\n    <head>\r\n        <title>oneVIEW: Page Not Found</title>\r\n        <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\r\n\r\n        <!--\r\n                <meta http-equiv=\"X-UA-Compatible\" content=\"IE=8\"/>\r\n        -->\r\n        <link rel=\"sh",
+        "isJson": false
       },
-      {
-        "val": "client",
-        "label": "client"
+      "/asp/rest_v2/aboveStore/orgTypeValues?orgType=area": {
+        "status": 404,
+        "ct": "text/html;charset=ISO-8859-1",
+        "body": "\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n\r\n\r\n    \r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        \r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<html>\r\n    <head>\r\n        <title>oneVIEW: Page Not Found</title>\r\n        <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\r\n\r\n        <!--\r\n                <meta http-equiv=\"X-UA-Compatible\" content=\"IE=8\"/>\r\n        -->\r\n        <link rel=\"sh",
+        "isJson": false
       },
-      {
-        "val": "company",
-        "label": "company"
+      "/asp/rest_v2/aboveStore/orgTypes?categoryId=4&storeAccess=true": {
+        "status": 404,
+        "ct": "text/html;charset=ISO-8859-1",
+        "body": "\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n\r\n\r\n    \r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        \r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<html>\r\n    <head>\r\n        <title>oneVIEW: Page Not Found</title>\r\n        <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\r\n\r\n        <!--\r\n                <meta http-equiv=\"X-UA-Compatible\" content=\"IE=8\"/>\r\n        -->\r\n        <link rel=\"sh",
+        "isJson": false
       },
-      {
-        "val": "territory",
-        "label": "territory"
+      "/asp/rest_v2/aboveStore/orgTypes?storeAccess=true": {
+        "status": 404,
+        "ct": "text/html;charset=ISO-8859-1",
+        "body": "\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n\r\n\r\n    \r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        \r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<html>\r\n    <head>\r\n        <title>oneVIEW: Page Not Found</title>\r\n        <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\r\n\r\n        <!--\r\n                <meta http-equiv=\"X-UA-Compatible\" content=\"IE=8\"/>\r\n        -->\r\n        <link rel=\"sh",
+        "isJson": false
       },
-      {
-        "val": "region",
-        "label": "region"
+      "/asp/rest_v2/aboveStore/stores?storeAccess=true&orgType=area": {
+        "status": 200,
+        "ct": "application/json",
+        "body": "{\"item\":[{\"storeId\":29865,\"storeName\":\"Woodway\",\"storeNumber\":\"CA 01\",\"storeNumberShort\":1,\"filesDir\":\"/var/storefiles-efs1/CID206\",\"datasetId\":30,\"brandId\":71,\"companyId\":8,\"active\":true},{\"storeId\":29866,\"storeName\":\"Durham\",\"storeNumber\":\"CA 02\",\"storeNumberShort\":2,\"filesDir\":\"/var/storefiles-efs1/CID206\",\"datasetId\":30,\"brandId\":71,\"companyId\":8,\"active\":true},{\"storeId\":29867,\"storeName\":\"Midtown\",\"storeNumber\":\"CA 03\",\"storeNumberShort\":3,\"filesDir\":\"/var/storefiles-efs1/CID206\",\"datasetI",
+        "isJson": true
       },
-      {
-        "val": "market",
-        "label": "market"
+      "/asp/rest_v2/aboveStore/hierarchy?storeAccess=true": {
+        "status": 404,
+        "ct": "text/html;charset=ISO-8859-1",
+        "body": "\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n\r\n\r\n    \r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        \r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<html>\r\n    <head>\r\n        <title>oneVIEW: Page Not Found</title>\r\n        <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\r\n\r\n        <!--\r\n                <meta http-equiv=\"X-UA-Compatible\" content=\"IE=8\"/>\r\n        -->\r\n        <link rel=\"sh",
+        "isJson": false
       },
-      {
-        "val": "area",
-        "label": "area"
-      },
-      {
-        "val": "dma",
-        "label": "dma"
-      },
-      {
-        "val": "payroll",
-        "label": "payroll"
-      },
-      {
-        "val": "gl",
-        "label": "gl"
-      },
-      {
-        "val": "0",
-        "label": "--- Select Group ---"
-      },
-      {
-        "val": "all",
-        "label": "--- All Stores ---"
+      "/asp/rest_v2/aboveStore/user": {
+        "status": 404,
+        "ct": "text/html;charset=ISO-8859-1",
+        "body": "\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n\r\n\r\n    \r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        \r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<html>\r\n    <head>\r\n        <title>oneVIEW: Page Not Found</title>\r\n        <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\r\n\r\n        <!--\r\n                <meta http-equiv=\"X-UA-Compatible\" content=\"IE=8\"/>\r\n        -->\r\n        <link rel=\"sh",
+        "isJson": false
       }
-    ],
-    "orgTypeValues_store": "\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n\r\n\r\n    \r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        \r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<html>\r\n    <head>\r\n        <title>oneVIEW: Page Not Found</title>\r\n        <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\r\n\r\n        <!--\r\n                <meta http-equiv=\"X-UA-Compatible\" content=\"IE=8\"/>\r\n        -->\r\n        <link rel=\"shortcut icon\" href='/asp/_themes/444DCAD3/images/favicon.ico' />\r\n\r\n        <!--\r\n                <link rel=\"shortcut icon\" href=\"favicon.ico\" />\r\n        -->\r\n        \n\n\n\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<meta name = \"viewport\" content=\"user-scalable=no, initial-scale=1.0, maximum-scale=1.0, width=device-width\">\r\n<meta name=\"apple-mobile-web-app-capable\" content=\"yes\"/>\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n                \r\n        <!-- Added by Monolith -->\r\n        <link rel=\"stylesheet\" href=\"/asp/aboveStore/css/fontawesome/font-awesome.min.css\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/aboveStore/css/aboveStore.min.css\"/>\r\n        <!-- /Added by Monolith -->        \r\n        \r\n        <link rel=\"stylesheet\" href=\"/asp/themes/reset.css\" type=\"text/css\" media=\"screen\">\r\n\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/theme.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/pages.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/containers.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/dialog.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/buttons.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/lists.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/controls.css\" type",
-    "postResults": [
+    },
+    "comboResults": [
       {
-        "orgType": "concept",
-        "date": "04/19/2026",
-        "store": "29865",
+        "combo": {
+          "orgType": "area",
+          "orgTypeVal": "29",
+          "store": "all",
+          "date": "2026-04-19"
+        },
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "loc": "",
-        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
+        "title": "oneVIEW: InStore Reports",
+        "err": "",
+        "htmlLen": 62711,
+        "html5k": "\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n\r\n\r\n    \r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        \r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<html>\r\n    <head>\r\n        <title>oneVIEW: InStore Reports</title>\r\n        <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\r\n\r\n        <!--\r\n                <meta http-equiv=\"X-UA-Compatible\" content=\"IE=8\"/>\r\n        -->\r\n        <link rel=\"shortcut icon\" href='/asp/_themes/444DCAD3/images/favicon.ico' />\r\n\r\n        <!--\r\n                <link rel=\"shortcut icon\" href=\"favicon.ico\" />\r\n        -->\r\n        \n\n\n\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<meta name = \"viewport\" content=\"user-scalable=no, initial-scale=1.0, maximum-scale=1.0, width=device-width\">\r\n<meta name=\"apple-mobile-web-app-capable\" content=\"yes\"/>\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n                \r\n        <!-- Added by Monolith -->\r\n        <link rel=\"stylesheet\" href=\"/asp/aboveStore/css/fontawesome/font-awesome.min.css\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/aboveStore/css/aboveStore.min.css\"/>\r\n        <!-- /Added by Monolith -->        \r\n        \r\n        <link rel=\"stylesheet\" href=\"/asp/themes/reset.css\" type=\"text/css\" media=\"screen\">\r\n\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/theme.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/pages.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/containers.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/dialog.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/buttons.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/lists.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/controls.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/dataDisplays.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/pageSpecific.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/dialogSpecific.css\" type=\"text/css\" media=\"screen,print\"/>\r\n\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/forPrint.css\" type=\"text/css\" media=\"print\"/>\r\n\r\n        <!--[if IE 7.0]>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/overrides_ie7.css\" type=\"text/css\" media=\"screen\"/>\r\n        <![endif]-->\r\n\r\n        <!--[if IE 8.0]>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/overrides_ie8.css\" type=\"text/css\" media=\"screen\"/>\r\n        <![endif]-->\r\n\r\n        <!--[if IE]>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/overrides_ie.css\" type=\"text/css\" media=\"screen\"/>\r\n        <![endif]-->\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/overrides_custom.css\" type=\"text/css\" media=\"screen\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/scripts/bower_components/jquery-ui/themes/redmond/jquery-ui-1.10.4-custom.css\" type=\"text/css\" media=\"screen\">\r\n    \r\n\r\n\r\n\n\n\n\n\n\n\n\n\n\n<script type=\"text/javascript\">\n    var JRS = {};\n\n    var __jrsConfigs__ = {\n\n        i18n: {},\n        localContext: {},\n        isIPad: \"\",\n        contextPath: \"/asp\",\n        publicFolderUri: \"/public\",\n        tempFolderUri: \"/temp\",\n        enableAccessibility: \"true\",\n        organizationId: \"dgi\",\n        commonReportGeneratorsMetadata: [],\n        templatesFolderUri: '/public/templates',\n        defaultTemplateUri: '/public/templates/actual_size.510.jrxml',\n        advNotSelected: \"To generate a report, first select an Ad Hoc view.\",\n        templateNotSelected: \"To generate a report using template generator, first select an Template.\",\n        calendar: {\n\n            userLocale: \"en\",\n\n            timepicker: {\n                timeText: 'Time:',\n                hourText: 'Hour',\n                minuteText: 'Minute',\n                secondText: 'Second',\n                currentText: 'Now',\n                closeText: 'Close',\n                timeFormat: 'HH:mm:ss',\n                dateFormat: 'yy-mm-dd',\n                separator:' '\n            },\n\n            i18n: {\n                bundledCalendarTimeFormat: 'HH:mm:ss',\n                bundledCalendarFormat: 'yy-mm-dd'\n            }\n        },\n\n        webHelpModuleState: {\n            contextMap: {\"default\":\"100\",\"bi_overview\":\"100\",\"login\":\"150\",\"legacy_dashboard\":\"200\",\"ad_hoc\":\"300\",\"domain\":\"500\",\"search\":\"600\",\"analysis\":\"700\",\"admin\":\"800\",\"repo\":\"900\",\"dashboard\":\"1000\"},\n            hostURL: 'http://help.jaspersoft.com/js-help-v6-en/',\n            pagePrefix: 'Default_CSH.htm#'\n        },\n\n        urlContext: \"/asp\",\n        defaultSearchText: \"\",\n        serverIsNotResponding: \"The server is slow or isn't responding. Confirm that "
       },
       {
-        "orgType": "concept",
-        "date": "04/19/2026",
-        "store": "038729",
+        "combo": {
+          "orgType": "area",
+          "orgTypeVal": "29",
+          "store": "29865",
+          "date": "2026-04-19"
+        },
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "loc": "",
-        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
+        "title": "oneVIEW: InStore Reports",
+        "err": "",
+        "htmlLen": 62711,
+        "html5k": "\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n\r\n\r\n    \r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        \r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<html>\r\n    <head>\r\n        <title>oneVIEW: InStore Reports</title>\r\n        <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\r\n\r\n        <!--\r\n                <meta http-equiv=\"X-UA-Compatible\" content=\"IE=8\"/>\r\n        -->\r\n        <link rel=\"shortcut icon\" href='/asp/_themes/444DCAD3/images/favicon.ico' />\r\n\r\n        <!--\r\n                <link rel=\"shortcut icon\" href=\"favicon.ico\" />\r\n        -->\r\n        \n\n\n\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<meta name = \"viewport\" content=\"user-scalable=no, initial-scale=1.0, maximum-scale=1.0, width=device-width\">\r\n<meta name=\"apple-mobile-web-app-capable\" content=\"yes\"/>\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n                \r\n        <!-- Added by Monolith -->\r\n        <link rel=\"stylesheet\" href=\"/asp/aboveStore/css/fontawesome/font-awesome.min.css\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/aboveStore/css/aboveStore.min.css\"/>\r\n        <!-- /Added by Monolith -->        \r\n        \r\n        <link rel=\"stylesheet\" href=\"/asp/themes/reset.css\" type=\"text/css\" media=\"screen\">\r\n\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/theme.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/pages.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/containers.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/dialog.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/buttons.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/lists.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/controls.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/dataDisplays.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/pageSpecific.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/dialogSpecific.css\" type=\"text/css\" media=\"screen,print\"/>\r\n\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/forPrint.css\" type=\"text/css\" media=\"print\"/>\r\n\r\n        <!--[if IE 7.0]>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/overrides_ie7.css\" type=\"text/css\" media=\"screen\"/>\r\n        <![endif]-->\r\n\r\n        <!--[if IE 8.0]>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/overrides_ie8.css\" type=\"text/css\" media=\"screen\"/>\r\n        <![endif]-->\r\n\r\n        <!--[if IE]>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/overrides_ie.css\" type=\"text/css\" media=\"screen\"/>\r\n        <![endif]-->\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/overrides_custom.css\" type=\"text/css\" media=\"screen\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/scripts/bower_components/jquery-ui/themes/redmond/jquery-ui-1.10.4-custom.css\" type=\"text/css\" media=\"screen\">\r\n    \r\n\r\n\r\n\n\n\n\n\n\n\n\n\n\n<script type=\"text/javascript\">\n    var JRS = {};\n\n    var __jrsConfigs__ = {\n\n        i18n: {},\n        localContext: {},\n        isIPad: \"\",\n        contextPath: \"/asp\",\n        publicFolderUri: \"/public\",\n        tempFolderUri: \"/temp\",\n        enableAccessibility: \"true\",\n        organizationId: \"dgi\",\n        commonReportGeneratorsMetadata: [],\n        templatesFolderUri: '/public/templates',\n        defaultTemplateUri: '/public/templates/actual_size.510.jrxml',\n        advNotSelected: \"To generate a report, first select an Ad Hoc view.\",\n        templateNotSelected: \"To generate a report using template generator, first select an Template.\",\n        calendar: {\n\n            userLocale: \"en\",\n\n            timepicker: {\n                timeText: 'Time:',\n                hourText: 'Hour',\n                minuteText: 'Minute',\n                secondText: 'Second',\n                currentText: 'Now',\n                closeText: 'Close',\n                timeFormat: 'HH:mm:ss',\n                dateFormat: 'yy-mm-dd',\n                separator:' '\n            },\n\n            i18n: {\n                bundledCalendarTimeFormat: 'HH:mm:ss',\n                bundledCalendarFormat: 'yy-mm-dd'\n            }\n        },\n\n        webHelpModuleState: {\n            contextMap: {\"default\":\"100\",\"bi_overview\":\"100\",\"login\":\"150\",\"legacy_dashboard\":\"200\",\"ad_hoc\":\"300\",\"domain\":\"500\",\"search\":\"600\",\"analysis\":\"700\",\"admin\":\"800\",\"repo\":\"900\",\"dashboard\":\"1000\"},\n            hostURL: 'http://help.jaspersoft.com/js-help-v6-en/',\n            pagePrefix: 'Default_CSH.htm#'\n        },\n\n        urlContext: \"/asp\",\n        defaultSearchText: \"\",\n        serverIsNotResponding: \"The server is slow or isn't responding. Confirm that "
       },
       {
-        "orgType": "concept",
-        "date": "04/19/2026",
-        "store": "29865",
+        "combo": {
+          "orgType": "company",
+          "orgTypeVal": "8",
+          "store": "all",
+          "date": "2026-04-19"
+        },
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "loc": "",
-        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
+        "title": "oneVIEW: InStore Reports",
+        "err": "",
+        "htmlLen": 62724,
+        "html5k": "\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n\r\n\r\n    \r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        \r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<html>\r\n    <head>\r\n        <title>oneVIEW: InStore Reports</title>\r\n        <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\r\n\r\n        <!--\r\n                <meta http-equiv=\"X-UA-Compatible\" content=\"IE=8\"/>\r\n        -->\r\n        <link rel=\"shortcut icon\" href='/asp/_themes/444DCAD3/images/favicon.ico' />\r\n\r\n        <!--\r\n                <link rel=\"shortcut icon\" href=\"favicon.ico\" />\r\n        -->\r\n        \n\n\n\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<meta name = \"viewport\" content=\"user-scalable=no, initial-scale=1.0, maximum-scale=1.0, width=device-width\">\r\n<meta name=\"apple-mobile-web-app-capable\" content=\"yes\"/>\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n                \r\n        <!-- Added by Monolith -->\r\n        <link rel=\"stylesheet\" href=\"/asp/aboveStore/css/fontawesome/font-awesome.min.css\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/aboveStore/css/aboveStore.min.css\"/>\r\n        <!-- /Added by Monolith -->        \r\n        \r\n        <link rel=\"stylesheet\" href=\"/asp/themes/reset.css\" type=\"text/css\" media=\"screen\">\r\n\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/theme.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/pages.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/containers.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/dialog.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/buttons.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/lists.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/controls.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/dataDisplays.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/pageSpecific.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/dialogSpecific.css\" type=\"text/css\" media=\"screen,print\"/>\r\n\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/forPrint.css\" type=\"text/css\" media=\"print\"/>\r\n\r\n        <!--[if IE 7.0]>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/overrides_ie7.css\" type=\"text/css\" media=\"screen\"/>\r\n        <![endif]-->\r\n\r\n        <!--[if IE 8.0]>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/overrides_ie8.css\" type=\"text/css\" media=\"screen\"/>\r\n        <![endif]-->\r\n\r\n        <!--[if IE]>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/overrides_ie.css\" type=\"text/css\" media=\"screen\"/>\r\n        <![endif]-->\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/overrides_custom.css\" type=\"text/css\" media=\"screen\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/scripts/bower_components/jquery-ui/themes/redmond/jquery-ui-1.10.4-custom.css\" type=\"text/css\" media=\"screen\">\r\n    \r\n\r\n\r\n\n\n\n\n\n\n\n\n\n\n<script type=\"text/javascript\">\n    var JRS = {};\n\n    var __jrsConfigs__ = {\n\n        i18n: {},\n        localContext: {},\n        isIPad: \"\",\n        contextPath: \"/asp\",\n        publicFolderUri: \"/public\",\n        tempFolderUri: \"/temp\",\n        enableAccessibility: \"true\",\n        organizationId: \"dgi\",\n        commonReportGeneratorsMetadata: [],\n        templatesFolderUri: '/public/templates',\n        defaultTemplateUri: '/public/templates/actual_size.510.jrxml',\n        advNotSelected: \"To generate a report, first select an Ad Hoc view.\",\n        templateNotSelected: \"To generate a report using template generator, first select an Template.\",\n        calendar: {\n\n            userLocale: \"en\",\n\n            timepicker: {\n                timeText: 'Time:',\n                hourText: 'Hour',\n                minuteText: 'Minute',\n                secondText: 'Second',\n                currentText: 'Now',\n                closeText: 'Close',\n                timeFormat: 'HH:mm:ss',\n                dateFormat: 'yy-mm-dd',\n                separator:' '\n            },\n\n            i18n: {\n                bundledCalendarTimeFormat: 'HH:mm:ss',\n                bundledCalendarFormat: 'yy-mm-dd'\n            }\n        },\n\n        webHelpModuleState: {\n            contextMap: {\"default\":\"100\",\"bi_overview\":\"100\",\"login\":\"150\",\"legacy_dashboard\":\"200\",\"ad_hoc\":\"300\",\"domain\":\"500\",\"search\":\"600\",\"analysis\":\"700\",\"admin\":\"800\",\"repo\":\"900\",\"dashboard\":\"1000\"},\n            hostURL: 'http://help.jaspersoft.com/js-help-v6-en/',\n            pagePrefix: 'Default_CSH.htm#'\n        },\n\n        urlContext: \"/asp\",\n        defaultSearchText: \"\",\n        serverIsNotResponding: \"The server is slow or isn't responding. Confirm that "
       },
       {
-        "orgType": "concept",
-        "date": "2026-04-19",
-        "store": "29865",
+        "combo": {
+          "orgType": "company",
+          "orgTypeVal": "206",
+          "store": "all",
+          "date": "2026-04-19"
+        },
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "loc": "",
-        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
+        "title": "oneVIEW: InStore Reports",
+        "err": "",
+        "htmlLen": 62714
       },
       {
-        "orgType": "concept",
-        "date": "2026-04-19",
-        "store": "038729",
+        "combo": {
+          "orgType": "concept",
+          "orgTypeVal": "71",
+          "store": "all",
+          "date": "2026-04-19"
+        },
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "loc": "",
-        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
+        "title": "oneVIEW: InStore Reports",
+        "err": "",
+        "htmlLen": 62714
       },
       {
-        "orgType": "concept",
-        "date": "2026-04-19",
-        "store": "29865",
+        "combo": {
+          "orgType": "concept",
+          "orgTypeVal": "1",
+          "store": "all",
+          "date": "2026-04-19"
+        },
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "loc": "",
-        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
+        "title": "oneVIEW: InStore Reports",
+        "err": "",
+        "htmlLen": 62712
       },
       {
-        "orgType": "concept",
-        "date": "04-19-2026",
-        "store": "29865",
+        "combo": {
+          "orgType": "area",
+          "orgTypeVal": "1",
+          "store": "all",
+          "date": "2026-04-19"
+        },
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "loc": "",
-        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
+        "title": "oneVIEW: InStore Reports",
+        "err": "",
+        "htmlLen": 62711
       },
       {
-        "orgType": "concept",
-        "date": "04-19-2026",
-        "store": "038729",
+        "combo": {
+          "orgType": "region",
+          "orgTypeVal": "29",
+          "store": "all",
+          "date": "2026-04-19"
+        },
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "loc": "",
-        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
+        "title": "oneVIEW: InStore Reports",
+        "err": "",
+        "htmlLen": 63220
       },
       {
-        "orgType": "concept",
-        "date": "04-19-2026",
-        "store": "29865",
+        "combo": {
+          "orgType": "market",
+          "orgTypeVal": "29",
+          "store": "all",
+          "date": "2026-04-19"
+        },
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "loc": "",
-        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
+        "title": "oneVIEW: InStore Reports",
+        "err": "",
+        "htmlLen": 62724
       },
       {
-        "orgType": "none",
-        "date": "04/19/2026",
-        "store": "29865",
+        "combo": {
+          "orgType": "none",
+          "orgTypeVal": "0",
+          "store": "all",
+          "date": "2026-04-19"
+        },
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "loc": "",
-        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
+        "title": "oneVIEW: oneVIEW Server Error Page",
+        "err": "",
+        "htmlLen": 60379
       },
       {
-        "orgType": "none",
-        "date": "04/19/2026",
-        "store": "038729",
+        "combo": {
+          "orgType": "area",
+          "orgTypeVal": "29",
+          "store": "all",
+          "date": "2026-04-20"
+        },
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "loc": "",
-        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
+        "title": "oneVIEW: InStore Reports",
+        "err": "",
+        "htmlLen": 62715
       },
       {
-        "orgType": "none",
-        "date": "04/19/2026",
-        "store": "29865",
+        "combo": {
+          "orgType": "company",
+          "orgTypeVal": "8",
+          "store": "29865",
+          "date": "2026-04-19"
+        },
         "status": 200,
-        "ct": "text/html;charset=UTF-8",
-        "loc": "",
-        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
+        "title": "oneVIEW: InStore Reports",
+        "err": "",
+        "htmlLen": 62728
       }
     ]
   }
