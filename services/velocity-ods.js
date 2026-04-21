@@ -107,124 +107,166 @@ async function login() {
   return { cookie: authCookie, location, ua: UA };
 }
 
-// ── Navigate to Above Store Report and download PDF ────────────────────────
+
+// ── CSRF token helper ──────────────────────────────────────────────────────
+async function fetchCsrf(cookie, ua) {
+  const r = await fetch(`${ODS_URL}/asp/JavaScriptServlet`, {
+    method: 'POST',
+    headers: { 'Cookie': cookie, 'FETCH-CSRF-TOKEN': '1', 'User-Agent': ua }
+  });
+  const text = await r.text();
+  const idx = text.indexOf(':');
+  return { name: text.substring(0, idx).trim(), value: text.substring(idx + 1).trim() };
+}
+
+// ── Navigate to Daily Dispatch Performance and download PDF ────────────────
+//
+//  Confirmed flow (reverse-engineered from browser network tab 2026-04-21):
+//
+//   s1  GET  flow.html?_flowId=aboveStoreInStoreReportsFlow&categoryId=4
+//            → __jrsConfigs__.flowExecutionKey = "e1s1"
+//
+//   s2  GET  flow.html?...&_flowExecutionKey=e1s1
+//            &_eventId=selectParameters&selectedReportId=457
+//            → __jrsConfigs__.flowExecutionKey = "e1s2"
+//            (renders date + org-type parameter form)
+//
+//   s3  POST flow.html?...&_flowExecutionKey=e1s2
+//            body: _eventId=retrieveReports
+//                  &orgTypes=company&orgTypeValues=8&storesInOrgType=all
+//                  &selectedDate=YYYY-MM-DD
+//            → HTML page containing:
+//              <iframe src="/asp/flow.html?...&_flowExecutionKey=eNs3
+//                           &_eventId=getReportsForView&print=true">
+//
+//   PDF GET  <iframe src>  → application/pdf
+//
 async function downloadAboveStoreReport(session, targetDate, outPath) {
   const { cookie, ua } = session;
 
-  // Step 1: Load the InStore Reports flow page.
-  // JRS embeds the server-generated flowExecutionKey as a JS variable:
-  //   __jrsConfigs__.flowExecutionKey = "e2s1";
-  console.log(`[ODS] Loading aboveStoreInStoreReportsFlow for ${targetDate}...`);
-  const flowRes = await fetch(`${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`, {
-    headers: { 'Cookie': cookie, 'User-Agent': ua, 'Referer': `${ODS_URL}/asp/` }
-  });
-
-  if (!flowRes.ok) {
-    return { success: false, error: `Flow page returned ${flowRes.status}` };
+  // Normalise date to YYYY-MM-DD regardless of input format
+  let dateStr = targetDate;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(targetDate)) {
+    const [m, d, y] = targetDate.split('/');
+    dateStr = `${y}-${m}-${d}`;
+  } else if (/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+    dateStr = targetDate; // already correct
   }
+  console.log(`[ODS] downloadAboveStoreReport date=${dateStr}`);
 
-  const flowHtml = await flowRes.text();
-  const keyMatch  = flowHtml.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/);
-  if (!keyMatch) {
-    console.log('[ODS] No __jrsConfigs__.flowExecutionKey found. Snippet:', flowHtml.substring(0, 500));
-    return { success: false, error: 'Could not find flowExecutionKey in page JS' };
-  }
-  const flowKey = keyMatch[1];
-  console.log(`[ODS] Flow execution key: ${flowKey}`);
+  const flowBase = `${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`;
 
-  // Step 2: Request PDF using the discovered event: _eventId=getReportsForView
-  // URL captured from browser network tab:
-  //   flow.html?_flowId=aboveStoreInStoreReportsFlow&_flowExecutionKey=eNsM
-  //     &_eventId=getReportsForView&exportType=pdf&contentDisposition=attachment
-  //
-  // The date may need to be in the flow state (set by an earlier event) or passed directly.
-  // We try three variants in order:
+  // ── s1: load flow with categoryId to get first execution key ────────────
+  let csrf = await fetchCsrf(cookie, ua);
+  const s1Headers = {
+    'Cookie': cookie, 'User-Agent': ua,
+    'X-Requested-With': 'OWASP CSRFGuard Project',
+    'Referer': flowBase
+  };
+  s1Headers[csrf.name] = csrf.value;
 
-  const referer = `${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`;
+  const s1Res = await fetch(`${flowBase}&categoryId=4`, { headers: s1Headers });
+  if (!s1Res.ok) return { success: false, error: `s1 returned ${s1Res.status}` };
+  const s1Html = await s1Res.text();
+  const s1KeyM = s1Html.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/);
+  if (!s1KeyM) return { success: false, error: 's1: no flowExecutionKey found' };
+  const s1Key = s1KeyM[1];
+  console.log(`[ODS] s1 key: ${s1Key}`);
 
-  // Attempt 1: call getReportsForView from s1 with date param
-  const url1 = `${ODS_URL}/asp/flow.html`
-    + `?_flowId=aboveStoreInStoreReportsFlow`
-    + `&_flowExecutionKey=${encodeURIComponent(flowKey)}`
-    + `&_eventId=getReportsForView`
-    + `&exportType=pdf`
-    + `&contentDisposition=attachment`
-    + `&DATE=${encodeURIComponent(targetDate)}`
-    + `&date=${encodeURIComponent(targetDate)}`;
+  // ── s2: select Daily Dispatch Performance (reportId=457) ────────────────
+  csrf = await fetchCsrf(cookie, ua);
+  const s2Headers = {
+    'Cookie': cookie, 'User-Agent': ua,
+    'X-Requested-With': 'OWASP CSRFGuard Project',
+    'Referer': `${flowBase}&categoryId=4`
+  };
+  s2Headers[csrf.name] = csrf.value;
 
-  console.log(`[ODS] Attempt 1 — getReportsForView with date param from ${flowKey}`);
-  let pdfRes = await fetch(url1, {
-    headers: { 'Cookie': cookie, 'User-Agent': ua, 'Referer': referer }
-  });
-  let ct = pdfRes.headers.get('content-type') || '';
-  console.log(`[ODS] Attempt 1: status=${pdfRes.status} ct=${ct}`);
+  const s2Res = await fetch(
+    `${flowBase}&_flowExecutionKey=${encodeURIComponent(s1Key)}&_eventId=selectParameters&selectedReportId=457`,
+    { headers: s2Headers }
+  );
+  if (!s2Res.ok) return { success: false, error: `s2 returned ${s2Res.status}` };
+  const s2Html = await s2Res.text();
+  const s2KeyM = s2Html.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/);
+  if (!s2KeyM) return { success: false, error: 's2: no flowExecutionKey found' };
+  const s2Key = s2KeyM[1];
+  console.log(`[ODS] s2 key: ${s2Key}`);
 
-  if (ct.includes('pdf') || ct.includes('octet')) {
-    const buf = await pdfRes.buffer();
-    fs.writeFileSync(outPath, buf);
-    console.log(`[ODS] PDF saved — attempt 1 (${buf.length} bytes)`);
-    return { success: true, bytes: buf.length, method: 'getReportsForView_s1_with_date' };
-  }
+  // ── s3: submit date + org params → report viewer page with iframe ────────
+  csrf = await fetchCsrf(cookie, ua);
+  const s3Headers = {
+    'Cookie': cookie, 'User-Agent': ua,
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'X-Requested-With': 'OWASP CSRFGuard Project',
+    'Referer': `${flowBase}&_flowExecutionKey=${s2Key}`
+  };
+  s3Headers[csrf.name] = csrf.value;
 
-  // Attempt 2: call without date — maybe date is baked into flow state
-  const url2 = `${ODS_URL}/asp/flow.html`
-    + `?_flowId=aboveStoreInStoreReportsFlow`
-    + `&_flowExecutionKey=${encodeURIComponent(flowKey)}`
-    + `&_eventId=getReportsForView`
-    + `&exportType=pdf`
-    + `&contentDisposition=attachment`;
-
-  console.log(`[ODS] Attempt 2 — getReportsForView without date param`);
-  pdfRes = await fetch(url2, {
-    headers: { 'Cookie': cookie, 'User-Agent': ua, 'Referer': referer }
-  });
-  ct = pdfRes.headers.get('content-type') || '';
-  console.log(`[ODS] Attempt 2: status=${pdfRes.status} ct=${ct}`);
-
-  if (ct.includes('pdf') || ct.includes('octet')) {
-    const buf = await pdfRes.buffer();
-    fs.writeFileSync(outPath, buf);
-    console.log(`[ODS] PDF saved — attempt 2 (${buf.length} bytes)`);
-    return { success: true, bytes: buf.length, method: 'getReportsForView_s1_no_date' };
-  }
-
-  // Attempt 3: POST variant
   const postBody = [
-    `_flowExecutionKey=${encodeURIComponent(flowKey)}`,
-    `_eventId=getReportsForView`,
-    `exportType=pdf`,
-    `contentDisposition=attachment`,
-    `DATE=${encodeURIComponent(targetDate)}`
+    '_eventId=retrieveReports',
+    'orgTypes=company',
+    'orgTypeValues=8',
+    'storesInOrgType=all',
+    `selectedDate=${encodeURIComponent(dateStr)}`
   ].join('&');
 
-  console.log(`[ODS] Attempt 3 — POST getReportsForView`);
-  pdfRes = await fetch(`${ODS_URL}/asp/flow.html`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Cookie': cookie, 'User-Agent': ua, 'Referer': referer
-    },
-    body: postBody
+  const s3Res = await fetch(
+    `${flowBase}&_flowExecutionKey=${encodeURIComponent(s2Key)}`,
+    { method: 'POST', headers: s3Headers, body: postBody }
+  );
+  if (!s3Res.ok) return { success: false, error: `s3 POST returned ${s3Res.status}` };
+  const s3Html = await s3Res.text();
+
+  // Extract iframe src — e.g.:
+  //   src="/asp/flow.html?_flowId=...&_flowExecutionKey=eNs3&_eventId=getReportsForView&print=true"
+  const iframeM = s3Html.match(/src="(\/asp\/flow\.html[^"]*getReportsForView[^"]*)"/);
+  if (!iframeM) {
+    console.log('[ODS] s3: no getReportsForView iframe found. HTML snippet:',
+      s3Html.substring(0, 600).replace(/\s+/g, ' '));
+    return { success: false, error: 's3: iframe with getReportsForView not found' };
+  }
+  const iframeSrc = iframeM[1].replace(/&amp;/g, '&');
+  console.log(`[ODS] s3 iframe: ${iframeSrc}`);
+
+  // ── PDF: fetch the iframe URL ────────────────────────────────────────────
+  const pdfRes = await fetch(`${ODS_URL}${iframeSrc}`, {
+    headers: { 'Cookie': cookie, 'User-Agent': ua, 'Referer': `${ODS_URL}${iframeSrc}` }
   });
-  ct = pdfRes.headers.get('content-type') || '';
-  console.log(`[ODS] Attempt 3: status=${pdfRes.status} ct=${ct}`);
+  const ct = pdfRes.headers.get('content-type') || '';
+  console.log(`[ODS] PDF fetch: status=${pdfRes.status} ct=${ct}`);
 
   if (ct.includes('pdf') || ct.includes('octet')) {
     const buf = await pdfRes.buffer();
     fs.writeFileSync(outPath, buf);
-    console.log(`[ODS] PDF saved — attempt 3 (${buf.length} bytes)`);
-    return { success: true, bytes: buf.length, method: 'getReportsForView_POST' };
+    console.log(`[ODS] PDF saved: ${buf.length} bytes → ${outPath}`);
+    return { success: true, bytes: buf.length };
   }
 
-  // All attempts returned HTML — log the state/snippet for further diagnosis
-  const html = await pdfRes.text();
-  console.log('[ODS] All attempts returned HTML. Snippet:', html.substring(0, 800).replace(/\s+/g, ' '));
-  return {
-    success: false,
-    error: `All getReportsForView attempts returned HTML — check logs`,
-    flowKey
-  };
+  // If print=true returns HTML viewer, try explicit exportType=pdf
+  const s3KeyM = iframeSrc.match(/[?&]_flowExecutionKey=([^&]+)/);
+  const s3Key  = s3KeyM ? decodeURIComponent(s3KeyM[1]) : '';
+  if (s3Key) {
+    const pdfUrl2 = `${flowBase}&_flowExecutionKey=${encodeURIComponent(s3Key)}`
+      + `&_eventId=getReportsForView&exportType=pdf&contentDisposition=attachment`;
+    const pdf2 = await fetch(pdfUrl2, {
+      headers: { 'Cookie': cookie, 'User-Agent': ua, 'Referer': `${ODS_URL}${iframeSrc}` }
+    });
+    const ct2 = pdf2.headers.get('content-type') || '';
+    console.log(`[ODS] PDF fallback: status=${pdf2.status} ct=${ct2}`);
+    if (ct2.includes('pdf') || ct2.includes('octet')) {
+      const buf = await pdf2.buffer();
+      fs.writeFileSync(outPath, buf);
+      console.log(`[ODS] PDF saved (fallback): ${buf.length} bytes`);
+      return { success: true, bytes: buf.length };
+    }
+    const errHtml = await pdf2.text();
+    console.log('[ODS] fallback also returned HTML:', errHtml.substring(0, 400).replace(/\s+/g,' '));
+  }
+
+  return { success: false, error: 'PDF download returned HTML even after iframe + fallback' };
 }
+
 
 // ── Public API ─────────────────────────────────────────────────────────────
 async function pullAboveStoreReport(targetDate) {
