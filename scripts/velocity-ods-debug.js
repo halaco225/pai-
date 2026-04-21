@@ -42,7 +42,55 @@ async function freshCsrf(cookie, ua) {
   var t = await r.text(); var c = t.indexOf(':');
   return {name:t.substring(0,c).trim(), value:t.substring(c+1).trim()};
 }
-async function getS2(cookie, ua) {
+async function save(findings) {
+  var pub = '/opt/render/project/src/public/debug-output.json';
+  try { fs.writeFileSync(pub, JSON.stringify(findings,null,2)); } catch(e){}
+  if (GH_TOKEN.length < 5) return;
+  var content64 = Buffer.from(JSON.stringify(findings,null,2)).toString('base64');
+  var apiUrl = 'https://api.github.com/repos/halaco225/pai-/contents/debug-output.json';
+  var ghHdrs = {'Authorization':'Bearer '+GH_TOKEN,'User-Agent':'PAi-debug',
+    'Content-Type':'application/json','Accept':'application/vnd.github+json'};
+  try {
+    var shaRes = await fetch(apiUrl, {headers:ghHdrs});
+    var shaJson = shaRes.ok ? await shaRes.json() : {};
+    var body = {message:'debug v15f '+new Date().toISOString(), content:content64};
+    if (shaJson.sha) body.sha = shaJson.sha;
+    var putRes = await fetch(apiUrl, {method:'PUT', headers:ghHdrs, body:JSON.stringify(body)});
+    console.log('[save] GitHub:', putRes.status, putRes.ok?'OK':'FAIL');
+  } catch(e){ console.log('[save] err:', e.message); }
+}
+
+async function main() {
+  if (ODS_PASS.length < 2) { console.error('ODS_PASSWORD not set'); process.exit(1); }
+  var sess = await login(); var cookie = sess.cookie; var ua = sess.ua;
+  var findings = {ts:new Date().toISOString(), version:'v15f', sections:{}};
+  var jhdrs = {Cookie:cookie,'User-Agent':ua,'Accept':'application/json'};
+
+  // A. JRS keyword search for Dispatch/Daily
+  console.log('A. JRS keyword search...');
+  var kws = ['Dispatch','Daily','DailyDispatch','Performance','Instore','Driver'];
+  var kwResults = {};
+  for (var ki=0; ki<kws.length; ki++) {
+    var r = await fetch(ODS_URL+'/asp/rest_v2/resources?type=reportUnit&q='+encodeURIComponent(kws[ki])+'&limit=50', {headers:jhdrs});
+    var j = await r.json();
+    var items = (j.resourceLookup||[]).map(function(i){return {label:i.label,uri:i.uri};});
+    console.log('  ['+kws[ki]+'] '+items.length+' hits');
+    items.forEach(function(i){ console.log('    '+i.label+' -> '+i.uri); });
+    if (items.length > 0) kwResults[kws[ki]] = items;
+  }
+  findings.sections.kwSearch = kwResults;
+
+  // B. Recursive folder listing
+  console.log('\nB. Folder listing...');
+  var fr = await fetch(ODS_URL+'/asp/rest_v2/resources?folderUri=%2FReports%2FPizza_Hut&recursive=true&limit=500&type=reportUnit', {headers:jhdrs});
+  var fj = await fr.json();
+  var folderItems = (fj.resourceLookup||[]).map(function(i){return {label:i.label,uri:i.uri};});
+  console.log('  /Reports/Pizza_Hut: '+folderItems.length+' reports');
+  folderItems.forEach(function(i){ console.log('    '+i.label+' -> '+i.uri); });
+  findings.sections.folderPH = folderItems;
+
+  // C. Get full s3 HTML for area/29 submission — save chars 0-25000
+  console.log('\nC. Full s3 response...');
   var csrf = await freshCsrf(cookie, ua);
   var h = {Cookie:cookie,'User-Agent':ua,'X-Requested-With':'OWASP CSRFGuard Project',
     'Referer':ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow'};
@@ -60,126 +108,40 @@ async function getS2(cookie, ua) {
     +'&_eventId=selectParameters&selectedReportId='+REPORT_ID, {headers:h2});
   var s2html = await s2r.text();
   var km2 = s2html.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/);
-  return {s2html:s2html, s2Key: km2 ? km2[1] : 'e1s2', cookie:cookie, ua:ua};
-}
-async function save(findings) {
-  var pub = '/opt/render/project/src/public/debug-output.json';
-  try { fs.writeFileSync(pub, JSON.stringify(findings,null,2)); } catch(e){}
-  if (GH_TOKEN.length < 5) return;
-  var content64 = Buffer.from(JSON.stringify(findings,null,2)).toString('base64');
-  var apiUrl = 'https://api.github.com/repos/halaco225/pai-/contents/debug-output.json';
-  var ghHdrs = {'Authorization':'Bearer '+GH_TOKEN,'User-Agent':'PAi-debug',
-    'Content-Type':'application/json','Accept':'application/vnd.github+json'};
-  try {
-    var shaRes = await fetch(apiUrl, {headers:ghHdrs});
-    var shaJson = shaRes.ok ? await shaRes.json() : {};
-    var body = {message:'debug v15e '+new Date().toISOString(), content:content64};
-    if (shaJson.sha) body.sha = shaJson.sha;
-    var putRes = await fetch(apiUrl, {method:'PUT', headers:ghHdrs, body:JSON.stringify(body)});
-    console.log('[save] GitHub:', putRes.status, putRes.ok?'OK':'FAIL');
-  } catch(e){ console.log('[save] err:', e.message); }
-}
+  var s2Key = km2 ? km2[1] : 'e1s2';
 
-async function tryPost(s2data, orgType, orgTypeVal, storeVal, date) {
-  var cookie = s2data.cookie; var ua = s2data.ua; var s2Key = s2data.s2Key;
-  var csrf = await freshCsrf(cookie, ua);
-  var h = {Cookie:cookie,'User-Agent':ua,'Content-Type':'application/x-www-form-urlencoded',
+  csrf = await freshCsrf(cookie, ua);
+  var hp = {Cookie:cookie,'User-Agent':ua,'Content-Type':'application/x-www-form-urlencoded',
     'X-Requested-With':'OWASP CSRFGuard Project',
     'Referer':ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&_flowExecutionKey='+s2Key};
-  h[csrf.name] = csrf.value;
-  var pb = ['_eventId=retrieveReports',
-    'orgTypes='+encodeURIComponent(orgType),
-    'orgTypeValues='+encodeURIComponent(orgTypeVal),
-    'storesInOrgType='+encodeURIComponent(storeVal),
-    'selectedDate='+encodeURIComponent(date)].join('&');
-  var r = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&_flowExecutionKey='+encodeURIComponent(s2Key),
-    {method:'POST', headers:h, body:pb, redirect:'follow'});
-  var ct = r.headers.get('content-type')||'';
-  if (ct.includes('pdf') || ct.includes('octet')) {
-    var buf = await r.buffer();
-    return {hit:true, bytes:buf.length, buf:buf};
+  hp[csrf.name] = csrf.value;
+  var pb = '_eventId=retrieveReports&orgTypes=area&orgTypeValues=29&storesInOrgType=all&selectedDate=2026-04-19';
+  var s3r = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&_flowExecutionKey='+encodeURIComponent(s2Key),
+    {method:'POST', headers:hp, body:pb, redirect:'follow'});
+  var s3ct = s3r.headers.get('content-type')||'';
+  var s3html = await s3r.text();
+  console.log('  s3 status='+s3r.status+' ct='+s3ct+' len='+s3html.length);
+  if (s3ct.includes('pdf')) {
+    findings.pdfHit = {bytes:s3html.length, method:'direct'};
   }
-  var html = await r.text();
-  var titleM = html.match(/<title>([^<]+)<\/title>/i);
-  var title = titleM ? titleM[1] : '?';
-  // Look for error messages
-  var errM = html.match(/class="[^"]*error[^"]*"[^>]*>([^<]{5,80})</i);
-  var errMsg = errM ? errM[1].trim() : '';
-  return {hit:false, status:r.status, ct:ct.substring(0,30), title:title, err:errMsg, htmlLen:html.length,
-    html5k: html.substring(0,5000)};
-}
-
-async function main() {
-  if (ODS_PASS.length < 2) { console.error('ODS_PASSWORD not set'); process.exit(1); }
-  var sess = await login(); var cookie = sess.cookie; var ua = sess.ua;
-  var findings = {ts:new Date().toISOString(), version:'v15e', sections:{}};
-
-  // First: probe REST API for orgTypeValues
-  console.log('Probing orgTypeValues REST APIs...');
-  var jhdrs = {Cookie:cookie,'User-Agent':ua,'Accept':'application/json'};
-  var orgRestEndpoints = [
-    '/asp/rest_v2/aboveStore/orgTypeValues?orgType=area&categoryId=4&storeAccess=true',
-    '/asp/rest_v2/aboveStore/orgTypeValues?orgType=area&categoryId=1&storeAccess=true',
-    '/asp/rest_v2/aboveStore/orgTypeValues?orgType=area',
-    '/asp/rest_v2/aboveStore/orgTypes?categoryId=4&storeAccess=true',
-    '/asp/rest_v2/aboveStore/orgTypes?storeAccess=true',
-    '/asp/rest_v2/aboveStore/stores?storeAccess=true&orgType=area',
-    '/asp/rest_v2/aboveStore/hierarchy?storeAccess=true',
-    '/asp/rest_v2/aboveStore/user'
-  ];
-  var restResults = {};
-  for (var i=0; i<orgRestEndpoints.length; i++) {
-    var ep = orgRestEndpoints[i];
-    var r = await fetch(ODS_URL+ep, {headers:jhdrs});
-    var ct = r.headers.get('content-type')||'';
-    var body = await r.text();
-    var isJson = ct.includes('json');
-    restResults[ep] = {status:r.status, ct:ct.substring(0,40), body:body.substring(0,500), isJson:isJson};
-    console.log(r.status, ep.substring(30), isJson?'JSON':'HTML');
-    if (isJson && r.status===200) console.log('  >>>', body.substring(0,200));
-  }
-  findings.sections.restProbe = restResults;
-
-  // Now try all realistic orgType+value combos
-  // From the PDF: "Trade Area 29" → try area/29, area/29865 (storeId range)
-  // Harold companyId=8, brandId=71, datasetId=30
-  var combos = [
-    {orgType:'area',   orgTypeVal:'29',    store:'all',   date:'2026-04-19'},
-    {orgType:'area',   orgTypeVal:'29',    store:'29865', date:'2026-04-19'},
-    {orgType:'company',orgTypeVal:'8',     store:'all',   date:'2026-04-19'},
-    {orgType:'company',orgTypeVal:'206',   store:'all',   date:'2026-04-19'}, // companyId from filesDir CID206
-    {orgType:'concept',orgTypeVal:'71',    store:'all',   date:'2026-04-19'},
-    {orgType:'concept',orgTypeVal:'1',     store:'all',   date:'2026-04-19'},
-    {orgType:'area',   orgTypeVal:'1',     store:'all',   date:'2026-04-19'},
-    {orgType:'region', orgTypeVal:'29',    store:'all',   date:'2026-04-19'},
-    {orgType:'market', orgTypeVal:'29',    store:'all',   date:'2026-04-19'},
-    {orgType:'none',   orgTypeVal:'0',     store:'all',   date:'2026-04-19'},
-    {orgType:'area',   orgTypeVal:'29',    store:'all',   date:'2026-04-20'},
-    {orgType:'company',orgTypeVal:'8',     store:'29865', date:'2026-04-19'}
-  ];
-
-  var results = [];
-  for (var ci=0; ci<combos.length; ci++) {
-    var c = combos[ci];
-    console.log('Trying: orgType='+c.orgType+' val='+c.orgTypeVal+' store='+c.store+' date='+c.date);
-    var s2data = await getS2(cookie, ua);
-    s2data.cookie = cookie; s2data.ua = ua;
-    var res = await tryPost(s2data, c.orgType, c.orgTypeVal, c.store, c.date);
-    console.log('  ->', res.hit ? '*** PDF HIT '+res.bytes+'b' : 'title='+res.title+' err='+res.err);
-    if (res.hit) {
-      findings.pdfHit = {orgType:c.orgType, orgTypeVal:c.orgTypeVal, store:c.store, date:c.date, bytes:res.bytes};
-      try { fs.writeFileSync('/opt/render/project/src/public/test-dispatch.pdf', res.buf); } catch(e){}
-      await save(findings);
-      await new Promise(function(r){ setTimeout(r,6000); });
-      return;
-    }
-    results.push({combo:c, status:res.status, title:res.title, err:res.err, htmlLen:res.htmlLen,
-      html5k: ci < 3 ? res.html5k : undefined});
-  }
-  findings.sections.comboResults = results;
+  // Save different windows of the HTML
+  findings.sections.s3_0_5k   = s3html.substring(0,5000);
+  findings.sections.s3_5_15k  = s3html.substring(5000,15000);
+  findings.sections.s3_15_25k = s3html.substring(15000,25000);
+  findings.sections.s3_flowKey = (s3html.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/) || ['',''])[1];
+  findings.sections.s3_ct = s3ct;
+  findings.sections.s3_len = s3html.length;
+  // Extract iframes and anchors
+  var iframes = (s3html.match(/<iframe[^>]+src="([^"]+)"/g)||[]).map(function(m){return m;});
+  var links = (s3html.match(/href="([^"]*(?:pdf|report|export|download)[^"]*)"/gi)||[]).map(function(m){return m;});
+  findings.sections.s3_iframes = iframes.slice(0,10);
+  findings.sections.s3_links = links.slice(0,10);
+  console.log('  iframes:', iframes.slice(0,3));
+  console.log('  links:', links.slice(0,3));
+  console.log('  flowKey in s3:', findings.sections.s3_flowKey);
 
   await save(findings);
   await new Promise(function(r){ setTimeout(r,6000); });
-  console.log('v15e done — no PDF hit');
+  console.log('v15f done');
 }
 main().catch(function(e){ console.error('FATAL:', e.message); process.exit(1); });
