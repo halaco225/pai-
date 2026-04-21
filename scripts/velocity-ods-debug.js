@@ -53,7 +53,7 @@ async function save(findings) {
   try {
     var shaRes = await fetch(apiUrl, {headers:ghHdrs});
     var shaJson = shaRes.ok ? await shaRes.json() : {};
-    var body = {message:'debug v15f '+new Date().toISOString(), content:content64};
+    var body = {message:'debug v15g '+new Date().toISOString(), content:content64};
     if (shaJson.sha) body.sha = shaJson.sha;
     var putRes = await fetch(apiUrl, {method:'PUT', headers:ghHdrs, body:JSON.stringify(body)});
     console.log('[save] GitHub:', putRes.status, putRes.ok?'OK':'FAIL');
@@ -63,39 +63,51 @@ async function save(findings) {
 async function main() {
   if (ODS_PASS.length < 2) { console.error('ODS_PASSWORD not set'); process.exit(1); }
   var sess = await login(); var cookie = sess.cookie; var ua = sess.ua;
-  var findings = {ts:new Date().toISOString(), version:'v15f', sections:{}};
+  var findings = {ts:new Date().toISOString(), version:'v15g', sections:{}};
   var jhdrs = {Cookie:cookie,'User-Agent':ua,'Accept':'application/json'};
 
-  // A. JRS keyword search for Dispatch/Daily
-  console.log('A. JRS keyword search...');
-  var kws = ['Dispatch','Daily','DailyDispatch','Performance','Instore','Driver'];
-  var kwResults = {};
-  for (var ki=0; ki<kws.length; ki++) {
-    var r = await fetch(ODS_URL+'/asp/rest_v2/resources?type=reportUnit&q='+encodeURIComponent(kws[ki])+'&limit=50', {headers:jhdrs});
-    var j = await r.json();
-    var items = (j.resourceLookup||[]).map(function(i){return {label:i.label,uri:i.uri};});
-    console.log('  ['+kws[ki]+'] '+items.length+' hits');
-    items.forEach(function(i){ console.log('    '+i.label+' -> '+i.uri); });
-    if (items.length > 0) kwResults[kws[ki]] = items;
+  // Step 1: call the same XHR the browser calls to get company list
+  console.log('Step 1: fetch orgType company list (brandId=1)...');
+  var brandIds = ['1','71','8','30'];
+  var companyId = null;
+  for (var bi=0; bi<brandIds.length; bi++) {
+    var or = await fetch(ODS_URL+'/asp/rest_v2/aboveStore/orgType?brandId='+brandIds[bi]+'&orgType=company', {headers:jhdrs});
+    var oct = or.headers.get('content-type')||'';
+    var obody = await or.text();
+    console.log('  brandId='+brandIds[bi]+': '+or.status+' '+oct.substring(0,30)+' -> '+obody.substring(0,300));
+    findings.sections['orgType_brandId_'+brandIds[bi]] = {status:or.status, body:obody.substring(0,500)};
+    if (or.status===200 && oct.includes('json')) {
+      try {
+        var oj = JSON.parse(obody);
+        // Find Ayvaz entry
+        var items = oj.item || oj.items || oj.companies || oj.data || [];
+        items.forEach(function(item) {
+          console.log('    item:', JSON.stringify(item));
+          var n = (item.name||item.label||item.orgValue||'').toLowerCase();
+          if (n.indexOf('ayvaz')>=0 || n.indexOf('pizza')>=0) {
+            companyId = item.id || item.value || item.orgValueId || item.storeId || null;
+            console.log('    *** AYVAZ found, id='+companyId);
+          }
+        });
+      } catch(e) { console.log('  parse err:', e.message); }
+    }
   }
-  findings.sections.kwSearch = kwResults;
+  findings.sections.detectedCompanyId = companyId;
 
-  // B. Recursive folder listing
-  console.log('\nB. Folder listing...');
-  var fr = await fetch(ODS_URL+'/asp/rest_v2/resources?folderUri=%2FReports%2FPizza_Hut&recursive=true&limit=500&type=reportUnit', {headers:jhdrs});
-  var fj = await fr.json();
-  var folderItems = (fj.resourceLookup||[]).map(function(i){return {label:i.label,uri:i.uri};});
-  console.log('  /Reports/Pizza_Hut: '+folderItems.length+' reports');
-  folderItems.forEach(function(i){ console.log('    '+i.label+' -> '+i.uri); });
-  findings.sections.folderPH = folderItems;
+  // Also try orgTypeValue endpoint (the second XHR from browser)
+  console.log('\nFetching orgTypeValue stores...');
+  var ovr = await fetch(ODS_URL+'/asp/rest_v2/aboveStore/orgTypeValue?storeAccess=true&brandId=1&orgType=company', {headers:jhdrs});
+  var ovbody = await ovr.text();
+  console.log('  orgTypeValue:', ovr.status, ovbody.substring(0,400));
+  findings.sections.orgTypeValueEndpoint = {status:ovr.status, body:ovbody.substring(0,1000)};
 
-  // C. Get full s3 HTML for area/29 submission — save chars 0-25000
-  console.log('\nC. Full s3 response...');
+  // Step 2: get to s2
+  console.log('\nStep 2: get s2...');
   var csrf = await freshCsrf(cookie, ua);
-  var h = {Cookie:cookie,'User-Agent':ua,'X-Requested-With':'OWASP CSRFGuard Project',
+  var h1 = {Cookie:cookie,'User-Agent':ua,'X-Requested-With':'OWASP CSRFGuard Project',
     'Referer':ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow'};
-  h[csrf.name] = csrf.value;
-  var s1r = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&categoryId=4', {headers:h});
+  h1[csrf.name] = csrf.value;
+  var s1r = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&categoryId=4', {headers:h1});
   var s1html = await s1r.text();
   var km = s1html.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/);
   var s1Key = km ? km[1] : 'e1s1';
@@ -109,39 +121,67 @@ async function main() {
   var s2html = await s2r.text();
   var km2 = s2html.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/);
   var s2Key = km2 ? km2[1] : 'e1s2';
+  console.log('  s2Key:', s2Key);
 
-  csrf = await freshCsrf(cookie, ua);
-  var hp = {Cookie:cookie,'User-Agent':ua,'Content-Type':'application/x-www-form-urlencoded',
-    'X-Requested-With':'OWASP CSRFGuard Project',
-    'Referer':ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&_flowExecutionKey='+s2Key};
-  hp[csrf.name] = csrf.value;
-  var pb = '_eventId=retrieveReports&orgTypes=area&orgTypeValues=29&storesInOrgType=all&selectedDate=2026-04-19';
-  var s3r = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&_flowExecutionKey='+encodeURIComponent(s2Key),
-    {method:'POST', headers:hp, body:pb, redirect:'follow'});
-  var s3ct = s3r.headers.get('content-type')||'';
-  var s3html = await s3r.text();
-  console.log('  s3 status='+s3r.status+' ct='+s3ct+' len='+s3html.length);
-  if (s3ct.includes('pdf')) {
-    findings.pdfHit = {bytes:s3html.length, method:'direct'};
+  // Step 3: POST with company + all stores
+  var orgTypeValsToTry = companyId ? [String(companyId)] : [];
+  orgTypeValsToTry = orgTypeValsToTry.concat(['8','206','71','1','30','0','all']);
+  var postResults = [];
+  for (var oi=0; oi<orgTypeValsToTry.length; oi++) {
+    var ov = orgTypeValsToTry[oi];
+    // Get fresh s2 each time
+    csrf = await freshCsrf(cookie, ua);
+    var h1b = {Cookie:cookie,'User-Agent':ua,'X-Requested-With':'OWASP CSRFGuard Project',
+      'Referer':ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow'};
+    h1b[csrf.name] = csrf.value;
+    var s1rb = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&categoryId=4', {headers:h1b});
+    var s1hb = await s1rb.text();
+    var kmb = s1hb.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/);
+    var s1kb = kmb ? kmb[1] : 'e1s1';
+    csrf = await freshCsrf(cookie, ua);
+    var h2b = {Cookie:cookie,'User-Agent':ua,'X-Requested-With':'OWASP CSRFGuard Project',
+      'Referer':ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&categoryId=4'};
+    h2b[csrf.name] = csrf.value;
+    var s2rb = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow'
+      +'&_flowExecutionKey='+encodeURIComponent(s1kb)+'&_eventId=selectParameters&selectedReportId='+REPORT_ID, {headers:h2b});
+    var s2hb = await s2rb.text();
+    var km2b = s2hb.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/);
+    var s2kb = km2b ? km2b[1] : 'e1s2';
+
+    csrf = await freshCsrf(cookie, ua);
+    var hp = {Cookie:cookie,'User-Agent':ua,'Content-Type':'application/x-www-form-urlencoded',
+      'X-Requested-With':'OWASP CSRFGuard Project',
+      'Referer':ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&_flowExecutionKey='+s2kb};
+    hp[csrf.name] = csrf.value;
+    var pb = '_eventId=retrieveReports&orgTypes=company&orgTypeValues='+encodeURIComponent(ov)+'&storesInOrgType=all&selectedDate=2026-04-19';
+    var pr = await fetch(ODS_URL+'/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&_flowExecutionKey='+encodeURIComponent(s2kb),
+      {method:'POST', headers:hp, body:pb, redirect:'follow'});
+    var pct = pr.headers.get('content-type')||'';
+    var ploc = pr.headers.get('location')||'';
+    if (pct.includes('pdf') || pct.includes('octet')) {
+      var buf = await pr.buffer();
+      console.log('*** PDF HIT: orgTypeValues='+ov+' ('+buf.length+' bytes)');
+      findings.pdfHit = {orgTypeValues:ov, bytes:buf.length};
+      try { fs.writeFileSync('/opt/render/project/src/public/test-dispatch.pdf', buf); } catch(e){}
+      await save(findings);
+      await new Promise(function(r){ setTimeout(r,6000); });
+      return;
+    }
+    var phtml = await pr.text();
+    var ptitle = (phtml.match(/<title>([^<]+)<\/title>/i)||['','?'])[1];
+    var pkey = (phtml.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/) || ['',''])[1];
+    // Save full HTML for first attempt
+    if (oi===0) findings.sections.firstAttemptHtml = phtml.substring(0,30000);
+    // Look for iframes, JS window.open, report URLs
+    var iframes = (phtml.match(/src="([^"]*(?:report|viewer|execute|pdf)[^"]*)"/gi)||[]).slice(0,5);
+    var jsurls = (phtml.match(/(?:window\.open|location\.href)\s*[=(]\s*['"]([^'"]+)['"]/g)||[]).slice(0,5);
+    console.log('  orgTypeValues='+ov+': status='+pr.status+' title='+ptitle+' key='+pkey+' iframes='+iframes.length+' jsurls='+jsurls.length);
+    postResults.push({ov:ov, status:pr.status, title:ptitle, key:pkey, iframes:iframes, jsurls:jsurls, htmlLen:phtml.length});
   }
-  // Save different windows of the HTML
-  findings.sections.s3_0_5k   = s3html.substring(0,5000);
-  findings.sections.s3_5_15k  = s3html.substring(5000,15000);
-  findings.sections.s3_15_25k = s3html.substring(15000,25000);
-  findings.sections.s3_flowKey = (s3html.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/) || ['',''])[1];
-  findings.sections.s3_ct = s3ct;
-  findings.sections.s3_len = s3html.length;
-  // Extract iframes and anchors
-  var iframes = (s3html.match(/<iframe[^>]+src="([^"]+)"/g)||[]).map(function(m){return m;});
-  var links = (s3html.match(/href="([^"]*(?:pdf|report|export|download)[^"]*)"/gi)||[]).map(function(m){return m;});
-  findings.sections.s3_iframes = iframes.slice(0,10);
-  findings.sections.s3_links = links.slice(0,10);
-  console.log('  iframes:', iframes.slice(0,3));
-  console.log('  links:', links.slice(0,3));
-  console.log('  flowKey in s3:', findings.sections.s3_flowKey);
+  findings.sections.postResults = postResults;
 
   await save(findings);
   await new Promise(function(r){ setTimeout(r,6000); });
-  console.log('v15f done');
+  console.log('v15g done');
 }
 main().catch(function(e){ console.error('FATAL:', e.message); process.exit(1); });
