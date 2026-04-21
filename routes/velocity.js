@@ -387,8 +387,44 @@ router.get('/trends', async (req, res) => {
 // ── GET /api/velocity/dow-trends — day-of-week patterns ──────────────
 router.get('/dow-trends', async (req, res) => {
   try {
-    const storeId = req.query.store || null;
-    const dowRows = await db.getVelocityDOWTrends({ storeId, weeks: 12 });
+    const storeId   = req.query.store      || null;
+    const areaCoach = req.query.area_coach || null;
+    const region    = req.query.region     || null;
+
+    // No area/region filter — use the fast SQL aggregate path
+    if (!areaCoach && !region) {
+      const dowRows = await db.getVelocityDOWTrends({ storeId, weeks: 12 });
+      return res.json({ patterns: analyzeDOWPatterns(dowRows) });
+    }
+
+    // Area/region filter — fetch raw records, filter via ALIGNMENT, aggregate in JS
+    const endDate   = getYesterdayChicago();
+    const startDate = (() => {
+      const d = new Date(endDate + 'T12:00:00Z');
+      d.setUTCDate(d.getUTCDate() - 84); // 12 weeks
+      return d.toISOString().split('T')[0];
+    })();
+
+    let records = await db.getVelocityRecords({ startDate, endDate });
+    if (storeId)   records = records.filter(r => r.store_id === storeId);
+    if (areaCoach) records = records.filter(r => (ALIGNMENT[r.store_id]?.area_coach) === areaCoach);
+    if (region)    records = records.filter(r => (ALIGNMENT[r.store_id]?.region_coach) === region);
+    records = records.filter(r => r.ist_avg != null);
+
+    const DOW_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const byDOW = {};
+    for (const r of records) {
+      const d = r.record_date instanceof Date ? r.record_date : new Date(r.record_date + 'T12:00:00Z');
+      const dow = d.getUTCDay();
+      if (!byDOW[dow]) byDOW[dow] = { dow, day_name: DOW_NAMES[dow], vals: [] };
+      byDOW[dow].vals.push(parseFloat(r.ist_avg));
+    }
+    const dowRows = Object.values(byDOW).map(d => ({
+      dow: d.dow, day_name: d.day_name,
+      avg_ist: d.vals.reduce((a, v) => a + v, 0) / d.vals.length,
+      sample_count: d.vals.length
+    }));
+
     res.json({ patterns: analyzeDOWPatterns(dowRows) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

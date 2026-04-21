@@ -342,13 +342,31 @@ async function loadDay(dateStr) {
   } catch(e) { setStatus('Error: ' + e.message, 'err'); }
 }
 
+// Resolve the free-text store search to an exact store_id for API calls.
+// Returns null if the search is empty or matches more than one store.
+function resolveStoreForApi() {
+  const search = state.filters.store;
+  if (!search) return null;
+  const src = state.wtdData?.stores || [];
+  // Normalize input to S######
+  const normalized = 'S' + search.replace(/^[Ss]/, '').padStart(6, '0');
+  const exact = src.find(s => s.store_id === normalized || s.store_id?.toLowerCase() === search.toLowerCase());
+  if (exact) return exact.store_id;
+  const matches = src.filter(s =>
+    s.name?.toLowerCase().includes(search) || s.store_id?.toLowerCase().includes(search)
+  );
+  return matches.length === 1 ? matches[0].store_id : null;
+}
+
 async function loadTrend() {
-  const weeks = document.getElementById('trendWeeks').value;
+  const weeks  = document.getElementById('trendWeeks').value;
   const region = state.filters.region;
   const area   = state.filters.area;
+  const store  = resolveStoreForApi();
   let url = `/api/velocity/trends?weeks=${weeks}`;
   if (region) url += `&region=${encodeURIComponent(region)}`;
   if (area)   url += `&area_coach=${encodeURIComponent(area)}`;
+  if (store)  url += `&store=${encodeURIComponent(store)}`;
 
   document.getElementById('trendChart').innerHTML = '<span class="spinner"></span>';
   try {
@@ -358,9 +376,14 @@ async function loadTrend() {
 }
 
 async function loadDOW() {
-  const area = state.filters.area;
-  let url = '/api/velocity/dow-trends';
-  if (area) url += `?area_coach=${encodeURIComponent(area)}`;
+  const region = state.filters.region;
+  const area   = state.filters.area;
+  const store  = resolveStoreForApi();
+  const params = [];
+  if (region) params.push(`region=${encodeURIComponent(region)}`);
+  if (area)   params.push(`area_coach=${encodeURIComponent(area)}`);
+  if (store)  params.push(`store=${encodeURIComponent(store)}`);
+  const url = '/api/velocity/dow-trends' + (params.length ? '?' + params.join('&') : '');
 
   document.getElementById('dowGrid').innerHTML = '<span class="spinner"></span>';
   try {
@@ -469,7 +492,9 @@ function applyFilters(stores) {
   if (area)   filtered = filtered.filter(s => s.area_coach === area);
   if (search) filtered = filtered.filter(s => s.name?.toLowerCase().includes(search) || s.store_id?.toLowerCase().includes(search));
 
-  if (state.view === 'day') renderTableDay(filtered);
+  if (state.view === 'trend') { loadTrend(); }
+  else if (state.view === 'dow') { loadDOW(); }
+  else if (state.view === 'day') renderTableDay(filtered);
   else renderTable(filtered);
   renderScorecards(filtered, state.view === 'day');
   maybeLoadInsights();
@@ -480,7 +505,9 @@ function clearFilters() {
   document.getElementById('areaFilter').value = '';
   document.getElementById('storeSearch').value = '';
   state.filters = { region: '', area: '', store: '' };
-  if (state.view === 'day' && state.dayData) renderTableDay(state.dayData.stores || []);
+  if (state.view === 'trend') loadTrend();
+  else if (state.view === 'dow') loadDOW();
+  else if (state.view === 'day' && state.dayData) renderTableDay(state.dayData.stores || []);
   else if (state.wtdData) renderTable(state.wtdData.stores || []);
   document.getElementById('insightsPanel').classList.add('hidden');
 }
