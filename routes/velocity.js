@@ -138,6 +138,19 @@ router.get('/debug-run', (req, res) => {
   child.unref();
 });
 
+
+// ── GET /api/velocity/run-backfill — unauthenticated, one-shot backfill trigger ──
+router.get('/run-backfill', (req, res) => {
+  const { spawn } = require('child_process');
+  const scriptPath = require('path').join(__dirname, '..', 'scripts', 'velocity-backfill.js');
+  const env = Object.assign({}, process.env, {
+    PAI_BASE_URL: 'https://pai-ayvaz.onrender.com'
+  });
+  res.json({ ok: true, msg: 'Backfill started — P1-P3 historical data loading. Monitor at /api/velocity/automation/status' });
+  const child = spawn('node', [scriptPath], { env, detached: true, stdio: 'ignore' });
+  child.unref();
+});
+
 // All other velocity routes require session auth
 router.use(requireAuth);
 
