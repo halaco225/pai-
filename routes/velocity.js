@@ -111,7 +111,7 @@ router.post('/automation/send-emails', async (req, res) => {
       dailyByDate[d].push(r);
     }
 
-    const excelBuffer = generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate });
+    const excelBuffer = await generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate });
     const emailResults = await sendDailyEmails(wtdStores, targetDate, excelBuffer);
 
     await db.logVelocityJob({
@@ -596,7 +596,7 @@ router.post('/export', async (req, res) => {
       dailyByDate[d].push(r);
     }
 
-    const buffer = generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate });
+    const buffer = await generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate });
 
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

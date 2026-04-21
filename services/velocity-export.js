@@ -1,10 +1,10 @@
 // =====================================================================
-// VELOCITY EXPORT — Excel workbook generation
+// VELOCITY EXPORT — Excel workbook generation (ExcelJS)
 // Sheets: WTD IST, PTD IST, Daily tabs, Trend, PTD Trend
 // =====================================================================
 'use strict';
 
-const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 
 const DAY_NAMES  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -34,6 +34,14 @@ function bucketPct(count, totalOrders) {
   return (totalOrders > 0) ? Math.round((count / totalOrders) * 10000) / 10000 : null;
 }
 
+// ARGB hex for IST value: green <19, orange 19-25, red >25
+function istColorArgb(val) {
+  if (val == null || isNaN(val)) return null;
+  if (val < 19)  return 'FF28A745';  // green
+  if (val <= 25) return 'FFFD7E14';  // orange
+  return 'FFDC3545';                  // red
+}
+
 const IST_HEADERS = [
   'Level','Region','Area Coach','Store #','Store Name',
   'Avg IST (mins)','Total Orders',
@@ -44,6 +52,9 @@ const IST_HEADERS = [
   'IST >25 #','IST >25 %',
   'IST <19%'
 ];
+
+// 1-based column index of "Avg IST (mins)" in IST sheets
+const AVG_IST_COL = 6;
 
 function istRow(level, region, area, storeId, storeName, istAvg, orders, lt10, t1014, t1518, t1925, gt25, lt19pct) {
   return [
@@ -134,8 +145,45 @@ function delta(prev, curr) {
   return d > 0 ? `▲ +${d.toFixed(1)}` : d < 0 ? `▼ ${d.toFixed(1)}` : '—';
 }
 
-function generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate, allWeekStores }) {
-  const wb = XLSX.utils.book_new();
+// ── Shared header row style ───────────────────────────────────────────
+function styleHeaderRow(row) {
+  row.eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFEEEEEE' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF222222' } };
+  });
+}
+
+// ── Add an IST hierarchy sheet ────────────────────────────────────────
+function addISTSheet(wb, sheetName, title, stores) {
+  const ws = wb.addWorksheet(sheetName);
+  ws.views = [{ state: 'frozen', xSplit: 5, ySplit: 1 }];
+
+  // Row 1: title
+  const titleRow = ws.addRow([title]);
+  titleRow.font = { bold: true, size: 12 };
+
+  // Row 2: column headers
+  styleHeaderRow(ws.addRow(IST_HEADERS));
+
+  // Data rows
+  for (const row of buildHierarchyRows(stores)) {
+    const level  = row[0];
+    const istVal = row[AVG_IST_COL - 1]; // 0-indexed
+    const wsRow  = ws.addRow(row);
+
+    const isBold = (level === 'TOTAL' || level === 'REGION' || level === 'AREA');
+    if (isBold) wsRow.font = { bold: true };
+
+    const color = istColorArgb(istVal);
+    if (color) {
+      wsRow.getCell(AVG_IST_COL).font = { bold: isBold, color: { argb: color } };
+    }
+  }
+}
+
+// ── Main export (async — ExcelJS requires writeBuffer) ────────────────
+async function generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate, allWeekStores }) {
+  const wb = new ExcelJS.Workbook();
   const dateRange = weekKey ? (() => {
     try {
       const tue = new Date(weekKey + 'T12:00:00Z');
@@ -144,30 +192,18 @@ function generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate, allW
     } catch(e) { return ''; }
   })() : '';
 
-  // ── WTD IST Sheet ────────────────────────────────────────────────
-  const wtdRows = [
-    [`WTD IST — ${periodWeek} ${dateRange}`],
-    IST_HEADERS,
-    ...buildHierarchyRows(wtdStores)
-  ];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wtdRows), 'WTD IST');
+  // ── WTD IST Sheet ────────────────────────────────────────────────────
+  addISTSheet(wb, 'WTD IST', `WTD IST — ${periodWeek} ${dateRange}`, wtdStores);
 
-  // ── PTD IST Sheet (all weeks in period) ──────────────────────────
+  // ── PTD IST Sheet ────────────────────────────────────────────────────
   if (allWeekStores && allWeekStores.length) {
-    const ptdRows = [
-      [`PTD IST — ${periodWeek?.replace(/W\d+/,'')} Period To Date`],
-      IST_HEADERS,
-      ...buildHierarchyRows(allWeekStores)
-    ];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ptdRows), 'PTD IST');
+    addISTSheet(wb, 'PTD IST', `PTD IST — ${periodWeek?.replace(/W\d+/,'')} Period To Date`, allWeekStores);
   }
 
-  // ── Daily Sheets ─────────────────────────────────────────────────
+  // ── Daily Sheets ─────────────────────────────────────────────────────
   if (dailyByDate) {
-    const sortedDates = Object.keys(dailyByDate).sort();
-    for (const dateStr of sortedDates) {
-      const dayStores = dailyByDate[dateStr] || [];
-      const displayStores = dayStores.map(r => ({
+    for (const dateStr of Object.keys(dailyByDate).sort()) {
+      const dayStores = (dailyByDate[dateStr] || []).map(r => ({
         store_id: r.store_id, name: r.name||'', area: r.area||'',
         area_coach: r.area_coach||'', region_coach: r.region_coach||'',
         wtd_ist: r.ist_avg ? parseFloat(r.ist_avg) : null,
@@ -176,22 +212,15 @@ function generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate, allW
         wtd_1518: r.ist_1518||0, wtd_1925: r.ist_1925||0,
         wtd_gt25: r.ist_gt25||0, wtd_lt19_pct: r.ist_lt19_pct ? parseFloat(r.ist_lt19_pct) : null
       }));
-
-      const dayRows = [
-        [`${fmtDate(dateStr)} — ${periodWeek}`],
-        IST_HEADERS,
-        ...buildHierarchyRows(displayStores)
-      ];
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dayRows), fmtDate(dateStr).substring(0, 31));
+      addISTSheet(wb, fmtDate(dateStr).substring(0, 31), `${fmtDate(dateStr)} — ${periodWeek}`, dayStores);
     }
   }
 
-  // ── Trend Sheet (day-over-day within the week) ────────────────────
+  // ── Trend Sheet (day-over-day within the week) ────────────────────────
   if (dailyByDate) {
     const sortedDates = Object.keys(dailyByDate).sort().filter(d => (dailyByDate[d]||[]).length > 0);
     if (sortedDates.length > 0) {
-      // Build map: store_id -> { date -> ist_avg }
-      const storeMap = {};
+      const storeMap  = {};
       const storeInfo = {};
       for (const dateStr of sortedDates) {
         for (const r of (dailyByDate[dateStr] || [])) {
@@ -203,56 +232,66 @@ function generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate, allW
         }
       }
 
-      // Headers: Level, Region, Area Coach, Store #, Store Name, [Day IST, Δ, Day IST, Δ, ...]
+      // Headers: identity cols + [Day IST, Δ, Day IST, Δ, ...]
       const trendHdrs = ['Level','Region','Area Coach','Store #','Store Name'];
       for (let i = 0; i < sortedDates.length; i++) {
         trendHdrs.push(`${fmtDate(sortedDates[i])} IST`);
-        if (i < sortedDates.length - 1) trendHdrs.push(`Δ`);
+        if (i < sortedDates.length - 1) trendHdrs.push('Δ');
       }
 
-      const trendRows = [[`Trend — Daily IST ${periodWeek} ${dateRange}`], trendHdrs];
+      const ws = wb.addWorksheet('Trend');
+      ws.views = [{ state: 'frozen', xSplit: 5, ySplit: 1 }];
+      ws.addRow([`Trend — Daily IST ${periodWeek} ${dateRange}`]).font = { bold: true, size: 12 };
+      styleHeaderRow(ws.addRow(trendHdrs));
+
       for (const [storeId, dayIST] of Object.entries(storeMap)) {
-        const info = storeInfo[storeId];
-        const row = ['STORE', info.region_coach, info.area_coach, storeId, info.name];
+        const info    = storeInfo[storeId];
+        const rowData = ['STORE', info.region_coach, info.area_coach, storeId, info.name];
         for (let i = 0; i < sortedDates.length; i++) {
-          row.push(dayIST[sortedDates[i]] ?? null);
-          if (i < sortedDates.length - 1) {
-            row.push(delta(dayIST[sortedDates[i]], dayIST[sortedDates[i+1]]));
-          }
+          rowData.push(dayIST[sortedDates[i]] ?? null);
+          if (i < sortedDates.length - 1) rowData.push(delta(dayIST[sortedDates[i]], dayIST[sortedDates[i+1]]));
         }
-        trendRows.push(row);
+        const wsRow = ws.addRow(rowData);
+        // Color IST cells (cols 6, 8, 10, ...)
+        for (let i = 0; i < sortedDates.length; i++) {
+          const color = istColorArgb(dayIST[sortedDates[i]]);
+          if (color) wsRow.getCell(6 + i * 2).font = { color: { argb: color } };
+        }
       }
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(trendRows), 'Trend');
     }
   }
 
-  // ── PTD Trend Sheet (week-over-week) ─────────────────────────────
+  // ── PTD Trend Sheet (week-over-week) ──────────────────────────────────
   if (allWeekStores && allWeekStores.length && allWeekStores[0]?.weeklyIST) {
     const weeks = Object.keys(allWeekStores[0].weeklyIST).sort();
 
-    // Headers: Level, Region, Area Coach, Store #, Store Name, [Wk IST, Δ, Wk IST, Δ, ...]
-    const ptdTrendHdrs = ['Level','Region','Area Coach','Store #','Store Name'];
+    const ptdHdrs = ['Level','Region','Area Coach','Store #','Store Name'];
     for (let i = 0; i < weeks.length; i++) {
-      ptdTrendHdrs.push(`${weeks[i]} Avg IST`);
-      if (i < weeks.length - 1) ptdTrendHdrs.push('Δ');
+      ptdHdrs.push(`${weeks[i]} Avg IST`);
+      if (i < weeks.length - 1) ptdHdrs.push('Δ');
     }
 
-    const ptdTrendRows = [[`PTD Trend — Week over Week IST`], ptdTrendHdrs];
+    const ws = wb.addWorksheet('PTD Trend');
+    ws.views = [{ state: 'frozen', xSplit: 5, ySplit: 1 }];
+    ws.addRow([`PTD Trend — Week over Week IST`]).font = { bold: true, size: 12 };
+    styleHeaderRow(ws.addRow(ptdHdrs));
+
     for (const s of allWeekStores) {
       if (s.level !== 'STORE') continue;
-      const row = ['STORE', s.region_coach||'', s.area_coach||'', s.store_id, s.name];
+      const rowData = ['STORE', s.region_coach||'', s.area_coach||'', s.store_id, s.name];
       for (let i = 0; i < weeks.length; i++) {
-        row.push(s.weeklyIST[weeks[i]] ?? null);
-        if (i < weeks.length - 1) {
-          row.push(delta(s.weeklyIST[weeks[i]], s.weeklyIST[weeks[i+1]]));
-        }
+        rowData.push(s.weeklyIST[weeks[i]] ?? null);
+        if (i < weeks.length - 1) rowData.push(delta(s.weeklyIST[weeks[i]], s.weeklyIST[weeks[i+1]]));
       }
-      ptdTrendRows.push(row);
+      const wsRow = ws.addRow(rowData);
+      for (let i = 0; i < weeks.length; i++) {
+        const color = istColorArgb(s.weeklyIST[weeks[i]]);
+        if (color) wsRow.getCell(6 + i * 2).font = { color: { argb: color } };
+      }
     }
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ptdTrendRows), 'PTD Trend');
   }
 
-  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  return wb.xlsx.writeBuffer();
 }
 
 module.exports = { generateExcelExport };
