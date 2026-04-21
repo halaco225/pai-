@@ -1,195 +1,171 @@
 {
-  "ts": "2026-04-21T03:14:18.673Z",
-  "version": "v15c",
+  "ts": "2026-04-21T05:28:51.496Z",
+  "version": "v15d",
   "sections": {
-    "s2FormSnippet": "g the 'View' button\");\r\n                                                ev.preventDefault();\r\n                                            } else {\r\n                                                $(\"#retrieveReportsForm\").submit();\r\n                                            }\r\n                                        });\r\n\r\n                                $('#orgTypes').change(\r\n                                        function (ev) {\r\n                                            OrgType.orgTypeChanged('1');\r\n                                        });\r\n                                $('#orgTypeValues').change(\r\n                                        function (ev) {\r\n                                            OrgType.orgTypeValueChanged({brandId: \"1\"});\r\n                                        });\r\n                            });\r\n                </script>\r\n\r\n                <div class=\"tabs\">\r\n                    \r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<ul  class=\"control tabSet buttons horizontal \">\r\n    \r\n        \r\n        \r\n\r\n        \r\n\r\n        \r\n            \r\n                \r\n            \r\n            \r\n        \r\n\r\n        <li class=\"tab first \">\r\n            <a id=\"step1\" class=\"button\">\r\n                <span class=\"wrap\">InStore Reports</span>\r\n            </a>\r\n        </li><!--/.tab-->\r\n\r\n    \r\n        \r\n        \r\n\r\n        \r\n            \r\n            \r\n        \r\n\r\n        \r\n            \r\n            \r\n                \r\n            \r\n        \r\n\r\n        <li class=\"tab last selected\">\r\n            <a id=\"step2\" class=\"button\">\r\n                <span class=\"wrap\">Parameters</span>\r\n            </a>\r\n        </li><!--/.tab-->\r\n\r\n    \r\n</ul><!--/.control-->\r\n\r\n                </div>\r\n\r\n            \r\n            \r\n\t\t</div>\r\n        \r\n\t\t<div  class=\"body  \" >\r\n            \r\n\t\t\t    \r\n\r\n                <div class=\"instore__parameters\">\r\n                    <div class=\"heading\">\r\n                        <h1>Daily Dispatch Performance</h1>\r\n                    </div>\r\n                    <div class=\"instore__parameters__form\">\r\n                        <form name=\"retrieveReportsForm\" id=\"retrieveReportsForm\" method='POST' action='/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&_flowExecutionKey=e1s2'>\r\n                            <input type='hidden' name='_eventId' value='retrieveReports' />\r\n\r\n                            <label class=\"control select\" title=\"OrgType Select\" for=\"orgTypes\">\r\n                                <!-- <span class=\"wrap\">Label</span> -->\r\n                                <select class=\"instore__input--select\" id=\"orgTypes\" name=\"orgTypes\" style=\"text-transform: capitalize;\">\r\n                                    <option value=\"none\">--- Select By ---</option>\r\n                                    \r\n                                        <option value=\"concept\"> concept</option>\r\n                                    \r\n                                        <option value=\"client\"> client</option>\r\n                                    \r\n                                        <option value=\"company\"> company</option>\r\n                                    \r\n                                        <option value=\"terri",
-    "aboveStoreConfig": "",
-    "flowRefs": [
-      "/asp/reportGenerator.html"
-    ],
-    "aboveStoreMainSnippet": "",
-    "getAttempts": [
+    "fullForm": "<form name=\"retrieveReportsForm\" id=\"retrieveReportsForm\" method='POST' action='/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow&_flowExecutionKey=e1s2'>\r\n                            <input type='hidden' name='_eventId' value='retrieveReports' />\r\n\r\n                            <label class=\"control select\" title=\"OrgType Select\" for=\"orgTypes\">\r\n                                <!-- <span class=\"wrap\">Label</span> -->\r\n                                <select class=\"instore__input--select\" id=\"orgTypes\" name=\"orgTypes\" style=\"text-transform: capitalize;\">\r\n                                    <option value=\"none\">--- Select By ---</option>\r\n                                    \r\n                                        <option value=\"concept\"> concept</option>\r\n                                    \r\n                                        <option value=\"client\"> client</option>\r\n                                    \r\n                                        <option value=\"company\"> company</option>\r\n                                    \r\n                                        <option value=\"territory\"> territory</option>\r\n                                    \r\n                                        <option value=\"region\"> region</option>\r\n                                    \r\n                                        <option value=\"market\"> market</option>\r\n                                    \r\n                                        <option value=\"area\"> area</option>\r\n                                    \r\n                                        <option value=\"dma\"> dma</option>\r\n                                    \r\n                                        <option value=\"payroll\"> payroll</option>\r\n                                    \r\n                                        <option value=\"gl\"> gl</option>\r\n                                    \r\n                                </select>\r\n                                <!-- <span class=\"message warning\">error message here</span> -->\r\n                            </label>\r\n                            <label class=\"control select\" title=\"OrgTypeValue Select\" for=\"orgTypeValues\">\r\n                                <!-- <span class=\"wrap\">Label</span> -->\r\n                                <select class=\"instore__input--select\" id=\"orgTypeValues\" name=\"orgTypeValues\">\r\n                                    <option value=\"0\">--- Select Group ---</option>\r\n                                </select>\r\n                                <!-- <span class=\"message warning\">error message here</span> -->\r\n                            </label>\r\n                            <label class=\"control select\" title=\"StoresInOrgType Select\" for=\"storesInOrgType\">\r\n                                <!-- <span class=\"wrap\">Label</span> -->\r\n                                <select class=\"instore__input--select\" id=\"storesInOrgType\" name=\"storesInOrgType\">\r\n                                    <option value=\"all\">--- All Stores ---</option>\r\n                                </select>\r\n                                <!-- <span class=\"message warning\">error message here</span> -->\r\n                            </label>\r\n                            <script>\r\n                                require([\"jquery\", \"jquery.ui\"],\r\n                                        function ($) {\r\n                                            $(\"#selectedDate\").datepicker({dateFormat: 'yy-mm-dd'});\r\n                                        });\r\n                            </script>\r\n                            <div class=\"instore__input--datepicker inline flex-row\">\r\n                                <i class=\"fa fa-calendar\" aria-hidden=\"true\"></i>\r\n                                <input class=\"instore__input datepicker\" id=\"selectedDate\" type=\"text\" name=\"selectedDate\" value=\"2026-04-20\"/>\r\n                            </div>\r\n                            <div class=\"instore__buttons flex-row-center\">\r\n                                <button id=\"viewReportsButton\" class=\"instore__buttons__button--save\">\r\n                                    <span class=\"wrap\">View Report</span>\r\n                                </button>\r\n                            </div>\r\n                        </form>",
+    "orgTypesOptions": [
       {
-        "event": "getReportsForView",
-        "date": "04/19/2026",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "val": "none",
+        "label": "--- Select By ---"
       },
       {
-        "event": "getReportsForView",
-        "date": "2026-04-19",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "val": "concept",
+        "label": "concept"
       },
       {
-        "event": "getReportsForView",
-        "date": "04-19-2026",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "val": "client",
+        "label": "client"
       },
       {
-        "event": "viewReports",
-        "date": "04/19/2026",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "val": "company",
+        "label": "company"
       },
       {
-        "event": "viewReports",
-        "date": "2026-04-19",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "val": "territory",
+        "label": "territory"
       },
       {
-        "event": "viewReports",
-        "date": "04-19-2026",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "val": "region",
+        "label": "region"
       },
       {
-        "event": "downloadReport",
-        "date": "04/19/2026",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "val": "market",
+        "label": "market"
       },
       {
-        "event": "downloadReport",
-        "date": "2026-04-19",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "val": "area",
+        "label": "area"
       },
       {
-        "event": "downloadReport",
-        "date": "04-19-2026",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "val": "dma",
+        "label": "dma"
       },
       {
-        "event": "getReport",
-        "date": "04/19/2026",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "val": "payroll",
+        "label": "payroll"
       },
       {
-        "event": "getReport",
-        "date": "2026-04-19",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "val": "gl",
+        "label": "gl"
       },
       {
-        "event": "getReport",
-        "date": "04-19-2026",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "val": "0",
+        "label": "--- Select Group ---"
       },
       {
-        "event": "viewReport",
-        "date": "04/19/2026",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
-      },
-      {
-        "event": "viewReport",
-        "date": "2026-04-19",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
-      },
-      {
-        "event": "viewReport",
-        "date": "04-19-2026",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "val": "all",
+        "label": "--- All Stores ---"
       }
     ],
-    "postAttempts": [
+    "orgTypeValues_store": "\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">\r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n\r\n\r\n    \r\n    \r\n\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n        \r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<html>\r\n    <head>\r\n        <title>oneVIEW: Page Not Found</title>\r\n        <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\r\n\r\n        <!--\r\n                <meta http-equiv=\"X-UA-Compatible\" content=\"IE=8\"/>\r\n        -->\r\n        <link rel=\"shortcut icon\" href='/asp/_themes/444DCAD3/images/favicon.ico' />\r\n\r\n        <!--\r\n                <link rel=\"shortcut icon\" href=\"favicon.ico\" />\r\n        -->\r\n        \n\n\n\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n<meta name = \"viewport\" content=\"user-scalable=no, initial-scale=1.0, maximum-scale=1.0, width=device-width\">\r\n<meta name=\"apple-mobile-web-app-capable\" content=\"yes\"/>\r\n\r\n\r\n\r\n\r\n    \r\n    \r\n                \r\n        <!-- Added by Monolith -->\r\n        <link rel=\"stylesheet\" href=\"/asp/aboveStore/css/fontawesome/font-awesome.min.css\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/aboveStore/css/aboveStore.min.css\"/>\r\n        <!-- /Added by Monolith -->        \r\n        \r\n        <link rel=\"stylesheet\" href=\"/asp/themes/reset.css\" type=\"text/css\" media=\"screen\">\r\n\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/theme.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/pages.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/containers.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/dialog.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/buttons.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/lists.css\" type=\"text/css\" media=\"screen,print\"/>\r\n        <link rel=\"stylesheet\" href=\"/asp/_themes/444DCAD3/controls.css\" type",
+    "postResults": [
       {
-        "event": "getReportsForView",
+        "orgType": "concept",
         "date": "04/19/2026",
+        "store": "29865",
         "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "ct": "text/html;charset=UTF-8",
+        "loc": "",
+        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
       },
       {
-        "event": "getReportsForView",
-        "date": "2026-04-19",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
-      },
-      {
-        "event": "getReportsForView",
-        "date": "04-19-2026",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
-      },
-      {
-        "event": "viewReports",
+        "orgType": "concept",
         "date": "04/19/2026",
+        "store": "038729",
         "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "ct": "text/html;charset=UTF-8",
+        "loc": "",
+        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
       },
       {
-        "event": "viewReports",
-        "date": "2026-04-19",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
-      },
-      {
-        "event": "viewReports",
-        "date": "04-19-2026",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
-      },
-      {
-        "event": "downloadReport",
+        "orgType": "concept",
         "date": "04/19/2026",
+        "store": "29865",
         "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "ct": "text/html;charset=UTF-8",
+        "loc": "",
+        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
       },
       {
-        "event": "downloadReport",
+        "orgType": "concept",
         "date": "2026-04-19",
+        "store": "29865",
         "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "ct": "text/html;charset=UTF-8",
+        "loc": "",
+        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
       },
       {
-        "event": "downloadReport",
+        "orgType": "concept",
+        "date": "2026-04-19",
+        "store": "038729",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8",
+        "loc": "",
+        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
+      },
+      {
+        "orgType": "concept",
+        "date": "2026-04-19",
+        "store": "29865",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8",
+        "loc": "",
+        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
+      },
+      {
+        "orgType": "concept",
         "date": "04-19-2026",
+        "store": "29865",
         "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "ct": "text/html;charset=UTF-8",
+        "loc": "",
+        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
       },
       {
-        "event": "getReport",
+        "orgType": "concept",
+        "date": "04-19-2026",
+        "store": "038729",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8",
+        "loc": "",
+        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
+      },
+      {
+        "orgType": "concept",
+        "date": "04-19-2026",
+        "store": "29865",
+        "status": 200,
+        "ct": "text/html;charset=UTF-8",
+        "loc": "",
+        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
+      },
+      {
+        "orgType": "none",
         "date": "04/19/2026",
+        "store": "29865",
         "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "ct": "text/html;charset=UTF-8",
+        "loc": "",
+        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
       },
       {
-        "event": "getReport",
-        "date": "2026-04-19",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
-      },
-      {
-        "event": "getReport",
-        "date": "04-19-2026",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
-      },
-      {
-        "event": "viewReport",
+        "orgType": "none",
         "date": "04/19/2026",
+        "store": "038729",
         "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "ct": "text/html;charset=UTF-8",
+        "loc": "",
+        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
       },
       {
-        "event": "viewReport",
-        "date": "2026-04-19",
+        "orgType": "none",
+        "date": "04/19/2026",
+        "store": "29865",
         "status": 200,
-        "ct": "text/html;charset=UTF-8"
-      },
-      {
-        "event": "viewReport",
-        "date": "04-19-2026",
-        "status": 200,
-        "ct": "text/html;charset=UTF-8"
+        "ct": "text/html;charset=UTF-8",
+        "loc": "",
+        "snip": " <!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\"> <html> <head> <title>oneVIEW: InStore Reports</tit"
       }
     ]
   }
