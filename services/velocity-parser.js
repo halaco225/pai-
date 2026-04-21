@@ -263,4 +263,76 @@ function scanForDate(raw) {
   return null;
 }
 
-module.exports = { parseAboveStorePDF, parseAboveStorePDFLocal, parseSOSExcel, parseDeliveryExcel, normalizeStoreId };
+// ── SOS ODS XLSX Parser (PH_Speed_Of_Service via REST API) ───────────────
+// Row 0: summary header   Row 1: date (col 23)   Row 2: stores reporting
+// Row 3: summary metrics  Row 9: per-store column headers
+// Row 10+: one row per store
+function parseSOSExcelODS(filePath) {
+  const wb = XLSX.readFile(filePath, { cellDates: false });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+  // Extract report date from row 1, col 23 (Excel serial number)
+  let reportDate = null;
+  const dateCell = (raw[1] || [])[23];
+  if (dateCell && typeof dateCell === 'number') {
+    const d = XLSX.SSF.parse_date_code(dateCell);
+    if (d) {
+      const mm = String(d.m).padStart(2, '0');
+      const dd = String(d.d).padStart(2, '0');
+      reportDate = `${d.y}-${mm}-${dd}`;
+    }
+  }
+
+  // Find header row: row where col 8 === 'In Store'
+  let headerIdx = 9; // default
+  for (let i = 0; i < Math.min(15, raw.length); i++) {
+    if ((raw[i] || [])[8] === 'In Store') { headerIdx = i; break; }
+  }
+
+  // Determine column positions from header row
+  const hdr = raw[headerIdx] || [];
+  const colIdx = {};
+  hdr.forEach((cell, i) => {
+    if (cell === 'In Store')    colIdx.ist_avg        = i;
+    if (cell === '# Del')       colIdx.total_orders   = i;
+    if (cell === 'Make')        colIdx.make_time      = i;
+    if (cell === '% < 4')       colIdx.pct_lt4        = i;
+    if (cell === 'Production')  colIdx.production_time= i;
+    if (cell === '% < 15')      colIdx.pct_lt15       = i;
+    if (cell === 'On Time %')   colIdx.on_time_pct    = i;
+  });
+
+  function pctVal(v) {
+    if (v == null) return null;
+    const s = String(v).replace('%', '').trim();
+    const n = parseFloat(s);
+    return isNaN(n) ? null : Math.round(n * 100) / 100;
+  }
+
+  const stores = [];
+  for (let i = headerIdx + 1; i < raw.length; i++) {
+    const row = raw[i] || [];
+    const storeRaw = row[0];
+    if (!storeRaw || !/^S\d/.test(String(storeRaw))) continue;
+    const store_id = normalizeStoreId(String(storeRaw));
+
+    const ist_raw = row[colIdx.ist_avg ?? 8];
+    const ist_avg = ist_raw != null ? parseFloat(String(ist_raw)) : null;
+
+    stores.push({
+      store_id,
+      ist_avg:         isNaN(ist_avg) ? null : Math.round(ist_avg * 10) / 10,
+      total_orders:    row[colIdx.total_orders ?? 9]  != null ? parseInt(row[colIdx.total_orders ?? 9])  : null,
+      make_time:       row[colIdx.make_time      ?? 11] ?? null,
+      pct_lt4:         pctVal(row[colIdx.pct_lt4  ?? 13]),
+      production_time: row[colIdx.production_time?? 17] ?? null,
+      pct_lt15:        pctVal(row[colIdx.pct_lt15 ?? 19]),
+      on_time_pct:     pctVal(row[colIdx.on_time_pct ?? 3])
+    });
+  }
+
+  return { stores, reportDate, source: 'sos_ods' };
+}
+
+module.exports = { parseAboveStorePDF, parseAboveStorePDFLocal, parseSOSExcel, parseDeliveryExcel, normalizeStoreId, parseSOSExcelODS };

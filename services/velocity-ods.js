@@ -1,11 +1,14 @@
 // =====================================================================
-// VELOCITY ODS — Pull Above Store Report PDF from OneData (bi.onedatasource.com)
+// VELOCITY ODS — Pull Speed of Service report from OneData via REST API
 //
-// Auth flow (3-step, no browser required):
+// Auth flow:
 //   1. GET /asp/login.html          → JSESSIONID cookie
-//   2. POST /asp/JavaScriptServlet  → OWASP CSRF token (FETCH-CSRF-TOKEN: 1)
+//   2. POST /asp/JavaScriptServlet  → OWASP CSRF token (pre-login)
 //   3. POST /asp/j_spring_security_check → authenticated session
-//   4. Navigate to report + download PDF
+//   4. POST /asp/JavaScriptServlet  → fresh CSRF token (post-login)
+//   5. POST /asp/rest_v2/reportExecutions → queue report (async)
+//   6. GET  /asp/rest_v2/reportExecutions/{id} → poll until ready
+//   7. GET  /asp/rest_v2/reportExecutions/{id}/exports/{expId}/outputResource → download XLSX
 // =====================================================================
 'use strict';
 
@@ -17,76 +20,70 @@ const ODS_ORG  = process.env.ODS_ORG  || 'dgi';
 const ODS_USER = process.env.ODS_USER || 'hlacoste';
 const ODS_PASS = process.env.ODS_PASSWORD || '';
 
-// Lazy-load node-fetch (ships with the project)
-function fetch(...args) {
-  return require('node-fetch')(...args);
-}
+const REPORT_URI = '/Reports/Pizza_Hut/Operations/PH_Speed_Of_Service';
+const POLL_INTERVAL_MS = 3000;
+const POLL_MAX_ATTEMPTS = 30;  // 90 seconds max
 
-// ── Cookie helpers ─────────────────────────────────────────────────────────
+function fetch(...args) { return require('node-fetch')(...args); }
+
 function parseCookies(response) {
-  const raw = response.headers.raw()['set-cookie'] || [];
-  return raw.map(c => c.split(';')[0]);
+  return (response.headers.raw()['set-cookie'] || []).map(c => c.split(';')[0]);
 }
 
 function mergeCookies(...arrays) {
-  // Last value wins for duplicate names
   const map = new Map();
-  arrays.flat().forEach(c => {
-    const [name] = c.split('=');
-    map.set(name, c);
-  });
+  arrays.flat().forEach(c => { map.set(c.split('=')[0], c); });
   return Array.from(map.values()).join('; ');
 }
 
-// ── Step 1+2+3: Full login sequence ───────────────────────────────────────
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function getCsrf(cookieStr) {
+  const r = await fetch(`${ODS_URL}/asp/JavaScriptServlet`, {
+    method: 'POST',
+    headers: {
+      'Cookie': cookieStr,
+      'FETCH-CSRF-TOKEN': '1',
+      'X-Requested-With': 'XMLHttpRequest',
+      'User-Agent': 'Mozilla/5.0'
+    }
+  });
+  const text = await r.text();
+  const colon = text.indexOf(':');
+  if (colon < 0) throw new Error(`Unexpected CSRF response: ${text.substring(0, 100)}`);
+  return {
+    name:  text.substring(0, colon).trim(),
+    value: text.substring(colon + 1).trim(),
+    cookies: parseCookies(r)
+  };
+}
+
 async function login() {
   const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
-  // Step 1: GET login page → session cookie
-  const loginPage = await fetch(`${ODS_URL}/asp/login.html`, {
-    headers: { 'User-Agent': UA }
-  });
-  if (!loginPage.ok && loginPage.status !== 200) {
-    throw new Error(`Login page returned ${loginPage.status}`);
-  }
-  const cookies1 = parseCookies(loginPage);
-  const sess1 = mergeCookies(cookies1);
-  console.log('[ODS] Step 1 OK — session:', sess1.substring(0, 40));
+  // Step 1: session cookie
+  const r1 = await fetch(`${ODS_URL}/asp/login.html`, { headers: { 'User-Agent': UA } });
+  const c1 = parseCookies(r1);
 
-  // Step 2: POST JavaScriptServlet with FETCH-CSRF-TOKEN: 1 → OWASP_CSRFTOKEN:value
-  const csrfRes = await fetch(`${ODS_URL}/asp/JavaScriptServlet`, {
-    method: 'POST',
-    headers: {
-      'Cookie': sess1,
-      'FETCH-CSRF-TOKEN': '1',
-      'X-Requested-With': 'XMLHttpRequest',
-      'User-Agent': UA
-    }
-  });
-  const cookies2 = parseCookies(csrfRes);
-  const sess2 = mergeCookies(cookies1, cookies2);
-  const csrfRaw = await csrfRes.text();
-  const colonIdx = csrfRaw.indexOf(':');
-  if (colonIdx < 0) throw new Error(`Unexpected CSRF response: ${csrfRaw.substring(0, 100)}`);
-  const csrfName  = csrfRaw.substring(0, colonIdx).trim();
-  const csrfValue = csrfRaw.substring(colonIdx + 1).trim();
-  console.log(`[ODS] Step 2 OK — ${csrfName}:${csrfValue.substring(0, 12)}...`);
+  // Step 2: pre-login CSRF
+  const csrf1 = await getCsrf(mergeCookies(c1));
+  const c2 = csrf1.cookies;
 
-  // Step 3: POST j_spring_security_check → authenticated session
+  // Step 3: authenticate
   const formBody = [
     `orgId=${encodeURIComponent(ODS_ORG)}`,
     `j_username=${encodeURIComponent(ODS_USER)}`,
     `j_password=${encodeURIComponent(ODS_PASS)}`,
     `j_password_pseudo=${encodeURIComponent(ODS_PASS)}`,
-    `${csrfName}=${encodeURIComponent(csrfValue)}`
+    `${csrf1.name}=${encodeURIComponent(csrf1.value)}`
   ].join('&');
 
-  const authRes = await fetch(`${ODS_URL}/asp/j_spring_security_check`, {
+  const r3 = await fetch(`${ODS_URL}/asp/j_spring_security_check`, {
     method: 'POST',
     redirect: 'manual',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      'Cookie': sess2,
+      'Cookie': mergeCookies(c1, c2),
       'Referer': `${ODS_URL}/asp/login.html`,
       'Origin': ODS_URL,
       'User-Agent': UA
@@ -94,166 +91,100 @@ async function login() {
     body: formBody
   });
 
-  const cookies3  = parseCookies(authRes);
-  const authCookie = mergeCookies(cookies1, cookies2, cookies3);
-  const location   = authRes.headers.get('location') || '';
-  console.log(`[ODS] Step 3 — status ${authRes.status}, location: ${location}`);
-
-  if (location.indexOf('error') >= 0) {
-    throw new Error(`ODS login failed (redirect to ${location}) — check ODS_USER / ODS_PASSWORD in Render env vars`);
+  const c3 = parseCookies(r3);
+  const location = r3.headers.get('location') || '';
+  if (location.includes('error')) {
+    throw new Error(`ODS login failed (${location}) — check ODS_USER / ODS_PASSWORD`);
   }
 
-  console.log('[ODS] Login SUCCESS');
-  return { cookie: authCookie, location, ua: UA };
+  const cookie = mergeCookies(c1, c2, c3);
+
+  // Step 4: fresh post-login CSRF (required for REST API calls)
+  const csrf2 = await getCsrf(cookie);
+  const finalCookie = mergeCookies(c1, c2, c3, csrf2.cookies);
+
+  console.log('[ODS] Login OK');
+  return { cookie: finalCookie, csrfName: csrf2.name, csrfValue: csrf2.value, ua: UA };
 }
 
-// ── Navigate to Above Store Report and download PDF ────────────────────────
-async function downloadAboveStoreReport(session, targetDate, outPath) {
-  const { cookie, ua } = session;
-
-  // Step 1: Load the InStore Reports flow page.
-  // JRS embeds the server-generated flowExecutionKey as a JS variable:
-  //   __jrsConfigs__.flowExecutionKey = "e2s1";
-  console.log(`[ODS] Loading aboveStoreInStoreReportsFlow for ${targetDate}...`);
-  const flowRes = await fetch(`${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`, {
-    headers: { 'Cookie': cookie, 'User-Agent': ua, 'Referer': `${ODS_URL}/asp/` }
-  });
-
-  if (!flowRes.ok) {
-    return { success: false, error: `Flow page returned ${flowRes.status}` };
-  }
-
-  const flowHtml = await flowRes.text();
-  const keyMatch  = flowHtml.match(/__jrsConfigs__\.flowExecutionKey\s*=\s*["']([^"']+)["']/);
-  if (!keyMatch) {
-    console.log('[ODS] No __jrsConfigs__.flowExecutionKey found. Snippet:', flowHtml.substring(0, 500));
-    return { success: false, error: 'Could not find flowExecutionKey in page JS' };
-  }
-  const flowKey = keyMatch[1];
-  console.log(`[ODS] Flow execution key: ${flowKey}`);
-
-  // Step 2: Request PDF using the discovered event: _eventId=getReportsForView
-  // URL captured from browser network tab:
-  //   flow.html?_flowId=aboveStoreInStoreReportsFlow&_flowExecutionKey=eNsM
-  //     &_eventId=getReportsForView&exportType=pdf&contentDisposition=attachment
-  //
-  // The date may need to be in the flow state (set by an earlier event) or passed directly.
-  // We try three variants in order:
-
-  const referer = `${ODS_URL}/asp/flow.html?_flowId=aboveStoreInStoreReportsFlow`;
-
-  // Attempt 1: call getReportsForView from s1 with date param
-  const url1 = `${ODS_URL}/asp/flow.html`
-    + `?_flowId=aboveStoreInStoreReportsFlow`
-    + `&_flowExecutionKey=${encodeURIComponent(flowKey)}`
-    + `&_eventId=getReportsForView`
-    + `&exportType=pdf`
-    + `&contentDisposition=attachment`
-    + `&DATE=${encodeURIComponent(targetDate)}`
-    + `&date=${encodeURIComponent(targetDate)}`;
-
-  console.log(`[ODS] Attempt 1 — getReportsForView with date param from ${flowKey}`);
-  let pdfRes = await fetch(url1, {
-    headers: { 'Cookie': cookie, 'User-Agent': ua, 'Referer': referer }
-  });
-  let ct = pdfRes.headers.get('content-type') || '';
-  console.log(`[ODS] Attempt 1: status=${pdfRes.status} ct=${ct}`);
-
-  if (ct.includes('pdf') || ct.includes('octet')) {
-    const buf = await pdfRes.buffer();
-    fs.writeFileSync(outPath, buf);
-    console.log(`[ODS] PDF saved — attempt 1 (${buf.length} bytes)`);
-    return { success: true, bytes: buf.length, method: 'getReportsForView_s1_with_date' };
-  }
-
-  // Attempt 2: call without date — maybe date is baked into flow state
-  const url2 = `${ODS_URL}/asp/flow.html`
-    + `?_flowId=aboveStoreInStoreReportsFlow`
-    + `&_flowExecutionKey=${encodeURIComponent(flowKey)}`
-    + `&_eventId=getReportsForView`
-    + `&exportType=pdf`
-    + `&contentDisposition=attachment`;
-
-  console.log(`[ODS] Attempt 2 — getReportsForView without date param`);
-  pdfRes = await fetch(url2, {
-    headers: { 'Cookie': cookie, 'User-Agent': ua, 'Referer': referer }
-  });
-  ct = pdfRes.headers.get('content-type') || '';
-  console.log(`[ODS] Attempt 2: status=${pdfRes.status} ct=${ct}`);
-
-  if (ct.includes('pdf') || ct.includes('octet')) {
-    const buf = await pdfRes.buffer();
-    fs.writeFileSync(outPath, buf);
-    console.log(`[ODS] PDF saved — attempt 2 (${buf.length} bytes)`);
-    return { success: true, bytes: buf.length, method: 'getReportsForView_s1_no_date' };
-  }
-
-  // Attempt 3: POST variant
-  const postBody = [
-    `_flowExecutionKey=${encodeURIComponent(flowKey)}`,
-    `_eventId=getReportsForView`,
-    `exportType=pdf`,
-    `contentDisposition=attachment`,
-    `DATE=${encodeURIComponent(targetDate)}`
-  ].join('&');
-
-  console.log(`[ODS] Attempt 3 — POST getReportsForView`);
-  pdfRes = await fetch(`${ODS_URL}/asp/flow.html`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Cookie': cookie, 'User-Agent': ua, 'Referer': referer
-    },
-    body: postBody
-  });
-  ct = pdfRes.headers.get('content-type') || '';
-  console.log(`[ODS] Attempt 3: status=${pdfRes.status} ct=${ct}`);
-
-  if (ct.includes('pdf') || ct.includes('octet')) {
-    const buf = await pdfRes.buffer();
-    fs.writeFileSync(outPath, buf);
-    console.log(`[ODS] PDF saved — attempt 3 (${buf.length} bytes)`);
-    return { success: true, bytes: buf.length, method: 'getReportsForView_POST' };
-  }
-
-  // All attempts returned HTML — log the state/snippet for further diagnosis
-  const html = await pdfRes.text();
-  console.log('[ODS] All attempts returned HTML. Snippet:', html.substring(0, 800).replace(/\s+/g, ' '));
-  return {
-    success: false,
-    error: `All getReportsForView attempts returned HTML — check logs`,
-    flowKey
+async function downloadSOSReport(session, targetDate, outPath) {
+  const { cookie, csrfName, csrfValue, ua } = session;
+  const hdrs = {
+    'Cookie': cookie,
+    'User-Agent': ua,
+    'Accept': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest'
   };
+  hdrs[csrfName] = csrfValue;
+
+  // Submit report execution
+  const execRes = await fetch(`${ODS_URL}/asp/rest_v2/reportExecutions`, {
+    method: 'POST',
+    headers: { ...hdrs, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      reportUnitUri: REPORT_URI,
+      async: true,
+      outputFormat: 'xlsx',
+      parameters: { reportParameter: [{ name: 'date', value: [targetDate] }] }
+    })
+  });
+
+  if (!execRes.ok) {
+    const txt = await execRes.text();
+    throw new Error(`Report execution submit failed: ${execRes.status} — ${txt.substring(0, 200)}`);
+  }
+
+  const exec = await execRes.json();
+  const reqId = exec.requestId;
+  const expId = exec.exports?.[0]?.id;
+
+  if (!reqId || !expId) throw new Error(`No requestId/exportId in response: ${JSON.stringify(exec)}`);
+  console.log(`[ODS] Report queued: ${reqId}`);
+
+  // Poll until ready
+  for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
+    await sleep(POLL_INTERVAL_MS);
+    const statusRes = await fetch(`${ODS_URL}/asp/rest_v2/reportExecutions/${reqId}`, { headers: hdrs });
+    const status = await statusRes.json();
+    const execStatus  = status.status;
+    const exportStatus = status.exports?.[0]?.status;
+    console.log(`[ODS] Poll ${i + 1}: exec=${execStatus} export=${exportStatus}`);
+
+    if (execStatus === 'ready' && exportStatus === 'ready') break;
+    if (execStatus === 'failed' || execStatus === 'cancelled') {
+      throw new Error(`Report execution ${execStatus}: ${JSON.stringify(status)}`);
+    }
+  }
+
+  // Download XLSX
+  const dlRes = await fetch(
+    `${ODS_URL}/asp/rest_v2/reportExecutions/${reqId}/exports/${expId}/outputResource`,
+    { headers: hdrs }
+  );
+
+  if (!dlRes.ok) throw new Error(`Download failed: ${dlRes.status}`);
+
+  const buf = await dlRes.buffer();
+  if (buf.length < 1000) throw new Error(`Downloaded file too small (${buf.length} bytes) — may be an error page`);
+
+  fs.writeFileSync(outPath, buf);
+  console.log(`[ODS] XLSX saved — ${buf.length} bytes`);
+  return { success: true, bytes: buf.length };
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────
 async function pullAboveStoreReport(targetDate) {
   const tmpDir = path.join(__dirname, '..', 'uploads');
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-  const outPath = path.join(tmpDir, `above-store-${targetDate}.pdf`);
+  const outPath = path.join(tmpDir, `sos-${targetDate}.xlsx`);
 
   try {
-    if (!ODS_PASS) {
-      throw new Error('ODS_PASSWORD env var is not set — add it to Render service env vars');
-    }
+    if (!ODS_PASS) throw new Error('ODS_PASSWORD env var is not set');
 
     console.log(`[ODS] Starting pull for date=${targetDate}, user=${ODS_USER}@${ODS_ORG}`);
     const session = await login();
-
-    // Try the report download; if URL is wrong, the caller can still see the session worked
-    const result = await downloadAboveStoreReport(session, targetDate, outPath);
-    if (result.success) {
-      return { success: true, filePath: outPath, date: targetDate };
-    }
-
-    // Session works but report URL needs tuning — return session info for debugging
-    return {
-      success: false,
-      error: result.error,
-      date: targetDate,
-      sessionOk: true,
-      cookie: session.cookie.substring(0, 60)
-    };
+    await downloadSOSReport(session, targetDate, outPath);
+    return { success: true, filePath: outPath, format: 'xlsx', date: targetDate };
   } catch (e) {
     console.error('[ODS] Pull failed:', e.message);
     return { success: false, error: e.message, date: targetDate };

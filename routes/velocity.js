@@ -13,7 +13,7 @@ const router   = express.Router();
 const { requireAuth } = require('../middleware/auth');
 const db = require('../services/db');
 const { ALIGNMENT, REGIONS, AREAS, AREA_COACHES } = require('../services/velocity-alignment');
-const { parseAboveStorePDF, parseSOSExcel, parseDeliveryExcel } = require('../services/velocity-parser');
+const { parseAboveStorePDF, parseSOSExcel, parseDeliveryExcel, parseSOSExcelODS } = require('../services/velocity-parser');
 const { getWeekKey, getPeriodWeek, getWeekDateRange, getYesterdayChicago, computeWTD, analyzeDOWPatterns, FISCAL_CALENDAR } = require('../services/velocity-compute');
 const { generateExcelExport } = require('../services/velocity-export');
 const { sendDailyEmails } = require('../services/velocity-email');
@@ -43,10 +43,12 @@ router.post('/automation/pull-ods', async (req, res) => {
 
     if (!pullResult.success) throw new Error(pullResult.error);
 
-    const parsed = await parseAboveStorePDF(pullResult.filePath);
+    const parsed = pullResult.format === 'xlsx'
+      ? parseSOSExcelODS(pullResult.filePath)
+      : await parseAboveStorePDF(pullResult.filePath);
     try { fs.unlinkSync(pullResult.filePath); } catch(e){}
 
-    if (!parsed.stores?.length) throw new Error('No store data in PDF');
+    if (!parsed.stores?.length) throw new Error('No store data in report');
 
     const weekKey  = getWeekKey(targetDate);
     const periodWk = getPeriodWeek(targetDate);
@@ -57,9 +59,14 @@ router.post('/automation/pull-ods', async (req, res) => {
       await db.upsertVelocityRecord({
         store_id: s.store_id, record_date: targetDate,
         week_key: weekKey, period_week: periodWk,
-        ist_avg: s.ist_avg, ist_lt10: s.ist_lt10, ist_1014: s.ist_1014,
-        ist_1518: s.ist_1518, ist_1925: s.ist_1925, ist_gt25: s.ist_gt25,
-        ist_lt19_pct: s.ist_lt19_pct, total_orders: s.total_orders,
+        ist_avg: s.ist_avg,
+        ist_lt10: s.ist_lt10 ?? 0, ist_1014: s.ist_1014 ?? 0,
+        ist_1518: s.ist_1518 ?? 0, ist_1925: s.ist_1925 ?? 0, ist_gt25: s.ist_gt25 ?? 0,
+        ist_lt19_pct: s.ist_lt19_pct ?? null,
+        total_orders: s.total_orders ?? 0,
+        make_time: s.make_time ?? null, pct_lt4: s.pct_lt4 ?? null,
+        production_time: s.production_time ?? null, pct_lt15: s.pct_lt15 ?? null,
+        on_time_pct: s.on_time_pct ?? null,
         data_source: parsed.source, uploader: 'system'
       });
       saved++;
