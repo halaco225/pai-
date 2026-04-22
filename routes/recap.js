@@ -18,7 +18,9 @@ const storage = multer.diskStorage({
 const upload = multer({ storage, limits: { fileSize: 25 * 1024 * 1024 } });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function withRetry(fn, maxAttempts = 5) {
+// Cloudflare (Render's CDN) enforces a 100s proxy timeout.
+// Cap total retry wait to ~60s so the full request stays well under that limit.
+async function withRetry(fn, maxAttempts = 3) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn();
@@ -27,7 +29,8 @@ async function withRetry(fn, maxAttempts = 5) {
       const isRateLimit = status === 429 || (err.message && err.message.includes('rate_limit'));
       if (isRateLimit && attempt < maxAttempts) {
         const retryAfter = err.headers && err.headers['retry-after'];
-        const delay = retryAfter ? parseInt(retryAfter) * 1000 : 30000 * attempt;
+        // Cap delay at 20s per attempt so total retries stay under 60s
+        const delay = retryAfter ? Math.min(parseInt(retryAfter) * 1000, 20000) : 15000 * attempt;
         console.log('Rate limit hit (attempt ' + attempt + '/' + maxAttempts + '). Retrying in ' + (delay / 1000) + 's...');
         await sleep(delay);
       } else {

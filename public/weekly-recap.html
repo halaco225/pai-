@@ -507,6 +507,14 @@
     try {
       const res = await fetch('/api/recap/analyze', { method: 'POST', body: formData });
       if (!res.ok) {
+        const ct = res.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) {
+          // Cloudflare/Render returned an HTML error page (usually 524 timeout)
+          if (res.status === 524 || res.status === 504 || res.status === 0) {
+            throw new Error('Analysis timed out (server took >100s). Try uploading fewer or smaller files, then retry.');
+          }
+          throw new Error(`Server error ${res.status} — the analysis request did not complete. Please try again.`);
+        }
         const errData = await res.json();
         throw new Error(errData.error || 'Analysis failed');
       }

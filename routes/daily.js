@@ -16,7 +16,8 @@ const upload = multer({
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function withRetry(fn, maxAttempts = 5) {
+// Cloudflare (Render's CDN) enforces a 100s proxy timeout — cap retries accordingly.
+async function withRetry(fn, maxAttempts = 3) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn();
@@ -25,7 +26,7 @@ async function withRetry(fn, maxAttempts = 5) {
       const isRateLimit = status === 429 || (err.message && err.message.includes('rate_limit'));
       if (isRateLimit && attempt < maxAttempts) {
         const retryAfter = err.headers && err.headers['retry-after'];
-        const delay = retryAfter ? parseInt(retryAfter) * 1000 : 30000 * attempt;
+        const delay = retryAfter ? Math.min(parseInt(retryAfter) * 1000, 20000) : 15000 * attempt;
         console.log('[Daily] Rate limit hit (attempt ' + attempt + '/' + maxAttempts + '). Retrying in ' + (delay / 1000) + 's...');
         await sleep(delay);
       } else {
