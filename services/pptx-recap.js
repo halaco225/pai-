@@ -151,45 +151,44 @@ async function generateRecapPPTX(data, options = {}) {
   const s = data.slides || data;
   const regionName = safe(data.regionName || s.title?.regionName, 'AYVAZ REGION');
   const weekLabel  = safe(data.weekLabel  || s.title?.weekLabel,  'Current Week');
-  const TOTAL = 13;
 
-  // 1 ── Cover ─────────────────────────────────────────────────────────────────
+  // Determine which optional slides have real data
+  const has = {
+    scorecard:    safeArr(s.scorecard?.metrics).length > 0,
+    acTable:      safeArr(s.acTable?.rows).length > 0,
+    wins:         safeArr(s.wins?.items).length > 0,
+    focusAreas:   safeArr(s.focusAreas?.items).length > 0,
+    labor:        safeArr(s.laborDeepDive?.acRows || s.laborDeepDive?.rows).length > 0,
+    speed:        safeArr(s.speedOutlier?.outlierStores || s.speedOutlier?.outlier_stores).length > 0,
+    winByAC:      safeArr((s.winByAC || s.smgByAC)?.rows).length > 0,
+    winSpotlight: safeArr((s.winStoreSpotlight || s.smgSpotlight)?.top5 || (s.winStoreSpotlight || s.smgSpotlight)?.top).length > 0,
+    customerVoice:safeArr(s.customerVoice?.positives || s.customerVoice?.positive).length > 0 ||
+                  safeArr(s.customerVoice?.negatives || s.customerVoice?.negative).length > 0,
+    smartGoals:   safeArr(s.smartGoals?.goals).length > 0,
+  };
+
+  // Count slides to include (cover + closing + key dates always included)
+  const TOTAL = 3 + Object.values(has).filter(Boolean).length;
+
+  // 1 ── Cover (always) ────────────────────────────────────────────────────────
   makeCover(pptx, s.title || {}, regionName, weekLabel);
 
-  // 2 ── Region Scorecard ──────────────────────────────────────────────────────
-  makeScorecard(pptx, s.scorecard || {}, weekLabel, TOTAL);
+  // Optional slides — only included when data is present
+  if (has.scorecard)    makeScorecard(pptx, s.scorecard || {}, weekLabel, TOTAL);
+  if (has.acTable)      makeACTable(pptx, s.acTable || {}, weekLabel, TOTAL);
+  if (has.wins)         makeWins(pptx, s.wins || {}, weekLabel, TOTAL);
+  if (has.focusAreas)   makeFocusAreas(pptx, s.focusAreas || {}, weekLabel, TOTAL);
+  if (has.labor)        makeLaborDeepDive(pptx, s.laborDeepDive || {}, weekLabel, TOTAL);
+  if (has.speed)        makeSpeedOutlier(pptx, s.speedOutlier || {}, weekLabel, TOTAL);
+  if (has.winByAC)      makeWINbyAC(pptx, s.winByAC || s.smgByAC || {}, weekLabel, TOTAL);
+  if (has.winSpotlight) makeWINStoreSpotlight(pptx, s.winStoreSpotlight || s.smgSpotlight || {}, weekLabel, TOTAL);
+  if (has.customerVoice)makeCustomerVoice(pptx, s.customerVoice || {}, weekLabel, TOTAL);
+  if (has.smartGoals)   makeSmartGoals(pptx, s.smartGoals || {}, weekLabel, TOTAL);
 
-  // 3 ── AC Performance Table ──────────────────────────────────────────────────
-  makeACTable(pptx, s.acTable || {}, weekLabel, TOTAL);
-
-  // 4 ── Wins ──────────────────────────────────────────────────────────────────
-  makeWins(pptx, s.wins || {}, weekLabel, TOTAL);
-
-  // 5 ── Focus Areas ───────────────────────────────────────────────────────────
-  makeFocusAreas(pptx, s.focusAreas || {}, weekLabel, TOTAL);
-
-  // 6 ── Labor Deep Dive ───────────────────────────────────────────────────────
-  makeLaborDeepDive(pptx, s.laborDeepDive || {}, weekLabel, TOTAL);
-
-  // 7 ── Speed Outlier ─────────────────────────────────────────────────────────
-  makeSpeedOutlier(pptx, s.speedOutlier || {}, weekLabel, TOTAL);
-
-  // 8 ── WIN Score by Area Coach ────────────────────────────────────────────────
-  makeWINbyAC(pptx, s.winByAC || s.smgByAC || {}, weekLabel, TOTAL);
-
-  // 9 ── WIN Store Spotlight ────────────────────────────────────────────────────
-  makeWINStoreSpotlight(pptx, s.winStoreSpotlight || s.smgSpotlight || {}, weekLabel, TOTAL);
-
-  // 10 ── Customer Voice ───────────────────────────────────────────────────────
-  makeCustomerVoice(pptx, s.customerVoice || {}, weekLabel, TOTAL);
-
-  // 11 ── Smart Goals ──────────────────────────────────────────────────────────
-  makeSmartGoals(pptx, s.smartGoals || {}, weekLabel, TOTAL);
-
-  // 12 ── Key Dates ────────────────────────────────────────────────────────────
+  // Key Dates (always — user fills in before distributing)
   makeKeyDates(pptx, s.keyDates || {}, weekLabel, TOTAL);
 
-  // 13 ── Closing ──────────────────────────────────────────────────────────────
+  // Closing (always)
   makeClosing(pptx, s.closing || {}, regionName, weekLabel, TOTAL);
 
   return pptx.write({ outputType: 'nodebuffer' });

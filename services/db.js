@@ -46,6 +46,22 @@ async function initDB() {
     )
   `);
 
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS recap_sessions (
+      id            SERIAL PRIMARY KEY,
+      username      VARCHAR(50)  NOT NULL,
+      file_names    TEXT,
+      week_label    VARCHAR(100),
+      analysis_json TEXT         NOT NULL,
+      created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_recap_user
+    ON recap_sessions (username, created_at DESC)
+  `);
+
 }
 
 // ── Save an analysis ──────────────────────────────────────────────────────────
@@ -379,6 +395,55 @@ async function getVelocityLogs(limit = 20) {
   }
 }
 
+// ── Recap: save a session ─────────────────────────────────────────────────────
+async function saveRecapSession({ username, fileNames, weekLabel, analysisJson }) {
+  const p = getPool();
+  if (!p) return null;
+  try {
+    const res = await p.query(
+      `INSERT INTO recap_sessions (username, file_names, week_label, analysis_json)
+       VALUES ($1, $2, $3, $4) RETURNING id, created_at`,
+      [username, fileNames || '', weekLabel || '', analysisJson]
+    );
+    return res.rows[0];
+  } catch (err) {
+    console.error('DB saveRecapSession error:', err.message);
+    return null;
+  }
+}
+
+async function getRecapSessions(username, limit = 10) {
+  const p = getPool();
+  if (!p) return [];
+  try {
+    const res = await p.query(
+      `SELECT id, file_names, week_label, created_at
+       FROM recap_sessions WHERE username = $1
+       ORDER BY created_at DESC LIMIT $2`,
+      [username, limit]
+    );
+    return res.rows;
+  } catch (err) {
+    console.error('DB getRecapSessions error:', err.message);
+    return [];
+  }
+}
+
+async function getRecapSessionById(id, username) {
+  const p = getPool();
+  if (!p) return null;
+  try {
+    const res = await p.query(
+      `SELECT * FROM recap_sessions WHERE id = $1 AND username = $2`,
+      [id, username]
+    );
+    return res.rows[0] || null;
+  } catch (err) {
+    console.error('DB getRecapSessionById error:', err.message);
+    return null;
+  }
+}
+
 // ── Velocity: DOW (day-of-week) trend query ───────────────────────────────────
 async function getVelocityDOWTrends({ storeId, areaCoach, regionCoach, weeks = 8 } = {}) {
   const p = getPool();
@@ -409,11 +474,32 @@ async function getVelocityDOWTrends({ storeId, areaCoach, regionCoach, weeks = 8
   }
 }
 
+// ── Velocity: DOW drill — raw records for a specific day-of-week ─────────────
+async function getVelocityDOWDrill({ dow, weeks = 12 } = {}) {
+  const p = getPool();
+  if (!p) return [];
+  try {
+    const res = await p.query(`
+      SELECT store_id, record_date, week_key, period_week, ist_avg
+      FROM velocity_daily_records
+      WHERE EXTRACT(DOW FROM record_date) = $1
+        AND record_date >= NOW() - INTERVAL '${weeks * 7} days'
+        AND ist_avg IS NOT NULL
+      ORDER BY record_date ASC
+    `, [dow]);
+    return res.rows;
+  } catch (err) {
+    console.error('DB getVelocityDOWDrill error:', err.message);
+    return [];
+  }
+}
+
 module.exports = {
   initDB, saveAnalysis, getHistory, getRecentDaily, getAnalysisById,
   saveAlignment, getAlignment, clearAlignment,
+  saveRecapSession, getRecapSessions, getRecapSessionById,
   // Velocity exports
   initVelocityDB, upsertVelocityRecord, getVelocityRecords,
   getVelocityWeek, getVelocityWeeks, logVelocityJob, getVelocityLogs,
-  getVelocityDOWTrends
+  getVelocityDOWTrends, getVelocityDOWDrill
 };

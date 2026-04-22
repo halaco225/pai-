@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const { requireAuth } = require('../middleware/auth');
 
 // Multer config for P&L uploads
@@ -41,6 +42,8 @@ router.post('/analyze', requireAuth, upload.single('file'), async (req, res) => 
   } catch (err) {
     console.error('P&L analysis error:', err);
     res.status(500).json({ error: err.message || 'Analysis failed.' });
+  } finally {
+    if (req.file) { try { fs.unlinkSync(req.file.path); } catch (e) {} }
   }
 });
 

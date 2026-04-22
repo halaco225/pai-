@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { requireAuth } = require('../middleware/auth');
 const { MASTER_ALIGNMENT_TEXT } = require('../services/alignment-data');
-const { getAlignment } = require('../services/db');
+const { getAlignment, saveRecapSession, getRecapSessions, getRecapSessionById } = require('../services/db');
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, path.join(__dirname, '../uploads')),
@@ -66,6 +66,15 @@ router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res)
     console.log('[Recap] Alignment source: ' + (alignRow ? 'DB upload' : 'built-in'));
 
     const data = await withRetry(() => analyzeRecap(req.files, '', recapDay, lastAcOfWeek, alignmentText));
+
+    // Persist session to DB (non-blocking — don't fail the request if this errors)
+    saveRecapSession({
+      username: req.session.user.username,
+      fileNames: req.files.map(f => f.originalname).join(', '),
+      weekLabel: data.weekLabel || '',
+      analysisJson: JSON.stringify(data)
+    }).catch(e => console.error('[Recap] Session save error:', e.message));
+
     res.json({ data, fileCount: req.files.length, fileNames: req.files.map(f => f.originalname).join(', ') });
   } catch (err) {
     console.error('Recap analyze error:', err);
@@ -127,6 +136,27 @@ router.post('/generate', requireAuth, upload.array('files', 10), async (req, res
     res.status(500).json({ error: err.message || 'Recap generation failed.' });
   } finally {
     if (req.files) req.files.forEach(f => { try { fs.unlinkSync(f.path); } catch (e) {} });
+  }
+});
+
+// GET /api/recap/history — list recent recap sessions
+router.get('/history', requireAuth, async (req, res) => {
+  try {
+    const sessions = await getRecapSessions(req.session.user.username, 20);
+    res.json({ sessions });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not load recap history.' });
+  }
+});
+
+// GET /api/recap/history/:id — load a specific session's analysis JSON
+router.get('/history/:id', requireAuth, async (req, res) => {
+  try {
+    const session = await getRecapSessionById(req.params.id, req.session.user.username);
+    if (!session) return res.status(404).json({ error: 'Not found.' });
+    res.json({ session: { ...session, data: JSON.parse(session.analysis_json) } });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not load session.' });
   }
 });
 

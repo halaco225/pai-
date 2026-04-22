@@ -29,16 +29,21 @@ function avgLt19(storeList) {
   return valid.length ? Math.round(valid.reduce((a, s) => a + s.wtd_lt19_pct, 0) / valid.length * 10) / 10 : null;
 }
 
+// Convert a percent value (e.g. 62.2) to decimal (0.622) for Excel numFmt='0.0%'
+function toLt19Dec(pct) {
+  return pct != null ? pct / 100 : null;
+}
+
 // % = count / total_orders as decimal (e.g. 0.038), null if no orders
 function bucketPct(count, totalOrders) {
   return (totalOrders > 0) ? Math.round((count / totalOrders) * 10000) / 10000 : null;
 }
 
-// ARGB hex for IST value: green <19, orange 19-25, red >25
+// ARGB hex for IST value: green <19, orange 19–22, red >22
 function istColorArgb(val) {
   if (val == null || isNaN(val)) return null;
   if (val < 19)  return 'FF28A745';  // green
-  if (val <= 25) return 'FFFD7E14';  // orange
+  if (val <= 22) return 'FFFD7E14';  // orange
   return 'FFDC3545';                  // red
 }
 
@@ -56,6 +61,12 @@ const IST_HEADERS = [
 // 1-based column index of "Avg IST (mins)" in IST sheets
 const AVG_IST_COL = 6;
 
+// 1-based indices of % columns (need numFmt = '0.0%')
+const PCT_COLS = [9, 11, 13, 15, 17, 18];
+
+// Column widths for IST sheets (1 per header column)
+const IST_COL_WIDTHS = [8, 24, 22, 10, 30, 14, 13, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10];
+
 function istRow(level, region, area, storeId, storeName, istAvg, orders, lt10, t1014, t1518, t1925, gt25, lt19pct) {
   return [
     level, region, area, storeId, storeName,
@@ -65,7 +76,7 @@ function istRow(level, region, area, storeId, storeName, istAvg, orders, lt10, t
     t1518, bucketPct(t1518, orders),
     t1925, bucketPct(t1925, orders),
     gt25, bucketPct(gt25, orders),
-    lt19pct
+    lt19pct  // already decimal (0–1) via toLt19Dec()
   ];
 }
 
@@ -88,7 +99,7 @@ function buildHierarchyRows(stores) {
     stores.reduce((a,s)=>a+(s.wtd_1518||0),0),
     stores.reduce((a,s)=>a+(s.wtd_1925||0),0),
     stores.reduce((a,s)=>a+(s.wtd_gt25||0),0),
-    avgLt19(stores)
+    toLt19Dec(avgLt19(stores))
   ));
 
   for (const [region, rStores] of Object.entries(byRegion)) {
@@ -101,7 +112,7 @@ function buildHierarchyRows(stores) {
       rStores.reduce((a,s)=>a+(s.wtd_1518||0),0),
       rStores.reduce((a,s)=>a+(s.wtd_1925||0),0),
       rStores.reduce((a,s)=>a+(s.wtd_gt25||0),0),
-      avgLt19(rStores)
+      toLt19Dec(avgLt19(rStores))
     ));
 
     const byArea = {};
@@ -121,7 +132,7 @@ function buildHierarchyRows(stores) {
         aStores.reduce((a,s)=>a+(s.wtd_1518||0),0),
         aStores.reduce((a,s)=>a+(s.wtd_1925||0),0),
         aStores.reduce((a,s)=>a+(s.wtd_gt25||0),0),
-        avgLt19(aStores)
+        toLt19Dec(avgLt19(aStores))
       ));
 
       for (const s of aStores) {
@@ -131,7 +142,7 @@ function buildHierarchyRows(stores) {
           s.wtd_ist, sOrders,
           s.wtd_lt10||0, s.wtd_1014||0, s.wtd_1518||0,
           s.wtd_1925||0, s.wtd_gt25||0,
-          s.wtd_lt19_pct
+          toLt19Dec(s.wtd_lt19_pct)
         ));
       }
     }
@@ -156,7 +167,7 @@ function styleHeaderRow(row) {
 // ── Add an IST hierarchy sheet ────────────────────────────────────────
 function addISTSheet(wb, sheetName, title, stores) {
   const ws = wb.addWorksheet(sheetName);
-  ws.views = [{ state: 'frozen', xSplit: 5, ySplit: 1 }];
+  ws.views = [{ state: 'frozen', xSplit: 5, ySplit: 2 }];
 
   // Row 1: title
   const titleRow = ws.addRow([title]);
@@ -172,13 +183,30 @@ function addISTSheet(wb, sheetName, title, stores) {
     const wsRow  = ws.addRow(row);
 
     const isBold = (level === 'TOTAL' || level === 'REGION' || level === 'AREA');
-    if (isBold) wsRow.font = { bold: true };
 
+    if (isBold) {
+      const fillColor = level === 'TOTAL' ? 'FF0D0D0D' : level === 'REGION' ? 'FF1A1A1A' : 'FF252525';
+      wsRow.eachCell({ includeEmpty: true }, cell => {
+        cell.font  = { bold: true };
+        cell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } };
+      });
+    }
+
+    // IST color on Avg IST cell
     const color = istColorArgb(istVal);
     if (color) {
       wsRow.getCell(AVG_IST_COL).font = { bold: isBold, color: { argb: color } };
     }
+
+    // Apply % format to % columns
+    for (const ci of PCT_COLS) {
+      const cell = wsRow.getCell(ci);
+      if (cell.value != null) cell.numFmt = '0.0%';
+    }
   }
+
+  // Set column widths
+  IST_COL_WIDTHS.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 }
 
 // ── Main export (async — ExcelJS requires writeBuffer) ────────────────
@@ -240,9 +268,13 @@ async function generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate
       }
 
       const ws = wb.addWorksheet('Trend');
-      ws.views = [{ state: 'frozen', xSplit: 5, ySplit: 1 }];
+      ws.views = [{ state: 'frozen', xSplit: 5, ySplit: 2 }];
       ws.addRow([`Trend — Daily IST ${periodWeek} ${dateRange}`]).font = { bold: true, size: 12 };
       styleHeaderRow(ws.addRow(trendHdrs));
+
+      // Set identity column widths
+      [8, 24, 22, 10, 30].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+      for (let i = 5; i < trendHdrs.length; i++) { ws.getColumn(i + 1).width = 14; }
 
       for (const [storeId, dayIST] of Object.entries(storeMap)) {
         const info    = storeInfo[storeId];
@@ -272,9 +304,12 @@ async function generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate
     }
 
     const ws = wb.addWorksheet('PTD Trend');
-    ws.views = [{ state: 'frozen', xSplit: 5, ySplit: 1 }];
+    ws.views = [{ state: 'frozen', xSplit: 5, ySplit: 2 }];
     ws.addRow([`PTD Trend — Week over Week IST`]).font = { bold: true, size: 12 };
     styleHeaderRow(ws.addRow(ptdHdrs));
+
+    [8, 24, 22, 10, 30].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+    for (let i = 5; i < ptdHdrs.length; i++) { ws.getColumn(i + 1).width = 14; }
 
     for (const s of allWeekStores) {
       if (s.level !== 'STORE') continue;

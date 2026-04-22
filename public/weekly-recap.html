@@ -530,9 +530,16 @@
         renderPptxPreview(analyzedData);
         document.getElementById('pptxPreview').style.display = 'block';
         document.getElementById('emailPreview').style.display = 'none';
-        document.getElementById('previewTitle').textContent = 'Deck Preview — Review Before Downloading';
+        document.getElementById('previewTitle').textContent = 'Deck Preview';
         document.getElementById('downloadBtn').style.display = 'inline-flex';
         document.getElementById('downloadBtn').innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download PPTX`;
+
+        // Auto-generate PPTX immediately — no confirmation needed
+        previewSection.style.display = 'block';
+        previewSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        log('Auto-generating PPTX...', 'info');
+        await downloadOutput();
+        return; // skip the duplicate show/scroll below
       } else {
         // Generate email
         log('Generating email recap...', 'info');

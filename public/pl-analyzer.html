@@ -377,7 +377,20 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Analysis failed');
       analysisResult = data.analysis;
-      content.innerHTML = `<div class="markdown-output">${renderMarkdown(analysisResult)}</div>`;
+      if (typeof analysisResult === 'string') {
+        content.innerHTML = `<div class="markdown-output">${renderMarkdown(analysisResult)}</div>`;
+      } else {
+        // Structured JSON from analyzePL/analyzePLForAC — primary output is the PPTX
+        const acCount = Array.isArray(analysisResult.acDeepDives) ? analysisResult.acDeepDives.length
+          : analysisResult.acName ? 1 : null;
+        const periodLine = analysisResult.period || analysisResult.acDeepDives?.[0]?.period || '';
+        content.innerHTML = `<div class="markdown-output">
+          <h2>Analysis Complete</h2>
+          <p>${periodLine ? `<strong>Period:</strong> ${periodLine} &nbsp;·&nbsp; ` : ''}${acCount !== null ? `<strong>${acCount} area coach${acCount !== 1 ? 'es' : ''}</strong> analyzed` : 'Analysis ready'}.
+          Click <strong>Download PowerPoint</strong> below to get the full structured report.</p>
+          <details style="margin-top:12px"><summary style="cursor:pointer;color:var(--accent);font-size:12px;font-weight:700;letter-spacing:1px">VIEW RAW JSON</summary><pre style="font-size:11px;overflow:auto;margin-top:8px;padding:12px;background:var(--surface-2);border-radius:6px;color:var(--text-muted);line-height:1.5;white-space:pre-wrap">${JSON.stringify(analysisResult, null, 2).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></details>
+        </div>`;
+      }
       pptxPanel.style.display = 'block';
     } catch (err) {
       content.innerHTML = `<div style="color:var(--danger);padding:20px;background:rgba(239,68,68,0.1);border-radius:8px;border:1px solid rgba(239,68,68,0.2);"><strong>Analysis failed:</strong> ${err.message}</div>`;

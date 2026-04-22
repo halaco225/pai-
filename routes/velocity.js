@@ -429,6 +429,51 @@ router.get('/dow-trends', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── GET /api/velocity/dow-drill?dow=N&weeks=12 — week-over-week for one DOW ──
+router.get('/dow-drill', async (req, res) => {
+  try {
+    const dow      = parseInt(req.query.dow);
+    const weeks    = parseInt(req.query.weeks) || 12;
+    const storeId  = req.query.store      || null;
+    const areaCoach = req.query.area_coach || null;
+    const region   = req.query.region     || null;
+
+    const DOW_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+    let records = await db.getVelocityDOWDrill({ dow, weeks });
+
+    if (storeId)   records = records.filter(r => r.store_id === storeId);
+    if (areaCoach) records = records.filter(r => (ALIGNMENT[r.store_id]?.area_coach) === areaCoach);
+    if (region)    records = records.filter(r => (ALIGNMENT[r.store_id]?.region_coach) === region);
+
+    // Group by week_key, aggregate avg IST
+    const byWeek = {};
+    for (const r of records) {
+      const wk = r.week_key instanceof Date ? r.week_key.toISOString().split('T')[0] : String(r.week_key).split('T')[0];
+      if (!byWeek[wk]) byWeek[wk] = { vals: [], period_week: r.period_week };
+      byWeek[wk].vals.push(parseFloat(r.ist_avg));
+    }
+
+    const weekData = Object.entries(byWeek)
+      .sort(([a],[b]) => a.localeCompare(b))
+      .map(([wk, d]) => ({
+        week_key: wk,
+        period_week: d.period_week,
+        date_range: getWeekDateRange(wk),
+        avg_ist: Math.round(d.vals.reduce((a,v)=>a+v,0)/d.vals.length*10)/10,
+        sample_count: d.vals.length
+      }));
+
+    for (let i = 1; i < weekData.length; i++) {
+      const prev = weekData[i-1].avg_ist;
+      const curr = weekData[i].avg_ist;
+      weekData[i].delta = (prev != null && curr != null) ? Math.round((curr-prev)*10)/10 : null;
+    }
+
+    res.json({ dow, day_name: DOW_NAMES[dow] || `DOW ${dow}`, weeks: weekData });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── GET /api/velocity/insights?area_coach=X — AI coaching analysis ───
 router.get('/insights', async (req, res) => {
   try {

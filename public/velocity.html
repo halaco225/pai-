@@ -90,10 +90,18 @@
 
   /* ── DOW patterns ── */
   .dow-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
-  .dow-card { background: var(--surface2); border-radius: 6px; padding: 10px; text-align: center; }
+  .dow-card { background: var(--surface2); border-radius: 6px; padding: 10px; text-align: center; cursor: pointer; transition: border .15s; border: 1px solid transparent; }
+  .dow-card:hover { border-color: var(--red); }
+  .dow-card.active { border-color: var(--red); background: rgba(227,24,55,.08); }
   .dow-card .day { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
   .dow-card .ist { font-size: 18px; font-weight: 700; }
   .dow-card .insight { font-size: 10px; color: var(--muted); margin-top: 4px; }
+  /* DOW drill panel */
+  .dow-drill { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-top: 14px; }
+  .dow-drill-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .dow-drill-hdr h4 { font-size: 13px; color: var(--text); }
+  .drill-close { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; line-height: 1; padding: 0 4px; }
+  .drill-close:hover { color: var(--text); }
 
   /* ── Insights panel ── */
   .insights-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
@@ -166,6 +174,15 @@
       <select id="weekSelect" onchange="loadWTD()"><option value="">Loading...</option></select>
     </div>
     <div>
+      <label>View By</label><br>
+      <select id="viewBySelect" onchange="setViewBy(this.value)" style="min-width:180px">
+        <option value="all">Region + Area + Store</option>
+        <option value="region_area">Region + Area</option>
+        <option value="region">Region Only</option>
+        <option value="area">Area Only</option>
+      </select>
+    </div>
+    <div>
       <label>Region Coach</label><br>
       <select id="regionFilter" onchange="applyFilters()"><option value="">All Regions</option></select>
     </div>
@@ -216,9 +233,24 @@
 
   <!-- DOW pattern view -->
   <div class="trend-section hidden" id="dowSection">
-    <div class="trend-header"><h3>Day-of-Week IST Patterns</h3></div>
+    <div class="trend-header">
+      <h3>Day-of-Week IST Patterns</h3>
+      <select id="dowWeeks" onchange="loadDOW()">
+        <option value="8">8 Weeks</option>
+        <option value="12" selected>12 Weeks</option>
+        <option value="26">6 Months</option>
+      </select>
+    </div>
     <div class="dow-grid" id="dowGrid"></div>
-    <p class="mt-8 text-muted" style="font-size:12px">Based on last 12 weeks of data. Helps identify structurally high/low days.</p>
+    <p class="mt-8 text-muted" style="font-size:12px">Click a day card to see week-over-week trend for that day.</p>
+    <!-- DOW drill-down panel -->
+    <div class="dow-drill hidden" id="dowDrill">
+      <div class="dow-drill-hdr">
+        <h4 id="dowDrillTitle"></h4>
+        <button class="drill-close" onclick="closeDOWDrill()">×</button>
+      </div>
+      <div id="dowDrillChart" style="overflow-x:auto"></div>
+    </div>
   </div>
 
   <!-- Main data table -->
@@ -274,7 +306,8 @@ let state = {
   selectedDay: null,
   sortField: 'wtd_ist',
   sortDir: 'asc',
-  filters: { region: '', area: '', store: '' }
+  filters: { region: '', area: '', store: '' },
+  viewBy: 'all'
 };
 
 // ── Boot ──────────────────────────────────────────────────────────────
@@ -386,10 +419,44 @@ async function loadDOW() {
   const url = '/api/velocity/dow-trends' + (params.length ? '?' + params.join('&') : '');
 
   document.getElementById('dowGrid').innerHTML = '<span class="spinner"></span>';
+  closeDOWDrill();
   try {
     const r = await api(url);
     renderDOW(r.patterns || []);
   } catch(e) { document.getElementById('dowGrid').innerHTML = 'Error'; }
+}
+
+function setViewBy(val) {
+  state.viewBy = val;
+  if (state.view === 'wtd' && state.wtdData) renderTable(state.wtdData.stores || []);
+  else if (state.view === 'day' && state.dayData) renderTableDay(state.dayData.stores || []);
+}
+
+async function loadDOWDrill(dow, dayName) {
+  const weeks  = document.getElementById('dowWeeks').value;
+  const region = state.filters.region;
+  const area   = state.filters.area;
+  const store  = resolveStoreForApi();
+  let url = `/api/velocity/dow-drill?dow=${dow}&weeks=${weeks}`;
+  if (region) url += `&region=${encodeURIComponent(region)}`;
+  if (area)   url += `&area_coach=${encodeURIComponent(area)}`;
+  if (store)  url += `&store=${encodeURIComponent(store)}`;
+
+  const drill = document.getElementById('dowDrill');
+  const chart = document.getElementById('dowDrillChart');
+  drill.classList.remove('hidden');
+  document.getElementById('dowDrillTitle').textContent = `${dayName} — Week-over-Week IST Trend`;
+  chart.innerHTML = '<span class="spinner"></span>';
+
+  try {
+    const r = await api(url);
+    renderTrendChart(r.weeks || [], chart);
+  } catch(e) { chart.innerHTML = '<span style="color:var(--ist-red)">Error: ' + e.message + '</span>'; }
+}
+
+function closeDOWDrill() {
+  document.getElementById('dowDrill').classList.add('hidden');
+  document.querySelectorAll('.dow-card').forEach(c => c.classList.remove('active'));
 }
 
 async function maybeLoadInsights() {
@@ -522,13 +589,14 @@ function renderTable(stores) {
   const region = state.filters.region;
   const area   = state.filters.area;
   const search = state.filters.store;
+  const viewBy = state.viewBy;
 
   let filtered = stores;
   if (region) filtered = filtered.filter(s => s.region_coach === region);
   if (area)   filtered = filtered.filter(s => s.area_coach === area);
   if (search) filtered = filtered.filter(s => s.name?.toLowerCase().includes(search) || s.store_id?.toLowerCase().includes(search));
 
-  // Sort
+  // Sort stores before building hierarchy
   filtered = [...filtered].sort((a, b) => {
     const av = a[state.sortField] ?? 999, bv = b[state.sortField] ?? 999;
     return state.sortDir === 'asc' ? av - bv : bv - av;
@@ -537,24 +605,27 @@ function renderTable(stores) {
   const tbody = document.getElementById('tableBody');
   if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted)">No stores match current filters</td></tr>'; return; }
 
-  // Build hierarchical rows
+  // Build hierarchy rows respecting viewBy
   const rows = [];
-  if (!area && !region && !search) {
-    // Group hierarchy
-    const byRegion = {};
-    filtered.forEach(s => { (byRegion[s.region_coach] = byRegion[s.region_coach]||[]).push(s); });
+  const byRegion = {};
+  filtered.forEach(s => { (byRegion[s.region_coach] = byRegion[s.region_coach]||[]).push(s); });
 
-    for (const [reg, rStores] of Object.entries(byRegion)) {
+  for (const [reg, rStores] of Object.entries(byRegion)) {
+    // Region row — shown for all viewBy except 'area'
+    if (viewBy !== 'area') {
       rows.push(summaryRow(rStores, 'REGION', reg, null, 'row-region'));
-      const byArea = {};
-      rStores.forEach(s => { (byArea[s.area_coach] = byArea[s.area_coach]||[]).push(s); });
-      for (const [ac, aStores] of Object.entries(byArea)) {
-        rows.push(summaryRow(aStores, 'AREA', reg, ac, 'row-area'));
+    }
+
+    if (viewBy === 'region') continue; // only region rows
+
+    const byArea = {};
+    rStores.forEach(s => { (byArea[s.area_coach] = byArea[s.area_coach]||[]).push(s); });
+    for (const [ac, aStores] of Object.entries(byArea)) {
+      rows.push(summaryRow(aStores, 'AREA', reg, ac, 'row-area'));
+      if (viewBy === 'all') {
         aStores.forEach(s => rows.push(storeRow(s, 'row-store')));
       }
     }
-  } else {
-    filtered.forEach(s => rows.push(storeRow(s, 'row-store')));
   }
 
   tbody.innerHTML = rows.join('');
@@ -629,8 +700,9 @@ function summaryRow(stores, level, region, area, cls) {
   </tr>`;
 }
 
-function renderTrendChart(weeks) {
-  if (!weeks.length) { document.getElementById('trendChart').innerHTML = '<p style="color:var(--muted);font-size:13px">No trend data available</p>'; return; }
+function renderTrendChart(weeks, container) {
+  const el = container || document.getElementById('trendChart');
+  if (!weeks.length) { el.innerHTML = '<p style="color:var(--muted);font-size:13px">No trend data available</p>'; return; }
 
   const maxIST = Math.max(...weeks.filter(w=>w.avg_ist).map(w=>w.avg_ist), 25);
   const minIST = Math.min(...weeks.filter(w=>w.avg_ist).map(w=>w.avg_ist), 15);
@@ -638,10 +710,9 @@ function renderTrendChart(weeks) {
 
   const bars = weeks.map(w => {
     const pct = w.avg_ist ? ((w.avg_ist - minIST) / range * 60 + 10).toFixed(0) : 0;
-    const cls = istColorClass(w.avg_ist);
-    const delta = w.delta != null ? (w.delta > 0 ? `<span class="delta-bad">▲ +${w.delta}</span>` : w.delta < 0 ? `<span class="delta-good">▼ ${w.delta}</span>` : '<span class="delta-flat">—</span>') : '';
-    return `<div style="flex:1;min-width:80px;text-align:center">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${delta}</div>
+    const deltaHtml = w.delta != null ? (w.delta > 0 ? `<span class="delta-bad">▲ +${w.delta}</span>` : w.delta < 0 ? `<span class="delta-good">▼ ${w.delta}</span>` : '<span class="delta-flat">—</span>') : '';
+    return `<div style="flex:1;min-width:70px;text-align:center">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${deltaHtml}</div>
       <div style="height:${pct}px;background:${istColorHex(w.avg_ist)};border-radius:4px 4px 0 0;margin:0 4px"></div>
       <div style="margin-top:4px;font-size:13px;font-weight:700;color:${istColorHex(w.avg_ist)}">${w.avg_ist != null ? w.avg_ist : '—'}</div>
       <div style="font-size:10px;color:var(--muted)">${w.period_week||w.week_key}</div>
@@ -649,7 +720,7 @@ function renderTrendChart(weeks) {
     </div>`;
   }).join('');
 
-  document.getElementById('trendChart').innerHTML = `
+  el.innerHTML = `
     <div style="display:flex;align-items:flex-end;gap:0;height:120px;padding:0 0 8px;border-bottom:1px solid var(--border)">
       ${bars}
     </div>
@@ -662,16 +733,28 @@ function renderDOW(patterns) {
   const grid = document.getElementById('dowGrid');
   if (!patterns.length) { grid.innerHTML = '<p style="color:var(--muted)">No pattern data yet</p>'; return; }
   const allDays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const DOW_IDX = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
   grid.innerHTML = allDays.map(day => {
     const p = patterns.find(p => p.day_name.trim() === day);
-    if (!p) return `<div class="dow-card"><div class="day">${day}</div><div class="ist ist-none">—</div><div class="insight">no data</div></div>`;
-    return `<div class="dow-card">
+    const dow = DOW_IDX[day];
+    if (!p) return `<div class="dow-card" onclick="drillDOW(${dow},'${day}')"><div class="day">${day}</div><div class="ist ist-none">—</div><div class="insight">no data</div></div>`;
+    return `<div class="dow-card" onclick="drillDOW(${dow},'${day}')" data-dow="${dow}">
       <div class="day">${day}</div>
       <div class="ist ${istColorClass(p.avg_ist)}">${p.avg_ist}</div>
       <div class="insight">${p.insight} (${p.vs_avg >= 0 ? '+' : ''}${p.vs_avg} vs avg)</div>
       <div class="insight" style="color:#555">${p.sample_count} samples</div>
     </div>`;
   }).join('');
+}
+
+function drillDOW(dow, dayName) {
+  // Toggle: clicking same card again closes the drill
+  const cards = document.querySelectorAll('.dow-card');
+  const wasActive = document.querySelector(`.dow-card[data-dow="${dow}"]`)?.classList.contains('active');
+  cards.forEach(c => c.classList.remove('active'));
+  if (wasActive) { closeDOWDrill(); return; }
+  document.querySelector(`.dow-card[data-dow="${dow}"]`)?.classList.add('active');
+  loadDOWDrill(dow, dayName);
 }
 
 // ── Upload ────────────────────────────────────────────────────────────
