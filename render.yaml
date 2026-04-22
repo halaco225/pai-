@@ -49,4 +49,4 @@ services:
       - key: PAI_BASE_URL
         value: https://pai-ayvaz.onrender.com
       - key: VELOCITY_AUTOMATION_TOKEN
-        sync: false
+        value: 022f4a0fa4e2ec99541609c47744d599
