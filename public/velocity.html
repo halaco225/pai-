@@ -135,6 +135,13 @@
   .text-right { text-align: right; }
   .mt-8 { margin-top: 8px; }
   .flex-end { justify-content: flex-end; }
+
+  /* ── PTD view ── */
+  .ptd-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .ptd-sub-tabs { display: flex; gap: 4px; }
+  .ptd-compare-label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
+  .ptd-compare-label input[type="checkbox"] { cursor: pointer; }
+  #ptdPeriodLabel { margin-left: auto; font-size: 12px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -164,6 +171,7 @@
       <label>View</label><br>
       <div class="view-tabs" style="margin:4px 0 0">
         <div class="tab active" data-view="wtd" onclick="switchView('wtd')">WTD</div>
+        <div class="tab" data-view="ptd" onclick="switchView('ptd')">PTD</div>
         <div class="tab" data-view="day" onclick="switchView('day')">Daily</div>
         <div class="tab" data-view="trend" onclick="switchView('trend')">Trend</div>
         <div class="tab" data-view="dow" onclick="switchView('dow')">Day Pattern</div>
@@ -255,6 +263,23 @@
     </div>
   </div>
 
+  <!-- PTD view section -->
+  <div id="ptdSection" class="hidden">
+    <div class="ptd-controls">
+      <div class="ptd-sub-tabs">
+        <button class="tab active" id="ptdAggBtn" onclick="setPTDSubView('aggregate')">Aggregate</button>
+        <button class="tab" id="ptdWbwBtn" onclick="setPTDSubView('week-by-week')">Week-by-Week</button>
+      </div>
+      <label class="ptd-compare-label">
+        <input type="checkbox" id="ptdCompare" onchange="state.ptdComparePrior=this.checked;loadPTD()">
+        Compare Prior Period
+      </label>
+      <span id="ptdPeriodLabel"></span>
+    </div>
+    <!-- Week-by-week table (only shown when sub-view is week-by-week) -->
+    <div id="ptdWbwWrap" class="hidden"></div>
+  </div>
+
   <!-- Main data table -->
   <div class="table-wrap" id="tableWrap">
     <table class="ist-table">
@@ -304,6 +329,9 @@ let state = {
   currentWeek: null,
   wtdData: null,
   dayData: null,
+  ptdData: null,
+  ptdSubView: 'aggregate',
+  ptdComparePrior: false,
   selectedDay: null,
   sortField: 'wtd_ist',
   sortDir: 'asc',
@@ -452,10 +480,264 @@ async function loadDOW() {
   } catch(e) { document.getElementById('dowGrid').innerHTML = 'Error'; }
 }
 
+async function loadPTD() {
+  const weekKey = state.currentWeek || document.getElementById('weekSelect').value;
+  const compare = state.ptdComparePrior;
+  const region  = state.filters.region;
+  const area    = state.filters.area;
+  const store   = resolveStoreForApi();
+
+  setStatus('<span class="spinner"></span> Loading PTD...', '');
+  try {
+    let url = `/api/velocity/ptd?date=${weekKey}`;
+    if (compare) url += '&compare=true';
+    if (region)  url += `&region=${encodeURIComponent(region)}`;
+    if (area)    url += `&area_coach=${encodeURIComponent(area)}`;
+    if (store)   url += `&store=${encodeURIComponent(store)}`;
+
+    const r = await api(url);
+    state.ptdData = r;
+
+    document.getElementById('ptdPeriodLabel').textContent = r.weeks.length
+      ? `${r.period} — ${r.weeks.length} week${r.weeks.length !== 1 ? 's' : ''} to date`
+      : r.period;
+
+    renderScorecards(r.aggregate || []);
+    resetInsightsPanel();
+
+    if (state.ptdSubView === 'aggregate') {
+      renderPTDAgg(r.aggregate || [], compare ? (r.prior?.aggregate || null) : null);
+    } else {
+      renderPTDWeekByWeek(r.weeklyStores || [], r.weeks || [], compare ? (r.prior?.aggregate || null) : null);
+    }
+
+    const storeCount = (r.aggregate || []).length;
+    setStatus(`${storeCount} stores · ${r.period} PTD${compare && r.prior ? ` vs ${r.prior.period}` : ''}`, 'ok');
+  } catch(e) {
+    setStatus('PTD error: ' + e.message, 'err');
+  }
+}
+
+function setPTDSubView(mode) {
+  state.ptdSubView = mode;
+  document.getElementById('ptdAggBtn').classList.toggle('active', mode === 'aggregate');
+  document.getElementById('ptdWbwBtn').classList.toggle('active', mode === 'week-by-week');
+  document.getElementById('tableWrap').classList.toggle('hidden', mode === 'week-by-week');
+  document.getElementById('ptdWbwWrap').classList.toggle('hidden', mode === 'aggregate');
+  if (!state.ptdData) return;
+  const priorStores = state.ptdComparePrior ? (state.ptdData.prior?.aggregate || null) : null;
+  if (mode === 'aggregate') renderPTDAgg(state.ptdData.aggregate || [], priorStores);
+  else renderPTDWeekByWeek(state.ptdData.weeklyStores || [], state.ptdData.weeks || [], priorStores);
+}
+
+// ── PTD renderers ──────────────────────────────────────────────────────
+function ptdISTDelta(curr, prior) {
+  if (curr == null || prior == null) return '';
+  const d = Math.round((curr - prior) * 10) / 10;
+  if (d > 0) return ` <span class="delta-bad" style="font-size:10px">▲+${d.toFixed(1)}</span>`;
+  if (d < 0) return ` <span class="delta-good" style="font-size:10px">▼${Math.abs(d).toFixed(1)}</span>`;
+  return ` <span class="delta-flat" style="font-size:10px">—</span>`;
+}
+
+function ptdStoreRow(s, priorMap) {
+  const priorIST   = priorMap ? (priorMap[s.store_id] ?? null) : null;
+  const deltaHtml  = ptdISTDelta(s.wtd_ist, priorIST);
+  return `<tr class="row-store">
+    <td><strong>${s.name||s.store_id}</strong><br><small style="color:var(--muted)">${s.store_id}</small></td>
+    <td>${s.area_coach||'—'}</td>
+    <td style="color:var(--muted);font-size:12px">${s.region_coach||'—'}</td>
+    <td><span class="${istColorClass(s.wtd_ist)}">${s.wtd_ist != null ? s.wtd_ist + ' min' : '—'}</span>${deltaHtml}</td>
+    <td>${s.wtd_lt10||0}</td><td>${s.wtd_1014||0}</td><td>${s.wtd_1518||0}</td>
+    <td>${s.wtd_1925||0}</td><td class="${(s.wtd_gt25||0)>0?'ist-orange':''}">${s.wtd_gt25||0}</td>
+    <td>${s.wtd_orders||0}</td><td>${s.days_reported||0}</td>
+  </tr>`;
+}
+
+function ptdSummaryRow(stores, level, region, area, cls, priorMap) {
+  const valid  = stores.filter(s => s.wtd_ist != null);
+  const avgIST = valid.length ? parseFloat((valid.reduce((a,s)=>a+s.wtd_ist,0)/valid.length).toFixed(1)) : null;
+  const orders = stores.reduce((a,s)=>a+(s.wtd_orders||0),0);
+  const lt10   = stores.reduce((a,s)=>a+(s.wtd_lt10||0),0);
+  const t1014  = stores.reduce((a,s)=>a+(s.wtd_1014||0),0);
+  const t1518  = stores.reduce((a,s)=>a+(s.wtd_1518||0),0);
+  const t1925  = stores.reduce((a,s)=>a+(s.wtd_1925||0),0);
+  const gt25   = stores.reduce((a,s)=>a+(s.wtd_gt25||0),0);
+
+  let priorAvg = null;
+  if (priorMap) {
+    const pv = stores.filter(s => priorMap[s.store_id] != null);
+    if (pv.length) priorAvg = parseFloat((pv.reduce((a,s)=>a+(priorMap[s.store_id]||0),0)/pv.length).toFixed(1));
+  }
+  const deltaHtml = ptdISTDelta(avgIST, priorAvg);
+  const label = level === 'REGION' ? region : area;
+
+  return `<tr class="${cls}">
+    <td colspan="2"><strong>${label}</strong> <small style="color:var(--muted)">${stores.length} stores</small></td>
+    <td style="color:var(--muted);font-size:12px">${level === 'AREA' ? region : ''}</td>
+    <td><span class="${istColorClass(avgIST)}">${avgIST != null ? avgIST + ' min' : '—'}</span>${deltaHtml}</td>
+    <td>${lt10}</td><td>${t1014}</td><td>${t1518}</td>
+    <td>${t1925}</td><td class="${gt25>0?'ist-orange':''}">${gt25}</td>
+    <td>${orders.toLocaleString()}</td><td>—</td>
+  </tr>`;
+}
+
+function renderPTDAgg(stores, priorStores) {
+  const priorMap = {};
+  if (priorStores) priorStores.forEach(s => { priorMap[s.store_id] = s.wtd_ist; });
+
+  // Update IST column header
+  const ths = document.querySelectorAll('#tableWrap table thead tr th');
+  const priorLabel = priorStores ? ` <small style="color:var(--muted);font-weight:400">vs ${state.ptdData?.prior?.period||'prior'}</small>` : '';
+  if (ths[3]) ths[3].innerHTML = `PTD Avg IST${priorLabel} ↕`;
+
+  const region = state.filters.region;
+  const area   = state.filters.area;
+  const search = state.filters.store;
+  const viewBy = state.viewBy;
+
+  let filtered = stores;
+  if (region) filtered = filtered.filter(s => s.region_coach === region);
+  if (area)   filtered = filtered.filter(s => s.area_coach === area);
+  if (search) filtered = filtered.filter(s => s.name?.toLowerCase().includes(search) || s.store_id?.toLowerCase().includes(search));
+  filtered = [...filtered].sort((a, b) => (a.wtd_ist ?? 999) - (b.wtd_ist ?? 999));
+
+  const tbody = document.getElementById('tableBody');
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--muted)">No PTD data for current filters</td></tr>';
+    return;
+  }
+
+  const rows = [];
+  const byRegion = {};
+  filtered.forEach(s => { (byRegion[s.region_coach] = byRegion[s.region_coach]||[]).push(s); });
+
+  for (const [reg, rStores] of Object.entries(byRegion)) {
+    if (viewBy !== 'area') rows.push(ptdSummaryRow(rStores, 'REGION', reg, null, 'row-region', priorMap));
+    if (viewBy === 'region') continue;
+    const byArea = {};
+    rStores.forEach(s => { (byArea[s.area_coach] = byArea[s.area_coach]||[]).push(s); });
+    for (const [ac, aStores] of Object.entries(byArea)) {
+      rows.push(ptdSummaryRow(aStores, 'AREA', reg, ac, 'row-area', priorMap));
+      if (viewBy === 'all') aStores.forEach(s => rows.push(ptdStoreRow(s, priorMap)));
+    }
+  }
+  tbody.innerHTML = rows.join('');
+}
+
+function renderPTDWeekByWeek(weeklyStores, weeks, priorStores) {
+  const el = document.getElementById('ptdWbwWrap');
+  if (!weeks.length || !weeklyStores.length) {
+    el.innerHTML = '<p style="color:var(--muted);padding:20px">No week-by-week data available yet.</p>';
+    return;
+  }
+
+  const priorMap = {};
+  if (priorStores) priorStores.forEach(s => { priorMap[s.store_id] = s.wtd_ist; });
+  const showCompare = !!priorStores;
+  const priorPeriod = state.ptdData?.prior?.period || 'Prior';
+
+  const region = state.filters.region;
+  const area   = state.filters.area;
+  const search = state.filters.store;
+  const viewBy = state.viewBy;
+
+  let filtered = weeklyStores;
+  if (region) filtered = filtered.filter(s => s.region_coach === region);
+  if (area)   filtered = filtered.filter(s => s.area_coach === area);
+  if (search) filtered = filtered.filter(s => s.name?.toLowerCase().includes(search) || s.store_id?.toLowerCase().includes(search));
+
+  const lastWeek = weeks[weeks.length - 1]?.label;
+  filtered = [...filtered].sort((a, b) => (a.weeklyIST[lastWeek] ?? 999) - (b.weeklyIST[lastWeek] ?? 999));
+
+  // Header
+  let hdrs = `<th>Store</th><th>Area Coach</th><th>Region</th>`;
+  for (let i = 0; i < weeks.length; i++) {
+    hdrs += `<th>${weeks[i].label}</th>`;
+    if (i < weeks.length - 1) hdrs += `<th>Δ</th>`;
+  }
+  if (showCompare) hdrs += `<th>Prior (${priorPeriod})</th><th>Δ vs Prior</th>`;
+
+  function wbwDelta(prev, curr) {
+    if (prev == null || curr == null) return '<td>—</td>';
+    const d = Math.round((curr - prev) * 10) / 10;
+    return `<td>${d > 0 ? `<span class="delta-bad">▲+${d.toFixed(1)}</span>` : d < 0 ? `<span class="delta-good">▼${Math.abs(d).toFixed(1)}</span>` : '—'}</td>`;
+  }
+
+  function wbwStoreRow(s) {
+    let cells = `<td style="padding-left:36px"><strong>${s.name||s.store_id}</strong><br><small style="color:var(--muted)">${s.store_id}</small></td>
+      <td>${s.area_coach||'—'}</td>
+      <td style="color:var(--muted);font-size:12px">${s.region_coach||'—'}</td>`;
+    for (let i = 0; i < weeks.length; i++) {
+      const ist = s.weeklyIST[weeks[i].label] ?? null;
+      cells += `<td><span class="${istColorClass(ist)}">${ist != null ? ist + ' min' : '—'}</span></td>`;
+      if (i < weeks.length - 1) cells += wbwDelta(s.weeklyIST[weeks[i].label], s.weeklyIST[weeks[i+1].label]).replace('<td>','<td>');
+    }
+    if (showCompare) {
+      const prior = priorMap[s.store_id] ?? null;
+      const wkVals = weeks.map(w => s.weeklyIST[w.label]).filter(v => v != null);
+      const currAvg = wkVals.length ? parseFloat((wkVals.reduce((a,v)=>a+v,0)/wkVals.length).toFixed(1)) : null;
+      cells += `<td>${prior != null ? `<span class="${istColorClass(prior)}">${prior} min</span>` : '—'}</td>`;
+      cells += `<td>${ptdISTDelta(currAvg, prior)||'—'}</td>`;
+    }
+    return `<tr class="row-store">${cells}</tr>`;
+  }
+
+  function wbwSummaryRow(storeArr, cls, label, subLabel) {
+    let cells = `<td colspan="2" style="${cls==='row-area'?'padding-left:20px':''}"><strong>${label}</strong> <small style="color:var(--muted)">${storeArr.length} stores</small></td>
+      <td style="color:var(--muted);font-size:12px">${subLabel||''}</td>`;
+    const weekAvgs = weeks.map(w => {
+      const valid2 = storeArr.filter(s => s.weeklyIST[w.label] != null);
+      return valid2.length ? parseFloat((valid2.reduce((a,s)=>a+(s.weeklyIST[w.label]||0),0)/valid2.length).toFixed(1)) : null;
+    });
+    for (let i = 0; i < weeks.length; i++) {
+      const avg = weekAvgs[i];
+      cells += `<td><span class="${istColorClass(avg)}">${avg != null ? avg + ' min' : '—'}</span></td>`;
+      if (i < weeks.length - 1) cells += wbwDelta(weekAvgs[i], weekAvgs[i+1]).replace('<td>','<td>');
+    }
+    if (showCompare) {
+      const pv = storeArr.filter(s => priorMap[s.store_id] != null);
+      const priorAvg = pv.length ? parseFloat((pv.reduce((a,s)=>a+(priorMap[s.store_id]||0),0)/pv.length).toFixed(1)) : null;
+      const currVals = weekAvgs.filter(v => v != null);
+      const currAvgAll = currVals.length ? parseFloat((currVals.reduce((a,v)=>a+v,0)/currVals.length).toFixed(1)) : null;
+      cells += `<td>${priorAvg != null ? `<span class="${istColorClass(priorAvg)}">${priorAvg} min</span>` : '—'}</td>`;
+      cells += `<td>${ptdISTDelta(currAvgAll, priorAvg)||'—'}</td>`;
+    }
+    return `<tr class="${cls}">${cells}</tr>`;
+  }
+
+  const rows = [];
+  const byRegion = {};
+  filtered.forEach(s => { (byRegion[s.region_coach] = byRegion[s.region_coach]||[]).push(s); });
+
+  for (const [reg, rStores] of Object.entries(byRegion)) {
+    if (viewBy !== 'area') rows.push(wbwSummaryRow(rStores, 'row-region', reg, null));
+    if (viewBy === 'region') continue;
+    const byArea = {};
+    rStores.forEach(s => { (byArea[s.area_coach] = byArea[s.area_coach]||[]).push(s); });
+    for (const [ac, aStores] of Object.entries(byArea)) {
+      rows.push(wbwSummaryRow(aStores, 'row-area', ac, reg));
+      if (viewBy === 'all') aStores.forEach(s => rows.push(wbwStoreRow(s)));
+    }
+  }
+
+  el.innerHTML = `
+    <div class="table-wrap">
+      <table class="ist-table">
+        <thead><tr>${hdrs}</tr></thead>
+        <tbody>${rows.join('') || '<tr><td colspan="20" style="text-align:center;padding:20px;color:var(--muted)">No data</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+
 function setViewBy(val) {
   state.viewBy = val;
   if (state.view === 'wtd' && state.wtdData) renderTable(state.wtdData.stores || []);
   else if (state.view === 'day' && state.dayData) renderTableDay(state.dayData.stores || []);
+  else if (state.view === 'ptd' && state.ptdData) {
+    const priorStores = state.ptdComparePrior ? (state.ptdData.prior?.aggregate || null) : null;
+    if (state.ptdSubView === 'aggregate') renderPTDAgg(state.ptdData.aggregate || [], priorStores);
+    else renderPTDWeekByWeek(state.ptdData.weeklyStores || [], state.ptdData.weeks || [], priorStores);
+  }
   else if (state.view === 'trend') loadTrend();
   else if (state.view === 'dow')   loadDOW();
 }
@@ -601,15 +883,38 @@ function renderDOWHierarchy(groups, viewBy) {
 function switchView(view) {
   state.view = view;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
-  document.getElementById('trendSection').classList.toggle('hidden', view !== 'trend');
-  document.getElementById('dowSection').classList.toggle('hidden', view !== 'dow');
-  document.getElementById('tableWrap').classList.toggle('hidden', view === 'trend' || view === 'dow');
-  document.getElementById('dayPills').classList.toggle('hidden', view === 'trend' || view === 'dow');
 
-  if (view === 'trend') loadTrend();
-  else if (view === 'dow') loadDOW();
-  else if (view === 'wtd' && state.wtdData) { renderTable(state.wtdData.stores || []); renderScorecards(state.wtdData.stores || []); }
-  else if (view === 'day' && state.wtdData?.days?.length) selectDay(state.wtdData.days[state.wtdData.days.length - 1]);
+  const isPTD   = view === 'ptd';
+  const isTrend = view === 'trend';
+  const isDOW   = view === 'dow';
+
+  document.getElementById('trendSection').classList.toggle('hidden', !isTrend);
+  document.getElementById('dowSection').classList.toggle('hidden', !isDOW);
+  document.getElementById('ptdSection').classList.toggle('hidden', !isPTD);
+  document.getElementById('dayPills').classList.toggle('hidden', isTrend || isDOW || isPTD);
+
+  // Main table: show for WTD/Daily and PTD-aggregate; hide for trend/dow/PTD-wbw
+  const hideMainTable = isTrend || isDOW || (isPTD && state.ptdSubView === 'week-by-week');
+  document.getElementById('tableWrap').classList.toggle('hidden', hideMainTable);
+
+  if (isPTD) {
+    document.getElementById('ptdWbwWrap').classList.toggle('hidden', state.ptdSubView === 'aggregate');
+    loadPTD();
+  } else if (isTrend) {
+    loadTrend();
+  } else if (isDOW) {
+    loadDOW();
+  } else if (view === 'wtd' && state.wtdData) {
+    // Restore WTD table header
+    const ths = document.querySelectorAll('#tableWrap table thead tr th');
+    if (ths[3]) ths[3].innerHTML = 'Avg IST ↕';
+    renderTable(state.wtdData.stores || []);
+    renderScorecards(state.wtdData.stores || []);
+  } else if (view === 'day' && state.wtdData?.days?.length) {
+    const ths = document.querySelectorAll('#tableWrap table thead tr th');
+    if (ths[3]) ths[3].innerHTML = 'Avg IST ↕';
+    selectDay(state.wtdData.days[state.wtdData.days.length - 1]);
+  }
 }
 
 // ── Render functions ──────────────────────────────────────────────────
@@ -672,6 +977,7 @@ function applyFilters(stores) {
   if (area)   filtered = filtered.filter(s => s.area_coach === area);
   if (search) filtered = filtered.filter(s => s.name?.toLowerCase().includes(search) || s.store_id?.toLowerCase().includes(search));
 
+  if (state.view === 'ptd') { loadPTD(); return; }
   if (state.view === 'trend') { loadTrend(); }
   else if (state.view === 'dow') { loadDOW(); }
   else if (state.view === 'day') renderTableDay(filtered);
@@ -685,6 +991,7 @@ function clearFilters() {
   document.getElementById('areaFilter').value = '';
   document.getElementById('storeSearch').value = '';
   state.filters = { region: '', area: '', store: '' };
+  if (state.view === 'ptd') { loadPTD(); document.getElementById('insightsPanel').classList.add('hidden'); return; }
   if (state.view === 'trend') loadTrend();
   else if (state.view === 'dow') loadDOW();
   else if (state.view === 'day' && state.dayData) renderTableDay(state.dayData.stores || []);

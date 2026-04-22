@@ -770,4 +770,104 @@ router.post('/export', async (req, res) => {
 
 
 
+// ── GET /api/velocity/ptd?date=YYYY-MM-DD&compare=true — Period-to-Date ──
+router.get('/ptd', async (req, res) => {
+  try {
+    const date         = req.query.date        || getYesterdayChicago();
+    const compare      = req.query.compare     === 'true';
+    const regionFilter = req.query.region      || null;
+    const areaFilter   = req.query.area_coach  || null;
+    const storeFilter  = req.query.store       || null;
+
+    const weekKey    = getWeekKey(date);
+    const periodWeek = getPeriodWeek(date);             // e.g. 'P4W2'
+    const period     = periodWeek.replace(/W\d+$/, ''); // e.g. 'P4'
+
+    // All FISCAL_CALENDAR weeks in this period up to and including current week
+    const ptdEntries = Object.entries(FISCAL_CALENDAR)
+      .filter(([wk, pw]) => pw.startsWith(period + 'W') && wk <= weekKey)
+      .sort(([a], [b]) => a.localeCompare(b));
+
+    if (!ptdEntries.length) {
+      return res.json({ period, periodWeek, weekKey, weeks: [], aggregate: [], weeklyStores: [], prior: null });
+    }
+
+    // Helper: fetch a week, enrich with alignment, apply filters, tag with _wkLabel
+    async function fetchWeekFiltered(wk, label) {
+      const raw = await db.getVelocityWeek(wk);
+      return raw
+        .map(r => ({
+          ...r,
+          record_date: r.record_date instanceof Date
+            ? r.record_date.toISOString().split('T')[0]
+            : String(r.record_date).split('T')[0],
+          ...(ALIGNMENT[r.store_id] || {}),
+          _wkLabel: label
+        }))
+        .filter(r => (!storeFilter  || r.store_id     === storeFilter)
+                  && (!areaFilter   || r.area_coach   === areaFilter)
+                  && (!regionFilter || r.region_coach === regionFilter));
+    }
+
+    // Build week metadata + fetch all records for this period
+    const weeks         = [];
+    const allPtdRecords = [];
+    for (const [wk, pw] of ptdEntries) {
+      const isCurrentWeek = (wk === weekKey);
+      const label = isCurrentWeek ? `${pw} (WTD)` : pw;
+      weeks.push({ week_key: wk, period_week: pw, label, is_current: isCurrentWeek, date_range: getWeekDateRange(wk) });
+      const recs = await fetchWeekFiltered(wk, label);
+      allPtdRecords.push(...recs);
+    }
+
+    // Aggregate: computeWTD across all period records → true period average per store
+    const aggregate = computeWTD(allPtdRecords);
+
+    // Per-week WTD per store (for week-by-week sub-view)
+    const weeklyMap = {};
+    for (const wkMeta of weeks) {
+      const wkRecs   = allPtdRecords.filter(r => r._wkLabel === wkMeta.label);
+      const wkStores = computeWTD(wkRecs);
+      for (const s of wkStores) {
+        if (!weeklyMap[s.store_id]) {
+          weeklyMap[s.store_id] = {
+            store_id: s.store_id, name: s.name || '',
+            area_coach: s.area_coach || '', region_coach: s.region_coach || '',
+            weeklyIST: {}, weeklyOrders: {}
+          };
+        }
+        if (s.wtd_ist != null) weeklyMap[s.store_id].weeklyIST[wkMeta.label] = s.wtd_ist;
+        weeklyMap[s.store_id].weeklyOrders[wkMeta.label] = s.wtd_orders || 0;
+      }
+    }
+    const weeklyStores = Object.values(weeklyMap);
+
+    // Prior period comparison (all weeks, since prior period is complete)
+    let prior = null;
+    if (compare) {
+      const periodNum   = parseInt(period.replace('P', ''));
+      const priorPeriod = `P${periodNum - 1}`;
+      const priorEntries = Object.entries(FISCAL_CALENDAR)
+        .filter(([wk, pw]) => pw.startsWith(priorPeriod + 'W'))
+        .sort(([a], [b]) => a.localeCompare(b));
+
+      if (priorEntries.length) {
+        const priorWeeks   = [];
+        const priorAllRecs = [];
+        for (const [wk, pw] of priorEntries) {
+          priorWeeks.push({ week_key: wk, period_week: pw, label: pw, is_current: false, date_range: getWeekDateRange(wk) });
+          const recs = await fetchWeekFiltered(wk, pw);
+          priorAllRecs.push(...recs);
+        }
+        prior = { period: priorPeriod, weeks: priorWeeks, aggregate: computeWTD(priorAllRecs) };
+      }
+    }
+
+    res.json({ period, periodWeek, weekKey, weeks, aggregate, weeklyStores, prior });
+  } catch (e) {
+    console.error('[Velocity] PTD error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
