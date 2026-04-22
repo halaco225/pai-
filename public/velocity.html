@@ -202,7 +202,6 @@
   <!-- Scorecard strip -->
   <div class="scorecard-row" id="scorecards">
     <div class="scorecard"><div class="val ist-none">—</div><div class="lbl">Avg IST</div></div>
-    <div class="scorecard"><div class="val ist-none">—</div><div class="lbl">% Under 19 min</div></div>
     <div class="scorecard"><div class="val ist-none">—</div><div class="lbl">Stores Reporting</div></div>
     <div class="scorecard"><div class="val ist-none">—</div><div class="lbl">Total Deliveries</div></div>
     <div class="scorecard"><div class="val ist-none">—</div><div class="lbl">Stores ≥19 min</div></div>
@@ -265,14 +264,13 @@
           <th>Area Coach</th>
           <th>Region</th>
           <th onclick="sortBy('wtd_ist')" style="cursor:pointer">Avg IST ↕</th>
-          <th>% &lt;19 min</th>
           <th>&lt;10</th><th>10–14</th><th>15–18</th><th>19–25</th><th>&gt;25</th>
           <th>Orders</th>
           <th>Days</th>
         </tr>
       </thead>
       <tbody id="tableBody">
-        <tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted)"><span class="spinner"></span> Loading...</td></tr>
+        <tr><td colspan="11" style="text-align:center;padding:30px;color:var(--muted)"><span class="spinner"></span> Loading...</td></tr>
       </tbody>
     </table>
   </div>
@@ -618,18 +616,15 @@ function switchView(view) {
 function renderScorecards(stores, isDay = false) {
   const valid = stores.filter(s => s.wtd_ist != null || s.ist_avg != null);
   const istField = isDay ? 'ist_avg' : 'wtd_ist';
-  const lt19Field = isDay ? 'ist_lt19_pct' : 'wtd_lt19_pct';
   const ordField = isDay ? 'total_orders' : 'wtd_orders';
 
   const avgIST = valid.length ? (valid.reduce((a,s) => a + (s[istField]||0), 0) / valid.length).toFixed(1) : '—';
-  const avgLt19 = valid.length ? (valid.reduce((a,s) => a + (s[lt19Field]||0), 0) / valid.length).toFixed(1) : '—';
   const totalOrd = valid.reduce((a,s) => a + (s[ordField]||0), 0);
   const slowStores = valid.filter(s => (s[istField]||0) >= 19).length;
   const cls = istColorClass(parseFloat(avgIST));
 
   document.getElementById('scorecards').innerHTML = `
     <div class="scorecard"><div class="val ${cls}">${avgIST}</div><div class="lbl">Avg IST (min)</div></div>
-    <div class="scorecard"><div class="val">${avgLt19}%</div><div class="lbl">% Under 19 min</div></div>
     <div class="scorecard"><div class="val">${valid.length}</div><div class="lbl">Stores Reporting</div></div>
     <div class="scorecard"><div class="val">${totalOrd.toLocaleString()}</div><div class="lbl">Total Deliveries</div></div>
     <div class="scorecard"><div class="val ${slowStores > 0 ? 'ist-orange':''}">${slowStores}</div><div class="lbl">Stores ≥19 min</div></div>
@@ -721,7 +716,7 @@ function renderTable(stores) {
   });
 
   const tbody = document.getElementById('tableBody');
-  if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted)">No stores match current filters</td></tr>'; return; }
+  if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--muted)">No stores match current filters</td></tr>'; return; }
 
   // Build hierarchy rows respecting viewBy
   const rows = [];
@@ -762,7 +757,7 @@ function renderTableDay(stores) {
   filtered = [...filtered].sort((a, b) => (a.ist_avg||99) - (b.ist_avg||99));
 
   const tbody = document.getElementById('tableBody');
-  if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted)">No data for this day</td></tr>'; return; }
+  if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--muted)">No data for this day</td></tr>'; return; }
 
   tbody.innerHTML = filtered.map(s => `
     <tr class="row-store">
@@ -770,7 +765,6 @@ function renderTableDay(stores) {
       <td>${s.area_coach||'—'}</td>
       <td style="color:var(--muted);font-size:12px">${s.region_coach||'—'}</td>
       <td><span class="${istColorClass(s.ist_avg)}">${s.ist_avg != null ? s.ist_avg + ' min' : '—'}</span></td>
-      <td>${s.ist_lt19_pct != null ? s.ist_lt19_pct.toFixed(1)+'%' : '—'}</td>
       <td>${s.ist_lt10||0}</td><td>${s.ist_1014||0}</td><td>${s.ist_1518||0}</td>
       <td>${s.ist_1925||0}</td><td class="${(s.ist_gt25||0)>0?'ist-orange':''}">${s.ist_gt25||0}</td>
       <td>${s.total_orders||0}</td>
@@ -784,7 +778,6 @@ function storeRow(s, cls) {
     <td>${s.area_coach||'—'}</td>
     <td style="color:var(--muted);font-size:12px">${s.region_coach||'—'}</td>
     <td><span class="${istColorClass(s.wtd_ist)}">${s.wtd_ist != null ? s.wtd_ist + ' min' : '—'}</span></td>
-    <td>${s.wtd_lt19_pct != null ? s.wtd_lt19_pct.toFixed(1)+'%' : '—'}</td>
     <td>${s.wtd_lt10||0}</td><td>${s.wtd_1014||0}</td><td>${s.wtd_1518||0}</td>
     <td>${s.wtd_1925||0}</td><td class="${(s.wtd_gt25||0)>0?'ist-orange':''}">${s.wtd_gt25||0}</td>
     <td>${s.wtd_orders||0}</td>
@@ -795,7 +788,6 @@ function storeRow(s, cls) {
 function summaryRow(stores, level, region, area, cls) {
   const valid = stores.filter(s => s.wtd_ist != null);
   const avgIST = valid.length ? (valid.reduce((a,s)=>a+s.wtd_ist,0)/valid.length).toFixed(1) : null;
-  const avgLt19 = valid.length ? (valid.reduce((a,s)=>a+(s.wtd_lt19_pct||0),0)/valid.length).toFixed(1) : null;
   const orders = stores.reduce((a,s)=>a+(s.wtd_orders||0),0);
   const lt10 = stores.reduce((a,s)=>a+(s.wtd_lt10||0),0);
   const t1014 = stores.reduce((a,s)=>a+(s.wtd_1014||0),0);
@@ -804,13 +796,12 @@ function summaryRow(stores, level, region, area, cls) {
   const gt25 = stores.reduce((a,s)=>a+(s.wtd_gt25||0),0);
 
   const label = level === 'REGION' ? region : area;
-  const sub = level === 'REGION' ? `${stores.length} stores` : `${stores.length} stores`;
+  const sub = `${stores.length} stores`;
 
   return `<tr class="${cls}">
     <td colspan="2"><strong>${label}</strong> <small style="color:var(--muted)">${sub}</small></td>
     <td style="color:var(--muted);font-size:12px">${level === 'AREA' ? region : ''}</td>
     <td><span class="${istColorClass(parseFloat(avgIST))}">${avgIST != null ? avgIST + ' min' : '—'}</span></td>
-    <td>${avgLt19 != null ? avgLt19+'%' : '—'}</td>
     <td>${lt10}</td><td>${t1014}</td><td>${t1518}</td>
     <td>${t1925}</td><td class="${gt25>0?'ist-orange':''}">${gt25}</td>
     <td>${orders.toLocaleString()}</td>

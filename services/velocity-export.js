@@ -24,16 +24,6 @@ function sumOrders(storeList) {
   return storeList.reduce((a, s) => a + (s.wtd_orders || 0), 0);
 }
 
-function avgLt19(storeList) {
-  const valid = storeList.filter(s => s.wtd_lt19_pct != null);
-  return valid.length ? Math.round(valid.reduce((a, s) => a + s.wtd_lt19_pct, 0) / valid.length * 10) / 10 : null;
-}
-
-// Convert a percent value (e.g. 62.2) to decimal (0.622) for Excel numFmt='0.0%'
-function toLt19Dec(pct) {
-  return pct != null ? pct / 100 : null;
-}
-
 // % = count / total_orders as decimal (e.g. 0.038), null if no orders
 function bucketPct(count, totalOrders) {
   return (totalOrders > 0) ? Math.round((count / totalOrders) * 10000) / 10000 : null;
@@ -54,20 +44,19 @@ const IST_HEADERS = [
   'IST 10-14 #','IST 10-14 %',
   'IST 15-18 #','IST 15-18 %',
   'IST 19-25 #','IST 19-25 %',
-  'IST >25 #','IST >25 %',
-  'IST <19%'
+  'IST >25 #','IST >25 %'
 ];
 
 // 1-based column index of "Avg IST (mins)" in IST sheets
 const AVG_IST_COL = 6;
 
 // 1-based indices of % columns (need numFmt = '0.0%')
-const PCT_COLS = [9, 11, 13, 15, 17, 18];
+const PCT_COLS = [9, 11, 13, 15, 17];
 
 // Column widths for IST sheets (1 per header column)
-const IST_COL_WIDTHS = [8, 24, 22, 10, 30, 14, 13, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10];
+const IST_COL_WIDTHS = [8, 24, 22, 10, 30, 14, 13, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10];
 
-function istRow(level, region, area, storeId, storeName, istAvg, orders, lt10, t1014, t1518, t1925, gt25, lt19pct) {
+function istRow(level, region, area, storeId, storeName, istAvg, orders, lt10, t1014, t1518, t1925, gt25) {
   return [
     level, region, area, storeId, storeName,
     istAvg, orders,
@@ -75,8 +64,7 @@ function istRow(level, region, area, storeId, storeName, istAvg, orders, lt10, t
     t1014, bucketPct(t1014, orders),
     t1518, bucketPct(t1518, orders),
     t1925, bucketPct(t1925, orders),
-    gt25, bucketPct(gt25, orders),
-    lt19pct  // already decimal (0–1) via toLt19Dec()
+    gt25, bucketPct(gt25, orders)
   ];
 }
 
@@ -98,8 +86,7 @@ function buildHierarchyRows(stores) {
     stores.reduce((a,s)=>a+(s.wtd_1014||0),0),
     stores.reduce((a,s)=>a+(s.wtd_1518||0),0),
     stores.reduce((a,s)=>a+(s.wtd_1925||0),0),
-    stores.reduce((a,s)=>a+(s.wtd_gt25||0),0),
-    toLt19Dec(avgLt19(stores))
+    stores.reduce((a,s)=>a+(s.wtd_gt25||0),0)
   ));
 
   for (const [region, rStores] of Object.entries(byRegion)) {
@@ -111,8 +98,7 @@ function buildHierarchyRows(stores) {
       rStores.reduce((a,s)=>a+(s.wtd_1014||0),0),
       rStores.reduce((a,s)=>a+(s.wtd_1518||0),0),
       rStores.reduce((a,s)=>a+(s.wtd_1925||0),0),
-      rStores.reduce((a,s)=>a+(s.wtd_gt25||0),0),
-      toLt19Dec(avgLt19(rStores))
+      rStores.reduce((a,s)=>a+(s.wtd_gt25||0),0)
     ));
 
     const byArea = {};
@@ -131,8 +117,7 @@ function buildHierarchyRows(stores) {
         aStores.reduce((a,s)=>a+(s.wtd_1014||0),0),
         aStores.reduce((a,s)=>a+(s.wtd_1518||0),0),
         aStores.reduce((a,s)=>a+(s.wtd_1925||0),0),
-        aStores.reduce((a,s)=>a+(s.wtd_gt25||0),0),
-        toLt19Dec(avgLt19(aStores))
+        aStores.reduce((a,s)=>a+(s.wtd_gt25||0),0)
       ));
 
       for (const s of aStores) {
@@ -141,8 +126,7 @@ function buildHierarchyRows(stores) {
           'STORE', s.region_coach||'', s.area_coach||'', s.store_id, s.name,
           s.wtd_ist, sOrders,
           s.wtd_lt10||0, s.wtd_1014||0, s.wtd_1518||0,
-          s.wtd_1925||0, s.wtd_gt25||0,
-          toLt19Dec(s.wtd_lt19_pct)
+          s.wtd_1925||0, s.wtd_gt25||0
         ));
       }
     }
@@ -238,7 +222,7 @@ async function generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate
         wtd_orders: r.total_orders||0,
         wtd_lt10: r.ist_lt10||0, wtd_1014: r.ist_1014||0,
         wtd_1518: r.ist_1518||0, wtd_1925: r.ist_1925||0,
-        wtd_gt25: r.ist_gt25||0, wtd_lt19_pct: r.ist_lt19_pct ? parseFloat(r.ist_lt19_pct) : null
+        wtd_gt25: r.ist_gt25||0
       }));
       addISTSheet(wb, fmtDate(dateStr).substring(0, 31), `${fmtDate(dateStr)} — ${periodWeek}`, dayStores);
     }
@@ -294,34 +278,38 @@ async function generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate
   }
 
   // ── PTD Trend Sheet (week-over-week) ──────────────────────────────────
-  if (allWeekStores && allWeekStores.length && allWeekStores[0]?.weeklyIST) {
-    const weeks = Object.keys(allWeekStores[0].weeklyIST).sort();
+  if (allWeekStores && allWeekStores.length) {
+    // Collect all week labels that have actual data across ALL stores (not just the first)
+    const weeks = [...new Set(allWeekStores.flatMap(s => Object.keys(s.weeklyIST || {})))].sort();
 
-    const ptdHdrs = ['Level','Region','Area Coach','Store #','Store Name'];
-    for (let i = 0; i < weeks.length; i++) {
-      ptdHdrs.push(`${weeks[i]} Avg IST`);
-      if (i < weeks.length - 1) ptdHdrs.push('Δ');
-    }
-
-    const ws = wb.addWorksheet('PTD Trend');
-    ws.views = [{ state: 'frozen', xSplit: 5, ySplit: 2 }];
-    ws.addRow([`PTD Trend — Week over Week IST`]).font = { bold: true, size: 12 };
-    styleHeaderRow(ws.addRow(ptdHdrs));
-
-    [8, 24, 22, 10, 30].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
-    for (let i = 5; i < ptdHdrs.length; i++) { ws.getColumn(i + 1).width = 14; }
-
-    for (const s of allWeekStores) {
-      if (s.level !== 'STORE') continue;
-      const rowData = ['STORE', s.region_coach||'', s.area_coach||'', s.store_id, s.name];
+    if (weeks.length > 0) {
+      const ptdHdrs = ['Level','Region','Area Coach','Store #','Store Name'];
       for (let i = 0; i < weeks.length; i++) {
-        rowData.push(s.weeklyIST[weeks[i]] ?? null);
-        if (i < weeks.length - 1) rowData.push(delta(s.weeklyIST[weeks[i]], s.weeklyIST[weeks[i+1]]));
+        ptdHdrs.push(`${weeks[i]} Avg IST`);
+        if (i < weeks.length - 1) ptdHdrs.push('Δ');
       }
-      const wsRow = ws.addRow(rowData);
-      for (let i = 0; i < weeks.length; i++) {
-        const color = istColorArgb(s.weeklyIST[weeks[i]]);
-        if (color) wsRow.getCell(6 + i * 2).font = { color: { argb: color } };
+
+      const ws = wb.addWorksheet('PTD Trend');
+      ws.views = [{ state: 'frozen', xSplit: 5, ySplit: 2 }];
+      ws.addRow([`PTD Trend — Week over Week IST`]).font = { bold: true, size: 12 };
+      styleHeaderRow(ws.addRow(ptdHdrs));
+
+      [8, 24, 22, 10, 30].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+      for (let i = 5; i < ptdHdrs.length; i++) { ws.getColumn(i + 1).width = 14; }
+
+      for (const s of allWeekStores) {
+        if (s.level !== 'STORE') continue;
+        const rowData = ['STORE', s.region_coach||'', s.area_coach||'', s.store_id, s.name];
+        for (let i = 0; i < weeks.length; i++) {
+          const val = s.weeklyIST?.[weeks[i]] ?? null;
+          rowData.push(val);
+          if (i < weeks.length - 1) rowData.push(delta(val, s.weeklyIST?.[weeks[i+1]] ?? null));
+        }
+        const wsRow = ws.addRow(rowData);
+        for (let i = 0; i < weeks.length; i++) {
+          const color = istColorArgb(s.weeklyIST?.[weeks[i]]);
+          if (color) wsRow.getCell(6 + i * 2).font = { color: { argb: color } };
+        }
       }
     }
   }
