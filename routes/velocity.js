@@ -336,6 +336,7 @@ router.get('/trends', async (req, res) => {
     const storeId   = req.query.store || null;
     const areaCoach = req.query.area_coach || null;
     const region    = req.query.region || null;
+    const groupBy   = req.query.group_by || null; // 'region' or 'area_coach'
 
     const endDate   = getYesterdayChicago();
     const startDate = (() => {
@@ -351,7 +352,41 @@ router.get('/trends', async (req, res) => {
     if (areaCoach) records = records.filter(r => (ALIGNMENT[r.store_id]?.area_coach) === areaCoach);
     if (region)    records = records.filter(r => (ALIGNMENT[r.store_id]?.region_coach) === region);
 
-    // Group by week_key
+    // Grouped response: one series per region or area_coach
+    if (groupBy) {
+      const groups = {};
+      for (const r of records) {
+        const al  = ALIGNMENT[r.store_id] || {};
+        const key = groupBy === 'region' ? al.region_coach : al.area_coach;
+        if (!key) continue;
+        if (!groups[key]) groups[key] = { label: key, region: al.region_coach, byWeek: {} };
+        const wk = r.week_key instanceof Date ? r.week_key.toISOString().split('T')[0] : String(r.week_key).split('T')[0];
+        if (!groups[key].byWeek[wk]) groups[key].byWeek[wk] = [];
+        groups[key].byWeek[wk].push(r);
+      }
+      const allWeeks = [...new Set(Object.values(groups).flatMap(g => Object.keys(g.byWeek)))].sort();
+      const result = Object.values(groups).map(g => {
+        const weeks = allWeeks.map(wk => {
+          const recs  = g.byWeek[wk] || [];
+          const valid = recs.filter(r => r.ist_avg != null);
+          return {
+            week_key:    wk,
+            period_week: recs[0]?.period_week || getPeriodWeek(wk),
+            date_range:  getWeekDateRange(wk),
+            avg_ist: valid.length ? Math.round(valid.reduce((a,r)=>a+parseFloat(r.ist_avg),0)/valid.length*10)/10 : null
+          };
+        });
+        for (let i = 1; i < weeks.length; i++) {
+          const prev = weeks[i-1].avg_ist, curr = weeks[i].avg_ist;
+          weeks[i].delta = (prev != null && curr != null) ? Math.round((curr-prev)*10)/10 : null;
+        }
+        return { label: g.label, region: g.region, weeks };
+      });
+      result.sort((a,b) => (a.region||a.label).localeCompare(b.region||b.label) || a.label.localeCompare(b.label));
+      return res.json({ groups: result, allWeeks });
+    }
+
+    // Single-series response (existing behaviour)
     const byWeek = {};
     for (const r of records) {
       const wk = r.week_key instanceof Date ? r.week_key.toISOString().split('T')[0] : String(r.week_key).split('T')[0];
@@ -373,7 +408,6 @@ router.get('/trends', async (req, res) => {
         };
       });
 
-    // Add W→W deltas
     for (let i = 1; i < weekTrends.length; i++) {
       const prev = weekTrends[i-1].avg_ist;
       const curr = weekTrends[i].avg_ist;
@@ -390,14 +424,15 @@ router.get('/dow-trends', async (req, res) => {
     const storeId   = req.query.store      || null;
     const areaCoach = req.query.area_coach || null;
     const region    = req.query.region     || null;
+    const groupBy   = req.query.group_by   || null; // 'region' or 'area_coach'
 
-    // No area/region filter — use the fast SQL aggregate path
-    if (!areaCoach && !region) {
+    // Fast path: no filters, no groupBy — use SQL aggregate
+    if (!areaCoach && !region && !groupBy) {
       const dowRows = await db.getVelocityDOWTrends({ storeId, weeks: 12 });
       return res.json({ patterns: analyzeDOWPatterns(dowRows) });
     }
 
-    // Area/region filter — fetch raw records, filter via ALIGNMENT, aggregate in JS
+    // Fetch raw records for filtering / grouping
     const endDate   = getYesterdayChicago();
     const startDate = (() => {
       const d = new Date(endDate + 'T12:00:00Z');
@@ -411,12 +446,39 @@ router.get('/dow-trends', async (req, res) => {
     if (region)    records = records.filter(r => (ALIGNMENT[r.store_id]?.region_coach) === region);
     records = records.filter(r => r.ist_avg != null);
 
-    const DOW_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const DOW_NAMES_LOCAL = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+    // Grouped response: one DOW pattern set per region or area_coach
+    if (groupBy) {
+      const groups = {};
+      for (const r of records) {
+        const al  = ALIGNMENT[r.store_id] || {};
+        const key = groupBy === 'region' ? al.region_coach : al.area_coach;
+        if (!key) continue;
+        if (!groups[key]) groups[key] = { label: key, region: al.region_coach, byDow: {} };
+        const d   = r.record_date instanceof Date ? r.record_date : new Date(r.record_date + 'T12:00:00Z');
+        const dow = d.getUTCDay();
+        if (!groups[key].byDow[dow]) groups[key].byDow[dow] = [];
+        groups[key].byDow[dow].push(parseFloat(r.ist_avg));
+      }
+      const result = Object.values(groups).map(g => {
+        const dowRows = Object.entries(g.byDow).map(([dow, vals]) => ({
+          dow: parseInt(dow), day_name: DOW_NAMES_LOCAL[parseInt(dow)],
+          avg_ist: vals.reduce((a,v)=>a+v,0)/vals.length,
+          sample_count: vals.length
+        }));
+        return { label: g.label, region: g.region, patterns: analyzeDOWPatterns(dowRows) };
+      });
+      result.sort((a,b) => (a.region||a.label).localeCompare(b.region||b.label) || a.label.localeCompare(b.label));
+      return res.json({ groups: result });
+    }
+
+    // Non-grouped with filters (existing behaviour)
     const byDOW = {};
     for (const r of records) {
-      const d = r.record_date instanceof Date ? r.record_date : new Date(r.record_date + 'T12:00:00Z');
+      const d   = r.record_date instanceof Date ? r.record_date : new Date(r.record_date + 'T12:00:00Z');
       const dow = d.getUTCDay();
-      if (!byDOW[dow]) byDOW[dow] = { dow, day_name: DOW_NAMES[dow], vals: [] };
+      if (!byDOW[dow]) byDOW[dow] = { dow, day_name: DOW_NAMES_LOCAL[dow], vals: [] };
       byDOW[dow].vals.push(parseFloat(r.ist_avg));
     }
     const dowRows = Object.values(byDOW).map(d => ({
@@ -424,7 +486,6 @@ router.get('/dow-trends', async (req, res) => {
       avg_ist: d.vals.reduce((a, v) => a + v, 0) / d.vals.length,
       sample_count: d.vals.length
     }));
-
     res.json({ patterns: analyzeDOWPatterns(dowRows) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -641,7 +702,62 @@ router.post('/export', async (req, res) => {
       dailyByDate[d].push(r);
     }
 
-    const buffer = await generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate });
+    // ── Build allWeekStores for PTD Trend sheet ─────────────────────────
+    // Collect all weeks in the current period up to (and including) the selected week
+    const period = periodWeek.replace(/W\d+$/, ''); // 'P4' from 'P4W2'
+    const ptdWeekEntries = Object.entries(FISCAL_CALENDAR)
+      .filter(([wk, pw]) => pw.startsWith(period + 'W') && wk <= weekKey)
+      .sort(([a], [b]) => a.localeCompare(b));
+
+    let allWeekStores = null;
+    if (ptdWeekEntries.length >= 1) {
+      const storeWeekIST = {};
+      const storeInfoMap = {};
+      for (const [wk, pw] of ptdWeekEntries) {
+        const isCurrentWeek = (wk === weekKey);
+        const label = isCurrentWeek ? `${pw} (WTD)` : pw;
+        // Re-use already-computed WTD for the selected week; fetch + compute for past weeks
+        const weekISTs = isCurrentWeek ? wtdStores : (() => {
+          // This is sync-style — we handle it below with async
+          return null; // placeholder
+        })();
+        if (weekISTs) {
+          for (const s of weekISTs) {
+            if (s.wtd_ist == null) continue;
+            if (!storeWeekIST[s.store_id]) {
+              storeWeekIST[s.store_id] = {};
+              storeInfoMap[s.store_id] = { name: s.name || '', region_coach: s.region_coach || '', area_coach: s.area_coach || '' };
+            }
+            storeWeekIST[s.store_id][label] = s.wtd_ist;
+          }
+        }
+      }
+      // Fetch past weeks asynchronously
+      for (const [wk, pw] of ptdWeekEntries) {
+        if (wk === weekKey) continue; // already handled above
+        const label = pw;
+        const raw = await db.getVelocityWeek(wk);
+        const enrichedWeek = raw.map(r => ({
+          ...r,
+          record_date: r.record_date instanceof Date ? r.record_date.toISOString().split('T')[0] : String(r.record_date).split('T')[0],
+          ...(ALIGNMENT[r.store_id] || {})
+        }));
+        const pastWTD = computeWTD(enrichedWeek);
+        for (const s of pastWTD) {
+          if (s.wtd_ist == null) continue;
+          if (!storeWeekIST[s.store_id]) {
+            storeWeekIST[s.store_id] = {};
+            storeInfoMap[s.store_id] = { name: s.name || '', region_coach: s.region_coach || '', area_coach: s.area_coach || '' };
+          }
+          storeWeekIST[s.store_id][label] = s.wtd_ist;
+        }
+      }
+      allWeekStores = Object.entries(storeWeekIST).map(([store_id, weeklyIST]) => ({
+        level: 'STORE', store_id, ...storeInfoMap[store_id], weeklyIST
+      }));
+    }
+
+    const buffer = await generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate, allWeekStores });
 
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

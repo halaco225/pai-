@@ -211,10 +211,13 @@
   <!-- Day pills (shown in WTD + Daily view) -->
   <div class="day-pills" id="dayPills"></div>
 
-  <!-- AI Insights panel (shown when area filtered) -->
+  <!-- AI Insights panel (shown when area/region filtered) -->
   <div class="insights-panel hidden" id="insightsPanel">
     <h3>🤖 Velocity Insights <span id="insightsFilter"></span></h3>
-    <div class="insights-text" id="insightsText"><span class="insights-loading"><span class="spinner"></span> Analyzing...</span></div>
+    <div id="insightsBtnRow" style="margin-bottom:8px">
+      <button class="btn btn-outline btn-sm" onclick="runInsights()">Generate Insights</button>
+    </div>
+    <div class="insights-text hidden" id="insightsText"></div>
   </div>
 
   <!-- Trend view -->
@@ -360,7 +363,6 @@ async function loadWTD() {
     renderScorecards(r.stores || []);
     renderTable(r.stores || []);
     setStatus(`${r.storeCount} stores · ${r.periodWeek} ${r.dateRange}`, 'ok');
-    maybeLoadInsights();
   } catch(e) { setStatus('Error: ' + e.message, 'err'); }
 }
 
@@ -396,33 +398,59 @@ async function loadTrend() {
   const region = state.filters.region;
   const area   = state.filters.area;
   const store  = resolveStoreForApi();
-  let url = `/api/velocity/trends?weeks=${weeks}`;
-  if (region) url += `&region=${encodeURIComponent(region)}`;
-  if (area)   url += `&area_coach=${encodeURIComponent(area)}`;
-  if (store)  url += `&store=${encodeURIComponent(store)}`;
+  const viewBy = state.viewBy;
 
-  document.getElementById('trendChart').innerHTML = '<span class="spinner"></span>';
+  // Use group_by when there is no store/area filter that already scopes to one series
+  let groupBy = null;
+  if (!store && !area) {
+    if (viewBy === 'region') groupBy = 'region';
+    else if (viewBy === 'region_area' || viewBy === 'all') groupBy = 'area_coach';
+    else if (viewBy === 'area') groupBy = 'area_coach';
+  }
+
+  let url = `/api/velocity/trends?weeks=${weeks}`;
+  if (region)  url += `&region=${encodeURIComponent(region)}`;
+  if (area)    url += `&area_coach=${encodeURIComponent(area)}`;
+  if (store)   url += `&store=${encodeURIComponent(store)}`;
+  if (groupBy) url += `&group_by=${groupBy}`;
+
+  const el = document.getElementById('trendChart');
+  el.innerHTML = '<span class="spinner"></span>';
   try {
     const r = await api(url);
-    renderTrendChart(r.weeks || []);
-  } catch(e) { document.getElementById('trendChart').innerHTML = 'Error: ' + e.message; }
+    if (r.groups) renderTrendHierarchy(r.groups, viewBy, el);
+    else          renderTrendChart(r.weeks || []);
+  } catch(e) { el.innerHTML = 'Error: ' + e.message; }
 }
 
 async function loadDOW() {
   const region = state.filters.region;
   const area   = state.filters.area;
   const store  = resolveStoreForApi();
+  const viewBy = state.viewBy;
+
+  // Use group_by when no area/store filter already scopes to one series
+  let groupBy = null;
+  if (!store && !area) {
+    if (viewBy === 'region') groupBy = 'region';
+    else if (viewBy === 'region_area' || viewBy === 'all') groupBy = 'area_coach';
+    else if (viewBy === 'area') groupBy = 'area_coach';
+  }
+
   const params = [];
-  if (region) params.push(`region=${encodeURIComponent(region)}`);
-  if (area)   params.push(`area_coach=${encodeURIComponent(area)}`);
-  if (store)  params.push(`store=${encodeURIComponent(store)}`);
+  if (region)  params.push(`region=${encodeURIComponent(region)}`);
+  if (area)    params.push(`area_coach=${encodeURIComponent(area)}`);
+  if (store)   params.push(`store=${encodeURIComponent(store)}`);
+  if (groupBy) params.push(`group_by=${groupBy}`);
   const url = '/api/velocity/dow-trends' + (params.length ? '?' + params.join('&') : '');
 
   document.getElementById('dowGrid').innerHTML = '<span class="spinner"></span>';
+  document.getElementById('dowGrid').style.display = '';
   closeDOWDrill();
   try {
     const r = await api(url);
-    renderDOW(r.patterns || []);
+    if (r.groups) renderDOWHierarchy(r.groups, viewBy);
+    else          renderDOW(r.patterns || []);
   } catch(e) { document.getElementById('dowGrid').innerHTML = 'Error'; }
 }
 
@@ -430,6 +458,8 @@ function setViewBy(val) {
   state.viewBy = val;
   if (state.view === 'wtd' && state.wtdData) renderTable(state.wtdData.stores || []);
   else if (state.view === 'day' && state.dayData) renderTableDay(state.dayData.stores || []);
+  else if (state.view === 'trend') loadTrend();
+  else if (state.view === 'dow')   loadDOW();
 }
 
 async function loadDOWDrill(dow, dayName) {
@@ -459,26 +489,114 @@ function closeDOWDrill() {
   document.querySelectorAll('.dow-card').forEach(c => c.classList.remove('active'));
 }
 
-async function maybeLoadInsights() {
+function resetInsightsPanel() {
   const area   = state.filters.area;
   const region = state.filters.region;
   const panel  = document.getElementById('insightsPanel');
-
   if (!area && !region) { panel.classList.add('hidden'); return; }
-
   panel.classList.remove('hidden');
-  document.getElementById('insightsText').innerHTML = '<span class="spinner"></span> Analyzing performance...';
   document.getElementById('insightsFilter').textContent = area ? `· ${area}` : `· ${region}`;
+  // Reset to button-only state (stale insights cleared when filter changes)
+  document.getElementById('insightsBtnRow').style.display = '';
+  document.querySelector('#insightsBtnRow button').textContent = 'Generate Insights';
+  document.getElementById('insightsText').classList.add('hidden');
+  document.getElementById('insightsText').textContent = '';
+}
 
+async function runInsights() {
+  const area   = state.filters.area;
+  const region = state.filters.region;
+  if (!area && !region) return;
+  document.getElementById('insightsBtnRow').style.display = 'none';
+  const textEl = document.getElementById('insightsText');
+  textEl.classList.remove('hidden');
+  textEl.innerHTML = '<span class="insights-loading"><span class="spinner"></span> Analyzing performance...</span>';
   try {
     let url = '/api/velocity/insights';
-    if (area)   url += `?area_coach=${encodeURIComponent(area)}`;
+    if (area)        url += `?area_coach=${encodeURIComponent(area)}`;
     else if (region) url += `?region=${encodeURIComponent(region)}`;
     const r = await api(url);
-    document.getElementById('insightsText').textContent = r.insights || 'No insights available.';
+    textEl.textContent = r.insights || 'No insights available.';
   } catch(e) {
-    document.getElementById('insightsText').textContent = 'Could not load insights: ' + e.message;
+    textEl.textContent = 'Could not load insights: ' + e.message;
   }
+  document.getElementById('insightsBtnRow').style.display = '';
+  document.querySelector('#insightsBtnRow button').textContent = 'Refresh Insights';
+}
+
+// ── Trend hierarchy renderer ───────────────────────────────────────────
+function renderTrendBars(weeks) {
+  const valid = weeks.filter(w => w.avg_ist != null);
+  if (!valid.length) return '<p style="font-size:11px;color:var(--muted)">No data</p>';
+  const maxIST = Math.max(...valid.map(w => w.avg_ist), 25);
+  const minIST = Math.min(...valid.map(w => w.avg_ist), 15);
+  const range  = maxIST - minIST || 5;
+  const bars = weeks.map(w => {
+    const h = w.avg_ist ? ((w.avg_ist - minIST) / range * 42 + 8).toFixed(0) : 0;
+    const dHtml = w.delta != null
+      ? (w.delta > 0 ? `<span class="delta-bad" style="font-size:9px">▲${w.delta}</span>`
+         : w.delta < 0 ? `<span class="delta-good" style="font-size:9px">▼${Math.abs(w.delta)}</span>` : '')
+      : '';
+    return `<div style="flex:1;min-width:46px;text-align:center">
+      <div style="font-size:9px;color:var(--muted);height:13px;line-height:13px">${dHtml}</div>
+      <div style="height:${h}px;background:${istColorHex(w.avg_ist)};border-radius:3px 3px 0 0;margin:0 2px"></div>
+      <div style="margin-top:2px;font-size:11px;font-weight:700;color:${istColorHex(w.avg_ist)}">${w.avg_ist ?? '—'}</div>
+      <div style="font-size:9px;color:var(--muted)">${w.period_week||''}</div>
+    </div>`;
+  }).join('');
+  return `<div style="display:flex;align-items:flex-end;height:76px;border-bottom:1px solid var(--border);padding-bottom:4px">${bars}</div>`;
+}
+
+function renderTrendHierarchy(groups, viewBy, el) {
+  if (!groups.length) { el.innerHTML = '<p style="color:var(--muted);font-size:13px">No trend data</p>'; return; }
+  const showRegionHdr = (viewBy === 'region_area' || viewBy === 'all');
+  let html = '';
+  let lastRegion = null;
+  for (const g of groups) {
+    if (showRegionHdr && g.region !== lastRegion) {
+      html += `<div style="font-size:11px;font-weight:700;color:var(--text);letter-spacing:1px;text-transform:uppercase;padding:${lastRegion ? '16px' : '0'} 0 4px;${lastRegion ? 'border-top:1px solid var(--border);margin-top:4px' : ''}">▶ ${g.region || 'Unknown Region'}</div>`;
+      lastRegion = g.region;
+    }
+    const indent = showRegionHdr ? 'padding-left:14px;' : '';
+    const sub = viewBy === 'area' && g.region ? ` <span style="font-weight:400;color:var(--muted);font-size:11px">· ${g.region}</span>` : '';
+    html += `<div style="margin-bottom:14px;${indent}">
+      <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px">${g.label}${sub}</div>
+      ${renderTrendBars(g.weeks)}
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
+// ── DOW hierarchy renderer ─────────────────────────────────────────────
+function renderDOWHierarchy(groups, viewBy) {
+  const grid = document.getElementById('dowGrid');
+  if (!groups.length) { grid.innerHTML = '<p style="color:var(--muted)">No data</p>'; grid.style.display = 'block'; return; }
+  const DAYS      = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const showRegionHdr = (viewBy === 'region_area' || viewBy === 'all');
+  const colLabel  = viewBy === 'region' ? 'Region' : 'Area Coach';
+  let html = `<div style="overflow-x:auto;width:100%;grid-column:1/-1"><table style="width:100%;border-collapse:collapse;font-size:12px">`;
+  html += `<thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600;white-space:nowrap">${colLabel}</th>`;
+  for (const d of DAYS) html += `<th style="text-align:center;padding:8px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600;min-width:48px">${d}</th>`;
+  html += `</tr></thead><tbody>`;
+  let lastRegion = null;
+  for (const g of groups) {
+    if (showRegionHdr && g.region !== lastRegion) {
+      html += `<tr><td colspan="${DAYS.length+1}" style="padding:8px 6px 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text);border-top:1px solid var(--border)">${g.region || 'Unknown Region'}</td></tr>`;
+      lastRegion = g.region;
+    }
+    const padLeft = showRegionHdr ? '20px' : '8px';
+    html += `<tr><td style="padding:6px 8px 6px ${padLeft};font-weight:600;color:var(--text);white-space:nowrap">${g.label}</td>`;
+    for (const d of DAYS) {
+      const pat = (g.patterns || []).find(p => p.day_name.trim() === d);
+      html += pat
+        ? `<td style="text-align:center;padding:6px 8px"><span class="${istColorClass(pat.avg_ist)}" style="font-weight:700">${pat.avg_ist}</span></td>`
+        : `<td style="text-align:center;padding:6px 8px;color:var(--muted)">—</td>`;
+    }
+    html += `</tr>`;
+  }
+  html += `</tbody></table></div>`;
+  grid.style.display = 'block';
+  grid.innerHTML = html;
 }
 
 // ── Views ─────────────────────────────────────────────────────────────
@@ -564,7 +682,7 @@ function applyFilters(stores) {
   else if (state.view === 'day') renderTableDay(filtered);
   else renderTable(filtered);
   renderScorecards(filtered, state.view === 'day');
-  maybeLoadInsights();
+  resetInsightsPanel();
 }
 
 function clearFilters() {
@@ -731,6 +849,7 @@ function renderTrendChart(weeks, container) {
 
 function renderDOW(patterns) {
   const grid = document.getElementById('dowGrid');
+  grid.style.display = ''; // restore CSS grid layout
   if (!patterns.length) { grid.innerHTML = '<p style="color:var(--muted)">No pattern data yet</p>'; return; }
   const allDays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const DOW_IDX = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
