@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(PAI_BASE_URL=\"https://pai-ayvaz.onrender.com\" VELOCITY_AUTOMATION_TOKEN=\"velocity-auto-2024\" node scripts/velocity-backfill.js)",
+      "Bash(PAI_BASE_URL=\"https://pai-ayvaz.onrender.com\" VELOCITY_AUTOMATION_TOKEN=\"022f4a0fa4e2ec99541609c47744d599\" node scripts/velocity-backfill.js)",
+      "Bash(node:*)",
+      "Bash(render --version)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://pai-ayvaz.onrender.com/api/velocity/weeks)",
+      "Bash(ODS_ORG=dgi ODS_USER=hlacoste ODS_PASSWORD='Abc123**' node -e \":*)",
+      "Bash(ODS_PASSWORD='Abc123**' node -e \":*)",
+      "Bash(node -e \":*)",
+      "Bash(curl:*)",
+      "Bash(PAI_BASE_URL=\"https://pai-ayvaz.onrender.com\" VELOCITY_AUTOMATION_TOKEN=\"022f4a0fa4e2ec99541609c47744d599\" node scripts/velocity-backfill.js --start 2026-03-24 --end 2026-04-20)",
+      "Bash(PAI_BASE_URL=\"https://pai-ayvaz.onrender.com\" VELOCITY_AUTOMATION_TOKEN=\"022f4a0fa4e2ec99541609c47744d599\" node scripts/velocity-backfill.js --start 2026-02-24 --end 2026-03-23)",
+      "Bash(npm install:*)",
+      "Bash(node -e \"require\\(''''./index.js''''\\)\")",
+      "Bash(ls *.js)",
+      "Bash(npm ls:*)",
+      "Bash(npm audit:*)",
+      "Bash(ls \"C:\\\\Users\\\\Precision 3551\\\\Desktop\\\\pai\\\\services\"\" | grep -E \"claude)",
+      "Bash(pl)",
+      "Bash(daily \")",
+      "WebFetch(domain:pai-ayvaz.onrender.com)"
+    ]
+  }
+}
