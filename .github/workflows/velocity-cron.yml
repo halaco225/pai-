@@ -14,6 +14,11 @@ jobs:
   pull-ods:
     runs-on: ubuntu-latest
     steps:
+      - name: Check secrets
+        run: |
+          echo "PAI_BASE_URL set: ${{ secrets.PAI_BASE_URL != '' }}"
+          echo "TOKEN set: ${{ secrets.VELOCITY_AUTOMATION_TOKEN != '' }}"
+
       - name: Trigger ODS pull
         run: |
           DATE="${{ github.event.inputs.date }}"
