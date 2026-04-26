@@ -246,8 +246,16 @@ router.use(requireAuth);
 
 // ── GET /api/velocity/meta — hierarchy + available filters ───────────
 router.get('/meta', (req, res) => {
+  const regionToAreas = {};
+  for (const s of Object.values(ALIGNMENT)) {
+    if (!s.region_coach || !s.area_coach) continue;
+    if (!regionToAreas[s.region_coach]) regionToAreas[s.region_coach] = new Set();
+    regionToAreas[s.region_coach].add(s.area_coach);
+  }
+  const regionToAreasList = {};
+  for (const [r, set] of Object.entries(regionToAreas)) regionToAreasList[r] = [...set].sort();
   res.json({ regions: REGIONS, areas: AREAS, area_coaches: AREA_COACHES,
-    store_count: Object.keys(ALIGNMENT).length });
+    region_to_areas: regionToAreasList, store_count: Object.keys(ALIGNMENT).length });
 });
 
 // ── GET /api/velocity/weeks — available weeks in DB ──────────────────

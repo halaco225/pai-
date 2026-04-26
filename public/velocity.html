@@ -343,6 +343,7 @@ let state = {
   ptdComparePrior: false,
   selectedDay: null,
   trendGranularity: 'weekly',
+  meta: null,
   sortField: 'wtd_ist',
   sortDir: 'asc',
   filters: { region: '', area: '', store: '' },
@@ -364,12 +365,15 @@ async function init() {
 async function loadMeta() {
   try {
     const r = await api('/api/velocity/meta');
+    state.meta = r;
+
     // Populate region filter
     const rSel = document.getElementById('regionFilter');
     r.regions.forEach(reg => { const o = new Option(reg, reg); rSel.appendChild(o); });
-    // Populate area coach filter
-    const aSel = document.getElementById('areaFilter');
-    r.area_coaches.forEach(ac => { const o = new Option(ac, ac); aSel.appendChild(o); });
+    rSel.onchange = () => { filterAreasByRegion(); applyFilters(); };
+
+    // Populate area coach filter (all areas initially)
+    populateAreaFilter(r.area_coaches);
 
     // Auto-filter to logged-in user's name — skip for Harold (admin sees all)
     const user = state.currentUser;
@@ -1012,6 +1016,23 @@ function selectDay(dateStr) {
   state.view = 'day';
   document.querySelectorAll('.day-pill').forEach(p => p.classList.toggle('active', p.dataset.date === dateStr));
   loadDay(dateStr);
+}
+
+function populateAreaFilter(areas) {
+  const aSel = document.getElementById('areaFilter');
+  const current = aSel.value;
+  aSel.innerHTML = '<option value="">All Areas</option>';
+  areas.forEach(ac => { const o = new Option(ac, ac); aSel.appendChild(o); });
+  if (areas.includes(current)) aSel.value = current;
+}
+
+function filterAreasByRegion() {
+  const region = document.getElementById('regionFilter').value;
+  const allAreas = state.meta?.area_coaches || [];
+  const areas = region && state.meta?.region_to_areas?.[region]
+    ? state.meta.region_to_areas[region]
+    : allAreas;
+  populateAreaFilter(areas);
 }
 
 function applyFilters(stores) {
