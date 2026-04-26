@@ -464,14 +464,17 @@ router.get('/dow-trends', async (req, res) => {
 
     const DOW_NAMES_LOCAL = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-    // Grouped response: one DOW pattern set per region or area_coach
+    // Grouped response: one DOW pattern set per region / area_coach / store
     if (groupBy) {
       const groups = {};
       for (const r of records) {
         const al  = ALIGNMENT[r.store_id] || {};
-        const key = groupBy === 'region' ? al.region_coach : al.area_coach;
+        const key = groupBy === 'region' ? al.region_coach
+                  : groupBy === 'store'  ? r.store_id
+                  : al.area_coach;
+        const label = groupBy === 'store' ? (al.name || r.store_id) : key;
         if (!key) continue;
-        if (!groups[key]) groups[key] = { label: key, region: al.region_coach, byDow: {} };
+        if (!groups[key]) groups[key] = { label, store_id: groupBy === 'store' ? r.store_id : null, area: al.area_coach, region: al.region_coach, byDow: {} };
         const d   = r.record_date instanceof Date ? r.record_date : new Date(r.record_date + 'T12:00:00Z');
         const dow = d.getUTCDay();
         if (!groups[key].byDow[dow]) groups[key].byDow[dow] = [];
@@ -480,12 +483,12 @@ router.get('/dow-trends', async (req, res) => {
       const result = Object.values(groups).map(g => {
         const dowRows = Object.entries(g.byDow).map(([dow, vals]) => ({
           dow: parseInt(dow), day_name: DOW_NAMES_LOCAL[parseInt(dow)],
-          avg_ist: vals.reduce((a,v)=>a+v,0)/vals.length,
+          avg_ist: Math.round(vals.reduce((a,v)=>a+v,0)/vals.length * 10) / 10,
           sample_count: vals.length
         }));
-        return { label: g.label, region: g.region, patterns: analyzeDOWPatterns(dowRows) };
+        return { label: g.label, store_id: g.store_id, area: g.area, region: g.region, patterns: analyzeDOWPatterns(dowRows) };
       });
-      result.sort((a,b) => (a.region||a.label).localeCompare(b.region||b.label) || a.label.localeCompare(b.label));
+      result.sort((a,b) => (a.region||'').localeCompare(b.region||'') || (a.area||'').localeCompare(b.area||'') || a.label.localeCompare(b.label));
       return res.json({ groups: result });
     }
 

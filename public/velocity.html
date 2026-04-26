@@ -89,6 +89,20 @@
   .trend-header h3 { font-size: 14px; color: var(--text); }
   .trend-gran-btn { background: var(--surface); border: 1px solid var(--border); color: var(--muted); border-radius: 5px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
   .trend-gran-btn.active { background: #e4002b; border-color: #e4002b; color: #fff; }
+  .dow-breadcrumbs { font-size: 12px; margin-bottom: 10px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+  .dow-crumb { color: var(--muted); }
+  .dow-crumb-clickable { color: #e4002b; cursor: pointer; text-decoration: underline; }
+  .dow-crumb-active { color: var(--text); font-weight: 600; }
+  .dow-crumb-sep { color: var(--border); }
+  .dow-name-link { cursor: pointer; text-decoration: underline; color: var(--text); }
+  .dow-name-link:hover { color: #e4002b; }
+  .dow-day-cell { cursor: pointer; }
+  .dow-day-cell:hover { background: rgba(255,255,255,0.05); }
+  .dow-store-row:hover { background: rgba(255,255,255,0.03); }
+  .store-detail-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 16px; }
+  .store-detail-stat { text-align: center; }
+  .store-detail-val { font-size: 26px; font-weight: 700; }
+  .store-detail-lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
   /* ── DOW patterns ── */
   .dow-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
@@ -260,8 +274,9 @@
         <option value="26">6 Months</option>
       </select>
     </div>
+    <div class="dow-breadcrumbs" id="dowBreadcrumbs" style="display:none"></div>
     <div class="dow-grid" id="dowGrid"></div>
-    <p class="mt-8 text-muted" style="font-size:12px">Click a day card to see week-over-week trend for that day.</p>
+    <p class="mt-8 text-muted" id="dowHint" style="font-size:12px">Click an area coach name to see store breakdown, or click a day cell to drill in.</p>
     <!-- DOW drill-down panel -->
     <div class="dow-drill hidden" id="dowDrill">
       <div class="dow-drill-hdr">
@@ -344,6 +359,7 @@ let state = {
   selectedDay: null,
   trendGranularity: 'weekly',
   meta: null,
+  dowDrillState: { level: 0, area: null, store: null },
   sortField: 'wtd_ist',
   sortDir: 'asc',
   filters: { region: '', area: '', store: '' },
@@ -813,6 +829,211 @@ async function loadDOWDrill(dow, dayName) {
 function closeDOWDrill() {
   document.getElementById('dowDrill').classList.add('hidden');
   document.querySelectorAll('.dow-card').forEach(c => c.classList.remove('active'));
+  state.dowDrillState = { level: 0, area: null, store: null };
+  updateDowBreadcrumbs();
+}
+
+// ── DOW Drill breadcrumbs ─────────────────────────────────────────────
+function updateDowBreadcrumbs() {
+  const el  = document.getElementById('dowBreadcrumbs');
+  const ds  = state.dowDrillState;
+  const top = state.filters.region || state.filters.area || 'All';
+  if (!ds.area) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  let html = `<span class="dow-crumb dow-crumb-clickable" onclick="popDowDrill(0)">${top}</span>`;
+  html += `<span class="dow-crumb-sep">›</span>`;
+  if (ds.store) {
+    html += `<span class="dow-crumb dow-crumb-clickable" onclick="popDowDrill(1)">${ds.area}</span>`;
+    html += `<span class="dow-crumb-sep">›</span>`;
+    html += `<span class="dow-crumb dow-crumb-active">${ds.store}</span>`;
+  } else {
+    html += `<span class="dow-crumb dow-crumb-active">${ds.area}</span>`;
+  }
+  el.innerHTML = html;
+}
+
+function popDowDrill(toLevel) {
+  if (toLevel === 0) {
+    closeDOWDrill();
+  } else if (toLevel === 1) {
+    const areaIdx = window._dowHierGroups?.findIndex(g => g.label === state.dowDrillState.area);
+    if (areaIdx >= 0) drillIntoArea(areaIdx);
+  }
+}
+
+async function drillIntoArea(gi) {
+  const g = window._dowHierGroups?.[gi];
+  if (!g) return;
+  state.dowDrillState = { level: 1, area: g.label, store: null };
+  updateDowBreadcrumbs();
+  const drill = document.getElementById('dowDrill');
+  const chart = document.getElementById('dowDrillChart');
+  drill.classList.remove('hidden');
+  document.getElementById('dowDrillTitle').textContent = `${g.label} — Store Breakdown`;
+  chart.innerHTML = '<span class="spinner"></span>';
+  try {
+    const [dowData, trendData] = await Promise.all([
+      api(`/api/velocity/dow-trends?area_coach=${encodeURIComponent(g.label)}&group_by=store`),
+      api(`/api/velocity/trends?weeks=4&area_coach=${encodeURIComponent(g.label)}&group_by=store&granularity=weekly`)
+    ]);
+    window._dowStoreGroups = dowData.groups || [];
+    const sparkMap = {};
+    (trendData.groups || []).forEach(sg => { sparkMap[sg.label] = sg.weeks; });
+    chart.innerHTML = renderStoreDOWTable(window._dowStoreGroups, g.label, sparkMap);
+  } catch(e) { chart.innerHTML = `<span style="color:var(--ist-red)">Error: ${e.message}</span>`; }
+}
+
+async function drillIntoAreaDay(gi, dow, dayName) {
+  const g = window._dowHierGroups?.[gi];
+  if (!g) return;
+  state.dowDrillState = { level: 1, area: g.label, store: null };
+  updateDowBreadcrumbs();
+  const drill = document.getElementById('dowDrill');
+  const chart = document.getElementById('dowDrillChart');
+  drill.classList.remove('hidden');
+  document.getElementById('dowDrillTitle').textContent = `${g.label} — ${dayName} Store Rankings`;
+  chart.innerHTML = '<span class="spinner"></span>';
+  try {
+    const dowData = await api(`/api/velocity/dow-trends?area_coach=${encodeURIComponent(g.label)}&group_by=store`);
+    window._dowStoreGroups = dowData.groups || [];
+    chart.innerHTML = renderStoreDayRanking(window._dowStoreGroups, dow, dayName, g.label);
+  } catch(e) { chart.innerHTML = `<span style="color:var(--ist-red)">Error: ${e.message}</span>`; }
+}
+
+async function drillIntoStore(si) {
+  const g = window._dowStoreGroups?.[si];
+  if (!g) return;
+  const area = state.dowDrillState.area;
+  state.dowDrillState = { level: 2, area, store: g.label };
+  updateDowBreadcrumbs();
+  document.getElementById('dowDrillTitle').textContent = `${g.label} — WTD Detail`;
+  const chart = document.getElementById('dowDrillChart');
+  chart.innerHTML = '<span class="spinner"></span>';
+  try {
+    const week = document.getElementById('weekSelect').value;
+    const wtd  = await api(`/api/velocity/wtd?week=${encodeURIComponent(week)}&store=${encodeURIComponent(g.store_id)}`);
+    const store = (wtd.stores || [])[0];
+    chart.innerHTML = store ? renderStoreWTDPanel(store, g.label) : '<p style="color:var(--muted)">No WTD data for this store.</p>';
+  } catch(e) { chart.innerHTML = `<span style="color:var(--ist-red)">Error: ${e.message}</span>`; }
+}
+
+async function drillIntoStoreDay(si, dow, dayName) {
+  const g = window._dowStoreGroups?.[si];
+  if (!g) return;
+  const area = state.dowDrillState.area;
+  state.dowDrillState = { level: 2, area, store: g.label };
+  updateDowBreadcrumbs();
+  document.getElementById('dowDrillTitle').textContent = `${g.label} — ${dayName} Week-over-Week`;
+  const chart = document.getElementById('dowDrillChart');
+  chart.innerHTML = '<span class="spinner"></span>';
+  try {
+    const weeks = document.getElementById('dowWeeks').value;
+    const r = await api(`/api/velocity/dow-drill?dow=${dow}&weeks=${weeks}&store=${encodeURIComponent(g.store_id)}`);
+    renderTrendChart(r.weeks || [], chart);
+  } catch(e) { chart.innerHTML = `<span style="color:var(--ist-red)">Error: ${e.message}</span>`; }
+}
+
+function renderStoreDOWTable(groups, areaCoach, sparkMap) {
+  if (!groups.length) return '<p style="color:var(--muted);font-size:13px">No store data</p>';
+  const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const DAY_DOW = {Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6,Sun:0};
+  // Sort by overall avg IST
+  const sorted = [...groups].map((g,i)=>({...g,_i:i})).sort((a,b) => {
+    const av = a.patterns?.length ? a.patterns.reduce((s,p)=>s+p.avg_ist,0)/a.patterns.length : 99;
+    const bv = b.patterns?.length ? b.patterns.reduce((s,p)=>s+p.avg_ist,0)/b.patterns.length : 99;
+    return av - bv;
+  });
+  let html = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr>
+      <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600">Store</th>
+      ${DAYS.map(d=>`<th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600;min-width:44px">${d}</th>`).join('')}
+      <th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600;min-width:70px">4-Wk</th>
+    </tr></thead><tbody>`;
+  sorted.forEach((g, si) => {
+    html += `<tr class="dow-store-row">
+      <td style="padding:6px 8px;font-weight:600;white-space:nowrap">
+        <span class="dow-name-link" onclick="drillIntoStore(${g._i})">${g.label}</span>
+        ${g.store_id ? `<br><small style="color:var(--muted);font-weight:400">${g.store_id}</small>` : ''}
+      </td>`;
+    for (const d of DAYS) {
+      const pat = (g.patterns||[]).find(p=>p.day_name?.trim()===d);
+      html += pat
+        ? `<td class="dow-day-cell" style="text-align:center;padding:6px 4px" onclick="drillIntoStoreDay(${g._i},${DAY_DOW[d]},'${d}')">
+            <span class="${istColorClass(pat.avg_ist)}" style="font-weight:700">${pat.avg_ist}</span></td>`
+        : `<td style="text-align:center;padding:6px 4px;color:var(--muted)">—</td>`;
+    }
+    html += `<td style="padding:4px 8px;text-align:center">${renderSparkline(sparkMap[g.label]||[])}</td></tr>`;
+  });
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+function renderStoreDayRanking(groups, dow, dayName, areaCoach) {
+  const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const dName = DAY_NAMES[dow] || dayName;
+  const stores = groups.map((g,i)=>({...g,_i:i,dayIST:(g.patterns||[]).find(p=>p.day_name?.trim()===dName)?.avg_ist}))
+    .filter(g=>g.dayIST!=null).sort((a,b)=>a.dayIST-b.dayIST);
+  if (!stores.length) return '<p style="color:var(--muted)">No data for this day</p>';
+  let html = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr>
+      <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600">Store</th>
+      <th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600">${dName} Avg IST</th>
+      <th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600">Samples</th>
+    </tr></thead><tbody>`;
+  stores.forEach(g => {
+    const pat = (g.patterns||[]).find(p=>p.day_name?.trim()===dName);
+    html += `<tr class="dow-store-row">
+      <td style="padding:6px 8px;font-weight:600;cursor:pointer" onclick="drillIntoStore(${g._i})">
+        <span class="dow-name-link">${g.label}</span>
+      </td>
+      <td style="text-align:center;padding:6px 8px"><span class="${istColorClass(g.dayIST)}" style="font-weight:700">${g.dayIST}</span></td>
+      <td style="text-align:center;padding:6px 8px;color:var(--muted)">${pat?.sample_count||'—'}</td>
+    </tr>`;
+  });
+  html += `</tbody></table>`;
+  return html;
+}
+
+function renderStoreWTDPanel(store, name) {
+  const buckets = [
+    {label:'<10',val:store.wtd_lt10||0},{label:'10-14',val:store.wtd_1014||0},
+    {label:'15-18',val:store.wtd_1518||0},{label:'19-25',val:store.wtd_1925||0},{label:'>25',val:store.wtd_gt25||0}
+  ];
+  const total = buckets.reduce((a,b)=>a+b.val,0);
+  return `<div>
+    <div class="store-detail-grid">
+      <div class="store-detail-stat"><div class="store-detail-val ${istColorClass(store.wtd_ist)}">${store.wtd_ist??'—'}</div><div class="store-detail-lbl">AVG IST (MIN)</div></div>
+      <div class="store-detail-stat"><div class="store-detail-val">${(store.wtd_orders||0).toLocaleString()}</div><div class="store-detail-lbl">TOTAL DELIVERIES</div></div>
+      <div class="store-detail-stat"><div class="store-detail-val">${store.days_reported??'—'}</div><div class="store-detail-lbl">DAYS REPORTING</div></div>
+      <div class="store-detail-stat"><div class="store-detail-val ${(store.wtd_gt25||0)>0?'ist-orange':'ist-green'}">${store.wtd_gt25||0}</div><div class="store-detail-lbl">ORDERS &gt;25 MIN</div></div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">IST Distribution</div>
+    <div style="display:flex;gap:8px">
+      ${buckets.map(b=>`<div style="flex:1;text-align:center">
+        <div style="font-size:18px;font-weight:700">${b.val}</div>
+        <div style="font-size:10px;color:var(--muted)">${b.label}</div>
+        <div style="height:4px;background:var(--border);border-radius:2px;margin-top:4px">
+          <div style="height:4px;background:var(--muted);border-radius:2px;width:${total?Math.round(b.val/total*100):0}%"></div>
+        </div></div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function renderSparkline(weeks) {
+  const valid = (weeks||[]).filter(w=>w.avg_ist!=null);
+  if (!valid.length) return '<span style="color:var(--muted);font-size:10px">—</span>';
+  const max = Math.max(...valid.map(w=>w.avg_ist),25);
+  const min = Math.min(...valid.map(w=>w.avg_ist),15);
+  const range = max - min || 5;
+  const bars = valid.map(w=>{
+    const h = Math.round((w.avg_ist-min)/range*18+4);
+    return `<div style="flex:1;height:${h}px;background:${istColorHex(w.avg_ist)};border-radius:2px 2px 0 0;margin:0 1px;align-self:flex-end"></div>`;
+  }).join('');
+  const last = valid[valid.length-1];
+  return `<div style="display:flex;flex-direction:column;align-items:center">
+    <div style="display:flex;align-items:flex-end;height:22px;width:56px">${bars}</div>
+    <div style="font-size:9px;color:${istColorHex(last?.avg_ist)};font-weight:700">${last?.avg_ist??'—'}</div>
+  </div>`;
 }
 
 function resetInsightsPanel() {
@@ -904,29 +1125,36 @@ function renderTrendHierarchy(groups, viewBy, el) {
 function renderDOWHierarchy(groups, viewBy) {
   const grid = document.getElementById('dowGrid');
   if (!groups.length) { grid.innerHTML = '<p style="color:var(--muted)">No data</p>'; grid.style.display = 'block'; return; }
-  const DAYS      = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const DAY_DOW = {Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6,Sun:0};
   const showRegionHdr = (viewBy === 'region_area' || viewBy === 'all');
-  const colLabel  = viewBy === 'region' ? 'Region' : 'Area Coach';
+  const colLabel = viewBy === 'region' ? 'Region' : 'Area Coach';
+  // Store groups globally for drill-down index lookups
+  window._dowHierGroups = groups;
   let html = `<div style="overflow-x:auto;width:100%;grid-column:1/-1"><table style="width:100%;border-collapse:collapse;font-size:12px">`;
   html += `<thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600;white-space:nowrap">${colLabel}</th>`;
   for (const d of DAYS) html += `<th style="text-align:center;padding:8px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600;min-width:48px">${d}</th>`;
   html += `</tr></thead><tbody>`;
   let lastRegion = null;
-  for (const g of groups) {
+  groups.forEach((g, gi) => {
     if (showRegionHdr && g.region !== lastRegion) {
       html += `<tr><td colspan="${DAYS.length+1}" style="padding:8px 6px 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text);border-top:1px solid var(--border)">${g.region || 'Unknown Region'}</td></tr>`;
       lastRegion = g.region;
     }
     const padLeft = showRegionHdr ? '20px' : '8px';
-    html += `<tr><td style="padding:6px 8px 6px ${padLeft};font-weight:600;color:var(--text);white-space:nowrap">${g.label}</td>`;
+    html += `<tr class="dow-store-row">
+      <td style="padding:6px 8px 6px ${padLeft};font-weight:600;white-space:nowrap">
+        <span class="dow-name-link" onclick="drillIntoArea(${gi})">${g.label}</span>
+      </td>`;
     for (const d of DAYS) {
       const pat = (g.patterns || []).find(p => p.day_name.trim() === d);
       html += pat
-        ? `<td style="text-align:center;padding:6px 8px"><span class="${istColorClass(pat.avg_ist)}" style="font-weight:700">${pat.avg_ist}</span></td>`
+        ? `<td class="dow-day-cell" style="text-align:center;padding:6px 8px" onclick="drillIntoAreaDay(${gi},${DAY_DOW[d]},'${d}')">
+            <span class="${istColorClass(pat.avg_ist)}" style="font-weight:700">${pat.avg_ist}</span></td>`
         : `<td style="text-align:center;padding:6px 8px;color:var(--muted)">—</td>`;
     }
     html += `</tr>`;
-  }
+  });
   html += `</tbody></table></div>`;
   grid.style.display = 'block';
   grid.innerHTML = html;
