@@ -329,14 +329,15 @@ router.get('/day', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── GET /api/velocity/trends?weeks=8&store=S039xxx — period trends ────
+// ── GET /api/velocity/trends — week/daily/period trends ──────────────
 router.get('/trends', async (req, res) => {
   try {
-    const weeksBack = parseInt(req.query.weeks) || 8;
-    const storeId   = req.query.store || null;
-    const areaCoach = req.query.area_coach || null;
-    const region    = req.query.region || null;
-    const groupBy   = req.query.group_by || null; // 'region' or 'area_coach'
+    const weeksBack   = parseInt(req.query.weeks) || 8;
+    const storeId     = req.query.store || null;
+    const areaCoach   = req.query.area_coach || null;
+    const region      = req.query.region || null;
+    const groupBy     = req.query.group_by || null; // 'region', 'area_coach', 'store'
+    const granularity = req.query.granularity || 'weekly'; // 'weekly', 'daily', 'period'
 
     const endDate   = getYesterdayChicago();
     const startDate = (() => {
@@ -347,74 +348,81 @@ router.get('/trends', async (req, res) => {
 
     let records = await db.getVelocityRecords({ startDate, endDate });
 
-    // Apply filters using alignment
     if (storeId)   records = records.filter(r => r.store_id === storeId);
     if (areaCoach) records = records.filter(r => (ALIGNMENT[r.store_id]?.area_coach) === areaCoach);
     if (region)    records = records.filter(r => (ALIGNMENT[r.store_id]?.region_coach) === region);
 
-    // Grouped response: one series per region or area_coach
+    // Derive the bucket key and display label for a record based on granularity
+    function getBucket(r) {
+      if (granularity === 'daily') {
+        const d = r.record_date instanceof Date ? r.record_date.toISOString().split('T')[0] : String(r.record_date).split('T')[0];
+        const dt = new Date(d + 'T12:00:00Z');
+        const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        return { key: d, label: `${days[dt.getUTCDay()]} ${dt.getUTCMonth()+1}/${dt.getUTCDate()}` };
+      }
+      if (granularity === 'period') {
+        const pw = r.period_week || getPeriodWeek(String(r.week_key).split('T')[0]);
+        const period = String(pw).split('W')[0]; // 'P5W1' → 'P5'
+        return { key: period, label: period };
+      }
+      // weekly (default)
+      const wk = r.week_key instanceof Date ? r.week_key.toISOString().split('T')[0] : String(r.week_key).split('T')[0];
+      const pw = r.period_week || getPeriodWeek(wk);
+      return { key: wk, label: String(pw) };
+    }
+
+    function aggregateBuckets(recs) {
+      const byBucket = {};
+      for (const r of recs) {
+        const { key, label } = getBucket(r);
+        if (!byBucket[key]) byBucket[key] = { key, label, recs: [] };
+        byBucket[key].recs.push(r);
+      }
+      const sorted = Object.values(byBucket).sort((a,b) => a.key.localeCompare(b.key));
+      const points = sorted.map(({ key, label, recs: rs }) => {
+        const valid = rs.filter(r => r.ist_avg != null);
+        return {
+          key, label,
+          avg_ist: valid.length ? Math.round(valid.reduce((a,r)=>a+parseFloat(r.ist_avg),0)/valid.length*10)/10 : null,
+          store_count: [...new Set(rs.map(r=>r.store_id))].length,
+          total_orders: rs.reduce((a,r)=>a+(r.total_orders||0),0)
+        };
+      });
+      for (let i = 1; i < points.length; i++) {
+        const prev = points[i-1].avg_ist, curr = points[i].avg_ist;
+        points[i].delta = (prev != null && curr != null) ? Math.round((curr-prev)*10)/10 : null;
+      }
+      return points;
+    }
+
+    // Grouped response: one series per region / area_coach / store
     if (groupBy) {
       const groups = {};
       for (const r of records) {
-        const al  = ALIGNMENT[r.store_id] || {};
-        const key = groupBy === 'region' ? al.region_coach : al.area_coach;
-        if (!key) continue;
-        if (!groups[key]) groups[key] = { label: key, region: al.region_coach, byWeek: {} };
-        const wk = r.week_key instanceof Date ? r.week_key.toISOString().split('T')[0] : String(r.week_key).split('T')[0];
-        if (!groups[key].byWeek[wk]) groups[key].byWeek[wk] = [];
-        groups[key].byWeek[wk].push(r);
-      }
-      const allWeeks = [...new Set(Object.values(groups).flatMap(g => Object.keys(g.byWeek)))].sort();
-      const result = Object.values(groups).map(g => {
-        const weeks = allWeeks.map(wk => {
-          const recs  = g.byWeek[wk] || [];
-          const valid = recs.filter(r => r.ist_avg != null);
-          return {
-            week_key:    wk,
-            period_week: recs[0]?.period_week || getPeriodWeek(wk),
-            date_range:  getWeekDateRange(wk),
-            avg_ist: valid.length ? Math.round(valid.reduce((a,r)=>a+parseFloat(r.ist_avg),0)/valid.length*10)/10 : null
-          };
-        });
-        for (let i = 1; i < weeks.length; i++) {
-          const prev = weeks[i-1].avg_ist, curr = weeks[i].avg_ist;
-          weeks[i].delta = (prev != null && curr != null) ? Math.round((curr-prev)*10)/10 : null;
+        const al = ALIGNMENT[r.store_id] || {};
+        let key, label, regionLabel;
+        if (groupBy === 'region') {
+          key = al.region_coach; label = key; regionLabel = key;
+        } else if (groupBy === 'store') {
+          key = r.store_id; label = al.name || r.store_id; regionLabel = al.region_coach;
+        } else {
+          key = al.area_coach; label = key; regionLabel = al.region_coach;
         }
-        return { label: g.label, region: g.region, weeks };
-      });
-      result.sort((a,b) => (a.region||a.label).localeCompare(b.region||b.label) || a.label.localeCompare(b.label));
-      return res.json({ groups: result, allWeeks });
+        if (!key) continue;
+        if (!groups[key]) groups[key] = { label, region: regionLabel, area: al.area_coach, recs: [] };
+        groups[key].recs.push(r);
+      }
+      const result = Object.values(groups).map(g => ({
+        label: g.label, region: g.region, area: g.area,
+        weeks: aggregateBuckets(g.recs)
+      }));
+      result.sort((a,b) => (a.region||'').localeCompare(b.region||'') || (a.area||'').localeCompare(b.area||'') || a.label.localeCompare(b.label));
+      return res.json({ groups: result });
     }
 
-    // Single-series response (existing behaviour)
-    const byWeek = {};
-    for (const r of records) {
-      const wk = r.week_key instanceof Date ? r.week_key.toISOString().split('T')[0] : String(r.week_key).split('T')[0];
-      if (!byWeek[wk]) byWeek[wk] = [];
-      byWeek[wk].push({ ...r, ...(ALIGNMENT[r.store_id] || {}) });
-    }
-
-    const weekTrends = Object.entries(byWeek)
-      .sort(([a],[b]) => a.localeCompare(b))
-      .map(([wk, recs]) => {
-        const valid = recs.filter(r => r.ist_avg != null);
-        return {
-          week_key: wk,
-          period_week: recs[0]?.period_week || getPeriodWeek(wk),
-          date_range: getWeekDateRange(wk),
-          avg_ist: valid.length ? Math.round(valid.reduce((a,r) => a+parseFloat(r.ist_avg),0)/valid.length*10)/10 : null,
-          store_count: [...new Set(recs.map(r=>r.store_id))].length,
-          total_orders: recs.reduce((a,r)=>a+(r.total_orders||0),0)
-        };
-      });
-
-    for (let i = 1; i < weekTrends.length; i++) {
-      const prev = weekTrends[i-1].avg_ist;
-      const curr = weekTrends[i].avg_ist;
-      weekTrends[i].delta = (prev != null && curr != null) ? Math.round((curr-prev)*10)/10 : null;
-    }
-
-    res.json({ weeks: weekTrends, storeCount: storeId ? 1 : [...new Set(records.map(r=>r.store_id))].length });
+    // Single-series response
+    const points = aggregateBuckets(records);
+    res.json({ weeks: points, storeCount: storeId ? 1 : [...new Set(records.map(r=>r.store_id))].length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

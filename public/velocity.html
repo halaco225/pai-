@@ -87,6 +87,8 @@
   .trend-section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
   .trend-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
   .trend-header h3 { font-size: 14px; color: var(--text); }
+  .trend-gran-btn { background: var(--surface); border: 1px solid var(--border); color: var(--muted); border-radius: 5px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+  .trend-gran-btn.active { background: #e4002b; border-color: #e4002b; color: #fff; }
 
   /* ── DOW patterns ── */
   .dow-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
@@ -229,14 +231,21 @@
 
   <!-- Trend view -->
   <div class="trend-section hidden" id="trendSection">
-    <div class="trend-header">
-      <h3>Week-over-Week IST Trend</h3>
-      <select id="trendWeeks" onchange="loadTrend()">
-        <option value="4">4 Weeks</option>
-        <option value="8" selected>8 Weeks</option>
-        <option value="13">Full Period</option>
-        <option value="26">6 Months</option>
-      </select>
+    <div class="trend-header" style="flex-wrap:wrap;gap:8px">
+      <h3 id="trendTitle">Week-over-Week IST Trend</h3>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="display:flex;gap:4px">
+          <button class="trend-gran-btn active" data-gran="weekly" onclick="setTrendGranularity('weekly')">Weekly</button>
+          <button class="trend-gran-btn" data-gran="daily" onclick="setTrendGranularity('daily')">Daily</button>
+          <button class="trend-gran-btn" data-gran="period" onclick="setTrendGranularity('period')">Period</button>
+        </div>
+        <select id="trendWeeks" onchange="loadTrend()">
+          <option value="4">4 Weeks</option>
+          <option value="8" selected>8 Weeks</option>
+          <option value="13">Full Period</option>
+          <option value="26">6 Months</option>
+        </select>
+      </div>
     </div>
     <div id="trendChart" style="overflow-x:auto"></div>
   </div>
@@ -333,15 +342,23 @@ let state = {
   ptdSubView: 'aggregate',
   ptdComparePrior: false,
   selectedDay: null,
+  trendGranularity: 'weekly',
   sortField: 'wtd_ist',
   sortDir: 'asc',
   filters: { region: '', area: '', store: '' },
-  viewBy: 'all'
+  viewBy: 'all',
+  currentUser: null
 };
 
 // ── Boot ──────────────────────────────────────────────────────────────
 async function init() {
-  await Promise.all([ loadMeta(), loadWeeks() ]);
+  // Fetch current user first so loadMeta can pre-filter before data renders
+  try {
+    const me = await api('/api/auth/me');
+    state.currentUser = me?.user || null;
+  } catch(e) { state.currentUser = null; }
+  await loadMeta();
+  await loadWeeks();
 }
 
 async function loadMeta() {
@@ -353,6 +370,22 @@ async function loadMeta() {
     // Populate area coach filter
     const aSel = document.getElementById('areaFilter');
     r.area_coaches.forEach(ac => { const o = new Option(ac, ac); aSel.appendChild(o); });
+
+    // Auto-filter to logged-in user's name — skip for Harold (admin sees all)
+    const user = state.currentUser;
+    if (user && user.username !== 'hlacoste') {
+      const name = (user.name || '').trim().toLowerCase();
+      const regionMatch = r.regions.find(reg => reg.trim().toLowerCase() === name);
+      if (regionMatch) {
+        rSel.value = regionMatch;
+        state.filters.region = regionMatch;
+      }
+      const areaMatch = r.area_coaches.find(ac => ac.trim().toLowerCase() === name);
+      if (areaMatch) {
+        aSel.value = areaMatch;
+        state.filters.area = areaMatch;
+      }
+    }
   } catch(e) { console.error('Meta load failed:', e); }
 }
 
@@ -419,22 +452,31 @@ function resolveStoreForApi() {
   return matches.length === 1 ? matches[0].store_id : null;
 }
 
-async function loadTrend() {
-  const weeks  = document.getElementById('trendWeeks').value;
-  const region = state.filters.region;
-  const area   = state.filters.area;
-  const store  = resolveStoreForApi();
-  const viewBy = state.viewBy;
+function setTrendGranularity(gran) {
+  state.trendGranularity = gran;
+  document.querySelectorAll('.trend-gran-btn').forEach(b => b.classList.toggle('active', b.dataset.gran === gran));
+  const titles = { weekly: 'Week-over-Week IST Trend', daily: 'Daily IST Trend', period: 'Period IST Trend' };
+  document.getElementById('trendTitle').textContent = titles[gran] || 'IST Trend';
+  loadTrend();
+}
 
-  // Use group_by when there is no store/area filter that already scopes to one series
+async function loadTrend() {
+  const weeks       = document.getElementById('trendWeeks').value;
+  const region      = state.filters.region;
+  const area        = state.filters.area;
+  const store       = resolveStoreForApi();
+  const viewBy      = state.viewBy;
+  const granularity = state.trendGranularity || 'weekly';
+
   let groupBy = null;
   if (!store && !area) {
     if (viewBy === 'region') groupBy = 'region';
-    else if (viewBy === 'region_area' || viewBy === 'all') groupBy = 'area_coach';
+    else if (viewBy === 'region_area') groupBy = 'area_coach';
     else if (viewBy === 'area') groupBy = 'area_coach';
+    else if (viewBy === 'all') groupBy = 'store';
   }
 
-  let url = `/api/velocity/trends?weeks=${weeks}`;
+  let url = `/api/velocity/trends?weeks=${weeks}&granularity=${granularity}`;
   if (region)  url += `&region=${encodeURIComponent(region)}`;
   if (area)    url += `&area_coach=${encodeURIComponent(area)}`;
   if (store)   url += `&store=${encodeURIComponent(store)}`;
@@ -821,7 +863,7 @@ function renderTrendBars(weeks) {
       <div style="font-size:9px;color:var(--muted);height:13px;line-height:13px">${dHtml}</div>
       <div style="height:${h}px;background:${istColorHex(w.avg_ist)};border-radius:3px 3px 0 0;margin:0 2px"></div>
       <div style="margin-top:2px;font-size:11px;font-weight:700;color:${istColorHex(w.avg_ist)}">${w.avg_ist ?? '—'}</div>
-      <div style="font-size:9px;color:var(--muted)">${w.period_week||''}</div>
+      <div style="font-size:9px;color:var(--muted)">${w.label||w.period_week||''}</div>
     </div>`;
   }).join('');
   return `<div style="display:flex;align-items:flex-end;height:76px;border-bottom:1px solid var(--border);padding-bottom:4px">${bars}</div>`;
@@ -829,15 +871,22 @@ function renderTrendBars(weeks) {
 
 function renderTrendHierarchy(groups, viewBy, el) {
   if (!groups.length) { el.innerHTML = '<p style="color:var(--muted);font-size:13px">No trend data</p>'; return; }
-  const showRegionHdr = (viewBy === 'region_area' || viewBy === 'all');
+  const isStoreView   = viewBy === 'all';
+  const showRegionHdr = viewBy === 'region_area' || isStoreView;
   let html = '';
   let lastRegion = null;
+  let lastArea   = null;
   for (const g of groups) {
     if (showRegionHdr && g.region !== lastRegion) {
       html += `<div style="font-size:11px;font-weight:700;color:var(--text);letter-spacing:1px;text-transform:uppercase;padding:${lastRegion ? '16px' : '0'} 0 4px;${lastRegion ? 'border-top:1px solid var(--border);margin-top:4px' : ''}">▶ ${g.region || 'Unknown Region'}</div>`;
       lastRegion = g.region;
+      lastArea   = null;
     }
-    const indent = showRegionHdr ? 'padding-left:14px;' : '';
+    if (isStoreView && g.area !== lastArea) {
+      html += `<div style="font-size:11px;font-weight:600;color:var(--muted);padding:6px 0 2px 14px">${g.area || ''}</div>`;
+      lastArea = g.area;
+    }
+    const indent = (showRegionHdr || isStoreView) ? 'padding-left:' + (isStoreView ? '28px' : '14px') + ';' : '';
     const sub = viewBy === 'area' && g.region ? ` <span style="font-weight:400;color:var(--muted);font-size:11px">· ${g.region}</span>` : '';
     html += `<div style="margin-bottom:14px;${indent}">
       <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px">${g.label}${sub}</div>
@@ -1051,10 +1100,32 @@ function renderTable(stores) {
   tbody.innerHTML = rows.join('');
 }
 
+function summaryRowDay(stores, level, region, area, cls) {
+  const valid = stores.filter(s => s.ist_avg != null);
+  const avgIST = valid.length ? (valid.reduce((a,s)=>a+s.ist_avg,0)/valid.length).toFixed(1) : null;
+  const orders = stores.reduce((a,s)=>a+(s.total_orders||0),0);
+  const lt10   = stores.reduce((a,s)=>a+(s.ist_lt10||0),0);
+  const t1014  = stores.reduce((a,s)=>a+(s.ist_1014||0),0);
+  const t1518  = stores.reduce((a,s)=>a+(s.ist_1518||0),0);
+  const t1925  = stores.reduce((a,s)=>a+(s.ist_1925||0),0);
+  const gt25   = stores.reduce((a,s)=>a+(s.ist_gt25||0),0);
+  const label  = level === 'REGION' ? region : area;
+  return `<tr class="${cls}">
+    <td colspan="2"><strong>${label}</strong> <small style="color:var(--muted)">${stores.length} stores</small></td>
+    <td style="color:var(--muted);font-size:12px">${level === 'AREA' ? region : ''}</td>
+    <td><span class="${istColorClass(parseFloat(avgIST))}">${avgIST != null ? avgIST + ' min' : '—'}</span></td>
+    <td>${lt10}</td><td>${t1014}</td><td>${t1518}</td>
+    <td>${t1925}</td><td class="${gt25>0?'ist-orange':''}">${gt25}</td>
+    <td>${orders.toLocaleString()}</td>
+    <td>—</td>
+  </tr>`;
+}
+
 function renderTableDay(stores) {
   const region = state.filters.region;
   const area   = state.filters.area;
   const search = state.filters.store;
+  const viewBy = state.viewBy;
 
   let filtered = stores;
   if (region) filtered = filtered.filter(s => s.region_coach === region);
@@ -1066,17 +1137,35 @@ function renderTableDay(stores) {
   const tbody = document.getElementById('tableBody');
   if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--muted)">No data for this day</td></tr>'; return; }
 
-  tbody.innerHTML = filtered.map(s => `
-    <tr class="row-store">
-      <td><strong>${s.name||s.store_id}</strong><br><small style="color:var(--muted)">${s.store_id}</small></td>
-      <td>${s.area_coach||'—'}</td>
-      <td style="color:var(--muted);font-size:12px">${s.region_coach||'—'}</td>
-      <td><span class="${istColorClass(s.ist_avg)}">${s.ist_avg != null ? s.ist_avg + ' min' : '—'}</span></td>
-      <td>${s.ist_lt10||0}</td><td>${s.ist_1014||0}</td><td>${s.ist_1518||0}</td>
-      <td>${s.ist_1925||0}</td><td class="${(s.ist_gt25||0)>0?'ist-orange':''}">${s.ist_gt25||0}</td>
-      <td>${s.total_orders||0}</td>
-      <td>1</td>
-    </tr>`).join('');
+  const rows = [];
+  const byRegion = {};
+  filtered.forEach(s => { (byRegion[s.region_coach] = byRegion[s.region_coach]||[]).push(s); });
+
+  for (const [reg, rStores] of Object.entries(byRegion)) {
+    if (viewBy !== 'area') rows.push(summaryRowDay(rStores, 'REGION', reg, null, 'row-region'));
+    if (viewBy === 'region') continue;
+
+    const byArea = {};
+    rStores.forEach(s => { (byArea[s.area_coach] = byArea[s.area_coach]||[]).push(s); });
+    for (const [ac, aStores] of Object.entries(byArea)) {
+      rows.push(summaryRowDay(aStores, 'AREA', reg, ac, 'row-area'));
+      if (viewBy === 'all') {
+        aStores.forEach(s => rows.push(`
+          <tr class="row-store">
+            <td><strong>${s.name||s.store_id}</strong><br><small style="color:var(--muted)">${s.store_id}</small></td>
+            <td>${s.area_coach||'—'}</td>
+            <td style="color:var(--muted);font-size:12px">${s.region_coach||'—'}</td>
+            <td><span class="${istColorClass(s.ist_avg)}">${s.ist_avg != null ? s.ist_avg + ' min' : '—'}</span></td>
+            <td>${s.ist_lt10||0}</td><td>${s.ist_1014||0}</td><td>${s.ist_1518||0}</td>
+            <td>${s.ist_1925||0}</td><td class="${(s.ist_gt25||0)>0?'ist-orange':''}">${s.ist_gt25||0}</td>
+            <td>${s.total_orders||0}</td>
+            <td>1</td>
+          </tr>`));
+      }
+    }
+  }
+
+  tbody.innerHTML = rows.join('');
 }
 
 function storeRow(s, cls) {
