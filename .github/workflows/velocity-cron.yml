@@ -16,16 +16,18 @@ jobs:
     steps:
       - name: Trigger ODS pull
         run: |
-          DATE_PARAM=""
-          if [ -n "${{ github.event.inputs.date }}" ]; then
-            DATE_PARAM=", \"date\": \"${{ github.event.inputs.date }}\""
+          DATE="${{ github.event.inputs.date }}"
+          if [ -n "$DATE" ]; then
+            BODY="{\"date\": \"$DATE\"}"
+          else
+            BODY="{}"
           fi
 
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             "${{ secrets.PAI_BASE_URL }}/api/velocity/automation/pull-ods" \
             -H "Content-Type: application/json" \
             -H "X-Automation-Token: ${{ secrets.VELOCITY_AUTOMATION_TOKEN }}" \
-            -d "{${DATE_PARAM}}")
+            -d "$BODY")
 
           BODY=$(echo "$RESPONSE" | head -n1)
           STATUS=$(echo "$RESPONSE" | tail -n1)
