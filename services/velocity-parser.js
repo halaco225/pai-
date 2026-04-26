@@ -292,16 +292,26 @@ function parseSOSExcelODS(filePath) {
 
   // Determine column positions from header row
   const hdr = raw[headerIdx] || [];
+  console.log('[ODS Parser] Header row:', JSON.stringify(hdr));
   const colIdx = {};
   hdr.forEach((cell, i) => {
-    if (cell === 'In Store')    colIdx.ist_avg        = i;
-    if (cell === '# Del')       colIdx.total_orders   = i;
-    if (cell === 'Make')        colIdx.make_time      = i;
-    if (cell === '% < 4')       colIdx.pct_lt4        = i;
-    if (cell === 'Production')  colIdx.production_time= i;
-    if (cell === '% < 15')      colIdx.pct_lt15       = i;
-    if (cell === 'On Time %')   colIdx.on_time_pct    = i;
+    if (!cell) return;
+    const c = String(cell).trim();
+    if (c === 'In Store')    colIdx.ist_avg        = i;
+    if (c === '# Del')       colIdx.total_orders   = i;
+    if (c === 'Make')        colIdx.make_time      = i;
+    if (c === '% < 4')       colIdx.pct_lt4        = i;
+    if (c === 'Production')  colIdx.production_time= i;
+    if (c === '% < 15')      colIdx.pct_lt15       = i;
+    if (c === 'On Time %')   colIdx.on_time_pct    = i;
+    // IST bucket columns — try common ODS header variants
+    if (/^[<u].*10|under.?10|0.*10/i.test(c))  colIdx.ist_lt10  = i;
+    if (/^10.?[-–].?14/i.test(c))              colIdx.ist_1014  = i;
+    if (/^15.?[-–].?18/i.test(c))              colIdx.ist_1518  = i;
+    if (/^19.?[-–].?25/i.test(c))              colIdx.ist_1925  = i;
+    if (/^[>o].*25|25.?plus|25\+/i.test(c))   colIdx.ist_gt25  = i;
   });
+  console.log('[ODS Parser] colIdx:', JSON.stringify(colIdx));
 
   function pctVal(v) {
     if (v == null) return null;
@@ -320,10 +330,22 @@ function parseSOSExcelODS(filePath) {
     const ist_raw = row[colIdx.ist_avg ?? 8];
     const ist_avg = ist_raw != null ? parseFloat(String(ist_raw)) : null;
 
+    const ist_lt10 = colIdx.ist_lt10 != null ? (parseInt(row[colIdx.ist_lt10]) || 0) : 0;
+    const ist_1014 = colIdx.ist_1014 != null ? (parseInt(row[colIdx.ist_1014]) || 0) : 0;
+    const ist_1518 = colIdx.ist_1518 != null ? (parseInt(row[colIdx.ist_1518]) || 0) : 0;
+    const ist_1925 = colIdx.ist_1925 != null ? (parseInt(row[colIdx.ist_1925]) || 0) : 0;
+    const ist_gt25 = colIdx.ist_gt25 != null ? (parseInt(row[colIdx.ist_gt25]) || 0) : 0;
+    const total_orders_raw = row[colIdx.total_orders ?? 9];
+    const total_orders = total_orders_raw != null ? parseInt(total_orders_raw) : null;
+    const ist_lt19_pct = (total_orders && (ist_lt10 || ist_1014 || ist_1518))
+      ? parseFloat(((ist_lt10 + ist_1014 + ist_1518) / total_orders * 100).toFixed(1))
+      : null;
+
     stores.push({
       store_id,
       ist_avg:         isNaN(ist_avg) ? null : Math.round(ist_avg * 10) / 10,
-      total_orders:    row[colIdx.total_orders ?? 9]  != null ? parseInt(row[colIdx.total_orders ?? 9])  : null,
+      total_orders,
+      ist_lt10, ist_1014, ist_1518, ist_1925, ist_gt25, ist_lt19_pct,
       make_time:       row[colIdx.make_time      ?? 11] ?? null,
       pct_lt4:         pctVal(row[colIdx.pct_lt4  ?? 13]),
       production_time: row[colIdx.production_time?? 17] ?? null,
