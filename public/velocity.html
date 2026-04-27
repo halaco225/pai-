@@ -1469,7 +1469,7 @@ function renderTrendChart(weeks, container) {
       <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${deltaHtml}</div>
       <div style="height:${pct}px;background:${istColorHex(w.avg_ist)};border-radius:4px 4px 0 0;margin:0 4px"></div>
       <div style="margin-top:4px;font-size:13px;font-weight:700;color:${istColorHex(w.avg_ist)}">${w.avg_ist != null ? w.avg_ist : '—'}</div>
-      <div style="font-size:10px;color:var(--muted)">${w.period_week||w.week_key}</div>
+      <div style="font-size:10px;color:var(--muted)">${w.label||w.period_week||w.week_key}</div>
       <div style="font-size:10px;color:var(--muted)">${w.date_range||''}</div>
     </div>`;
   }).join('');

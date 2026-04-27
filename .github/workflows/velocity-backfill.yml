@@ -1,0 +1,58 @@
+name: Velocity Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: 'Start date (YYYY-MM-DD). Default: 2025-12-30'
+        required: false
+      end_date:
+        description: 'End date (YYYY-MM-DD). Default: yesterday'
+        required: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run backfill via PAi API
+        run: |
+          START="${{ github.event.inputs.start_date }}"
+          END="${{ github.event.inputs.end_date }}"
+          [ -z "$START" ] && START="2025-12-30"
+          [ -z "$END" ]   && END=$(date -u -d '1 day ago' '+%Y-%m-%d' 2>/dev/null || date -u -v-1d '+%Y-%m-%d')
+
+          echo "Backfilling $START → $END"
+
+          cur="$START"
+          success=0
+          failed=0
+
+          while [ "$cur" \<= "$END" ]; do
+            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+              "${{ secrets.PAI_BASE_URL }}/api/velocity/automation/pull-ods" \
+              -H "Content-Type: application/json" \
+              -H "X-Automation-Token: ${{ secrets.VELOCITY_AUTOMATION_TOKEN }}" \
+              -d "{\"date\": \"$cur\"}")
+
+            BODY=$(echo "$RESPONSE" | head -n1)
+            STATUS=$(echo "$RESPONSE" | tail -n1)
+
+            if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 300 ]; then
+              echo "✓ $cur (HTTP $STATUS)"
+              success=$((success+1))
+            else
+              echo "✗ $cur (HTTP $STATUS): $BODY"
+              failed=$((failed+1))
+            fi
+
+            # 15s pause to avoid hammering ODS
+            cur=$(date -u -d "$cur + 1 day" '+%Y-%m-%d' 2>/dev/null || date -u -j -v+1d -f '%Y-%m-%d' "$cur" '+%Y-%m-%d')
+            sleep 15
+          done
+
+          echo ""
+          echo "── Summary ──────────────────────────────"
+          echo "   Succeeded : $success"
+          echo "   Failed    : $failed"
+
+          [ $failed -gt 0 ] && exit 1 || exit 0
