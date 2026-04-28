@@ -102,6 +102,16 @@ function safeArr(val) {
   return Array.isArray(val) ? val : [];
 }
 
+// Chunk array into pages of `size` items. Always returns at least one (possibly empty) chunk.
+function chunkArr(arr, size) {
+  if (!arr.length) return [[]];
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+function pagesFor(arr, perPage) { return Math.max(1, Math.ceil((arr.length || 1) / perPage)); }
+
 function statusColor(status) {
   if (!status) return B.lgray;
   const s = status.toLowerCase();
@@ -111,7 +121,8 @@ function statusColor(status) {
   return B.lgray;
 }
 
-function chrome(slide, pptx, title, slideNum, total) {
+function chrome(slide, pptx, title, sn, total) {
+  const num = typeof sn === 'object' ? sn.n : sn;
   // Left red accent bar
   slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.08, h: '100%', fill: { color: B.red } });
   // Dark header bar
@@ -122,7 +133,7 @@ function chrome(slide, pptx, title, slideNum, total) {
     color: B.light, fontSize: 11, bold: true, charSpacing: 3
   });
   // Slide number
-  slide.addText(`${slideNum} / ${total}`, {
+  slide.addText(`${num} / ${total}`, {
     x: 8.8, y: 0.15, w: 0.85, h: 0.3,
     color: B.gray, fontSize: 9, align: 'right'
   });
@@ -131,6 +142,8 @@ function chrome(slide, pptx, title, slideNum, total) {
     x: 0.25, y: 6.88, w: 9.2, h: 0.18,
     color: B.muted, fontSize: 7, charSpacing: 2
   });
+  // Advance counter
+  if (typeof sn === 'object') sn.n++;
 }
 
 // ── Main generator ─────────────────────────────────────────────────────────────
@@ -139,7 +152,7 @@ async function generateRecapPPTX(data, options = {}) {
   B = buildBrand(options.theme || 'command-dark');
 
   const pptx = new PptxGenJS();
-  pptx.layout = 'LAYOUT_WIDE';
+  pptx.layout = 'LAYOUT_16x9'; // 10" × 7.5" — matches the coordinate system used below
   pptx.author = 'P.AI by Ayvaz Pizza';
 
   // Handle raw text fallback (Claude couldn't produce JSON)
@@ -167,29 +180,53 @@ async function generateRecapPPTX(data, options = {}) {
     smartGoals:   safeArr(s.smartGoals?.goals).length > 0,
   };
 
-  // Count slides to include (cover + closing + key dates always included)
-  const TOTAL = 3 + Object.values(has).filter(Boolean).length;
+  // Per-slide pagination limits
+  const PER_WIN   = 4;
+  const PER_TABLE = 9;
+  const PER_LABOR = 8;
+  const PER_GOAL  = 2;
+
+  // Count total slides including pagination and any appended slides
+  const additionalSlides = safeArr(data.additionalSlides);
+  const TOTAL = 3 + // cover + key dates + closing
+    (has.scorecard    ? 1 : 0) +
+    (has.acTable      ? pagesFor(safeArr(s.acTable?.rows), PER_TABLE) : 0) +
+    (has.wins         ? pagesFor(safeArr(s.wins?.items), PER_WIN) : 0) +
+    (has.focusAreas   ? pagesFor(safeArr(s.focusAreas?.items), PER_WIN) : 0) +
+    (has.labor        ? pagesFor(safeArr(s.laborDeepDive?.acRows || s.laborDeepDive?.rows), PER_LABOR) : 0) +
+    (has.speed        ? 1 : 0) +
+    (has.winByAC      ? pagesFor(safeArr((s.winByAC || s.smgByAC)?.rows), PER_TABLE) : 0) +
+    (has.winSpotlight ? 1 : 0) +
+    (has.customerVoice? 1 : 0) +
+    (has.smartGoals   ? pagesFor(safeArr(s.smartGoals?.goals), PER_GOAL) : 0) +
+    additionalSlides.length;
+
+  // Mutable slide counter (cover is always first, chrome slides start at 2)
+  const sn = { n: 2 };
 
   // 1 ── Cover (always) ────────────────────────────────────────────────────────
   makeCover(pptx, s.title || {}, regionName, weekLabel);
 
   // Optional slides — only included when data is present
-  if (has.scorecard)    makeScorecard(pptx, s.scorecard || {}, weekLabel, TOTAL);
-  if (has.acTable)      makeACTable(pptx, s.acTable || {}, weekLabel, TOTAL);
-  if (has.wins)         makeWins(pptx, s.wins || {}, weekLabel, TOTAL);
-  if (has.focusAreas)   makeFocusAreas(pptx, s.focusAreas || {}, weekLabel, TOTAL);
-  if (has.labor)        makeLaborDeepDive(pptx, s.laborDeepDive || {}, weekLabel, TOTAL);
-  if (has.speed)        makeSpeedOutlier(pptx, s.speedOutlier || {}, weekLabel, TOTAL);
-  if (has.winByAC)      makeWINbyAC(pptx, s.winByAC || s.smgByAC || {}, weekLabel, TOTAL);
-  if (has.winSpotlight) makeWINStoreSpotlight(pptx, s.winStoreSpotlight || s.smgSpotlight || {}, weekLabel, TOTAL);
-  if (has.customerVoice)makeCustomerVoice(pptx, s.customerVoice || {}, weekLabel, TOTAL);
-  if (has.smartGoals)   makeSmartGoals(pptx, s.smartGoals || {}, weekLabel, TOTAL);
+  if (has.scorecard)    makeScorecard(pptx, s.scorecard || {}, weekLabel, sn, TOTAL);
+  if (has.acTable)      makeACTable(pptx, s.acTable || {}, weekLabel, sn, TOTAL, PER_TABLE);
+  if (has.wins)         makeWins(pptx, s.wins || {}, weekLabel, sn, TOTAL, PER_WIN);
+  if (has.focusAreas)   makeFocusAreas(pptx, s.focusAreas || {}, weekLabel, sn, TOTAL, PER_WIN);
+  if (has.labor)        makeLaborDeepDive(pptx, s.laborDeepDive || {}, weekLabel, sn, TOTAL, PER_LABOR);
+  if (has.speed)        makeSpeedOutlier(pptx, s.speedOutlier || {}, weekLabel, sn, TOTAL);
+  if (has.winByAC)      makeWINbyAC(pptx, s.winByAC || s.smgByAC || {}, weekLabel, sn, TOTAL, PER_TABLE);
+  if (has.winSpotlight) makeWINStoreSpotlight(pptx, s.winStoreSpotlight || s.smgSpotlight || {}, weekLabel, sn, TOTAL);
+  if (has.customerVoice)makeCustomerVoice(pptx, s.customerVoice || {}, weekLabel, sn, TOTAL);
+  if (has.smartGoals)   makeSmartGoals(pptx, s.smartGoals || {}, weekLabel, sn, TOTAL, PER_GOAL);
+
+  // Appended slides from "Add More Content"
+  additionalSlides.forEach(ad => makeAdditionalSlide(pptx, ad, sn, TOTAL));
 
   // Key Dates (always — user fills in before distributing)
-  makeKeyDates(pptx, s.keyDates || {}, weekLabel, TOTAL);
+  makeKeyDates(pptx, s.keyDates || {}, weekLabel, sn, TOTAL);
 
   // Closing (always)
-  makeClosing(pptx, s.closing || {}, regionName, weekLabel, TOTAL);
+  makeClosing(pptx, s.closing || {}, regionName, weekLabel, sn, TOTAL);
 
   return pptx.write({ outputType: 'nodebuffer' });
 }
@@ -226,10 +263,10 @@ function makeCover(pptx, d, regionName, weekLabel) {
   slide.addText('Area Coach Recap  ·  Confidential', { x: 0.75, y: 6.75, w: 9, h: 0.25, color: '#444444', fontSize: 8, charSpacing: 2 });
 }
 
-function makeScorecard(pptx, d, weekLabel, total) {
+function makeScorecard(pptx, d, weekLabel, sn, total) {
   const slide = pptx.addSlide();
   slide.background = { color: B.light };
-  chrome(slide, pptx, `REGION SCORECARD  |  Week of ${weekLabel}`, 2, total);
+  chrome(slide, pptx, `REGION SCORECARD  |  Week of ${weekLabel}`, sn, total);
 
   const metrics = safeArr(d.metrics);
   const defaults = [
@@ -360,125 +397,134 @@ function makeScorecard(pptx, d, weekLabel, total) {
   }
 }
 
-function makeACTable(pptx, d, weekLabel, total) {
-  const slide = pptx.addSlide();
-  slide.background = { color: B.light };
-  chrome(slide, pptx, `AREA COACH PERFORMANCE  |  Week of ${weekLabel}`, 3, total);
-
+function makeACTable(pptx, d, weekLabel, sn, total, perPage) {
   const rows = safeArr(d.rows);
+  const chunks = rows.length ? chunkArr(rows, perPage) : [[]];
 
-  const tableRows = [
-    [
-      { text: 'AREA COACH', options: { bold: true, color: B.white, fill: B.dark, fontSize: 9 } },
-      { text: 'SALES GROWTH', options: { bold: true, color: B.white, fill: B.dark, fontSize: 9 } },
-      { text: 'LABOR VAR', options: { bold: true, color: B.white, fill: B.dark, fontSize: 9 } },
-      { text: 'WIN SCORE', options: { bold: true, color: B.white, fill: B.dark, fontSize: 9 } },
-      { text: 'HUT BOT', options: { bold: true, color: B.white, fill: B.dark, fontSize: 9 } },
-    ]
-  ];
+  chunks.forEach((chunk, pageIdx) => {
+    const slide = pptx.addSlide();
+    slide.background = { color: B.light };
+    const suffix = chunks.length > 1 ? `  (${pageIdx + 1}/${chunks.length})` : '';
+    chrome(slide, pptx, `AREA COACH PERFORMANCE  |  Week of ${weekLabel}${suffix}`, sn, total);
 
-  rows.forEach((r, idx) => {
-    const acName = extractName(r);
-    tableRows.push([
-      { text: acName, options: { color: B.dark, fontSize: 11, bold: true, fill: idx % 2 === 0 ? B.white : '#F0F0F0' } },
-      { text: safe(r.salesGrowth || r.sales_growth || r.sales), options: { color: B.dark, fontSize: 11, fill: idx % 2 === 0 ? B.white : '#F0F0F0', align: 'center' } },
-      { text: safe(r.laborVar || r.labor_var), options: { color: B.dark, fontSize: 11, fill: idx % 2 === 0 ? B.white : '#F0F0F0', align: 'center' } },
-      { text: safe(r.winScore || r.win_score || r.win), options: { color: B.dark, fontSize: 11, fill: idx % 2 === 0 ? B.white : '#F0F0F0', align: 'center' } },
-      { text: safe(r.hutBot || r.hut_bot || r.hutbot), options: { color: B.dark, fontSize: 11, fill: idx % 2 === 0 ? B.white : '#F0F0F0', align: 'center' } },
-    ]);
-  });
+    const header = [
+      { text: 'AREA COACH',   options: { bold: true, color: B.white, fill: B.dark, fontSize: 10 } },
+      { text: 'SALES GROWTH', options: { bold: true, color: B.white, fill: B.dark, fontSize: 10, align: 'center' } },
+      { text: 'LABOR VAR',    options: { bold: true, color: B.white, fill: B.dark, fontSize: 10, align: 'center' } },
+      { text: 'WIN SCORE',    options: { bold: true, color: B.white, fill: B.dark, fontSize: 10, align: 'center' } },
+      { text: 'HUT BOT',      options: { bold: true, color: B.white, fill: B.dark, fontSize: 10, align: 'center' } },
+    ];
+    const tableRows = [header];
 
-  if (tableRows.length > 1) {
-    slide.addTable(tableRows, {
-      x: 0.25, y: 0.75, w: 9.2,
-      rowH: 0.52,
-      border: { type: 'solid', color: '#DDDDDD', pt: 1 },
+    chunk.forEach((r, idx) => {
+      const fill = idx % 2 === 0 ? B.white : '#F0F0F0';
+      tableRows.push([
+        { text: extractName(r), options: { color: B.dark, fontSize: 12, bold: true, fill } },
+        { text: safe(r.salesGrowth || r.sales_growth || r.sales), options: { color: B.dark, fontSize: 12, fill, align: 'center' } },
+        { text: safe(r.laborVar || r.labor_var), options: { color: B.dark, fontSize: 12, fill, align: 'center' } },
+        { text: safe(r.winScore || r.win_score || r.win), options: { color: B.dark, fontSize: 12, fill, align: 'center' } },
+        { text: safe(r.hutBot || r.hut_bot || r.hutbot), options: { color: B.dark, fontSize: 12, fill, align: 'center' } },
+      ]);
     });
-  } else {
-    slide.addText('No AC data available', { x: 0.25, y: 1.5, w: 9.2, h: 0.5, color: B.gray, fontSize: 13 });
-  }
 
-  slide.addText('★ = Best in column  |  HUT BOT thresholds: Green ≥95%  Yellow 88–94%  Red <88%', {
-    x: 0.25, y: 6.55, w: 9.2, h: 0.25, color: B.gray, fontSize: 9
-  });
-}
-
-function makeWins(pptx, d, weekLabel, total) {
-  const slide = pptx.addSlide();
-  slide.background = { color: B.dark };
-  chrome(slide, pptx, `WINS THIS WEEK  🏆`, 4, total);
-
-  const items = safeArr(d.items);
-  if (!items.length) {
-    slide.addText('No wins data available', { x: 0.25, y: 1.5, w: 9.2, h: 0.5, color: B.gray, fontSize: 13 });
-    return;
-  }
-
-  items.slice(0, 5).forEach((item, i) => {
-    const y = 0.8 + i * 1.1;
-    // Green checkmark box
-    slide.addShape(pptx.ShapeType.rect, { x: 0.25, y, w: 0.35, h: 0.35, fill: { color: B.green }, rectRadius: 0.05 });
-    slide.addText('✓', { x: 0.25, y: y + 0.02, w: 0.35, h: 0.3, color: B.white, fontSize: 14, bold: true, align: 'center' });
-    // Store name & number
-    const storeName = safe(item.store || item.storeName);
-    const storeNum  = safe(item.storeNum || item.store_num);
-    slide.addText(`${storeName}${storeNum ? '  |  #' + storeNum : ''}`, {
-      x: 0.7, y, w: 5.5, h: 0.3, color: B.light, fontSize: 12, bold: true
-    });
-    // Metric badge
-    slide.addText(safe(item.metric), { x: 6.3, y, w: 2.8, h: 0.3, color: B.gold, fontSize: 10, bold: true, align: 'right' });
-    // Description
-    slide.addText(safe(item.description || item.desc), {
-      x: 0.7, y: y + 0.33, w: 7.5, h: 0.45, color: B.lgray, fontSize: 10, wrap: true
-    });
-    // AC name
-    slide.addText(safe(item.ac || item.acName), {
-      x: 0.7, y: y + 0.78, w: 3, h: 0.22, color: B.gray, fontSize: 9, italic: true
-    });
-    // Divider (except last)
-    if (i < items.length - 1 && i < 4) {
-      slide.addShape(pptx.ShapeType.line, { x: 0.25, y: y + 1.05, w: 9.1, h: 0, line: { color: '#333333', width: 0.5 } });
+    if (tableRows.length > 1) {
+      slide.addTable(tableRows, { x: 0.25, y: 0.75, w: 9.2, rowH: 0.58, border: { type: 'solid', color: '#DDDDDD', pt: 1 } });
+    } else {
+      slide.addText('No AC data available', { x: 0.25, y: 1.5, w: 9.2, h: 0.5, color: B.gray, fontSize: 13 });
     }
+    slide.addText('★ = Best in column  |  HUT BOT thresholds: Green ≥95%  Yellow 88–94%  Red <88%', {
+      x: 0.25, y: 6.55, w: 9.2, h: 0.25, color: B.gray, fontSize: 9
+    });
   });
 }
 
-function makeFocusAreas(pptx, d, weekLabel, total) {
-  const slide = pptx.addSlide();
-  slide.background = { color: B.dark };
-  chrome(slide, pptx, `FOCUS AREAS  ⚠`, 5, total);
-
+function makeWins(pptx, d, weekLabel, sn, total, perPage) {
   const items = safeArr(d.items);
-  if (!items.length) {
-    slide.addText('No focus areas identified', { x: 0.25, y: 1.5, w: 9.2, h: 0.5, color: B.gray, fontSize: 13 });
-    return;
-  }
+  const chunks = items.length ? chunkArr(items, perPage) : [[]];
 
-  items.slice(0, 5).forEach((item, i) => {
-    const y = 0.8 + i * 1.1;
-    slide.addShape(pptx.ShapeType.rect, { x: 0.25, y, w: 0.35, h: 0.35, fill: { color: B.danger }, rectRadius: 0.05 });
-    slide.addText('!', { x: 0.25, y: y + 0.02, w: 0.35, h: 0.3, color: B.white, fontSize: 16, bold: true, align: 'center' });
-    const storeName = safe(item.store || item.storeName);
-    const storeNum  = safe(item.storeNum || item.store_num);
-    slide.addText(`${storeName}${storeNum ? '  |  #' + storeNum : ''}`, {
-      x: 0.7, y, w: 5.5, h: 0.3, color: B.light, fontSize: 12, bold: true
-    });
-    slide.addText(safe(item.metric), { x: 6.3, y, w: 2.8, h: 0.3, color: B.danger, fontSize: 10, bold: true, align: 'right' });
-    slide.addText(safe(item.description || item.desc), {
-      x: 0.7, y: y + 0.33, w: 7.5, h: 0.45, color: B.lgray, fontSize: 10, wrap: true
-    });
-    slide.addText(safe(item.ac || item.acName), {
-      x: 0.7, y: y + 0.78, w: 3, h: 0.22, color: B.gray, fontSize: 9, italic: true
-    });
-    if (i < items.length - 1 && i < 4) {
-      slide.addShape(pptx.ShapeType.line, { x: 0.25, y: y + 1.05, w: 9.1, h: 0, line: { color: '#333333', width: 0.5 } });
+  chunks.forEach((chunk, pageIdx) => {
+    const slide = pptx.addSlide();
+    slide.background = { color: B.dark };
+    const suffix = chunks.length > 1 ? `  (${pageIdx + 1}/${chunks.length})` : '';
+    chrome(slide, pptx, `WINS THIS WEEK  🏆${suffix}`, sn, total);
+
+    if (!chunk.length) {
+      slide.addText('No wins data available', { x: 0.25, y: 1.5, w: 9.2, h: 0.5, color: B.gray, fontSize: 13 });
+      return;
     }
+
+    chunk.forEach((item, i) => {
+      const ITEM_H = 1.4;
+      const y = 0.8 + i * ITEM_H;
+      slide.addShape(pptx.ShapeType.rect, { x: 0.25, y, w: 0.38, h: 0.38, fill: { color: B.green }, rectRadius: 0.05 });
+      slide.addText('✓', { x: 0.25, y: y + 0.02, w: 0.38, h: 0.34, color: B.white, fontSize: 15, bold: true, align: 'center' });
+      const storeName = safe(item.store || item.storeName);
+      const storeNum  = safe(item.storeNum || item.store_num);
+      slide.addText(`${storeName}${storeNum ? '  |  #' + storeNum : ''}`, {
+        x: 0.73, y, w: 5.5, h: 0.35, color: B.light, fontSize: 13, bold: true
+      });
+      slide.addText(safe(item.metric), { x: 6.3, y, w: 2.8, h: 0.35, color: B.gold, fontSize: 11, bold: true, align: 'right' });
+      slide.addText(safe(item.description || item.desc), {
+        x: 0.73, y: y + 0.38, w: 8.6, h: 0.62, color: B.lgray, fontSize: 11, wrap: true
+      });
+      slide.addText(safe(item.ac || item.acName), {
+        x: 0.73, y: y + 1.02, w: 4, h: 0.24, color: B.gray, fontSize: 10, italic: true
+      });
+      if (i < chunk.length - 1) {
+        slide.addShape(pptx.ShapeType.line, { x: 0.25, y: y + ITEM_H - 0.06, w: 9.1, h: 0, line: { color: '#333333', width: 0.5 } });
+      }
+    });
   });
 }
 
-function makeLaborDeepDive(pptx, d, weekLabel, total) {
+function makeFocusAreas(pptx, d, weekLabel, sn, total, perPage) {
+  const items = safeArr(d.items);
+  const chunks = items.length ? chunkArr(items, perPage) : [[]];
+
+  chunks.forEach((chunk, pageIdx) => {
+    const slide = pptx.addSlide();
+    slide.background = { color: B.dark };
+    const suffix = chunks.length > 1 ? `  (${pageIdx + 1}/${chunks.length})` : '';
+    chrome(slide, pptx, `FOCUS AREAS  ⚠${suffix}`, sn, total);
+
+    if (!chunk.length) {
+      slide.addText('No focus areas identified', { x: 0.25, y: 1.5, w: 9.2, h: 0.5, color: B.gray, fontSize: 13 });
+      return;
+    }
+
+    chunk.forEach((item, i) => {
+      const ITEM_H = 1.4;
+      const y = 0.8 + i * ITEM_H;
+      slide.addShape(pptx.ShapeType.rect, { x: 0.25, y, w: 0.38, h: 0.38, fill: { color: B.danger }, rectRadius: 0.05 });
+      slide.addText('!', { x: 0.25, y: y + 0.02, w: 0.38, h: 0.34, color: B.white, fontSize: 17, bold: true, align: 'center' });
+      const storeName = safe(item.store || item.storeName);
+      const storeNum  = safe(item.storeNum || item.store_num);
+      slide.addText(`${storeName}${storeNum ? '  |  #' + storeNum : ''}`, {
+        x: 0.73, y, w: 5.5, h: 0.35, color: B.light, fontSize: 13, bold: true
+      });
+      slide.addText(safe(item.metric), { x: 6.3, y, w: 2.8, h: 0.35, color: B.danger, fontSize: 11, bold: true, align: 'right' });
+      slide.addText(safe(item.description || item.desc), {
+        x: 0.73, y: y + 0.38, w: 8.6, h: 0.62, color: B.lgray, fontSize: 11, wrap: true
+      });
+      slide.addText(safe(item.ac || item.acName), {
+        x: 0.73, y: y + 1.02, w: 4, h: 0.24, color: B.gray, fontSize: 10, italic: true
+      });
+      if (i < chunk.length - 1) {
+        slide.addShape(pptx.ShapeType.line, { x: 0.25, y: y + ITEM_H - 0.06, w: 9.1, h: 0, line: { color: '#333333', width: 0.5 } });
+      }
+    });
+  });
+}
+
+function makeLaborDeepDive(pptx, d, weekLabel, sn, total, perPage) {
+  const allAcRows = safeArr(d.acRows || d.rows);
+  const chunks = allAcRows.length ? chunkArr(allAcRows, perPage) : [[]];
+
+  chunks.forEach((acRows, pageIdx) => {
   const slide = pptx.addSlide();
   slide.background = { color: B.light };
-  chrome(slide, pptx, `LABOR VARIANCE DEEP DIVE  |  FRS Report  |  ${weekLabel}`, 6, total);
+  const suffix = chunks.length > 1 ? `  (${pageIdx + 1}/${chunks.length})` : '';
+  chrome(slide, pptx, `LABOR VARIANCE DEEP DIVE  |  FRS Report  |  ${weekLabel}${suffix}`, sn, total);
 
   const rs = d.regionSummary || d.region || {};
   // Region summary row
@@ -498,48 +544,49 @@ function makeLaborDeepDive(pptx, d, weekLabel, total) {
     slide.addText(c.val, { x, y: 0.92, w: 1.2, h: 0.3, color: B.dark, fontSize: 13, bold: true, align: 'center' });
   });
 
-  // AC rows table
-  const acRows = safeArr(d.acRows || d.rows);
+  // AC rows table (uses chunk from outer forEach)
   const tableRows = [[
-    { text: 'AREA COACH', options: { bold: true, color: B.white, fill: B.dark, fontSize: 8 } },
-    { text: 'SALES', options: { bold: true, color: B.white, fill: B.dark, fontSize: 8, align: 'center' } },
-    { text: 'LABOR VAR %', options: { bold: true, color: B.white, fill: B.dark, fontSize: 8, align: 'center' } },
-    { text: 'CREW OT $', options: { bold: true, color: B.white, fill: B.dark, fontSize: 8, align: 'center' } },
-    { text: 'HAM OT $', options: { bold: true, color: B.white, fill: B.dark, fontSize: 8, align: 'center' } },
-    { text: 'PCA %', options: { bold: true, color: B.white, fill: B.dark, fontSize: 8, align: 'center' } },
-    { text: 'COS VAR %', options: { bold: true, color: B.white, fill: B.dark, fontSize: 8, align: 'center' } },
+    { text: 'AREA COACH',   options: { bold: true, color: B.white, fill: B.dark, fontSize: 9 } },
+    { text: 'SALES',        options: { bold: true, color: B.white, fill: B.dark, fontSize: 9, align: 'center' } },
+    { text: 'LABOR VAR %',  options: { bold: true, color: B.white, fill: B.dark, fontSize: 9, align: 'center' } },
+    { text: 'CREW OT $',    options: { bold: true, color: B.white, fill: B.dark, fontSize: 9, align: 'center' } },
+    { text: 'HAM OT $',     options: { bold: true, color: B.white, fill: B.dark, fontSize: 9, align: 'center' } },
+    { text: 'PCA %',        options: { bold: true, color: B.white, fill: B.dark, fontSize: 9, align: 'center' } },
+    { text: 'COS VAR %',    options: { bold: true, color: B.white, fill: B.dark, fontSize: 9, align: 'center' } },
   ]];
 
   acRows.forEach((r, idx) => {
     const fill = idx % 2 === 0 ? B.white : '#F0F0F0';
-    const acName = extractName(r);
     tableRows.push([
-      { text: acName, options: { color: B.dark, fontSize: 10, bold: true, fill } },
-      { text: safe(r.salesGrowth || r.sales_growth || r.sales), options: { color: B.dark, fontSize: 10, fill, align: 'center' } },
-      { text: safe(r.laborVar || r.labor_var), options: { color: B.dark, fontSize: 10, fill, align: 'center' } },
-      { text: safe(r.crewOT || r.crew_ot), options: { color: B.dark, fontSize: 10, fill, align: 'center' } },
-      { text: safe(r.hamOT || r.ham_ot), options: { color: B.dark, fontSize: 10, fill, align: 'center' } },
-      { text: safe(r.pca), options: { color: B.dark, fontSize: 10, fill, align: 'center' } },
-      { text: safe(r.cosVar || r.cos_var), options: { color: B.dark, fontSize: 10, fill, align: 'center' } },
+      { text: extractName(r), options: { color: B.dark, fontSize: 11, bold: true, fill } },
+      { text: safe(r.salesGrowth || r.sales_growth || r.sales), options: { color: B.dark, fontSize: 11, fill, align: 'center' } },
+      { text: safe(r.laborVar || r.labor_var), options: { color: B.dark, fontSize: 11, fill, align: 'center' } },
+      { text: safe(r.crewOT || r.crew_ot), options: { color: B.dark, fontSize: 11, fill, align: 'center' } },
+      { text: safe(r.hamOT || r.ham_ot), options: { color: B.dark, fontSize: 11, fill, align: 'center' } },
+      { text: safe(r.pca), options: { color: B.dark, fontSize: 11, fill, align: 'center' } },
+      { text: safe(r.cosVar || r.cos_var), options: { color: B.dark, fontSize: 11, fill, align: 'center' } },
     ]);
   });
 
   if (tableRows.length > 1) {
-    slide.addTable(tableRows, { x: 0.25, y: 1.3, w: 9.2, rowH: 0.42, border: { type: 'solid', color: '#DDDDDD', pt: 1 } });
+    slide.addTable(tableRows, { x: 0.25, y: 1.3, w: 9.2, rowH: 0.5, border: { type: 'solid', color: '#DDDDDD', pt: 1 } });
   }
 
-  // OT Flags
-  const otFlags = safe(d.otFlags || d.ot_flags);
-  if (otFlags) {
-    slide.addText('OT FLAGS:', { x: 0.25, y: 5.5, w: 1.0, h: 0.25, color: B.danger, fontSize: 9, bold: true });
-    slide.addText(otFlags, { x: 1.3, y: 5.5, w: 8.1, h: 0.8, color: '#444444', fontSize: 9, wrap: true });
+  // OT Flags (only on last page)
+  if (pageIdx === chunks.length - 1) {
+    const otFlags = safe(d.otFlags || d.ot_flags);
+    if (otFlags) {
+      slide.addText('OT FLAGS:', { x: 0.25, y: 5.8, w: 1.0, h: 0.25, color: B.danger, fontSize: 10, bold: true });
+      slide.addText(otFlags, { x: 1.4, y: 5.8, w: 8.0, h: 0.7, color: '#444444', fontSize: 10, wrap: true });
+    }
   }
+  }); // end chunks.forEach
 }
 
-function makeSpeedOutlier(pptx, d, weekLabel, total) {
+function makeSpeedOutlier(pptx, d, weekLabel, sn, total) {
   const slide = pptx.addSlide();
   slide.background = { color: B.dark };
-  chrome(slide, pptx, `SPEED OUTLIER ANALYSIS  |  IST by Day & Store  |  ${weekLabel}`, 7, total);
+  chrome(slide, pptx, `SPEED OUTLIER ANALYSIS  |  IST by Day & Store  |  ${weekLabel}`, sn, total);
 
   // Daily chart (text representation)
   const dailyChart = safeArr(d.dailyChart || d.daily_chart);
@@ -579,25 +626,29 @@ function makeSpeedOutlier(pptx, d, weekLabel, total) {
   }
 }
 
-function makeWINbyAC(pptx, d, weekLabel, total) {
+function makeWINbyAC(pptx, d, weekLabel, sn, total, perPage) {
+  const allRows = safeArr(d.rows);
+  const chunks = allRows.length ? chunkArr(allRows, perPage) : [[]];
+
+  chunks.forEach((rows, pageIdx) => {
   const slide = pptx.addSlide();
   slide.background = { color: B.light };
-  chrome(slide, pptx, `WIN SCORE BY AREA COACH  |  ${weekLabel}`, 8, total);
+  const suffix = chunks.length > 1 ? `  (${pageIdx + 1}/${chunks.length})` : '';
+  chrome(slide, pptx, `WIN SCORE BY AREA COACH  |  ${weekLabel}${suffix}`, sn, total);
 
   const regionAvg = safe(d.regionAvg || d.region_avg || '');
-  if (regionAvg) {
+  if (regionAvg && pageIdx === 0) {
     slide.addText(`REGION AVG:  ${regionAvg}`, {
       x: 6.5, y: 0.73, w: 3, h: 0.3, color: B.dark, fontSize: 12, bold: true, align: 'right'
     });
   }
 
-  const rows = safeArr(d.rows);
   const tableRows = [[
-    { text: 'AREA COACH',    options: { bold: true, color: B.white, fill: B.dark, fontSize: 9 } },
-    { text: 'WIN SCORE',     options: { bold: true, color: B.white, fill: B.dark, fontSize: 9, align: 'center' } },
-    { text: 'TOP STORE',     options: { bold: true, color: B.white, fill: B.dark, fontSize: 9 } },
-    { text: 'BOTTOM STORE',  options: { bold: true, color: B.white, fill: B.dark, fontSize: 9 } },
-    { text: 'SMG FOCUS AREAS', options: { bold: true, color: B.white, fill: B.dark, fontSize: 9 } },
+    { text: 'AREA COACH',      options: { bold: true, color: B.white, fill: B.dark, fontSize: 10 } },
+    { text: 'WIN SCORE',       options: { bold: true, color: B.white, fill: B.dark, fontSize: 10, align: 'center' } },
+    { text: 'TOP STORE',       options: { bold: true, color: B.white, fill: B.dark, fontSize: 10 } },
+    { text: 'BOTTOM STORE',    options: { bold: true, color: B.white, fill: B.dark, fontSize: 10 } },
+    { text: 'SMG FOCUS AREAS', options: { bold: true, color: B.white, fill: B.dark, fontSize: 10 } },
   ]];
 
   rows.forEach((r, idx) => {
@@ -614,45 +665,46 @@ function makeWINbyAC(pptx, d, weekLabel, total) {
     const focus = safe(r.focusAreas || r.focus_areas || r.themes || '—');
 
     tableRows.push([
-      { text: acName, options: { color: B.dark, fontSize: 10, bold: true, fill } },
-      { text: winRaw, options: { color: winColor, fontSize: 13, bold: true, fill, align: 'center' } },
-      { text: topStr, options: { color: B.green, fontSize: 9, fill } },
-      { text: botStr, options: { color: B.danger, fontSize: 9, fill } },
-      { text: focus, options: { color: B.dark, fontSize: 8.5, fill, wrap: true } },
+      { text: acName, options: { color: B.dark, fontSize: 11, bold: true, fill } },
+      { text: winRaw, options: { color: winColor, fontSize: 14, bold: true, fill, align: 'center' } },
+      { text: topStr, options: { color: B.green, fontSize: 10, fill } },
+      { text: botStr, options: { color: B.danger, fontSize: 10, fill } },
+      { text: focus, options: { color: B.dark, fontSize: 10, fill, wrap: true } },
     ]);
   });
 
   if (tableRows.length > 1) {
-    slide.addTable(tableRows, { x: 0.25, y: 0.75, w: 9.2, rowH: 0.52, border: { type: 'solid', color: '#DDDDDD', pt: 1 } });
+    slide.addTable(tableRows, { x: 0.25, y: 0.75, w: 9.2, rowH: 0.58, border: { type: 'solid', color: '#DDDDDD', pt: 1 } });
   } else {
     slide.addText('WIN score data not available — upload ComparisonReport.xls for full analysis.', {
       x: 0.25, y: 1.5, w: 9.2, h: 0.5, color: B.gray, fontSize: 11, italic: true
     });
   }
 
-  // Scoring key at bottom
   slide.addText('WIN SCORE KEY:  5 = PASS  |  4 = NOT SCORED (upgrade to 5)  |  3/2/1 = ALL COUNT AS FAIL  —  eliminate 3s first, then convert 4s to 5s', {
     x: 0.25, y: 6.65, w: 9.2, h: 0.3, color: '#555555', fontSize: 8, italic: true
   });
 
-  // Complaint themes
-  const themes = safeArr(d.complaintThemes || d.complaint_themes);
-  if (themes.length) {
-    const themeStr = themes.slice(0, 6).map(t => {
-      const label = safe(t.theme || t.name || t);
-      const count = safe(t.count || t.mentions || '');
-      return count ? `${label}  [${count}]` : label;
-    }).filter(Boolean).join('     ');
-    slide.addText(`TOP COMPLAINT THEMES:  ${themeStr}`, {
-      x: 0.25, y: 6.95, w: 9.2, h: 0.3, color: B.dark, fontSize: 9, bold: true
-    });
+  if (pageIdx === chunks.length - 1) {
+    const themes = safeArr(d.complaintThemes || d.complaint_themes);
+    if (themes.length) {
+      const themeStr = themes.slice(0, 6).map(t => {
+        const label = safe(t.theme || t.name || t);
+        const count = safe(t.count || t.mentions || '');
+        return count ? `${label}  [${count}]` : label;
+      }).filter(Boolean).join('     ');
+      slide.addText(`TOP COMPLAINT THEMES:  ${themeStr}`, {
+        x: 0.25, y: 6.95, w: 9.2, h: 0.3, color: B.dark, fontSize: 9, bold: true
+      });
+    }
   }
+  }); // end chunks.forEach
 }
 
-function makeWINStoreSpotlight(pptx, d, weekLabel, total) {
+function makeWINStoreSpotlight(pptx, d, weekLabel, sn, total) {
   const slide = pptx.addSlide();
   slide.background = { color: B.light };
-  chrome(slide, pptx, `WIN STORE SPOTLIGHT  |  Top & Bottom 5  |  ${weekLabel}`, 9, total);
+  chrome(slide, pptx, `WIN STORE SPOTLIGHT  |  Top & Bottom 5  |  ${weekLabel}`, sn, total);
 
   const top = safeArr(d.top5 || d.top);
   const bot = safeArr(d.bottom5 || d.bottom);
@@ -711,10 +763,10 @@ function makeWINStoreSpotlight(pptx, d, weekLabel, total) {
   }
 }
 
-function makeCustomerVoice(pptx, d, weekLabel, total) {
+function makeCustomerVoice(pptx, d, weekLabel, sn, total) {
   const slide = pptx.addSlide();
   slide.background = { color: B.dark };
-  chrome(slide, pptx, `CUSTOMER VOICE  |  Actual Comments This Week`, 10, total);
+  chrome(slide, pptx, `CUSTOMER VOICE  |  Actual Comments This Week`, sn, total);
 
   const pos = safeArr(d.positives || d.positive);
   const neg = safeArr(d.negatives || d.negative);
@@ -811,95 +863,89 @@ function makeCustomerVoice(pptx, d, weekLabel, total) {
   }
 }
 
-function makeSmartGoals(pptx, d, weekLabel, total) {
-  const slide = pptx.addSlide();
-  slide.background = { color: B.light };
-  chrome(slide, pptx, `SMART GOALS  |  Week Ahead`, 11, total);
-
+function makeSmartGoals(pptx, d, weekLabel, sn, total, perPage) {
   const goals = safeArr(d.goals);
-  if (!goals.length) {
-    slide.addText('No goals data available', { x: 0.25, y: 1.5, w: 9.2, h: 0.5, color: B.gray, fontSize: 13 });
-    return;
-  }
+  const chunks = goals.length ? chunkArr(goals, perPage) : [[]];
 
-  goals.slice(0, 3).forEach((g, i) => {
-    const y = 0.78 + i * 2.05;
+  chunks.forEach((chunk, pageIdx) => {
+    const slide = pptx.addSlide();
+    slide.background = { color: B.light };
+    const suffix = chunks.length > 1 ? `  (${pageIdx + 1}/${chunks.length})` : '';
+    chrome(slide, pptx, `SMART GOALS  |  Week Ahead${suffix}`, sn, total);
 
-    // ── Number badge ────────────────────────────────────────────────────────
-    slide.addShape(pptx.ShapeType.rect, { x: 0.25, y, w: 0.38, h: 0.38, fill: { color: B.red } });
-    slide.addText(String(i + 1).padStart(2, '0'), {
-      x: 0.25, y: y + 0.04, w: 0.38, h: 0.3,
-      color: B.white, fontSize: 13, bold: true, align: 'center'
-    });
-
-    // ── Metric name ─────────────────────────────────────────────────────────
-    slide.addText(safe(g.metric || g.name), {
-      x: 0.73, y, w: 4.1, h: 0.38,
-      color: B.dark, fontSize: 14, bold: true, valign: 'middle'
-    });
-
-    // ── Current → Target chips + By When ────────────────────────────────────
-    const current = safe(g.current, '—');
-    const target  = safe(g.target, '—');
-    const byWhen  = safe(g.byWhen || g.by_when, '—');
-
-    slide.addShape(pptx.ShapeType.rect, { x: 5.0, y: y + 0.04, w: 1.45, h: 0.3, fill: { color: '#E8E8E8' }, line: { color: '#CCCCCC', width: 0.5 } });
-    slide.addText(`NOW: ${current}`, { x: 5.0, y: y + 0.06, w: 1.45, h: 0.26, color: B.dark, fontSize: 9, bold: true, align: 'center' });
-
-    slide.addText('→', { x: 6.5, y: y + 0.06, w: 0.28, h: 0.26, color: B.red, fontSize: 13, bold: true, align: 'center' });
-
-    slide.addShape(pptx.ShapeType.rect, { x: 6.82, y: y + 0.04, w: 1.45, h: 0.3, fill: { color: B.green }, line: { color: B.green, width: 0.5 } });
-    slide.addText(`GOAL: ${target}`, { x: 6.82, y: y + 0.06, w: 1.45, h: 0.26, color: B.white, fontSize: 9, bold: true, align: 'center' });
-
-    slide.addText(`By: ${byWhen}`, {
-      x: 8.32, y: y + 0.09, w: 1.25, h: 0.2,
-      color: '#888888', fontSize: 9, align: 'right'
-    });
-
-    // ── Owner line ───────────────────────────────────────────────────────────
-    const owner = safe(g.owner || g.ac || g.who || '');
-    let rowY = y + 0.44;
-    if (owner) {
-      slide.addText([
-        { text: 'OWNER:  ', options: { bold: true, color: '#555555', fontSize: 9 } },
-        { text: owner,      options: { color: B.dark, fontSize: 9 } }
-      ], { x: 0.73, y: rowY, w: 8.85, h: 0.22, wrap: false });
-      rowY += 0.24;
+    if (!chunk.length) {
+      slide.addText('No goals data available', { x: 0.25, y: 1.5, w: 9.2, h: 0.5, color: B.gray, fontSize: 13 });
+      return;
     }
 
-    // ── Why it matters ───────────────────────────────────────────────────────
-    const why = safe(g.why || g.impact || g.reason || '');
-    if (why) {
-      slide.addText([
-        { text: 'WHY:  ', options: { bold: true, color: '#555555', fontSize: 9 } },
-        { text: why,       options: { color: '#444444', fontSize: 9 } }
-      ], { x: 0.73, y: rowY, w: 8.85, h: 0.3, wrap: true });
-      rowY += 0.34;
-    }
+    const GOAL_H = 2.9; // height per goal slot (2 per slide = 5.8" content area)
+    chunk.forEach((g, i) => {
+      const globalIdx = pageIdx * perPage + i;
+      const y = 0.78 + i * GOAL_H;
 
-    // ── How (action plan) ────────────────────────────────────────────────────
-    const how = safe(g.how || g.description || '');
-    if (how) {
-      slide.addText([
-        { text: 'HOW:  ', options: { bold: true, color: B.red, fontSize: 9 } },
-        { text: how,       options: { color: '#333333', fontSize: 9 } }
-      ], { x: 0.73, y: rowY, w: 8.85, h: 0.7, wrap: true });
-    }
-
-    // ── Divider ──────────────────────────────────────────────────────────────
-    if (i < Math.min(goals.length, 3) - 1) {
-      slide.addShape(pptx.ShapeType.line, {
-        x: 0.25, y: y + 1.97, w: 9.1, h: 0,
-        line: { color: '#DDDDDD', width: 0.5 }
+      slide.addShape(pptx.ShapeType.rect, { x: 0.25, y, w: 0.42, h: 0.42, fill: { color: B.red } });
+      slide.addText(String(globalIdx + 1).padStart(2, '0'), {
+        x: 0.25, y: y + 0.05, w: 0.42, h: 0.32,
+        color: B.white, fontSize: 14, bold: true, align: 'center'
       });
-    }
+
+      slide.addText(safe(g.metric || g.name), {
+        x: 0.77, y, w: 4.1, h: 0.42,
+        color: B.dark, fontSize: 15, bold: true, valign: 'middle'
+      });
+
+      const current = safe(g.current, '—');
+      const target  = safe(g.target, '—');
+      const byWhen  = safe(g.byWhen || g.by_when, '—');
+
+      slide.addShape(pptx.ShapeType.rect, { x: 5.1, y: y + 0.05, w: 1.55, h: 0.34, fill: { color: '#E8E8E8' }, line: { color: '#CCCCCC', width: 0.5 } });
+      slide.addText(`NOW: ${current}`, { x: 5.1, y: y + 0.07, w: 1.55, h: 0.28, color: B.dark, fontSize: 10, bold: true, align: 'center' });
+      slide.addText('→', { x: 6.7, y: y + 0.07, w: 0.3, h: 0.28, color: B.red, fontSize: 14, bold: true, align: 'center' });
+      slide.addShape(pptx.ShapeType.rect, { x: 7.04, y: y + 0.05, w: 1.55, h: 0.34, fill: { color: B.green } });
+      slide.addText(`GOAL: ${target}`, { x: 7.04, y: y + 0.07, w: 1.55, h: 0.28, color: B.white, fontSize: 10, bold: true, align: 'center' });
+      slide.addText(`By: ${byWhen}`, { x: 8.65, y: y + 0.1, w: 0.9, h: 0.22, color: '#888888', fontSize: 9, align: 'right' });
+
+      let rowY = y + 0.5;
+      const owner = safe(g.owner || g.ac || g.who || '');
+      if (owner) {
+        slide.addText([
+          { text: 'OWNER:  ', options: { bold: true, color: '#555555', fontSize: 10 } },
+          { text: owner,      options: { color: B.dark, fontSize: 10 } }
+        ], { x: 0.77, y: rowY, w: 8.8, h: 0.25 });
+        rowY += 0.28;
+      }
+
+      const why = safe(g.why || g.impact || g.reason || '');
+      if (why) {
+        slide.addText([
+          { text: 'WHY:  ', options: { bold: true, color: '#555555', fontSize: 10 } },
+          { text: why,       options: { color: '#444444', fontSize: 10 } }
+        ], { x: 0.77, y: rowY, w: 8.8, h: 0.55, wrap: true });
+        rowY += 0.62;
+      }
+
+      const how = safe(g.how || g.description || '');
+      if (how) {
+        slide.addText([
+          { text: 'HOW:  ', options: { bold: true, color: B.red, fontSize: 10 } },
+          { text: how,       options: { color: '#333333', fontSize: 10 } }
+        ], { x: 0.77, y: rowY, w: 8.8, h: 1.0, wrap: true });
+      }
+
+      if (i < chunk.length - 1) {
+        slide.addShape(pptx.ShapeType.line, {
+          x: 0.25, y: y + GOAL_H - 0.1, w: 9.1, h: 0,
+          line: { color: '#DDDDDD', width: 0.5 }
+        });
+      }
+    });
   });
 }
 
-function makeKeyDates(pptx, d, weekLabel, total) {
+function makeKeyDates(pptx, d, weekLabel, sn, total) {
   const slide = pptx.addSlide();
   slide.background = { color: B.dark };
-  chrome(slide, pptx, `KEY DATES & REMINDERS`, 12, total);
+  chrome(slide, pptx, `KEY DATES & REMINDERS`, sn, total);
 
   slide.addText('Fill in key dates and reminders for your team before distributing this deck.', {
     x: 0.25, y: 0.75, w: 9.2, h: 0.35, color: B.gray, fontSize: 11, italic: true
@@ -917,7 +963,43 @@ function makeKeyDates(pptx, d, weekLabel, total) {
   }
 }
 
-function makeClosing(pptx, d, regionName, weekLabel, total) {
+function makeAdditionalSlide(pptx, ad, sn, total) {
+  const slide = pptx.addSlide();
+  slide.background = { color: B.light };
+  chrome(slide, pptx, safe(ad.title, 'ADDITIONAL INFORMATION').toUpperCase(), sn, total);
+
+  const bullets = Array.isArray(ad.bullets) ? ad.bullets : [];
+  const narrative = safe(ad.narrative || ad.summary || '');
+
+  // Render bullet points if present
+  if (bullets.length) {
+    bullets.slice(0, 12).forEach((b, i) => {
+      const txt = typeof b === 'string' ? b : safe(b.text || b.point || '');
+      const bold = typeof b === 'object' && b.bold;
+      const y = 0.82 + i * 0.5;
+      slide.addShape(pptx.ShapeType.rect, { x: 0.25, y: y + 0.14, w: 0.1, h: 0.1, fill: { color: B.red } });
+      slide.addText(txt, {
+        x: 0.45, y, w: 9.1, h: 0.46,
+        color: B.dark, fontSize: 12, bold: !!bold, wrap: true
+      });
+    });
+  } else if (narrative) {
+    // Free-form narrative fallback
+    slide.addText(narrative, {
+      x: 0.25, y: 0.82, w: 9.2, h: 5.8,
+      color: B.dark, fontSize: 12, wrap: true, valign: 'top'
+    });
+  }
+
+  // Source tag at bottom
+  if (ad.source) {
+    slide.addText(`Source: ${ad.source}`, {
+      x: 0.25, y: 6.55, w: 9.2, h: 0.22, color: B.gray, fontSize: 9, italic: true
+    });
+  }
+}
+
+function makeClosing(pptx, d, regionName, weekLabel, sn, total) {
   const slide = pptx.addSlide();
   slide.background = { color: B.dark };
 

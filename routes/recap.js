@@ -160,4 +160,23 @@ router.get('/history/:id', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/recap/append-analyze — analyze additional files/text, return slide data
+router.post('/append-analyze', requireAuth, upload.array('files', 5), async (req, res) => {
+  try {
+    const { analyzeAdditionalContent } = require('../services/claude');
+    const topic   = req.body.topic   || 'Additional Information';
+    const rawText = req.body.rawText || '';
+    if ((!req.files || !req.files.length) && !rawText.trim()) {
+      return res.status(400).json({ error: 'Provide at least one file or pasted text.' });
+    }
+    const slideData = await withRetry(() => analyzeAdditionalContent(req.files, rawText, topic));
+    res.json({ slideData });
+  } catch (err) {
+    console.error('Append analyze error:', err);
+    res.status(500).json({ error: err.message || 'Analysis failed.' });
+  } finally {
+    if (req.files) req.files.forEach(f => { try { fs.unlinkSync(f.path); } catch (e) {} });
+  }
+});
+
 module.exports = router;

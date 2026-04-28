@@ -1029,6 +1029,65 @@ async function analyzePLForAC(file, acName) {
   return responseText;
 }
 
+// ─── Analyze Additional Content (append to existing deck) ────────────────────
+
+async function analyzeAdditionalContent(files, rawText, topic) {
+  const parts = [];
+
+  if (files && files.length) {
+    for (const f of files) {
+      const text = await extractTextFromFile(f);
+      parts.push(`=== FILE: ${f.originalname} ===\n${text}`);
+    }
+  }
+  if (rawText && rawText.trim()) {
+    parts.push(`=== PASTED CONTENT ===\n${rawText.trim()}`);
+  }
+
+  const content = parts.join('\n\n');
+  if (!content) throw new Error('No content provided to analyze.');
+
+  const prompt = `You are analyzing additional information to be added as slides to an existing weekly region recap presentation for a pizza franchise operator (Ayvaz Pizza LLC / Pizza Hut).
+
+TOPIC: ${topic || 'Additional Information'}
+
+CONTENT TO ANALYZE:
+${content}
+
+Analyze this content and return a JSON object with this exact structure:
+{
+  "title": "Short slide title (max 6 words, all caps)",
+  "source": "Brief source description (e.g. 'Crispy Pan Training Rollout')",
+  "bullets": [
+    { "text": "Key point or finding", "bold": false },
+    { "text": "Important metric or action item", "bold": true }
+  ],
+  "narrative": "Optional 2-3 sentence summary if bullets alone are insufficient"
+}
+
+Rules:
+- Extract the most operationally relevant points (max 10 bullets)
+- Mark bullets as bold: true if they are action items, goals, or critical metrics
+- Keep each bullet under 120 characters
+- If the content is training-related, focus on what managers need to DO
+- If data/metrics, highlight the most important numbers
+- Return ONLY valid JSON, no markdown fences`;
+
+  const msg = await client.messages.create({
+    model: MODEL,
+    max_tokens: 1024,
+    messages: [{ role: 'user', content: prompt }]
+  });
+
+  const raw = msg.content[0]?.text || '';
+  try {
+    const m = raw.match(/\{[\s\S]*\}/);
+    return m ? JSON.parse(m[0]) : { title: topic || 'ADDITIONAL INFO', bullets: [], narrative: raw };
+  } catch {
+    return { title: topic || 'ADDITIONAL INFO', bullets: [], narrative: raw };
+  }
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────────
 
-module.exports = { analyzePL, analyzePLForAC, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail, generateDailyIntelEmail };
+module.exports = { analyzePL, analyzePLForAC, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail, generateDailyIntelEmail, analyzeAdditionalContent };

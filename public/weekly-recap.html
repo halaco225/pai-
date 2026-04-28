@@ -283,6 +283,60 @@
           </div>
         </div>
       </div>
+
+      <!-- Step 5: Add More Content -->
+      <div id="appendSection" style="display:none;margin-top:20px;">
+        <div class="card">
+          <div class="step-header">
+            <div class="step-number">5</div>
+            <h3>Add More Content to Deck</h3>
+          </div>
+          <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+            Upload additional files or paste text (e.g. training notes, a crispy pan rollout update, compliance reminders).
+            P.AI will analyze it and add new slides to your deck.
+          </p>
+
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div>
+              <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">SLIDE TOPIC / TITLE</label>
+              <input id="appendTopic" type="text" placeholder="e.g. Crispy Pan Training, Food Safety Update, Q2 Goals"
+                style="width:100%;padding:10px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px;box-sizing:border-box;" />
+            </div>
+
+            <div>
+              <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">UPLOAD FILES (optional)</label>
+              <input id="appendFiles" type="file" multiple accept=".pdf,.xlsx,.xls,.csv,.docx,.txt"
+                style="font-size:12px;color:var(--text-muted);" />
+            </div>
+
+            <div>
+              <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">PASTE TEXT / NOTES (optional)</label>
+              <textarea id="appendText" rows="5" placeholder="Paste any notes, bullet points, or raw text here..."
+                style="width:100%;padding:10px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+            </div>
+
+            <button class="btn btn-primary" id="appendAnalyzeBtn" onclick="analyzeAppend()" style="align-self:flex-start;">
+              ⚡ Analyze &amp; Preview Slide
+            </button>
+          </div>
+
+          <!-- Append preview -->
+          <div id="appendPreviewArea" style="display:none;margin-top:20px;padding:16px;background:var(--bg-card-alt,#1a1a1a);border-radius:8px;border:1px solid var(--border);">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:2px;margin-bottom:10px;">SLIDE PREVIEW</div>
+            <div id="appendPreviewContent"></div>
+            <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
+              <button class="btn btn-primary" onclick="confirmAppend()">✓ Add to Deck &amp; Rebuild</button>
+              <button class="btn btn-ghost" onclick="discardAppend()">Discard</button>
+            </div>
+          </div>
+
+          <!-- Added slides list -->
+          <div id="appendedList" style="display:none;margin-top:16px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:2px;margin-bottom:8px;">ADDED TO DECK</div>
+            <div id="appendedItems"></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="status-bar">
@@ -460,11 +514,102 @@
   }
 
   function clearAll() {
-    fileList = []; analyzedData = null; emailResult = null;
+    fileList = []; analyzedData = null; emailResult = null; pendingAppendSlide = null;
     renderChips();
     document.getElementById('buildSection').style.display = 'none';
     document.getElementById('previewSection').style.display = 'none';
+    document.getElementById('appendSection').style.display = 'none';
+    document.getElementById('appendPreviewArea').style.display = 'none';
+    document.getElementById('appendedList').style.display = 'none';
+    document.getElementById('appendedItems').innerHTML = '';
     document.getElementById('progressLog').innerHTML = '';
+  }
+
+  // ── Append content ─────────────────────────────────────────────────────────
+  let pendingAppendSlide = null;
+
+  async function analyzeAppend() {
+    const topic   = document.getElementById('appendTopic').value.trim() || 'Additional Information';
+    const rawText = document.getElementById('appendText').value.trim();
+    const files   = document.getElementById('appendFiles').files;
+
+    if (!files.length && !rawText) {
+      alert('Please upload a file or paste some text first.');
+      return;
+    }
+
+    const btn = document.getElementById('appendAnalyzeBtn');
+    btn.disabled = true;
+    btn.textContent = 'Analyzing...';
+    document.getElementById('appendPreviewArea').style.display = 'none';
+
+    try {
+      const fd = new FormData();
+      fd.append('topic', topic);
+      if (rawText) fd.append('rawText', rawText);
+      for (const f of files) fd.append('files', f);
+
+      const res = await fetch('/api/recap/append-analyze', { method: 'POST', body: fd });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Analysis failed'); }
+      const { slideData } = await res.json();
+
+      pendingAppendSlide = slideData;
+      renderAppendPreview(slideData);
+      document.getElementById('appendPreviewArea').style.display = 'block';
+      document.getElementById('appendPreviewArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err) {
+      alert('Error: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '⚡ Analyze & Preview Slide';
+    }
+  }
+
+  function renderAppendPreview(sd) {
+    const el = document.getElementById('appendPreviewContent');
+    const bullets = (sd.bullets || []).map(b => {
+      const t = typeof b === 'string' ? b : (b.text || '');
+      const bold = typeof b === 'object' && b.bold;
+      return `<div style="display:flex;gap:8px;margin-bottom:6px;align-items:flex-start;">
+        <span style="color:#CC0000;font-weight:700;flex-shrink:0;">•</span>
+        <span style="font-size:13px;${bold ? 'font-weight:700;' : ''}color:var(--text-primary)">${t}</span>
+      </div>`;
+    }).join('');
+    el.innerHTML = `
+      <div style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:10px;">${sd.title || 'ADDITIONAL INFO'}</div>
+      ${bullets || `<p style="font-size:13px;color:var(--text-muted)">${sd.narrative || '(No content)'}</p>`}
+      ${sd.source ? `<div style="font-size:11px;color:var(--text-muted);margin-top:8px;font-style:italic;">Source: ${sd.source}</div>` : ''}
+    `;
+  }
+
+  async function confirmAppend() {
+    if (!pendingAppendSlide || !analyzedData) return;
+    if (!analyzedData.additionalSlides) analyzedData.additionalSlides = [];
+    analyzedData.additionalSlides.push(pendingAppendSlide);
+
+    // Show in added list
+    const listEl = document.getElementById('appendedItems');
+    const item = document.createElement('div');
+    item.style.cssText = 'padding:8px 12px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:6px;font-size:13px;color:var(--text-primary);margin-bottom:6px;';
+    item.textContent = `✓ "${pendingAppendSlide.title}" — ${(pendingAppendSlide.bullets||[]).length} bullets`;
+    listEl.appendChild(item);
+    document.getElementById('appendedList').style.display = 'block';
+
+    // Clear inputs for next addition
+    document.getElementById('appendTopic').value = '';
+    document.getElementById('appendText').value = '';
+    document.getElementById('appendFiles').value = '';
+    document.getElementById('appendPreviewArea').style.display = 'none';
+    pendingAppendSlide = null;
+
+    // Rebuild PPTX with the new slide
+    log(`Adding slide "${analyzedData.additionalSlides.slice(-1)[0].title}" to deck...`, 'info');
+    await downloadOutput();
+  }
+
+  function discardAppend() {
+    pendingAppendSlide = null;
+    document.getElementById('appendPreviewArea').style.display = 'none';
   }
 
   function log(msg, type = 'info') {
@@ -617,7 +762,9 @@
       URL.revokeObjectURL(url);
 
       log('✓ PPTX downloaded!', 'ok');
-      log('Fill in Slide 12 (Key Dates) before sending to your ACs.', 'info');
+      log('Fill in Key Dates slide before sending to your ACs.', 'info');
+      document.getElementById('appendSection').style.display = 'block';
+      document.getElementById('appendSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
       // Save AC of the Week to prevent repeat next week
       if (analyzedData && analyzedData.slides && analyzedData.slides.closing && analyzedData.slides.closing.acOfWeek) {
         localStorage.setItem('pai_last_ac_of_week', analyzedData.slides.closing.acOfWeek.name);
