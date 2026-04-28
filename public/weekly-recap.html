@@ -227,6 +227,17 @@
           </div>
         </div>
 
+        <!-- Instructions box -->
+        <div style="margin-bottom:16px;">
+          <label style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:2px;display:block;margin-bottom:8px;">
+            INSTRUCTIONS FOR THIS WEEK'S ANALYSIS <span style="font-weight:400;font-style:italic;text-transform:none;letter-spacing:0">(optional)</span>
+          </label>
+          <textarea id="analysisInstructions" rows="3"
+            placeholder="e.g. Focus on labor variance this week. We have a new store #1234 opening — highlight it. Skip WIN scores, data is delayed. Compare to prior weeks and call out any repeat issues."
+            style="width:100%;padding:10px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px;resize:vertical;box-sizing:border-box;line-height:1.5;"></textarea>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:5px;">Claude will follow these instructions and reference prior weeks automatically.</div>
+        </div>
+
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
           <button class="btn btn-primary" id="buildBtn" onclick="buildDeck()" disabled>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
@@ -648,6 +659,9 @@
     // Include last week's AC of the Week to prevent repeats
     const lastAcOfWeek = localStorage.getItem('pai_last_ac_of_week');
     if (lastAcOfWeek) formData.append('lastAcOfWeek', lastAcOfWeek);
+    // Include operator instructions if provided
+    const instructions = document.getElementById('analysisInstructions').value.trim();
+    if (instructions) formData.append('instructions', instructions);
 
     try {
       const res = await fetch('/api/recap/analyze', { method: 'POST', body: formData });

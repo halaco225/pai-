@@ -565,7 +565,7 @@ async function analyzePL(file) {
 
 // ─── Weekly Recap Analyzer ──────────────────────────────────────────────────
 
-async function analyzeRecap(files, weekLabel, recapDay, lastAcOfWeek, alignmentText) {
+async function analyzeRecap(files, weekLabel, recapDay, lastAcOfWeek, alignmentText, historicalContext, instructions) {
   // Extract text from all uploaded files
   const fileTexts = await Promise.all(files.map(async (file) => {
     try {
@@ -592,6 +592,14 @@ async function analyzeRecap(files, weekLabel, recapDay, lastAcOfWeek, alignmentT
 
   const fiscalContext = getFiscalContextString();
 
+  const historyBlock = historicalContext
+    ? `\n\n=== HISTORICAL CONTEXT — LAST ${historicalContext.split('\n\nWeek').length} WEEKS ===\nUse this to identify multi-week trends, repeat offenders, and stores/ACs that are improving or declining. Reference prior weeks explicitly in your analysis where relevant.\n\n${historicalContext}\n=== END HISTORICAL CONTEXT ===`
+    : '';
+
+  const instructionsBlock = instructions && instructions.trim()
+    ? `\n\n=== SPECIAL INSTRUCTIONS FROM THE OPERATOR ===\n${instructions.trim()}\n=== END SPECIAL INSTRUCTIONS ===\nFollow these instructions carefully. They take priority over default analysis behavior.`
+    : '';
+
   const userMessage = `I've uploaded ${files.length} weekly report file(s): ${fileNames}
 
 ${fiscalContext}
@@ -602,6 +610,7 @@ Week: ${weekLabel || '[not specified]'}
 Recap call day: ${recapDay || 'Thursday'}
 ${lastAcOfWeek ? `Last week's AC of the Week: ${lastAcOfWeek} — DO NOT pick this person again this week. Choose the next most deserving AC based on the data.` : ''}
 NOTE: ${alignNote}
+${instructionsBlock}${historyBlock}
 
 Here are the file contents:
 

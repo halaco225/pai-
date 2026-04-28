@@ -59,13 +59,35 @@ router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res)
     const { analyzeRecap } = require('../services/claude');
     const recapDay = getRecapDay();
     const lastAcOfWeek = req.body.lastAcOfWeek || null;
+    const instructions  = req.body.instructions  || null;
 
     // Use DB override if uploaded, otherwise use built-in alignment (always current)
     const alignRow = await getAlignment();
     const alignmentText = (alignRow && alignRow.content_text) ? alignRow.content_text : MASTER_ALIGNMENT_TEXT;
     console.log('[Recap] Alignment source: ' + (alignRow ? 'DB upload' : 'built-in'));
 
-    const data = await withRetry(() => analyzeRecap(req.files, '', recapDay, lastAcOfWeek, alignmentText));
+    // Load last 3 recap sessions for trend context
+    let historicalContext = null;
+    try {
+      const sessions = await getRecapSessions(req.session.user.username, 3);
+      if (sessions && sessions.length) {
+        historicalContext = sessions.map(s => {
+          try {
+            const d = JSON.parse(s.analysis_json);
+            const sl = d.slides || d;
+            const sc = sl.scorecard || {};
+            const metrics = (sc.metrics || []).map(m => `${m.label}: ${m.value}`).join(' | ');
+            const wins = (sl.wins?.items || []).slice(0, 2).map(w => w.store || w.storeName).filter(Boolean).join(', ');
+            const focus = (sl.focusAreas?.items || []).slice(0, 2).map(f => f.store || f.storeName).filter(Boolean).join(', ');
+            return `Week ${s.week_label || s.created_at?.toString().slice(0,10) || 'prior'}:\n  Metrics: ${metrics || 'n/a'}\n  Wins: ${wins || 'n/a'}\n  Focus Areas: ${focus || 'n/a'}`;
+          } catch { return null; }
+        }).filter(Boolean).join('\n\n');
+      }
+    } catch (e) {
+      console.warn('[Recap] Could not load history:', e.message);
+    }
+
+    const data = await withRetry(() => analyzeRecap(req.files, '', recapDay, lastAcOfWeek, alignmentText, historicalContext, instructions));
 
     // Persist session to DB (non-blocking — don't fail the request if this errors)
     saveRecapSession({
