@@ -341,6 +341,7 @@ router.get('/day', async (req, res) => {
 router.get('/trends', async (req, res) => {
   try {
     const weeksBack   = parseInt(req.query.weeks) || 8;
+    const daysBack    = req.query.days ? parseInt(req.query.days) : null;
     const storeId     = req.query.store || null;
     const areaCoach   = req.query.area_coach || null;
     const region      = req.query.region || null;
@@ -350,7 +351,7 @@ router.get('/trends', async (req, res) => {
     const endDate   = getYesterdayChicago();
     const startDate = (() => {
       const d = new Date(endDate + 'T12:00:00Z');
-      d.setUTCDate(d.getUTCDate() - weeksBack * 7);
+      d.setUTCDate(d.getUTCDate() - (daysBack != null ? daysBack : weeksBack * 7));
       return d.toISOString().split('T')[0];
     })();
 

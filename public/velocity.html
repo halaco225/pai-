@@ -259,6 +259,12 @@
           <option value="13">Full Period</option>
           <option value="26">6 Months</option>
         </select>
+        <select id="trendDays" style="display:none" onchange="loadTrend()">
+          <option value="7">7 Days</option>
+          <option value="10" selected>10 Days</option>
+          <option value="14">14 Days</option>
+          <option value="30">30 Days</option>
+        </select>
       </div>
     </div>
     <div id="trendChart" style="overflow-x:auto"></div>
@@ -477,6 +483,9 @@ function setTrendGranularity(gran) {
   document.querySelectorAll('.trend-gran-btn').forEach(b => b.classList.toggle('active', b.dataset.gran === gran));
   const titles = { weekly: 'Week-over-Week IST Trend', daily: 'Daily IST Trend', period: 'Period IST Trend' };
   document.getElementById('trendTitle').textContent = titles[gran] || 'IST Trend';
+  const isDaily = gran === 'daily';
+  document.getElementById('trendWeeks').style.display = isDaily ? 'none' : '';
+  document.getElementById('trendDays').style.display  = isDaily ? '' : 'none';
   loadTrend();
 }
 
@@ -496,7 +505,10 @@ async function loadTrend() {
     else if (viewBy === 'all') groupBy = 'store';
   }
 
-  let url = `/api/velocity/trends?weeks=${weeks}&granularity=${granularity}`;
+  const days = granularity === 'daily' ? document.getElementById('trendDays').value : null;
+  let url = days
+    ? `/api/velocity/trends?days=${days}&granularity=${granularity}`
+    : `/api/velocity/trends?weeks=${weeks}&granularity=${granularity}`;
   if (region)  url += `&region=${encodeURIComponent(region)}`;
   if (area)    url += `&area_coach=${encodeURIComponent(area)}`;
   if (store)   url += `&store=${encodeURIComponent(store)}`;
