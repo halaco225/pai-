@@ -533,24 +533,60 @@ When you receive the uploaded files, analyze all data sources and return a struc
 
 // ─── P&L Analyzer ──────────────────────────────────────────────────────────
 
-async function analyzePL(file) {
+async function analyzePL(file, opts = {}) {
+  const { level = 'region', scopeTarget = '', glFile = null, userName = '', scope = null, alignmentText = '' } = opts;
   const fileText = await extractTextFromFile(file);
+
+  // General Ledger cross-reference
+  let glBlock = '';
+  if (glFile) {
+    try {
+      const glText = await extractTextFromFile(glFile);
+      glBlock = `\n\n=== GENERAL LEDGER DATA ===\nCross-reference this with the P&L for deeper cost analysis. Identify variances, unusual line items, and cost control opportunities.\n\n${glText.slice(0, 30000)}\n=== END GENERAL LEDGER ===`;
+    } catch (e) { console.warn('[PL] GL parse failed:', e.message); }
+  }
+
+  // Alignment context
+  const alignBlock = alignmentText
+    ? `\n\n=== MASTER ALIGNMENT (use for name/area/region lookups) ===\n${alignmentText.slice(0, 40000)}\n=== END ALIGNMENT ===`
+    : '';
+
+  // Scope context
+  let scopeBlock = '';
+  if (scope) {
+    if (scope.type === 'area_coach') {
+      scopeBlock = `\nAnalysis requested by: ${userName} (Area Coach, ${scope.area}, Region Coach: ${scope.region_coach}, VP: ${scope.vp})`;
+    } else if (scope.type === 'rdo') {
+      scopeBlock = `\nAnalysis requested by: ${userName} (Region Coach, VP: ${scope.vp})`;
+    } else if (scope.type === 'vp') {
+      scopeBlock = `\nAnalysis requested by: ${userName} (VP of Operations)`;
+    }
+  }
+
+  // Level-specific instructions
+  const levelInstructions = {
+    region: `Produce a REGION-LEVEL analysis. Cover all area coaches and all stores. Lead with region totals (EBITDA $, EBITDA %, vs PY bps, net sales, stores profitable/total). Then break down by area coach (EBITDA $, EBITDA %, vs PY bps, COGS %, labor %). Highlight top performers, stores losing money, and biggest EBITDA turnarounds vs prior year.${scopeTarget ? ` Focus on the ${scopeTarget} region.` : ''}`,
+    area: `Produce an AREA COACH-LEVEL analysis. Focus on a single area coach's stores.${scopeTarget ? ` The area coach is: ${scopeTarget}.` : ''} Show each store's EBITDA $, EBITDA %, COGS %, labor %, and vs PY bps. Identify the best and worst performers, labor/COGS issues, and specific coaching priorities for each store.`,
+    store: `Produce a STORE-LEVEL analysis.${scopeTarget ? ` Focus on store ${scopeTarget}.` : ' Analyze the primary store in the file.'} Provide a full P&L breakdown: net sales, COGS $/%,  labor $/%, other controllables, EBITDA. Compare every line to prior year and budget if available. ${glFile ? 'The general ledger has been provided — cross-reference it to identify specific cost variances and unusual items.' : 'Tip: uploading the general ledger would enable line-by-line cost analysis.'} Provide specific, actionable coaching notes for each problem area.`
+  };
+
+  const userMessage = `${scopeBlock}
+Report Level: ${level.toUpperCase()}
+${levelInstructions[level] || levelInstructions.region}
+
+Here is the P&L data:
+
+${fileText}${glBlock}${alignBlock}`;
 
   const message = await client.messages.create({
     model: MODEL,
     max_tokens: 16000,
     system: PL_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: 'user',
-        content: `Here is the P&L data to analyze:\n\n${fileText}`
-      }
-    ]
+    messages: [{ role: 'user', content: userMessage }]
   });
 
   const responseText = message.content[0].text;
 
-  // Parse JSON from response
   try {
     const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (jsonMatch) return JSON.parse(jsonMatch[1]);
@@ -559,7 +595,6 @@ async function analyzePL(file) {
     if (s !== -1 && e !== -1) return JSON.parse(responseText.slice(s, e + 1));
   } catch (_) { /* fall through */ }
 
-  // If JSON parse fails, return raw text (fallback deck will handle it)
   return responseText;
 }
 

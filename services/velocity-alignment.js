@@ -454,4 +454,8 @@ const ALIGNMENT = {
   "S039319":{"name":"San Antonio","area":"Area 2036","area_coach":"Luigi Andinolfi","region_coach":"Theresa McDaniel","vp":"Tracy Krumwiede"},
 };
 
-module.exports = { ALIGNMENT };
+const REGIONS     = [...new Set(Object.values(ALIGNMENT).map(s => s.region_coach).filter(Boolean))].sort();
+const AREA_COACHES = [...new Set(Object.values(ALIGNMENT).map(s => s.area_coach).filter(Boolean))].sort();
+const AREAS       = [...new Set(Object.values(ALIGNMENT).map(s => s.area).filter(Boolean))].sort();
+
+module.exports = { ALIGNMENT, REGIONS, AREA_COACHES, AREAS };

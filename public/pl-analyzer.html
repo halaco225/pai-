@@ -78,6 +78,14 @@
   .logo-option-none { color: var(--text-muted); font-size: 22px; height: 44px; display: flex; align-items: center; justify-content: center; }
   .logo-option span { font-size: 10px; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
   .logo-missing { font-size: 10px; color: #F59E0B; margin-top: 2px; display: none; }
+
+  /* ── Level Selector ─────────────────────────────────── */
+  .level-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); border-radius: 6px; padding: 6px 16px; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer; transition: all 0.15s; }
+  .level-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+  .level-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .scope-input { width:100%; padding:8px 10px; background:var(--surface-2,#222); border:1px solid var(--border); border-radius:8px; color:var(--text-primary,#eee); font-size:13px; }
+  .gl-label { display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--surface-2,#222); border:1px solid var(--border); border-radius:8px; cursor:pointer; transition:border-color 0.15s; }
+  .gl-label:hover { border-color:var(--accent); }
 </style>
 </head>
 <body>
@@ -141,6 +149,36 @@
           <p>Supports Excel, PDF, CSV, Word, and more · Max 25MB</p>
           <div class="file-selected" id="fileLabel"></div>
         </div>
+        <!-- ── Report Level & Scope ───────────────────────────────────── -->
+        <div id="scopeSection" style="margin-top:20px;display:none;">
+          <div style="height:1px;background:var(--border);margin:0 0 16px;"></div>
+          <div class="options-label">Report Level</div>
+          <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;" id="levelBtns">
+            <button class="level-btn active" data-level="region" onclick="setLevel('region')">Region</button>
+            <button class="level-btn" data-level="area" onclick="setLevel('area')">Area Coach</button>
+            <button class="level-btn" data-level="store" onclick="setLevel('store')">Store</button>
+          </div>
+          <!-- Region/Area target dropdown -->
+          <div id="targetSelectRow" style="margin-bottom:12px;display:none;">
+            <div class="options-label" id="targetSelectLabel">Select Target</div>
+            <select id="targetSelect" class="scope-input"></select>
+          </div>
+          <!-- Store target text input -->
+          <div id="targetStoreRow" style="margin-bottom:12px;display:none;">
+            <div class="options-label">Store # <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted,#888)">(leave blank to analyze all stores in file)</span></div>
+            <input id="targetStore" type="text" placeholder="e.g. 039382" class="scope-input"/>
+          </div>
+          <!-- GL upload — prompted at store level, optional otherwise -->
+          <div id="glRow" style="display:none;">
+            <div class="options-label">General Ledger <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted,#888)" id="glHint">(optional · upload for deeper cost cross-reference)</span></div>
+            <label for="ledgerFile" class="gl-label">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span id="ledgerLabel" style="font-size:13px;color:var(--text-muted,#888);">Upload GL file (Excel or PDF)</span>
+            </label>
+            <input type="file" id="ledgerFile" style="display:none;" accept=".xlsx,.xls,.csv,.pdf" onchange="onLedgerSelected()"/>
+          </div>
+        </div>
+
         <div style="margin-top: 20px;">
           <button class="btn btn-primary" id="analyzeBtn" onclick="analyzeFile()" disabled>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -230,19 +268,105 @@
   let analysisResult = null;
   let selectedTheme = 'command-dark';
   let logoBase64 = null;
+  let currentLevel = 'region';
+  let userScope = null;
+  let currentUser = null;
 
   async function init() {
     const res = await fetch('/api/auth/me');
     const data = await res.json();
     if (!res.ok || !data.authenticated) { window.location.href = '/'; return; }
+    currentUser = data.user;
+    userScope = data.user.scope || null;
     document.getElementById('userName').textContent = data.user.name;
     document.getElementById('userRole').textContent = data.user.role.toUpperCase();
     document.getElementById('userInitial').textContent = data.user.name.charAt(0).toUpperCase();
+    buildScopeUI();
   }
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
     window.location.href = '/';
+  }
+
+  // ── Scope / Level UI ──────────────────────────────────────────────────────
+  function buildScopeUI() {
+    if (!userScope) return;
+    // Area coaches default to area level, hide region button
+    if (userScope.type === 'area_coach') {
+      document.querySelector('[data-level="region"]').style.display = 'none';
+      currentLevel = 'area';
+      document.querySelectorAll('.level-btn').forEach(b => b.classList.toggle('active', b.dataset.level === 'area'));
+    }
+    setLevel(currentLevel);
+  }
+
+  function setLevel(level) {
+    currentLevel = level;
+    document.querySelectorAll('.level-btn').forEach(b => b.classList.toggle('active', b.dataset.level === level));
+
+    const selectRow = document.getElementById('targetSelectRow');
+    const selectEl  = document.getElementById('targetSelect');
+    const storeRow  = document.getElementById('targetStoreRow');
+    const glRow     = document.getElementById('glRow');
+    const glHint    = document.getElementById('glHint');
+
+    selectRow.style.display = 'none';
+    storeRow.style.display  = 'none';
+    glRow.style.display     = 'none';
+
+    if (level === 'region') {
+      const rcs = getAvailableRegions();
+      if (rcs.length > 1) {
+        document.getElementById('targetSelectLabel').textContent = 'Select Region Coach';
+        selectEl.innerHTML = '<option value="">— All Regions —</option>' + rcs.map(r => `<option value="${r}">${r}</option>`).join('');
+        selectRow.style.display = 'block';
+      }
+      glRow.style.display = 'block';
+      glHint.textContent = '(optional · cross-reference cost data)';
+    } else if (level === 'area') {
+      const acs = getAvailableACs();
+      if (acs.length > 0) {
+        document.getElementById('targetSelectLabel').textContent = 'Select Area Coach';
+        selectEl.innerHTML = (acs.length > 1 ? '<option value="">— All Areas —</option>' : '') + acs.map(a => `<option value="${a}">${a}</option>`).join('');
+        selectRow.style.display = 'block';
+      }
+      glRow.style.display = 'block';
+      glHint.textContent = '(optional · cross-reference cost data)';
+    } else if (level === 'store') {
+      storeRow.style.display = 'block';
+      glRow.style.display = 'block';
+      glHint.innerHTML = '<strong style="color:var(--accent)">Recommended</strong> — upload GL for full cost breakdown';
+    }
+  }
+
+  function getAvailableACs() {
+    if (!userScope) return [];
+    if (userScope.type === 'area_coach') return [userScope.ac_name];
+    if (userScope.type === 'rdo') return userScope.area_coaches || [];
+    if (userScope.type === 'vp') {
+      // VP can type any AC — return empty so no dropdown shown, store row used
+      return [];
+    }
+    return [];
+  }
+
+  function getAvailableRegions() {
+    if (!userScope) return [];
+    if (userScope.type === 'rdo') return [userScope.rc_name];
+    if (userScope.type === 'vp') return userScope.region_coaches || [];
+    return [];
+  }
+
+  function getScopeTarget() {
+    if (currentLevel === 'store') return document.getElementById('targetStore').value.trim();
+    const sel = document.getElementById('targetSelect');
+    return sel ? sel.value : '';
+  }
+
+  function onLedgerSelected() {
+    const f = document.getElementById('ledgerFile').files[0];
+    document.getElementById('ledgerLabel').textContent = f ? `✓ ${f.name}` : 'Upload GL file (Excel or PDF)';
   }
 
   // ── File input ────────────────────────────────────────────────────────────
@@ -255,6 +379,7 @@
     if (plFile.files.length) {
       fileLabel.textContent = `✓ ${plFile.files[0].name}`;
       analyzeBtn.disabled = false;
+      document.getElementById('scopeSection').style.display = 'block';
     }
   });
 
@@ -270,6 +395,7 @@
       plFile.files = dt.files;
       fileLabel.textContent = `✓ ${file.name}`;
       analyzeBtn.disabled = false;
+      document.getElementById('scopeSection').style.display = 'block';
     }
   });
 
@@ -290,7 +416,7 @@
   function buildThemeDropdown() {
     const panel = document.getElementById('themePanel');
     panel.innerHTML = THEME_OPTIONS.map(t => `
-      <div class="theme-opt${t.slug === selectedTheme ? ' selected' : ''}" onclick="selectTheme('${t.slug}')">
+      <div class="theme-opt${t.slug === selectedTheme ? ' selected' : ''}" data-slug="${t.slug}" onclick="selectTheme('${t.slug}')">
         <div class="t-opt-swatches">
           <div class="t-opt-dark" style="background:${t.dark}"></div>
           <div class="t-opt-accent" style="background:${t.accent}"></div>
@@ -308,7 +434,7 @@
       document.getElementById('triggerName').textContent        = t.name;
     }
     document.querySelectorAll('.theme-opt').forEach(o => {
-      o.classList.toggle('selected', o.textContent.trim() === (t ? t.name : ''));
+      o.classList.toggle('selected', o.dataset.slug === slug);
     });
     closeThemeDropdown();
   }
@@ -371,6 +497,10 @@
 
     const formData = new FormData();
     formData.append('file', plFile.files[0]);
+    formData.append('level', currentLevel);
+    formData.append('scopeTarget', getScopeTarget());
+    const ledgerFile = document.getElementById('ledgerFile').files[0];
+    if (ledgerFile) formData.append('ledger', ledgerFile);
 
     try {
       const res = await fetch('/api/pl/analyze', { method: 'POST', body: formData });
@@ -408,7 +538,7 @@
     btn.textContent = 'Generating...';
 
     try {
-      const options = { theme: selectedTheme, logoBase64 };
+      const options = { theme: selectedTheme, logoBase64, level: currentLevel };
       const res = await fetch('/api/pl/generate-pptx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -419,7 +549,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `P.AI_PL_Analysis_${selectedTheme}.pptx`;
+      a.download = `P.AI_PL_${currentLevel}_Analysis.pptx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {

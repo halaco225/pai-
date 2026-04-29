@@ -4,72 +4,74 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { requireAuth } = require('../middleware/auth');
+const { MASTER_ALIGNMENT_TEXT } = require('../services/alignment-data');
+const { getAlignment } = require('../services/db');
 
-// Multer config for P&L uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, path.join(__dirname, '../uploads')),
   filename: (req, file, cb) => {
     const ts = Date.now();
-    cb(null, `pl_${ts}_${file.originalname}`);
+    cb(null, `pl_${ts}_${file.fieldname}_${file.originalname}`);
   }
 });
-const upload = multer({
-  storage,
-  limits: { fileSize: 25 * 1024 * 1024 }
-});
+const upload = multer({ storage, limits: { fileSize: 25 * 1024 * 1024 } });
 
 // POST /api/pl/analyze
-// Routes to the right analyzer based on the logged-in user's role:
-//   area_coach -> analyzePLForAC  (returns single acDeepDive object, 8-slide deck)
-//   rdo / vp   -> analyzePL       (returns full region JSON, region + AC deep dives)
-router.post('/analyze', requireAuth, upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
+router.post('/analyze', requireAuth, upload.fields([
+  { name: 'file',   maxCount: 1 },
+  { name: 'ledger', maxCount: 1 }
+]), async (req, res) => {
+  const plFile   = req.files?.file?.[0];
+  const glFile   = req.files?.ledger?.[0];
+  if (!plFile) return res.status(400).json({ error: 'No P&L file uploaded.' });
 
-  const role = req.session.user.role;
-  const name = req.session.user.name;
+  const role        = req.session.user.role;
+  const name        = req.session.user.name;
+  const scope       = req.session.user.scope || null;
+  const level       = req.body.level       || (role === 'area_coach' ? 'area' : 'region');
+  const scopeTarget = req.body.scopeTarget || '';
 
   try {
-    const { analyzePL, analyzePLForAC } = require('../services/claude');
+    const { analyzePL } = require('../services/claude');
 
-    let result;
-    if (role === 'area_coach') {
-      result = await analyzePLForAC(req.file, name);
-    } else {
-      result = await analyzePL(req.file);
-    }
+    // Load alignment text (DB override or built-in)
+    const alignRow = await getAlignment();
+    const alignmentText = (alignRow && alignRow.content_text) ? alignRow.content_text : MASTER_ALIGNMENT_TEXT;
 
-    res.json({ success: true, analysis: result, role });
+    const result = await analyzePL(plFile, {
+      level, scopeTarget, glFile, userName: name, scope, alignmentText
+    });
+
+    res.json({ success: true, analysis: result, role, level });
   } catch (err) {
     console.error('P&L analysis error:', err);
     res.status(500).json({ error: err.message || 'Analysis failed.' });
   } finally {
-    if (req.file) { try { fs.unlinkSync(req.file.path); } catch (e) {} }
+    [plFile, glFile].forEach(f => { if (f) try { fs.unlinkSync(f.path); } catch (e) {} });
   }
 });
 
 // POST /api/pl/generate-pptx
-// Routes to the right builder based on the logged-in user's role:
-//   area_coach -> generateACPPTX  (8-slide AC deep dive)
-//   rdo / vp   -> generatePLPPTX  (7 region slides + per-AC deep dives)
 router.post('/generate-pptx', requireAuth, express.json({ limit: '10mb' }), async (req, res) => {
   const { analysis, options } = req.body;
   if (!analysis) return res.status(400).json({ error: 'Analysis data required.' });
 
-  const role = req.session.user.role;
-  const name = req.session.user.name;
+  const role  = req.session.user.role;
+  const name  = req.session.user.name;
+  const level = options?.level || (role === 'area_coach' ? 'area' : 'region');
 
   try {
     const { generatePLPPTX, generateACPPTX } = require('../services/pptx-pl');
 
-    let pptxBuffer;
-    let filename;
-    if (role === 'area_coach') {
+    let pptxBuffer, filename;
+    if (level === 'area' || role === 'area_coach') {
       pptxBuffer = await generateACPPTX(analysis, options || {});
-      const safeName = name.replace(/[^a-zA-Z0-9]/g, '_');
-      filename = `P.AI_${safeName}_Area_Deep_Dive.pptx`;
+      const safeName = (options?.scopeTarget || name).replace(/[^a-zA-Z0-9]/g, '_');
+      filename = `P.AI_${safeName}_Area_PL.pptx`;
     } else {
       pptxBuffer = await generatePLPPTX(analysis, options || {});
-      filename = 'P.AI_PL_Analysis.pptx';
+      const levelTag = level === 'store' ? 'Store' : 'Region';
+      filename = `P.AI_${levelTag}_PL_Analysis.pptx`;
     }
 
     res.set({
