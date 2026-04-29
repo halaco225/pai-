@@ -84,23 +84,178 @@ function truncateText(text, filename) {
 
 // ─── P&L System Prompt ──────────────────────────────────────────────────────
 
-const PL_SYSTEM_PROMPT = `You are assisting a multi-unit pizza franchise operator conducting period-end financial reviews for area coaches and their stores. The company is operating under a franchise agreement (Pizza Hut / Ayvaz Pizza LLC model). Here is everything you need to know to do this correctly.
+const PL_SYSTEM_PROMPT = `You are an elite financial analyst for Ayvaz Pizza LLC, a Pizza Hut multi-unit franchisee. You analyze period-end P&L Excel files and produce structured JSON for an 8-slide executive deck reviewed by the Regional Director and VPs.
 
-ORGANIZATIONAL STRUCTURE
-The region is organized as follows:
-* Harold (or regional operator) oversees multiple Area Coaches (ACs)
-* Each AC manages 5–8 stores
-* Each store has a General Manager (GM)
-* Reviews are conducted each period (roughly 4-week cycles, labeled P1, P2, P3, etc.)
+FILE STRUCTURE
+The Excel file follows this pattern:
+• Sheet named after the Regional Director (e.g. "Harold Lacoste") = region summary sheet
+• Sheets named after Area Coaches (e.g. "Ebony Simmons") = district rollups — use these as the authoritative source for AC-level metrics, NOT individual store tabs
+• Sheets prefixed "PH" + store number = individual store P&Ls
+• AC sheets appear before their store sheets — stores are mapped to the AC sheet that immediately precedes them in tab order
 
-THE P&L FILE
-The operator will upload an Excel file containing P&L data. The file has one tab per store plus one summary tab per area coach. Each tab follows this column structure:
-* Columns 11–12: P3-Current Year (amount + % of net sales)
-* Columns 14–15: P3-Prior Year (amount + % of net sales)
-* Columns 17–18: Period Variance (amount + %)
-* Columns 20–21: YTD Current Year (amount + % of net sales)
-* Columns 23–24: YTD Prior Year (amount + % of net sales)
-All percentages are expressed as a decimal (e.g., 0.274 = 27.4%). Format them as percentages in all outputs.
+COLUMN MAPPING — DYNAMIC (do not hardcode column numbers)
+Row 3 contains period headers. Find columns by matching header text:
+• Current period dollar column: find header matching the current period label (e.g. "P04-26")
+• Current period % column: immediately after the dollar column
+• Prior year dollar column: find header matching prior year label (e.g. "P04-25")
+• Prior year % column: immediately after the prior year dollar column
+• Period Variance dollar column: find header matching "Variance" or similar
+• Period Variance % column: immediately after variance dollar column
+All percentages are decimals in the file (e.g. 0.274 = 27.4%). Convert to percentage strings in output.
+
+METRICS TO EXTRACT
+From every AC sheet and the region summary sheet, pull these exact line items by matching the string in column A (row label):
+• Product Net Sales
+• Store Level EBITDA
+• Total Direct Labor Cost (ALWAYS use this — never "Total Labor Cost")
+• Cost of Food Sales
+• Total Utilities
+• Utilities - Electric Expense
+• Utilities - Gas Expense
+• Total Services
+• Digico Expense
+• Total Supplies
+• Supplies - Food Supplier Expense
+• Repairs and Maintenance (the total line)
+• Repair & Maintenance Expense - Parts
+• Repairs Expense - Hood Cleaning
+• Insurance- General Expense
+• Total Credit Card and Bank Fees
+• Total Cash Over / (Short)
+• Total Advertising
+• Advertising Expense - Others
+• Total Occupancy Expense
+• Total Non-Controllable Expenses
+• Store Controllable Profit
+
+EBITDA PROFITABILITY RULE: A store or district is profitable if and only if Store Level EBITDA dollar value is positive. NEVER use YOY improvement to determine profitability. A store that improved from -20% to -8% is still losing money.
+
+CALCULATIONS
+• BPS = (current % − prior year %) × 10,000
+• EBITDA variance = current $ − prior year $
+• Direct Labor % = Total Direct Labor Cost $ ÷ Product Net Sales $ (compute if % column is missing or unreliable)
+• Profitable store count = count of stores where Store Level EBITDA $ > 0 (count carefully — this number appears on the cover)
+
+ANOMALY DETECTION — always flag these automatically:
+• Hood Cleaning = $0 when PY > $5,000 → severity: Critical
+• Insurance-General increase > $10,000 vs PY → severity: Critical, validate with finance
+• COGS % increase > 80 bps while Net Sales declining → severity: High
+• Advertising-Other increase > $8,000 → severity: High, investigate across all area coaches
+• Any AC with Total Direct Labor Cost % > 35% → severity: High
+• Any store with Total Direct Labor Cost % > 45% → severity: Critical
+• R&M Parts > 1.0% of net sales at any AC → severity: Watch
+
+NARRATIVE STANDARDS — always follow these language rules:
+• Say "period" not "month"
+• Say "area coach" not "district manager"
+• Say "Total Direct Labor Cost" not "labor" when referencing that specific metric
+• Use "bps" for basis points throughout
+• When describing a store collapse: state prior period EBITDA → current EBITDA → bps swing
+• When flagging a labor issue: always state the Total Direct Labor Cost % AND the net sales volume together — 40% labor means something different at $100K sales vs $30K sales
+• EBITDA profitability = positive EBITDA $, never determined by YOY trend alone
+
+OUTPUT FORMAT — CRITICAL
+Return a single JSON object in a \`\`\`json code block. No markdown outside the block. No preamble. Use this exact structure:
+
+{
+  "period": "P04-26",
+  "region": {
+    "name": "Harold Lacoste Region",
+    "company": "Ayvaz Pizza LLC",
+    "director": "Harold Lacoste"
+  },
+  "areaCoaches": ["Daria Spikes", "Ebony Simmons", "Jorge Martinez", "Ja'Don Williams", "Michelle Meehan", "Kesha Thomas"],
+  "slide2": {
+    "metrics": [
+      {"label": "Region EBITDA $", "value": "$277,830", "vsPY": "+$87,575 vs prior period", "trend": "up"},
+      {"label": "EBITDA %", "value": "10.9%", "vsPY": "+344 bps vs prior period", "trend": "up"},
+      {"label": "Total Direct Labor %", "value": "28.4%", "vsPY": "-120 bps vs prior period", "trend": "up"},
+      {"label": "Net Sales", "value": "$2.55M", "vsPY": "-$6.2K vs prior period", "trend": "down"}
+    ],
+    "narrative": [
+      "EBITDA grew $87.6K period-over-period — a 46% increase on essentially flat net sales, driven by cost discipline not volume",
+      "Margin expanded 344 bps from 7.5% to 10.9% — Total Direct Labor Cost and COGS discipline account for the full variance",
+      "Total Direct Labor Cost improved 120 bps region-wide; 4 of 6 area coaches held or improved their percentage",
+      "Ebony Simmons district is the critical situation — 3 of 5 stores EBITDA negative, Total Direct Labor Cost averaging 38.7% on combined $341K net sales",
+      "Insurance-General spiked $14,200 vs prior period — requires finance validation before period close"
+    ]
+  },
+  "slide3": {
+    "bridge": [
+      {"driver": "Sales Volume", "varianceDollars": "-$6,200", "bpsImpact": "-24", "explanation": "Flat traffic contributed a minor EBITDA headwind — this is a volume story, not a cost story", "direction": "headwind"},
+      {"driver": "Cost of Food Sales", "varianceDollars": "+$18,400", "bpsImpact": "+72", "explanation": "Chicken and cheese favorable vs prior period; portioning discipline improving in Daria and Jorge districts", "direction": "tailwind"},
+      {"driver": "Total Direct Labor Cost", "varianceDollars": "+$31,200", "bpsImpact": "+122", "explanation": "Primary EBITDA driver; 4 of 6 area coaches improved — Ebony district offsetting region gains with 38.7% average", "direction": "tailwind"},
+      {"driver": "Insurance-General", "varianceDollars": "-$14,200", "bpsImpact": "-56", "explanation": "Spike requiring finance validation — determine if rate increase, new policy, or billing error", "direction": "headwind"},
+      {"driver": "Total Utilities", "varianceDollars": "-$8,100", "bpsImpact": "-32", "explanation": "Electric trending up across 3 area coach districts — seasonal but warrants monitoring", "direction": "headwind"},
+      {"driver": "Advertising-Other", "varianceDollars": "-$9,800", "bpsImpact": "-38", "explanation": "Up across all area coaches this period — pull invoices and investigate authorization", "direction": "headwind"},
+      {"driver": "Total Occupancy", "varianceDollars": "-$4,200", "bpsImpact": "-16", "explanation": "Lease escalations at 2 locations — non-controllable but flagged for awareness", "direction": "headwind"},
+      {"driver": "R&M incl. Hood Cleaning", "varianceDollars": "-$5,600", "bpsImpact": "-22", "explanation": "Hood cleaning $0 this period vs $6,200 prior period — CRITICAL safety and compliance issue; R&M parts accelerating in Ja'Don district", "direction": "headwind"}
+    ]
+  },
+  "slide4": {
+    "rows": [
+      {"ac": "Daria Spikes", "stores": 7, "netSales": "$545K", "ebitdaDollars": "$95,114", "ebitdaPct": "17.5%", "vsPYBps": "+530", "dirLaborPct": "25.5%", "dlVsPYBps": "-140", "negStores": 0, "tier": "green"},
+      {"ac": "Ebony Simmons", "stores": 5, "netSales": "$341K", "ebitdaDollars": "($8,200)", "ebitdaPct": "-2.4%", "vsPYBps": "-180", "dirLaborPct": "38.7%", "dlVsPYBps": "+420", "negStores": 3, "tier": "red"}
+    ],
+    "territoryTotal": {"netSales": "$2.55M", "ebitdaDollars": "$277,830", "ebitdaPct": "10.9%", "vsPYBps": "+344", "dirLaborPct": "28.4%", "dlVsPYBps": "-120", "negStores": 8}
+  },
+  "slide5": {
+    "rows": [
+      {"category": "Repairs Expense - Hood Cleaning", "regionCurrentDollars": "$0", "regionCurrentPct": "0.0%", "pyDollars": "$6,200", "pyPct": "0.24%", "varDollars": "-$6,200", "varBps": "-24", "districtFlag": "ALL DISTRICTS — $0 this period; fire safety and compliance risk; schedule immediately", "flagColor": "red"},
+      {"category": "Insurance- General Expense", "regionCurrentDollars": "$28,400", "regionCurrentPct": "1.11%", "pyDollars": "$14,200", "pyPct": "0.56%", "varDollars": "+$14,200", "varBps": "+56", "districtFlag": "CRITICAL — more than doubled vs prior period; validate with finance", "flagColor": "red"},
+      {"category": "Total Direct Labor Cost", "regionCurrentDollars": "$724,200", "regionCurrentPct": "28.4%", "pyDollars": "$730,600", "pyPct": "28.7%", "varDollars": "-$6,400", "varBps": "-30", "districtFlag": "Ebony 38.7% (Critical); 4 of 6 area coaches improved", "flagColor": "green"},
+      {"category": "Cost of Food Sales", "regionCurrentDollars": "$664,500", "regionCurrentPct": "26.1%", "pyDollars": "$645,200", "pyPct": "25.3%", "varDollars": "+$19,300", "varBps": "+80", "districtFlag": "Ebony +120 bps, Ja'Don +95 bps — portioning observation needed", "flagColor": "red"},
+      {"category": "Advertising Expense - Others", "regionCurrentDollars": "$34,200", "regionCurrentPct": "1.34%", "pyDollars": "$24,400", "pyPct": "0.96%", "varDollars": "+$9,800", "varBps": "+38", "districtFlag": "Up in all 6 area coach districts — pull invoices and verify authorization", "flagColor": "red"},
+      {"category": "Utilities - Electric Expense", "regionCurrentDollars": "$52,100", "regionCurrentPct": "2.04%", "pyDollars": "$44,000", "pyPct": "1.72%", "varDollars": "+$8,100", "varBps": "+32", "districtFlag": "3 area coach districts trending up — monitor seasonally", "flagColor": "amber"},
+      {"category": "Repair & Maintenance Expense - Parts", "regionCurrentDollars": "$18,400", "regionCurrentPct": "0.72%", "pyDollars": "$8,600", "pyPct": "0.34%", "varDollars": "+$9,800", "varBps": "+38", "districtFlag": "Ja'Don district driving majority — review invoices before next period", "flagColor": "amber"},
+      {"category": "Total Cash Over / (Short)", "regionCurrentDollars": "$3,200", "regionCurrentPct": "0.13%", "pyDollars": "$800", "pyPct": "0.03%", "varDollars": "+$2,400", "varBps": "+9", "districtFlag": "3 stores above $100 threshold — GM cash handling review needed", "flagColor": "amber"}
+    ]
+  },
+  "slide6": {
+    "cards": [
+      {"severity": "Critical", "title": "Hood Cleaning $0 — Fire Safety Risk", "analysis": "Hood cleaning was $0 this period versus $6,200 prior period across the region. Every store that skipped hood cleaning is operating in violation of franchise standards and fire code. This is not a financial issue — it is a safety and compliance emergency. The Regional Director must have written confirmation of rescheduled services from every General Manager before end of week. Any store without documentation must not open for business."},
+      {"severity": "Critical", "title": "Insurance-General Spike — $14,200 vs Prior Period", "analysis": "Insurance-General more than doubled from $14,200 to $28,400 period-over-period. This requires immediate validation with finance to determine whether this is a rate increase, a new policy addition, a one-time premium charge, or a billing error. Until confirmed, model this as a recurring headwind — if it continues next period, it represents a $14,200 EBITDA drag that cannot be offset by operational improvement alone."},
+      {"severity": "High", "title": "Ebony Simmons — District Total Direct Labor Cost Crisis", "analysis": "Ebony's district is averaging 38.7% Total Direct Labor Cost on combined net sales of $341K — 1,030 bps above the region average of 28.4%. Three of five stores are EBITDA negative, and Total Direct Labor Cost is the primary driver in all three cases. At the current sales volume, 38.7% labor means the cost structure is fundamentally misaligned with revenue. This requires a scheduling audit and GM accountability conversation this week — not next period."},
+      {"severity": "High", "title": "Advertising-Other Up Across All Districts", "analysis": "Advertising Expense - Others increased $9,800 versus prior period, and the variance is present in all six area coach districts — not isolated to one location. A region-wide increase across all area coaches in a single period indicates either a coordinated, unauthorized spend increase or a vendor change that rolled without approval. Pull the invoices for every district, identify who authorized the charges, and determine whether this spend will continue next period."},
+      {"severity": "High", "title": "COGS Rising in 2 Districts on Flat Sales", "analysis": "Ebony Simmons and Ja'Don Williams districts show Cost of Food Sales up 120 and 95 bps respectively while net sales are flat to declining. Rising COGS on flat volume is a portioning and waste issue, not a commodity price issue. Schedule a full portioning observation at each district's highest-COGS store before next period closes. Review waste logs if available. A 100 bps COGS improvement across just these two districts would return approximately $4,300 to the bottom line."},
+      {"severity": "Watch", "title": "R&M Parts Acceleration — Ja'Don District", "analysis": "Repair & Maintenance Expense - Parts increased $9,800 versus prior period, with Ja'Don's district driving the majority. Parts spend at 0.72% of net sales is approaching the 1.0% flag threshold. Pull invoices and determine whether this reflects equipment deterioration requiring capital planning or one-time emergency repairs. If any single store is consistently above $1,500 in parts spending, a preventive service contract review is warranted before costs compound further."}
+    ]
+  },
+  "slide7": {
+    "cards": [
+      {"acName": "Daria Spikes", "ebitdaPct": "17.5%", "bpsVsPY": "+530", "tier": "green", "win": "Wells Street (#38876) at 25.2% EBITDA — regional benchmark this period; Total Direct Labor Cost improved 240 bps vs prior period on $71K net sales", "flag": "Store C (#39381): Total Direct Labor Cost 31.2% on $58K net sales — overstaffed relative to volume; EBITDA flipped from +3.4% prior period to negative this period"},
+      {"acName": "Ebony Simmons", "ebitdaPct": "-2.4%", "bpsVsPY": "-180", "tier": "red", "win": "Store A (#39390) is the only profitable store in the district at 4.2% EBITDA — contained Total Direct Labor Cost at 29.8% on $68K net sales", "flag": "Store D (#39394): Total Direct Labor Cost 48.2% on $42K net sales — Critical; EBITDA collapsed from -3.1% to -18.4% this period, a -1,530 bps swing"}
+    ]
+  },
+  "slide8": {
+    "whatsWorking": [
+      {"title": "Total Direct Labor Cost Discipline — 4 of 6 Districts", "detail": "Region improved 120 bps period-over-period. Daria Spikes district best at 25.5% Total Direct Labor Cost. Consistent scheduling and volume alignment are driving this result."},
+      {"title": "COGS Improvement in 4 Districts", "detail": "Cost of Food Sales improved ~72 bps on average in improving districts. Favorable chicken and cheese costs plus portioning consistency in Daria and Jorge districts."},
+      {"title": "Daria Spikes — Regional Benchmark", "detail": "17.5% EBITDA, $95K district profit, 0 negative stores. Wells Street at 25.2% is the model for the region. This period is a cross-training opportunity."},
+      {"title": "EBITDA Growth on Flat Net Sales", "detail": "Region EBITDA grew $87.6K (+46%) with net sales essentially flat. This is pure margin expansion — cost discipline working exactly as designed."}
+    ],
+    "priorities": [
+      {"number": 1, "urgency": "red", "title": "Hood Cleaning — Written Schedules by End of Week", "detail": "$0 this period vs $6,200 prior period. Written confirmation of rescheduled services from every General Manager required immediately. Fire safety and franchise compliance — no exceptions."},
+      {"number": 2, "urgency": "red", "title": "Ebony Simmons — Labor Scheduling Audit This Week", "detail": "District averaging 38.7% Total Direct Labor Cost with 3 negative EBITDA stores. Scheduling audit and GM accountability conversation required this week. Store D at 48.2% Total Direct Labor Cost on $42K net sales is a Critical case."},
+      {"number": 3, "urgency": "red", "title": "Insurance Spike — Finance Validation Before Next Period", "detail": "$14,200 increase vs prior period. Confirm with finance whether rate change, new policy, or billing error. If recurring, this is a $14,200 headwind next period that cannot be recovered operationally."},
+      {"number": 4, "urgency": "amber", "title": "COGS Audit — Ebony and Ja'Don Districts", "detail": "COGS up 120 and 95 bps respectively on flat net sales. Schedule portioning observations before next period closes. This is a training and accountability issue — a 100 bps improvement returns $4,300 to EBITDA across these two districts."}
+    ]
+  }
+}
+
+RULES — fill every field with real data from the file. No placeholder text. No example values.
+- areaCoaches: list all area coaches found in the file, up to 6
+- slide4.rows: one row per area coach, sorted by EBITDA % descending
+- slide4.rows.tier: "green" if EBITDA% ≥ 15%, "amber" if 5–14.9%, "red" if < 5% or negative
+- slide5.rows: include every key expense line; always include Hood Cleaning even if $0
+- slide6.cards: 4–6 cards; always lead with the most severe anomaly; use exactly the severity values "Critical", "High", or "Watch"
+- slide7.cards: one card per area coach; name specific stores with store numbers and dollar amounts
+- slide8.whatsWorking: exactly 4 items
+- slide8.priorities: exactly 4 items; number 1 is always the most urgent operational or safety issue
+- All dollar amounts as strings ("$277,830" or "($8,200)" for negatives)
+- All percentages as strings ("10.9%")
+- BPS as signed strings ("+344" or "-120")
+- trend field: "up" = favorable for the metric, "down" = unfavorable`;
 
 KEY METRICS — DEFINITIONS AND WHAT TO LOOK FOR
 
@@ -534,7 +689,7 @@ When you receive the uploaded files, analyze all data sources and return a struc
 // ─── P&L Analyzer ──────────────────────────────────────────────────────────
 
 async function analyzePL(file, opts = {}) {
-  const { level = 'region', scopeTarget = '', glFile = null, userName = '', scope = null, alignmentText = '' } = opts;
+  const { level = 'region', scopeTarget = '', glFile = null, userName = '', scope = null, alignmentText = '', instructions = '' } = opts;
   const fileText = await extractTextFromFile(file);
 
   // General Ledger cross-reference
@@ -555,32 +710,97 @@ async function analyzePL(file, opts = {}) {
   let scopeBlock = '';
   if (scope) {
     if (scope.type === 'area_coach') {
-      scopeBlock = `\nAnalysis requested by: ${userName} (Area Coach, ${scope.area}, Region Coach: ${scope.region_coach}, VP: ${scope.vp})`;
+      scopeBlock = `Analysis requested by: ${userName} (Area Coach — ${scope.area}, Region: ${scope.region_coach}, VP: ${scope.vp})`;
     } else if (scope.type === 'rdo') {
-      scopeBlock = `\nAnalysis requested by: ${userName} (Region Coach, VP: ${scope.vp})`;
+      scopeBlock = `Analysis requested by: ${userName} (Region Coach — VP: ${scope.vp})`;
     } else if (scope.type === 'vp') {
-      scopeBlock = `\nAnalysis requested by: ${userName} (VP of Operations)`;
+      scopeBlock = `Analysis requested by: ${userName} (VP of Operations)`;
     }
   }
 
-  // Level-specific instructions
+  // Custom instructions block
+  const instructionsBlock = instructions
+    ? `\n=== SPECIAL INSTRUCTIONS FROM THE OPERATOR ===\n${instructions}\nFollow these instructions carefully — they take priority over default behavior.\n=== END SPECIAL INSTRUCTIONS ===`
+    : '';
+
+  // Level-specific output instructions
   const levelInstructions = {
-    region: `Produce a REGION-LEVEL analysis. Cover all area coaches and all stores. Lead with region totals (EBITDA $, EBITDA %, vs PY bps, net sales, stores profitable/total). Then break down by area coach (EBITDA $, EBITDA %, vs PY bps, COGS %, labor %). Highlight top performers, stores losing money, and biggest EBITDA turnarounds vs prior year.${scopeTarget ? ` Focus on the ${scopeTarget} region.` : ''}`,
-    area: `Produce an AREA COACH-LEVEL analysis. Focus on a single area coach's stores.${scopeTarget ? ` The area coach is: ${scopeTarget}.` : ''} Show each store's EBITDA $, EBITDA %, COGS %, labor %, and vs PY bps. Identify the best and worst performers, labor/COGS issues, and specific coaching priorities for each store.`,
-    store: `Produce a STORE-LEVEL analysis.${scopeTarget ? ` Focus on store ${scopeTarget}.` : ' Analyze the primary store in the file.'} Provide a full P&L breakdown: net sales, COGS $/%,  labor $/%, other controllables, EBITDA. Compare every line to prior year and budget if available. ${glFile ? 'The general ledger has been provided — cross-reference it to identify specific cost variances and unusual items.' : 'Tip: uploading the general ledger would enable line-by-line cost analysis.'} Provide specific, actionable coaching notes for each problem area.`
+    territory: `Produce a TERRITORY-LEVEL analysis covering all regions and area coaches in the file.${scopeTarget ? ` Focus on: ${scopeTarget}.` : ''}
+Use the 8-slide JSON format. The "region" object should reflect the full territory (all VPs/RDs combined). The areaCoaches array should list ALL area coaches across all regions. Slide 4 rows should include every area coach sorted by EBITDA% descending. Slide 2 narrative should speak to territory-wide patterns, not just one region. Identify which regions are driving results and which are dragging performance.`,
+
+    region: `Produce a REGION-LEVEL analysis.${scopeTarget ? ` Focus on the ${scopeTarget} region.` : ' Cover all area coaches in the file.'}
+Use the 8-slide JSON format exactly as specified. The region object should name the specific region and director. Cover all area coaches in that region. Slide 3 bridge should explain what drove the region's EBITDA variance vs prior period. Slide 4 must have one row per area coach sorted by EBITDA% descending. Slides 6-8 must name specific stores and dollar amounts — never generic statements.`,
+
+    area: `Produce an AREA COACH-LEVEL analysis.${scopeTarget ? ` The area coach is: ${scopeTarget}.` : ' Analyze the area coach whose sheet appears first, or the summary tab.'}
+Return this JSON format (NOT the 8-slide region format):
+{
+  "period": "P04-26",
+  "region": { "name": "...", "company": "Ayvaz Pizza LLC", "director": "..." },
+  "acName": "...",
+  "totalStores": 6,
+  "coverKPIs": [
+    {"label": "EBITDA %", "value": "17.5%"},
+    {"label": "EBITDA vs PY", "value": "+$12,450"},
+    {"label": "Net Sales", "value": "$545K"},
+    {"label": "Total Direct Labor %", "value": "25.5%"},
+    {"label": "Cost of Food Sales %", "value": "27.0%"}
+  ],
+  "scorecard": [
+    {"name": "Store Name", "storeNum": "039380", "status": "green", "netSales": "$71,304", "netSalesVsPY": "+3.2%", "cosPct": "27.1%", "laborPct": "21.8%", "laborPY": "24.2%", "scpPct": "38.5%", "ebitdaPct": "25.2%", "ebitdaPY": "17.5%"}
+  ],
+  "laborChart": {"labels": ["Store A", "Store B"], "current": [21.8, 28.5], "prior": [24.2, 27.1], "ytdLines": ["YTD Labor: 25.5% vs PY 26.8%"], "insight": "..."},
+  "cosChart": {"labels": ["Store A", "Store B"], "current": [27.1, 28.8], "prior": [28.0, 28.5], "storeCards": [{"name": "Store A", "trend": "down", "p3": "27.1%", "py": "28.0%", "ytd": "27.5%", "ytdPY": "28.1%"}], "insight": "..."},
+  "ebitdaChart": {"labels": ["Store A", "Store B"], "current": [25.2, 12.8], "prior": [17.5, 11.2], "ytdItems": [{"name": "Store A", "ytd": "22.3%", "ytdPY": "18.1%"}], "insight": "..."},
+  "anomalies": [{"name": "Store Name", "storeNum": "039381", "status": "red", "items": [{"line": "Payroll - R&M", "p3": "$1,842", "py": "$284", "note": "Who was paid? Needs authorization check"}]}],
+  "spotlights": {"crisis": {"name": "Store C (#39381)", "bullets": ["Labor 31.2% on $58K", "EBITDA negative", "3 line item spikes"]}, "urgent": null, "brightSpot": {"name": "Store A (#39380)", "bullets": ["25.2% EBITDA", "Labor improved 240 bps", "Model store"]}, "structural": null},
+  "coachingPriorities": [{"number": "01", "status": "red", "title": "...", "body": "..."}, {"number": "02", "status": "amber", "title": "...", "body": "..."}, {"number": "03", "status": "amber", "title": "...", "body": "..."}, {"number": "04", "status": "green", "title": "...", "body": "..."}]
+}
+Rules: scorecard status = "green" if EBITDA ≥ 10%, "amber" if 0-9.9%, "red" if negative. Chart arrays must be RAW NUMBERS not strings. All 4 coachingPriorities required. Set unused spotlight quadrants to null.`,
+
+    store: `Produce a STORE-LEVEL analysis.${scopeTarget ? ` Focus on store: ${scopeTarget}.` : ' Analyze the primary store tab in the file.'}
+${glFile ? 'A General Ledger file has been provided — cross-reference every expense line against it.' : ''}
+Return this JSON format:
+{
+  "period": "P04-26",
+  "region": { "name": "...", "company": "Ayvaz Pizza LLC", "director": "..." },
+  "storeName": "...",
+  "storeNum": "039380",
+  "acName": "...",
+  "headline": {
+    "netSales": "$71,304", "netSalesVsPY": "+3.2%",
+    "ebitda": "$17,976", "ebitdaPct": "25.2%", "ebitdaVsPY": "+747 bps",
+    "laborPct": "21.8%", "laborVsPY": "-240 bps",
+    "cogsPct": "27.1%", "cogsVsPY": "-90 bps",
+    "storeStatus": "green"
+  },
+  "plLines": [
+    {"label": "Product Net Sales", "current": "$71,304", "currentPct": "100%", "py": "$69,100", "pyPct": "100%", "varDollars": "+$2,204", "varBps": "—", "flag": ""},
+    {"label": "Cost of Food Sales", "current": "$19,320", "currentPct": "27.1%", "py": "$19,348", "pyPct": "28.0%", "varDollars": "-$28", "varBps": "-90", "flag": ""},
+    {"label": "Total Direct Labor Cost", "current": "$15,544", "currentPct": "21.8%", "py": "$16,740", "pyPct": "24.2%", "varDollars": "-$1,196", "varBps": "-240", "flag": ""},
+    {"label": "Store Level EBITDA", "current": "$17,976", "currentPct": "25.2%", "py": "$12,100", "pyPct": "17.5%", "varDollars": "+$5,876", "varBps": "+770", "flag": ""}
+  ],
+  "anomalies": [{"line": "Payroll - R&M", "current": "$1,842", "py": "$284", "severity": "High", "note": "..."}],
+  "coachingNotes": [
+    {"priority": 1, "status": "red", "title": "...", "detail": "..."},
+    {"priority": 2, "status": "amber", "title": "...", "detail": "..."},
+    {"priority": 3, "status": "green", "title": "...", "detail": "..."}
+  ],
+  "glInsights": ${glFile ? '"Cross-reference findings from the General Ledger go here — specific line-level cost variances and unusual items identified"' : 'null'}
+}
+Include ALL 22 P&L line items in plLines. Flag any line where current period is significantly worse than prior period. storeStatus = "green" if EBITDA ≥ 10%, "amber" if 0-9.9%, "red" if negative.`
   };
 
-  const userMessage = `${scopeBlock}
-Report Level: ${level.toUpperCase()}
+  const userMessage = `${scopeBlock ? scopeBlock + '\n' : ''}Analysis Level: ${level.toUpperCase()}${scopeTarget ? ` — ${scopeTarget}` : ''}
+${instructionsBlock}
 ${levelInstructions[level] || levelInstructions.region}
 
-Here is the P&L data:
+Here is the P&L file data:
 
 ${fileText}${glBlock}${alignBlock}`;
 
   const message = await client.messages.create({
     model: MODEL,
-    max_tokens: 16000,
+    max_tokens: 20000,
     system: PL_SYSTEM_PROMPT,
     messages: [{ role: 'user', content: userMessage }]
   });

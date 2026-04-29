@@ -152,12 +152,14 @@
         <!-- ── Report Level & Scope ───────────────────────────────────── -->
         <div id="scopeSection" style="margin-top:20px;display:none;">
           <div style="height:1px;background:var(--border);margin:0 0 16px;"></div>
-          <div class="options-label">Report Level</div>
-          <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;" id="levelBtns">
+          <div class="options-label">Analysis Level</div>
+          <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;" id="levelBtns">
+            <button class="level-btn" data-level="territory" onclick="setLevel('territory')">Territory</button>
             <button class="level-btn active" data-level="region" onclick="setLevel('region')">Region</button>
             <button class="level-btn" data-level="area" onclick="setLevel('area')">Area Coach</button>
             <button class="level-btn" data-level="store" onclick="setLevel('store')">Store</button>
           </div>
+          <div style="font-size:11px;color:var(--text-muted,#888);margin-bottom:14px;" id="levelHint">Full 8-slide region deck — all area coaches, variance bridge, anomalies, priorities</div>
           <!-- Region/Area target dropdown -->
           <div id="targetSelectRow" style="margin-bottom:12px;display:none;">
             <div class="options-label" id="targetSelectLabel">Select Target</div>
@@ -176,6 +178,12 @@
               <span id="ledgerLabel" style="font-size:13px;color:var(--text-muted,#888);">Upload GL file (Excel or PDF)</span>
             </label>
             <input type="file" id="ledgerFile" style="display:none;" accept=".xlsx,.xls,.csv,.pdf" onchange="onLedgerSelected()"/>
+          </div>
+
+          <!-- Custom Instructions -->
+          <div style="margin-top:18px;">
+            <div class="options-label">Special Instructions <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted,#888)">(optional — tell P.AI what to focus on)</span></div>
+            <textarea id="analysisInstructions" class="scope-input" rows="3" placeholder="e.g. Focus on labor and COGS trends. Flag any store above 35% labor. Compare to P3 2025 benchmarks. Highlight Ebony Simmons district specifically." style="resize:vertical;font-size:12px;line-height:1.5;"></textarea>
           </div>
         </div>
 
@@ -250,6 +258,7 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 Download PowerPoint
               </button>
+              <button class="btn btn-ghost" onclick="downloadOnePager()">⬡ Download 1-Pager</button>
               <button class="btn btn-ghost" onclick="window.print()">Print Analysis</button>
             </div>
           </div>
@@ -301,9 +310,18 @@
     setLevel(currentLevel);
   }
 
+  const LEVEL_HINTS = {
+    territory: 'Territory overview — all regions, all area coaches, VP-level scorecard and priorities',
+    region:    'Full 8-slide region deck — all area coaches, variance bridge, anomalies, priorities',
+    area:      'Area Coach deep dive — per-store scorecard, labor/COGS charts, coaching priorities',
+    store:     'Store-level P&L breakdown — every line vs prior period, coaching notes, GL cross-reference',
+  };
+
   function setLevel(level) {
     currentLevel = level;
     document.querySelectorAll('.level-btn').forEach(b => b.classList.toggle('active', b.dataset.level === level));
+    const hint = document.getElementById('levelHint');
+    if (hint) hint.textContent = LEVEL_HINTS[level] || '';
 
     const selectRow = document.getElementById('targetSelectRow');
     const selectEl  = document.getElementById('targetSelect');
@@ -315,7 +333,10 @@
     storeRow.style.display  = 'none';
     glRow.style.display     = 'none';
 
-    if (level === 'region') {
+    if (level === 'territory') {
+      glRow.style.display = 'block';
+      glHint.textContent = '(optional · cross-reference cost data)';
+    } else if (level === 'region') {
       const rcs = getAvailableRegions();
       if (rcs.length > 1) {
         document.getElementById('targetSelectLabel').textContent = 'Select Region Coach';
@@ -499,6 +520,8 @@
     formData.append('file', plFile.files[0]);
     formData.append('level', currentLevel);
     formData.append('scopeTarget', getScopeTarget());
+    const instructions = (document.getElementById('analysisInstructions')?.value || '').trim();
+    if (instructions) formData.append('instructions', instructions);
     const ledgerFile = document.getElementById('ledgerFile').files[0];
     if (ledgerFile) formData.append('ledger', ledgerFile);
 
@@ -510,16 +533,7 @@
       if (typeof analysisResult === 'string') {
         content.innerHTML = `<div class="markdown-output">${renderMarkdown(analysisResult)}</div>`;
       } else {
-        // Structured JSON from analyzePL/analyzePLForAC — primary output is the PPTX
-        const acCount = Array.isArray(analysisResult.acDeepDives) ? analysisResult.acDeepDives.length
-          : analysisResult.acName ? 1 : null;
-        const periodLine = analysisResult.period || analysisResult.acDeepDives?.[0]?.period || '';
-        content.innerHTML = `<div class="markdown-output">
-          <h2>Analysis Complete</h2>
-          <p>${periodLine ? `<strong>Period:</strong> ${periodLine} &nbsp;·&nbsp; ` : ''}${acCount !== null ? `<strong>${acCount} area coach${acCount !== 1 ? 'es' : ''}</strong> analyzed` : 'Analysis ready'}.
-          Click <strong>Download PowerPoint</strong> below to get the full structured report.</p>
-          <details style="margin-top:12px"><summary style="cursor:pointer;color:var(--accent);font-size:12px;font-weight:700;letter-spacing:1px">VIEW RAW JSON</summary><pre style="font-size:11px;overflow:auto;margin-top:8px;padding:12px;background:var(--surface-2);border-radius:6px;color:var(--text-muted);line-height:1.5;white-space:pre-wrap">${JSON.stringify(analysisResult, null, 2).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></details>
-        </div>`;
+        content.innerHTML = renderAnalysisSummary(analysisResult);
       }
       pptxPanel.style.display = 'block';
     } catch (err) {
@@ -558,6 +572,233 @@
       btn.disabled = false;
       btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download PowerPoint';
     }
+  }
+
+  // ── Clean summary view ────────────────────────────────────────────────────
+  function renderAnalysisSummary(d) {
+    // Detect which JSON format was returned based on level
+    if (d.acName || d.scorecard) return renderACLevelSummary(d);
+    if (d.storeName || d.plLines) return renderStoreLevelSummary(d);
+    // Default: region/territory 8-slide format
+    return renderRegionLevelSummary(d);
+  }
+
+  function renderStoreLevelSummary(d) {
+    const h = d.headline || {};
+    const sc = h.storeStatus || 'amber';
+    const accentColor = sc === 'green' ? '#1D9E75' : sc === 'red' ? '#C0392B' : '#D68910';
+    const kpiHtml = [
+      { label: 'Net Sales', value: h.netSales || '—', sub: h.netSalesVsPY || '' },
+      { label: 'EBITDA %', value: h.ebitdaPct || '—', sub: h.ebitdaVsPY || '' },
+      { label: 'Direct Labor %', value: h.laborPct || '—', sub: h.laborVsPY || '' },
+      { label: 'Cost of Food Sales %', value: h.cogsPct || '—', sub: h.cogsVsPY || '' },
+    ].map(k => `
+      <div style="flex:1;background:var(--surface-2,#1e1e1e);border:1px solid var(--border);border-radius:10px;padding:14px 16px;min-width:130px;">
+        <div style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text-muted,#888);margin-bottom:6px;">${k.label}</div>
+        <div style="font-size:22px;font-weight:800;color:#1E2761;line-height:1.1;">${k.value}</div>
+        ${k.sub ? `<div style="font-size:11px;color:${accentColor};margin-top:5px;font-weight:600;">${k.sub}</div>` : ''}
+      </div>`).join('');
+
+    const anomalies = (d.anomalies || []).filter(a => a.severity === 'Critical' || a.severity === 'High');
+    const anomHtml = anomalies.length ? `
+      <div style="background:rgba(192,57,43,0.08);border:1px solid rgba(192,57,43,0.3);border-radius:10px;padding:14px 16px;margin-top:16px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;color:#C0392B;margin-bottom:8px;">⚠ LINE ITEM FLAGS</div>
+        ${anomalies.map(a => `<div style="padding:5px 0;border-bottom:1px solid rgba(192,57,43,0.15);font-size:12px;">
+          <strong style="color:#C0392B;">${a.line || ''}</strong> — ${a.current || ''} vs ${a.py || ''} PY · <span style="color:var(--text-muted,#888);">${a.note || ''}</span>
+        </div>`).join('')}
+      </div>` : '';
+
+    const priorities = (d.coachingNotes || []);
+    const priorityHtml = priorities.length ? `
+      <div style="background:var(--surface-2,#1e1e1e);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:16px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:#1E2761;margin-bottom:10px;">COACHING PRIORITIES</div>
+        ${priorities.map(p => {
+          const c = p.status === 'red' ? '#C0392B' : p.status === 'green' ? '#1D9E75' : '#D68910';
+          return `<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">
+            <span style="font-weight:800;color:${c};font-size:14px;min-width:20px;">${p.priority}</span>
+            <div><div style="font-weight:700;font-size:12px;color:${c};">${p.title || ''}</div><div style="font-size:11px;color:var(--text-secondary,#ccc);margin-top:2px;">${p.detail || ''}</div></div>
+          </div>`;
+        }).join('')}
+      </div>` : '';
+
+    return `
+      <div style="font-size:11px;color:var(--text-muted,#888);margin-bottom:12px;">
+        <strong style="color:${accentColor};">Store ${d.storeName || ''} #${d.storeNum || ''}</strong> · ${d.acName || ''} · ${d.period || ''} · Store-level analysis
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">${kpiHtml}</div>
+      ${anomHtml}${priorityHtml}
+      <div style="margin-top:16px;"><button class="btn btn-ghost" onclick="reUpload()" style="font-size:12px;">↑ Re-Upload / Change File</button></div>`;
+  }
+
+  function renderACLevelSummary(d) {
+    const kpis = d.coverKPIs || [];
+    const kpiHtml = kpis.map(k => `
+      <div style="flex:1;background:var(--surface-2,#1e1e1e);border:1px solid var(--border);border-radius:10px;padding:14px 16px;min-width:120px;">
+        <div style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text-muted,#888);margin-bottom:6px;">${k.label}</div>
+        <div style="font-size:20px;font-weight:800;color:#1E2761;">${k.value || '—'}</div>
+      </div>`).join('');
+
+    const scorecard = d.scorecard || [];
+    const scorecardHtml = scorecard.length ? `
+      <div style="margin-top:16px;overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr style="background:#1E2761;color:#fff;">
+            ${['Store','Net Sales','COS%','Labor%','SCP%','EBITDA%','vs PY'].map(h => `<th style="padding:6px 10px;text-align:${h==='Store'?'left':'center'};font-size:9px;letter-spacing:1px;">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody>${scorecard.map((r, i) => {
+            const ep = parseFloat((r.ebitdaPct||'0').replace('%',''));
+            const c = ep < 0 ? '#C0392B' : ep >= 10 ? '#1D9E75' : '#D68910';
+            const bg = i%2===0 ? 'var(--surface-2,#1e1e1e)' : 'var(--surface,#141414)';
+            return `<tr style="background:${bg};">
+              <td style="padding:6px 10px;font-weight:700;color:var(--text-primary,#eee);">${r.name||'—'} <span style="color:var(--text-muted,#888);font-weight:400;">#${r.storeNum||''}</span></td>
+              <td style="padding:6px 10px;text-align:center;color:var(--text-secondary,#ccc);">${r.netSales||'—'}</td>
+              <td style="padding:6px 10px;text-align:center;color:var(--text-secondary,#ccc);">${r.cosPct||'—'}</td>
+              <td style="padding:6px 10px;text-align:center;color:var(--text-secondary,#ccc);">${r.laborPct||'—'}</td>
+              <td style="padding:6px 10px;text-align:center;color:var(--text-secondary,#ccc);">${r.scpPct||'—'}</td>
+              <td style="padding:6px 10px;text-align:center;font-weight:700;color:${c};">${r.ebitdaPct||'—'}</td>
+              <td style="padding:6px 10px;text-align:center;color:var(--text-secondary,#ccc);">${r.ebitdaPY||'—'}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>` : '';
+
+    const priorities = d.coachingPriorities || [];
+    const priorityHtml = priorities.length ? `
+      <div style="background:var(--surface-2,#1e1e1e);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:16px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:#1E2761;margin-bottom:10px;">COACHING PRIORITIES</div>
+        ${priorities.map(p => {
+          const c = p.status === 'red' ? '#C0392B' : p.status === 'green' ? '#1D9E75' : '#D68910';
+          return `<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">
+            <span style="font-weight:800;color:${c};font-size:16px;min-width:28px;">${p.number}</span>
+            <div><div style="font-weight:700;font-size:12px;color:${c};">${p.title||''}</div><div style="font-size:11px;color:var(--text-secondary,#ccc);margin-top:2px;">${p.body||''}</div></div>
+          </div>`;
+        }).join('')}
+      </div>` : '';
+
+    return `
+      <div style="font-size:11px;color:var(--text-muted,#888);margin-bottom:12px;">
+        <strong style="color:var(--text-primary,#eee);">${d.acName || 'Area Coach'}</strong> · ${d.totalStores || ''} stores · ${d.period || ''} · Area Coach analysis
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">${kpiHtml}</div>
+      ${scorecardHtml}${priorityHtml}
+      <div style="margin-top:16px;"><button class="btn btn-ghost" onclick="reUpload()" style="font-size:12px;">↑ Re-Upload / Change File</button></div>`;
+  }
+
+  function renderRegionLevelSummary(d) {
+    const period  = d.period || '';
+    const region  = d.region || {};
+    const metrics = (d.slide2 || {}).metrics || [];
+    const narrative = (d.slide2 || {}).narrative || [];
+    const acRows  = (d.slide4 || {}).rows || [];
+    const anomCards = (d.slide6 || {}).cards || [];
+    const priorities = (d.slide8 || {}).priorities || [];
+
+    // KPI cards from slide2.metrics
+    const kpiHtml = metrics.slice(0, 4).map(m => {
+      const good = m.trend === 'up';
+      const accent = good ? '#1D9E75' : '#C0392B';
+      return `
+        <div style="flex:1;background:var(--surface-2,#1e1e1e);border:1px solid var(--border);border-radius:10px;padding:14px 16px;min-width:130px;">
+          <div style="font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text-muted,#888);margin-bottom:6px;">${m.label || ''}</div>
+          <div style="font-size:22px;font-weight:800;color:#1E2761;line-height:1.1;">${m.value || '—'}</div>
+          ${m.vsPY ? `<div style="font-size:11px;color:${accent};margin-top:5px;font-weight:600;">${m.vsPY}</div>` : ''}
+        </div>`;
+    }).join('');
+
+    // Anomaly alerts from slide6.cards (critical only)
+    const criticals = anomCards.filter(c => c.severity === 'Critical');
+    const anomHtml = criticals.length ? `
+      <div style="background:rgba(192,57,43,0.08);border:1px solid rgba(192,57,43,0.3);border-radius:10px;padding:14px 16px;margin-top:16px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;color:#C0392B;margin-bottom:10px;">⚠ CRITICAL ISSUES REQUIRING IMMEDIATE ACTION (${criticals.length})</div>
+        ${criticals.map(c => `
+          <div style="padding:8px 0;border-bottom:1px solid rgba(192,57,43,0.15);">
+            <div style="font-weight:700;font-size:13px;color:#C0392B;margin-bottom:3px;">${c.title || ''}</div>
+            <div style="font-size:12px;color:var(--text-secondary,#ccc);line-height:1.5;">${(c.analysis || '').slice(0, 200)}${(c.analysis || '').length > 200 ? '…' : ''}</div>
+          </div>`).join('')}
+      </div>` : '';
+
+    // Director narrative from slide2.narrative
+    const narrativeHtml = narrative.length ? `
+      <div style="background:var(--surface-2,#1e1e1e);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:16px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:#1E2761;margin-bottom:10px;">REGIONAL DIRECTOR READ</div>
+        ${narrative.map(b => `
+          <div style="display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);">
+            <div style="width:8px;height:8px;background:#E07B2A;border-radius:2px;margin-top:5px;flex-shrink:0;"></div>
+            <div style="font-size:13px;color:var(--text-secondary,#ccc);line-height:1.5;">${b}</div>
+          </div>`).join('')}
+      </div>` : '';
+
+    // 8-slide deck preview
+    const slideCards = [
+      { n: 1, title: 'Title Slide',               preview: `${period} · ${region.name || ''} · ${region.director || ''}` },
+      { n: 2, title: 'Region Headline',            preview: metrics.slice(0,2).map(m => `${m.label}: ${m.value}`).join(' · ') || 'EBITDA + narrative' },
+      { n: 3, title: 'EBITDA Variance Bridge',     preview: 'Where did the EBITDA go? Tailwinds vs headwinds by driver' },
+      { n: 4, title: 'Area Coach Scorecard',       preview: acRows.slice(0,3).map(r => `${(r.ac||'').split(' ')[0]}: ${r.ebitdaPct||'—'}`).join(' · ') || 'All ACs sorted by EBITDA%' },
+      { n: 5, title: 'Expense Anomalies',          preview: 'Controllable line items vs prior period · flag rows colored red/green' },
+      { n: 6, title: 'Investigation Required',     preview: `${anomCards.length} anomaly cards · ${criticals.length} Critical` },
+      { n: 7, title: 'AC Deep Dive',               preview: '6 cards · win + flag bullet per area coach' },
+      { n: 8, title: 'Takeaways & Priorities',     preview: priorities.slice(0,2).map(p => `#${p.number} ${p.title||''}`).join(' · ') || 'What\'s working · priorities now' },
+    ];
+
+    const deckPreview = `
+      <div style="margin-top:20px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text-muted,#888);margin-bottom:10px;">DECK PREVIEW — 8 SLIDES</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+          ${slideCards.map(s => `
+            <div style="background:var(--surface-2,#1e1e1e);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+              <div style="background:#1E2761;padding:5px 10px;display:flex;align-items:center;gap:6px;">
+                <span style="color:#E07B2A;font-size:9px;font-weight:700;">S${s.n}</span>
+                <span style="color:#fff;font-size:9px;font-weight:700;letter-spacing:0.5px;">${s.title}</span>
+              </div>
+              <div style="padding:7px 10px;font-size:9.5px;color:var(--text-muted,#888);line-height:1.4;">${s.preview}</div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+
+    return `
+      <div style="font-size:11px;color:var(--text-muted,#888);margin-bottom:12px;letter-spacing:1px;">
+        ${period ? `<strong style="color:var(--text-primary,#eee);">${period}</strong> · ` : ''}${region.name ? region.name + ' · ' : ''}Analysis complete — ${acRows.length} area coaches · ${acRows.reduce((s,r) => s + (r.stores||0), 0)} stores
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">${kpiHtml}</div>
+      ${anomHtml}
+      ${narrativeHtml}
+      ${deckPreview}
+      <div style="margin-top:16px;">
+        <button class="btn btn-ghost" onclick="reUpload()" style="font-size:12px;">↑ Re-Upload / Change File</button>
+      </div>`;
+  }
+
+  function reUpload() {
+    // Reset file input and hide results
+    plFile.value = '';
+    fileLabel.textContent = '';
+    analyzeBtn.disabled = true;
+    document.getElementById('analysisContainer').style.display = 'none';
+    document.getElementById('scopeSection').style.display = 'none';
+    document.getElementById('ledgerFile').value = '';
+    document.getElementById('ledgerLabel').textContent = 'Upload GL file (Excel or PDF)';
+    analysisResult = null;
+    uploadZone.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  async function downloadOnePager() {
+    if (!analysisResult) return;
+    const btn = event.currentTarget;
+    btn.disabled = true; btn.textContent = 'Generating...';
+    try {
+      const options = { theme: selectedTheme, logoBase64, level: currentLevel };
+      const res = await fetch('/api/pl/one-pager', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ analysis: analysisResult, options })
+      });
+      if (!res.ok) throw new Error('1-pager generation failed');
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'P.AI_PL_One_Pager.pptx';
+      a.click();
+    } catch (err) { alert('Failed: ' + err.message); }
+    finally { btn.disabled = false; btn.innerHTML = '⬡ Download 1-Pager'; }
   }
 
   function renderMarkdown(text) {

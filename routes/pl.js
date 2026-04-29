@@ -25,11 +25,12 @@ router.post('/analyze', requireAuth, upload.fields([
   const glFile   = req.files?.ledger?.[0];
   if (!plFile) return res.status(400).json({ error: 'No P&L file uploaded.' });
 
-  const role        = req.session.user.role;
-  const name        = req.session.user.name;
-  const scope       = req.session.user.scope || null;
-  const level       = req.body.level       || (role === 'area_coach' ? 'area' : 'region');
-  const scopeTarget = req.body.scopeTarget || '';
+  const role         = req.session.user.role;
+  const name         = req.session.user.name;
+  const scope        = req.session.user.scope || null;
+  const level        = req.body.level        || (role === 'area_coach' ? 'area' : 'region');
+  const scopeTarget  = req.body.scopeTarget  || '';
+  const instructions = req.body.instructions || '';
 
   try {
     const { analyzePL } = require('../services/claude');
@@ -39,7 +40,7 @@ router.post('/analyze', requireAuth, upload.fields([
     const alignmentText = (alignRow && alignRow.content_text) ? alignRow.content_text : MASTER_ALIGNMENT_TEXT;
 
     const result = await analyzePL(plFile, {
-      level, scopeTarget, glFile, userName: name, scope, alignmentText
+      level, scopeTarget, glFile, userName: name, scope, alignmentText, instructions
     });
 
     res.json({ success: true, analysis: result, role, level });
@@ -82,6 +83,24 @@ router.post('/generate-pptx', requireAuth, express.json({ limit: '10mb' }), asyn
   } catch (err) {
     console.error('PPTX generation error:', err);
     res.status(500).json({ error: err.message || 'PPTX generation failed.' });
+  }
+});
+
+// POST /api/pl/one-pager
+router.post('/one-pager', requireAuth, express.json({ limit: '10mb' }), async (req, res) => {
+  const { analysis, options } = req.body;
+  if (!analysis) return res.status(400).json({ error: 'Analysis data required.' });
+  try {
+    const { generateOnePager } = require('../services/pptx-pl');
+    const buf = await generateOnePager(analysis, options || {});
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'Content-Disposition': 'attachment; filename="P.AI_PL_One_Pager.pptx"'
+    });
+    res.send(buf);
+  } catch (err) {
+    console.error('1-pager error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
