@@ -94,8 +94,8 @@ router.post('/one-pager', requireAuth, express.json({ limit: '10mb' }), async (r
     const { generateOnePager } = require('../services/pptx-pl');
     const buf = await generateOnePager(analysis, options || {});
     res.set({
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'Content-Disposition': 'attachment; filename="P.AI_PL_One_Pager.pptx"'
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'attachment; filename="P.AI_PL_One_Pager.pdf"'
     });
     res.send(buf);
   } catch (err) {

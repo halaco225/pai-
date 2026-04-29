@@ -60,11 +60,12 @@ router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res)
     const recapDay = getRecapDay();
     const lastAcOfWeek = req.body.lastAcOfWeek || null;
     const instructions  = req.body.instructions  || null;
+    const level         = req.body.level         || 'region';
 
     // Use DB override if uploaded, otherwise use built-in alignment (always current)
     const alignRow = await getAlignment();
     const alignmentText = (alignRow && alignRow.content_text) ? alignRow.content_text : MASTER_ALIGNMENT_TEXT;
-    console.log('[Recap] Alignment source: ' + (alignRow ? 'DB upload' : 'built-in'));
+    console.log('[Recap] Alignment source: ' + (alignRow ? 'DB upload' : 'built-in') + ' · Level: ' + level);
 
     // Load last 3 recap sessions for trend context
     let historicalContext = null;
@@ -87,7 +88,7 @@ router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res)
       console.warn('[Recap] Could not load history:', e.message);
     }
 
-    const data = await withRetry(() => analyzeRecap(req.files, '', recapDay, lastAcOfWeek, alignmentText, historicalContext, instructions));
+    const data = await withRetry(() => analyzeRecap(req.files, '', recapDay, lastAcOfWeek, alignmentText, historicalContext, instructions, level));
 
     // Persist session to DB (non-blocking — don't fail the request if this errors)
     saveRecapSession({
@@ -109,13 +110,14 @@ router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res)
 router.post('/build', requireAuth, async (req, res) => {
   try {
     const { generateRecapPPTX } = require('../services/pptx-recap');
-    const { data, theme } = req.body;
+    const { data, theme, level } = req.body;
     if (data == null) return res.status(400).json({ error: 'No data provided.' });
     const pptxBuffer = await generateRecapPPTX(data, { theme });
-    const weekLabel = (data.weekLabel || 'Weekly').replace(/[^a-zA-Z0-9]/g, '_');
+    const weekLabel  = (data.weekLabel || 'Weekly').replace(/[^a-zA-Z0-9]/g, '_');
+    const levelTag   = level === 'area' ? 'AC' : level === 'store' ? 'Store' : level === 'territory' ? 'Territory' : 'Region';
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'Content-Disposition': 'attachment; filename="P.AI_Region_Recap_' + weekLabel + '.pptx"'
+      'Content-Disposition': `attachment; filename="P.AI_${levelTag}_Recap_${weekLabel}.pptx"`
     });
     res.send(pptxBuffer);
   } catch (err) {

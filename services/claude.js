@@ -726,10 +726,10 @@ async function analyzePL(file, opts = {}) {
   // Level-specific output instructions
   const levelInstructions = {
     territory: `Produce a TERRITORY-LEVEL analysis covering all regions and area coaches in the file.${scopeTarget ? ` Focus on: ${scopeTarget}.` : ''}
-Use the 8-slide JSON format. The "region" object should reflect the full territory (all VPs/RDs combined). The areaCoaches array should list ALL area coaches across all regions. Slide 4 rows should include every area coach sorted by EBITDA% descending. Slide 2 narrative should speak to territory-wide patterns, not just one region. Identify which regions are driving results and which are dragging performance.`,
+Use the standard 8-slide JSON format. The "region" object should reflect the full territory (all VPs/RDs combined). The areaCoaches array should list ALL area coaches across all regions. Slide 4 rows should include every area coach sorted by EBITDA% descending. Slide 2 narrative should speak to territory-wide patterns. If the territory is large enough to warrant it, include additional slides as an "additionalSlides" array after the 8 standard slides. Each extra slide: {"type":"table|bullets|twoColumn","title":"...","items":[...] or "rows":[...] or "left":{...},"right":{...}}`,
 
     region: `Produce a REGION-LEVEL analysis.${scopeTarget ? ` Focus on the ${scopeTarget} region.` : ' Cover all area coaches in the file.'}
-Use the 8-slide JSON format exactly as specified. The region object should name the specific region and director. Cover all area coaches in that region. Slide 3 bridge should explain what drove the region's EBITDA variance vs prior period. Slide 4 must have one row per area coach sorted by EBITDA% descending. Slides 6-8 must name specific stores and dollar amounts — never generic statements.`,
+Use the standard 8-slide JSON format. The region object should name the specific region and director. Cover all area coaches in that region. Slide 3 bridge should explain what drove the region's EBITDA variance vs prior period. Slide 4 must have one row per area coach sorted by EBITDA% descending. Slides 6-8 must name specific stores and dollar amounts — never generic statements. If the region warrants deeper analysis (many ACs, complex issues), add additional slides via "additionalSlides" array: each entry {"type":"table|bullets|twoColumn","title":"...","items":[...] or "rows":[...] or "left":{...},"right":{...}}`,
 
     area: `Produce an AREA COACH-LEVEL analysis.${scopeTarget ? ` The area coach is: ${scopeTarget}.` : ' Analyze the area coach whose sheet appears first, or the summary tab.'}
 Return this JSON format (NOT the 8-slide region format):
@@ -820,7 +820,13 @@ ${fileText}${glBlock}${alignBlock}`;
 
 // ─── Weekly Recap Analyzer ──────────────────────────────────────────────────
 
-async function analyzeRecap(files, weekLabel, recapDay, lastAcOfWeek, alignmentText, historicalContext, instructions) {
+const RECAP_LEVEL_INSTRUCTIONS = {
+  territory: `ANALYSIS LEVEL: TERRITORY — You are building a TERRITORY-LEVEL recap for a VP of Operations spanning multiple regions. In the acTable, each row = one REGIONAL DIRECTOR (not individual ACs). The scorecard shows region-by-region performance. Wins/focus areas identify the best and worst performing regions. Slide titles should say "Territory" not "Region". The closing AC of the Week should be a top-performing AC or RD across all regions.`,
+  area: `ANALYSIS LEVEL: AREA COACH — You are building a recap for a single AC's stores only. In the acTable, each row = one STORE (not other ACs). The scorecard is store-by-store within this AC's area. Wins/focus areas are specific stores. Every slide should have store-level specificity — store name and number for every data point. Slide titles should include the AC name.`,
+  store: `ANALYSIS LEVEL: STORE — You are building a recap for a single store. All slides focus on this one store. The scorecard shows day-level or shift-level breakdowns for the week. The acTable shows metric breakdowns by day or category. Wins and focus areas are specific items from this store's week. Slide titles should include the store name and number.`,
+};
+
+async function analyzeRecap(files, weekLabel, recapDay, lastAcOfWeek, alignmentText, historicalContext, instructions, level = 'region') {
   // Extract text from all uploaded files
   const fileTexts = await Promise.all(files.map(async (file) => {
     try {
@@ -855,11 +861,15 @@ async function analyzeRecap(files, weekLabel, recapDay, lastAcOfWeek, alignmentT
     ? `\n\n=== SPECIAL INSTRUCTIONS FROM THE OPERATOR ===\n${instructions.trim()}\n=== END SPECIAL INSTRUCTIONS ===\nFollow these instructions carefully. They take priority over default analysis behavior.`
     : '';
 
+  const levelBlock = (level && level !== 'region' && RECAP_LEVEL_INSTRUCTIONS[level])
+    ? `\n\n${RECAP_LEVEL_INSTRUCTIONS[level]}`
+    : '';
+
   const userMessage = `I've uploaded ${files.length} weekly report file(s): ${fileNames}
 
-${fiscalContext}
+${fiscalContext}${levelBlock}
 
-Build the region recap deck using whatever data is available in these files. If some data sources are missing, build the slides you can with the data provided and note where data was unavailable — do not fail or refuse because of missing files. Work with what you have.
+Build the recap deck using whatever data is available in these files. If some data sources are missing, build the slides you can with the data provided and note where data was unavailable — do not fail or refuse because of missing files. Work with what you have.
 
 Week: ${weekLabel || '[not specified]'}
 Recap call day: ${recapDay || 'Thursday'}

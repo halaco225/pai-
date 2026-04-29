@@ -58,6 +58,9 @@
   .opt-pills { display: flex; gap: 6px; flex-wrap: wrap; }
   .opt-pill { padding: 5px 12px; border: 1px solid var(--border); border-radius: 16px; font-size: 11px; font-weight: 600; cursor: pointer; color: var(--text-secondary); background: var(--surface-2); font-family: inherit; }
   .opt-pill.selected { border-color: var(--accent); color: var(--accent); background: rgba(204,0,0,0.08); }
+  .level-btn { padding: 6px 16px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; color: var(--text-secondary); background: var(--surface-2); font-family: inherit; transition: all 0.15s; }
+  .level-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+  .level-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(204,0,0,0.08); }
 
   .progress-log { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; font-family: monospace; font-size: 12px; color: var(--text-muted); min-height: 60px; max-height: 180px; overflow-y: auto; margin-top: 16px; }
   .log-line { margin-bottom: 4px; }
@@ -227,6 +230,18 @@
           </div>
         </div>
 
+        <!-- Level selector -->
+        <div style="margin-bottom:16px;">
+          <label style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:2px;display:block;margin-bottom:8px;">ANALYSIS LEVEL</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;" id="recapLevelBtns">
+            <button class="level-btn active" data-level="region"    onclick="selectRecapLevel(this)">Region</button>
+            <button class="level-btn"        data-level="territory" onclick="selectRecapLevel(this)">Territory</button>
+            <button class="level-btn"        data-level="area"      onclick="selectRecapLevel(this)">Area Coach</button>
+            <button class="level-btn"        data-level="store"     onclick="selectRecapLevel(this)">Store</button>
+          </div>
+          <div id="recapLevelHint" style="font-size:11px;color:var(--text-muted);margin-top:5px;">Full 13-slide region recap — all area coaches, all stores, WIN, HUT Bot, customer voice.</div>
+        </div>
+
         <!-- Instructions box -->
         <div style="margin-bottom:16px;">
           <label style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:2px;display:block;margin-bottom:8px;">
@@ -362,6 +377,21 @@
   let selectedTheme = 'command-dark';
   let selectedFormat = 'pptx';
   let analyzedData = null;
+  let selectedRecapLevel = 'region';
+
+  const RECAP_LEVEL_HINTS = {
+    region:    'Full 13-slide region recap — all area coaches, all stores, WIN, HUT Bot, customer voice.',
+    territory: 'Territory rollup for VP — compares regions side by side, highlights best and worst across all RDs.',
+    area:      'Area Coach deep dive — store-by-store breakdown for a single AC\'s area. Every slide is store-specific.',
+    store:     'Single store weekly review — day-level data, week-over-week metrics, coaching priorities.',
+  };
+
+  function selectRecapLevel(btn) {
+    document.querySelectorAll('#recapLevelBtns .level-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedRecapLevel = btn.dataset.level;
+    document.getElementById('recapLevelHint').textContent = RECAP_LEVEL_HINTS[selectedRecapLevel] || '';
+  }
   let emailResult = null;
 
   async function init() {
@@ -676,9 +706,10 @@
     // Include last week's AC of the Week to prevent repeats
     const lastAcOfWeek = localStorage.getItem('pai_last_ac_of_week');
     if (lastAcOfWeek) formData.append('lastAcOfWeek', lastAcOfWeek);
-    // Include operator instructions if provided
+    // Include operator instructions and analysis level
     const instructions = document.getElementById('analysisInstructions').value.trim();
     if (instructions) formData.append('instructions', instructions);
+    formData.append('level', selectedRecapLevel);
 
     try {
       const res = await fetch('/api/recap/analyze', { method: 'POST', body: formData });
@@ -775,7 +806,7 @@
       const res = await fetch('/api/recap/build', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: analyzedData, theme: selectedTheme })
+        body: JSON.stringify({ data: analyzedData, theme: selectedTheme, level: selectedRecapLevel })
       });
 
       if (!res.ok) {

@@ -795,7 +795,7 @@
       const blob = await res.blob();
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = 'P.AI_PL_One_Pager.pptx';
+      a.download = 'P.AI_PL_One_Pager.pdf';
       a.click();
     } catch (err) { alert('Failed: ' + err.message); }
     finally { btn.disabled = false; btn.innerHTML = '⬡ Download 1-Pager'; }
