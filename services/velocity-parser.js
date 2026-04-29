@@ -304,12 +304,12 @@ function parseSOSExcelODS(filePath) {
     if (c === 'Production')  colIdx.production_time= i;
     if (c === '% < 15')      colIdx.pct_lt15       = i;
     if (c === 'On Time %')   colIdx.on_time_pct    = i;
-    // IST bucket columns — try common ODS header variants
-    if (/^[<u].*10|under.?10|0.*10/i.test(c))  colIdx.ist_lt10  = i;
-    if (/^10.?[-–].?14/i.test(c))              colIdx.ist_1014  = i;
-    if (/^15.?[-–].?18/i.test(c))              colIdx.ist_1518  = i;
-    if (/^19.?[-–].?25/i.test(c))              colIdx.ist_1925  = i;
-    if (/^[>o].*25|25.?plus|25\+/i.test(c))   colIdx.ist_gt25  = i;
+    // IST bucket columns — handle headers like "<10", "< 10", "10-14", "10 - 14", "10–14"
+    if (/^[<u\(]?\s*(?:under\s*)?0*10\s*$|^[<u].*10|under.?10/i.test(c)) colIdx.ist_lt10 = i;
+    if (/^10\s*[-–]\s*14/i.test(c))  colIdx.ist_1014 = i;
+    if (/^15\s*[-–]\s*18/i.test(c))  colIdx.ist_1518 = i;
+    if (/^19\s*[-–]\s*25/i.test(c))  colIdx.ist_1925 = i;
+    if (/^[>o\(]?\s*(?:over\s*)?25\s*\+?$|25\s*\+|25\s*plus|>\s*25/i.test(c)) colIdx.ist_gt25 = i;
   });
   console.log('[ODS Parser] colIdx:', JSON.stringify(colIdx));
 

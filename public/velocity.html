@@ -178,6 +178,7 @@
     <span style="margin-left:auto;display:flex;gap:8px">
       <button class="btn btn-outline btn-sm" onclick="openUpload()">↑ Upload Report</button>
       <button class="btn btn-outline btn-sm" onclick="exportExcel()">↓ Export Excel</button>
+      <button class="btn btn-outline btn-sm" onclick="backfillBuckets()" id="bucketFillBtn" title="Re-pull historical dates where IST bucket data is missing">⟳ Fix IST Buckets</button>
     </span>
   </div>
 
@@ -1589,6 +1590,25 @@ async function exportExcel() {
     a.download = `Velocity_IST_${weekKey}.xlsx`;
     a.click();
   } catch(e) { alert('Export error: ' + e.message); }
+}
+
+// ── IST Bucket backfill ───────────────────────────────────────────────
+async function backfillBuckets() {
+  const btn = document.getElementById('bucketFillBtn');
+  if (!confirm('This will re-pull ODS data for all dates where IST bucket counts are missing (all zeros). It runs in the background and may take several minutes. Continue?')) return;
+  btn.disabled = true;
+  btn.textContent = '⟳ Fixing...';
+  try {
+    const r = await fetch('/api/velocity/backfill-buckets', { method: 'POST' });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Failed');
+    alert(`${data.msg}\n\nDates queued: ${data.dates?.length || 0}\n\nRefresh the page in a few minutes to see updated bucket data.`);
+  } catch(e) {
+    alert('Bucket backfill error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⟳ Fix IST Buckets';
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────

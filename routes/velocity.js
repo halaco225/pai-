@@ -146,6 +146,73 @@ router.get('/debug-run', (req, res) => {
 });
 
 
+// ── POST /api/velocity/backfill-buckets — re-pull dates where all IST buckets are 0 ──
+router.post('/backfill-buckets', requireAuth, async (req, res) => {
+  try {
+    const pool = require('../services/db').pool;
+    // Find distinct dates that have records but all bucket cols are 0
+    const result = await pool.query(`
+      SELECT DISTINCT record_date::text AS d
+      FROM velocity_daily_records
+      WHERE (ist_lt10 + ist_1014 + ist_1518 + ist_1925 + ist_gt25) = 0
+      ORDER BY d ASC
+    `);
+    const dates = result.rows.map(r => r.d);
+    if (!dates.length) return res.json({ ok: true, msg: 'No records with missing bucket data found.', dates: [] });
+
+    res.json({ ok: true, msg: `Re-pulling ${dates.length} dates with missing IST bucket data. This runs in the background.`, dates });
+
+    // Re-trigger pull-ods for each date sequentially (async, non-blocking)
+    const { pullAboveStoreReport } = require('../services/velocity-ods');
+    const { parseSOSExcelODS, parseAboveStorePDF } = require('../services/velocity-parser');
+    const fs = require('fs');
+
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    (async () => {
+      for (const targetDate of dates) {
+        try {
+          const pullResult = await pullAboveStoreReport(targetDate);
+          if (!pullResult.success) { console.warn('[BucketFill] Pull failed for', targetDate, pullResult.error); continue; }
+          const parsed = pullResult.format === 'xlsx'
+            ? parseSOSExcelODS(pullResult.filePath)
+            : await parseAboveStorePDF(pullResult.filePath);
+          try { fs.unlinkSync(pullResult.filePath); } catch(e) {}
+          if (!parsed.stores?.length) continue;
+
+          const weekKey  = getWeekKey(targetDate);
+          const periodWk = getPeriodWeek(targetDate);
+          let updated = 0;
+          for (const s of parsed.stores) {
+            if (!ALIGNMENT[s.store_id]) continue;
+            await db.upsertVelocityRecord({
+              store_id: s.store_id, record_date: targetDate,
+              week_key: weekKey, period_week: periodWk,
+              ist_avg: s.ist_avg,
+              ist_lt10: s.ist_lt10 ?? 0, ist_1014: s.ist_1014 ?? 0,
+              ist_1518: s.ist_1518 ?? 0, ist_1925: s.ist_1925 ?? 0, ist_gt25: s.ist_gt25 ?? 0,
+              ist_lt19_pct: s.ist_lt19_pct ?? null,
+              total_orders: s.total_orders ?? 0,
+              make_time: s.make_time ?? null, pct_lt4: s.pct_lt4 ?? null,
+              production_time: s.production_time ?? null, pct_lt15: s.pct_lt15 ?? null,
+              on_time_pct: s.on_time_pct ?? null,
+              data_source: parsed.source, uploader: 'bucket-backfill'
+            });
+            updated++;
+          }
+          console.log(`[BucketFill] ${targetDate}: updated ${updated} stores`);
+          await sleep(15000); // 15s between ODS requests
+        } catch(e) {
+          console.error('[BucketFill] Error for', targetDate, e.message);
+        }
+      }
+      console.log('[BucketFill] Done re-pulling', dates.length, 'dates.');
+    })();
+  } catch(err) {
+    console.error('[BucketFill] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/velocity/run-backfill — unauthenticated, one-shot backfill trigger ──
 router.get('/run-backfill', (req, res) => {
   const { spawn } = require('child_process');
