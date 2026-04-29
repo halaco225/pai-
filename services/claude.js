@@ -255,7 +255,7 @@ RULES — fill every field with real data from the file. No placeholder text. No
 - All dollar amounts as strings ("$277,830" or "($8,200)" for negatives)
 - All percentages as strings ("10.9%")
 - BPS as signed strings ("+344" or "-120")
-- trend field: "up" = favorable for the metric, "down" = unfavorable`;
+- trend field: "up" = favorable for the metric, "down" = unfavorable
 
 KEY METRICS — DEFINITIONS AND WHAT TO LOOK FOR
 
