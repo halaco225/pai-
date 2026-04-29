@@ -703,6 +703,9 @@ router.post('/upload', upload.array('files'), async (req, res) => {
 router.post('/export', async (req, res) => {
   try {
     const weekKey = req.body.week || getWeekKey(getYesterdayChicago());
+    const filterRegion = (req.body.region || '').trim().toLowerCase();
+    const filterArea   = (req.body.area   || '').trim().toLowerCase();
+    const filterStore  = (req.body.store  || '').trim().toLowerCase();
     const records = await db.getVelocityWeek(weekKey);
 
     const enriched = records.map(r => ({
@@ -711,12 +714,29 @@ router.post('/export', async (req, res) => {
       ...(ALIGNMENT[r.store_id] || {})
     }));
 
-    const wtdStores = computeWTD(enriched);
+    let wtdStores = computeWTD(enriched);
     const periodWeek = enriched[0]?.period_week || getPeriodWeek(weekKey);
 
-    // Build dailyByDate for daily sheets
+    // Apply region/area/store filters if provided
+    function matchesFilter(s) {
+      if (filterRegion && (s.region_coach || '').trim().toLowerCase() !== filterRegion) return false;
+      if (filterArea   && (s.area_coach   || '').trim().toLowerCase() !== filterArea)   return false;
+      if (filterStore  && String(s.store_id || '').trim().toLowerCase() !== filterStore) return false;
+      return true;
+    }
+    if (filterRegion || filterArea || filterStore) {
+      wtdStores = wtdStores.filter(matchesFilter);
+    }
+
+    // Build dailyByDate for daily sheets (apply same filters)
     const dailyByDate = {};
-    for (const r of enriched) {
+    const enrichedFiltered = (filterRegion || filterArea || filterStore) ? enriched.filter(r => {
+      if (filterRegion && (r.region_coach || '').trim().toLowerCase() !== filterRegion) return false;
+      if (filterArea   && (r.area_coach   || '').trim().toLowerCase() !== filterArea)   return false;
+      if (filterStore  && String(r.store_id || '').trim().toLowerCase() !== filterStore) return false;
+      return true;
+    }) : enriched;
+    for (const r of enrichedFiltered) {
       const d = r.record_date;
       if (!dailyByDate[d]) dailyByDate[d] = [];
       dailyByDate[d].push(r);
@@ -777,7 +797,16 @@ router.post('/export', async (req, res) => {
       }));
     }
 
-    const buffer = await generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate, allWeekStores });
+    const filteredAllWeek = (allWeekStores && (filterRegion || filterArea || filterStore))
+      ? allWeekStores.filter(s => {
+          if (filterRegion && (s.region_coach || '').trim().toLowerCase() !== filterRegion) return false;
+          if (filterArea   && (s.area_coach   || '').trim().toLowerCase() !== filterArea)   return false;
+          if (filterStore  && String(s.store_id || '').trim().toLowerCase() !== filterStore) return false;
+          return true;
+        })
+      : allWeekStores;
+
+    const buffer = await generateExcelExport({ weekKey, periodWeek, wtdStores, dailyByDate, allWeekStores: filteredAllWeek });
 
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

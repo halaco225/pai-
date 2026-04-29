@@ -371,6 +371,23 @@
     document.getElementById('userName').textContent = data.user.name;
     document.getElementById('userRole').textContent = data.user.role.toUpperCase();
     document.getElementById('userInitial').textContent = data.user.name.charAt(0).toUpperCase();
+
+    // Pre-populate instructions with scope context so Claude tailors analysis
+    const scope = data.user.scope;
+    const instrEl = document.getElementById('analysisInstructions');
+    if (scope && instrEl && !instrEl.value.trim()) {
+      let hint = '';
+      if (scope.type === 'area_coach') {
+        hint = `Focus analysis on ${scope.area} (Area Coach: ${scope.ac_name}). Highlight wins and focus areas specific to this area. Region Coach: ${scope.region_coach}. VP: ${scope.vp}.`;
+      } else if (scope.type === 'rdo') {
+        const acs = (scope.area_coaches || []).join(', ');
+        hint = `Focus analysis on the ${scope.rc_name} region. Summarize performance across all area coaches in this region (${acs}). VP: ${scope.vp}.`;
+      } else if (scope.type === 'vp') {
+        const rcs = (scope.region_coaches || []).join(', ');
+        hint = `Provide a territory-level summary for VP ${scope.vp_name}. Highlight region-level trends and call out standout performers or concerns across all regions (${rcs}).`;
+      }
+      if (hint) instrEl.value = hint;
+    }
   }
 
   async function logout() {

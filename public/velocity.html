@@ -397,20 +397,34 @@ async function loadMeta() {
     // Populate area coach filter (all areas initially)
     populateAreaFilter(r.area_coaches);
 
-    // Auto-filter to logged-in user's name — skip for Harold (admin sees all)
+    // Auto-filter based on logged-in user's scope
     const user = state.currentUser;
-    if (user && user.username !== 'hlacoste') {
-      const name = (user.name || '').trim().toLowerCase();
-      const regionMatch = r.regions.find(reg => reg.trim().toLowerCase() === name);
-      if (regionMatch) {
-        rSel.value = regionMatch;
-        state.filters.region = regionMatch;
+    const scope = user?.scope;
+    const aSel = document.getElementById('areaFilter');
+    if (scope) {
+      if (scope.type === 'area_coach') {
+        // Lock to their region coach + their area
+        const regionMatch = r.regions.find(reg => reg.trim().toLowerCase() === (scope.region_coach || '').trim().toLowerCase());
+        if (regionMatch) {
+          rSel.value = regionMatch;
+          state.filters.region = regionMatch;
+          filterAreasByRegion();
+        }
+        const areaMatch = r.area_coaches.find(ac => ac.trim().toLowerCase() === (scope.ac_name || '').trim().toLowerCase());
+        if (areaMatch) {
+          aSel.value = areaMatch;
+          state.filters.area = areaMatch;
+        }
+      } else if (scope.type === 'rdo') {
+        // Lock to their region
+        const regionMatch = r.regions.find(reg => reg.trim().toLowerCase() === (scope.rc_name || '').trim().toLowerCase());
+        if (regionMatch) {
+          rSel.value = regionMatch;
+          state.filters.region = regionMatch;
+          filterAreasByRegion();
+        }
       }
-      const areaMatch = r.area_coaches.find(ac => ac.trim().toLowerCase() === name);
-      if (areaMatch) {
-        aSel.value = areaMatch;
-        state.filters.area = areaMatch;
-      }
+      // VPs see everything — no filter applied
     }
   } catch(e) { console.error('Meta load failed:', e); }
 }
@@ -1561,7 +1575,12 @@ async function exportExcel() {
   try {
     const r = await fetch('/api/velocity/export', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ week: weekKey })
+      body: JSON.stringify({
+        week: weekKey,
+        region: state.filters.region || '',
+        area:   state.filters.area   || '',
+        store:  state.filters.store  || ''
+      })
     });
     if (!r.ok) throw new Error('Export failed');
     const blob = await r.blob();
