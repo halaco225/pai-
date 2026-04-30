@@ -149,7 +149,8 @@ router.get('/debug-run', (req, res) => {
 // ── POST /api/velocity/backfill-buckets — re-pull dates where all IST buckets are 0 ──
 router.post('/backfill-buckets', requireAuth, async (req, res) => {
   try {
-    const pool = require('../services/db').pool;
+    const pool = require('../services/db').getPool();
+    if (!pool) return res.status(503).json({ error: 'Database not available.' });
     // Find distinct dates that have records but all bucket cols are 0
     const result = await pool.query(`
       SELECT DISTINCT record_date::text AS d

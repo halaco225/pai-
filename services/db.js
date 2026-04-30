@@ -495,6 +495,7 @@ async function getVelocityDOWDrill({ dow, weeks = 12 } = {}) {
 }
 
 module.exports = {
+  getPool,
   initDB, saveAnalysis, getHistory, getRecentDaily, getAnalysisById,
   saveAlignment, getAlignment, clearAlignment,
   saveRecapSession, getRecapSessions, getRecapSessionById,
