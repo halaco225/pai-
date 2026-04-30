@@ -111,5 +111,11 @@ app.listen(PORT, async () => {
   } catch (err) {
     console.log(`   Velocity DB: init failed (${err.message})`);
   }
+  try {
+    await initIntelDB();
+    console.log(`   Intel DB: initialized ✓`);
+  } catch (err) {
+    console.log(`   Intel DB: init failed (${err.message})`);
+  }
   console.log('');
 });
