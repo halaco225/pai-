@@ -36,7 +36,7 @@ router.get('/automation/status', async (req, res) => {
     const p = db.getPool();
     if (!p) return res.json({ status: 'db_unavailable' });
     const flags = await p.query(
-      'SELECT metric_date, COUNT(*) as flag_count FROM intel_flags GROUP BY metric_date ORDER BY metric_date DESC LIMIT 7'
+      'SELECT metric_date, region_coach, area_coach, territory_vp, COUNT(*) as cnt FROM intel_flags GROUP BY metric_date, region_coach, area_coach, territory_vp ORDER BY metric_date DESC, cnt DESC LIMIT 30'
     );
     res.json({ recent_runs: flags.rows });
   } catch (err) {
@@ -53,7 +53,7 @@ router.get('/automation/debug-cache', async (req, res) => {
     const p = db.getPool();
     if (!p) return res.json({ error: 'no pool' });
     const cache = await p.query('SELECT user_id, cache_date, role, generated_at, length(payload::text) as payload_size FROM intel_cache ORDER BY generated_at DESC LIMIT 20');
-    const flags = await p.query('SELECT metric_date, region_coach, COUNT(*) as cnt FROM intel_flags GROUP BY metric_date, region_coach ORDER BY metric_date DESC, cnt DESC LIMIT 20');
+    const flags = await p.query('SELECT metric_date, territory_vp, region_coach, area_coach, COUNT(*) as cnt FROM intel_flags GROUP BY metric_date, territory_vp, region_coach, area_coach ORDER BY metric_date DESC, cnt DESC LIMIT 30');
     res.json({ cache_entries: cache.rows, flag_breakdown: flags.rows });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
