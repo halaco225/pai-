@@ -102,7 +102,7 @@ router.get('/dashboard', async (req, res) => {
     if (!payload) {
       return res.json({ status: 'no_data', message: 'Intel not yet generated for today. Check back after 5 AM.' });
     }
-    res.json({ status: 'ok', ...payload });
+    res.json({ status: 'ok', ...payload, narrative: payload.trend_summary, metric_date: payload.generated_at?.split('T')[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
