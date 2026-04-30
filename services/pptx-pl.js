@@ -81,13 +81,7 @@ async function generateOnePager(analysis, options = {}) {
   const data = parseAnalysis(analysis);
   const html = buildOnePagerHTML(data, options);
 
-  const pwPath = process.env.PLAYWRIGHT_BROWSERS_PATH;
-  let executablePath;
-  if (pwPath) {
-    const matches = require('fs').readdirSync(pwPath).filter(d => d.startsWith('chromium-'));
-    if (matches.length) executablePath = require('path').join(pwPath, matches[0], 'chrome-linux', 'chrome');
-  }
-  const browser = await chromium.launch({ executablePath, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle' });

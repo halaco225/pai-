@@ -96,13 +96,18 @@ router.get('/dashboard', async (req, res) => {
     })();
 
     // Try today's cache first, fall back to yesterday
-    let payload = await db.getIntelCache(user.username, today);
-    if (!payload) payload = await db.getIntelCache(user.username, yesterday);
+    let cacheResult = await db.getIntelCache({ userId: user.username, cacheDate: today });
+    let cacheDate = today;
+    if (!cacheResult) {
+      cacheResult = await db.getIntelCache({ userId: user.username, cacheDate: yesterday });
+      cacheDate = yesterday;
+    }
 
-    if (!payload) {
+    if (!cacheResult) {
       return res.json({ status: 'no_data', message: 'Intel not yet generated for today. Check back after 5 AM.' });
     }
-    res.json({ status: 'ok', ...payload, narrative: payload.trend_summary, metric_date: payload.generated_at?.split('T')[0] });
+    const payload = cacheResult.data;
+    res.json({ status: 'ok', ...payload, narrative: payload.trend_summary, metric_date: cacheDate });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
