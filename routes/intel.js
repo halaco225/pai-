@@ -62,7 +62,8 @@ router.get('/automation/debug-cache', async (req, res) => {
 // ── POST /api/intel/automation/regenerate-cache — re-run cache step only ─────
 router.post('/automation/regenerate-cache', async (req, res) => {
   const token = req.headers['x-automation-token'] || req.query.token;
-  if (token !== process.env.INTEL_AUTOMATION_TOKEN) return res.status(401).json({ error: 'Unauthorized' });
+  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, process.env.INTEL_REGEN_TOKEN].filter(Boolean);
+  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
   const targetDate = req.body?.date || req.query.date || null;
   res.json({ status: 'started', targetDate });
   try {
