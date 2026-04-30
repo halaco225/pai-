@@ -1,0 +1,237 @@
+'use strict';
+/**
+ * Intel Pipeline — orchestrates all 7 data sources.
+ * Called by routes/intel.js automation endpoint.
+ * Run order:
+ *   1. DBS (OneData REST)
+ *   2. SOS (OneData REST) — also evaluates stacked soft flags
+ *   3. Fourth Labor (Playwright)
+ *   4. Fourth OT (Playwright) — Sun/Mon only
+ *   5. Forgot to Clock Out (OneData REST)
+ *   6. SMG Comments (Playwright + Claude Haiku)
+ *   7. Hut Bot (Playwright)
+ *   8. Generate intel_cache per user
+ */
+const fs   = require('fs');
+const path = require('path');
+
+const { pullReport }           = require('./intel-ods');
+const { processDBS }           = require('./parsers/dbs-parser');
+const { processSOS }           = require('./parsers/sos-parser');
+const { processFourthLabor }   = require('./parsers/fourth-labor-parser');
+const { processFourthOT }      = require('./parsers/fourth-ot-parser');
+const { processForgotClockOut }= require('./parsers/forgot-clockout-parser');
+const { processSMG }           = require('./parsers/smg-parser');
+const { processHutBot }        = require('./intel-hutbot');
+const { downloadFourthReport } = require('./intel-fourth');
+const { downloadSMGComments }  = require('./intel-smg');
+const db   = require('./db');
+const { USER_ROSTER } = require('../routes/auth');
+const Anthropic = require('@anthropic-ai/sdk');
+
+function getYesterdayEST() {
+  const now = new Date();
+  const est = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  est.setDate(est.getDate() - 1);
+  return est.toISOString().split('T')[0];
+}
+
+function cleanupFile(fp) {
+  try { if (fp && fs.existsSync(fp)) fs.unlinkSync(fp); } catch (_) {}
+}
+
+async function runIntelPipeline(targetDate) {
+  if (!targetDate) targetDate = getYesterdayEST();
+  console.log(`\n[Intel Pipeline] Starting for ${targetDate}`);
+  const results = { targetDate, steps: {}, errors: [] };
+
+  // ── Step 1: DBS ────────────────────────────────────────────────────────────
+  console.log('[Intel Pipeline] Step 1: DBS');
+  try {
+    const pull = await pullReport('DBS', targetDate);
+    if (!pull.success) throw new Error(pull.error);
+    const r = await processDBS(pull.filePath, targetDate);
+    cleanupFile(pull.filePath);
+    results.steps.dbs = r;
+  } catch (err) {
+    results.errors.push(`DBS: ${err.message}`);
+    results.steps.dbs = { success: false, error: err.message };
+    console.error('[Intel Pipeline] DBS failed:', err.message);
+  }
+
+  // ── Step 2: SOS ────────────────────────────────────────────────────────────
+  console.log('[Intel Pipeline] Step 2: SOS');
+  try {
+    const pull = await pullReport('SOS', targetDate);
+    if (!pull.success) throw new Error(pull.error);
+    const r = await processSOS(pull.filePath, targetDate);
+    cleanupFile(pull.filePath);
+    results.steps.sos = r;
+  } catch (err) {
+    results.errors.push(`SOS: ${err.message}`);
+    results.steps.sos = { success: false, error: err.message };
+    console.error('[Intel Pipeline] SOS failed:', err.message);
+  }
+
+  // ── Step 3: Fourth Labor ───────────────────────────────────────────────────
+  console.log('[Intel Pipeline] Step 3: Fourth Labor');
+  try {
+    const dl = await downloadFourthReport('LABOR', targetDate);
+    if (!dl.success) throw new Error(dl.error);
+    const r = await processFourthLabor(dl.filePath, targetDate);
+    cleanupFile(dl.filePath);
+    results.steps.fourthLabor = r;
+  } catch (err) {
+    results.errors.push(`FourthLabor: ${err.message}`);
+    results.steps.fourthLabor = { success: false, error: err.message };
+    console.error('[Intel Pipeline] Fourth Labor failed:', err.message);
+  }
+
+  // ── Step 4: Fourth OT (Sun/Mon only) ──────────────────────────────────────
+  const dow = new Date(targetDate + 'T12:00:00Z').getUTCDay();
+  if (dow === 0 || dow === 1) {
+    console.log('[Intel Pipeline] Step 4: Fourth OT');
+    try {
+      const dl = await downloadFourthReport('OT', targetDate);
+      if (!dl.success) throw new Error(dl.error);
+      const r = await processFourthOT(dl.filePath, targetDate);
+      cleanupFile(dl.filePath);
+      results.steps.fourthOT = r;
+    } catch (err) {
+      results.errors.push(`FourthOT: ${err.message}`);
+      results.steps.fourthOT = { success: false, error: err.message };
+      console.error('[Intel Pipeline] Fourth OT failed:', err.message);
+    }
+  } else {
+    results.steps.fourthOT = { skipped: true, reason: 'Only runs Sun/Mon' };
+  }
+
+  // ── Step 5: Forgot to Clock Out ────────────────────────────────────────────
+  console.log('[Intel Pipeline] Step 5: Forgot to Clock Out');
+  try {
+    const pull = await pullReport('PAYROLL', targetDate);
+    if (!pull.success) throw new Error(pull.error);
+    const r = await processForgotClockOut(pull.filePath, targetDate);
+    cleanupFile(pull.filePath);
+    results.steps.clockOut = r;
+  } catch (err) {
+    results.errors.push(`ClockOut: ${err.message}`);
+    results.steps.clockOut = { success: false, error: err.message };
+    console.error('[Intel Pipeline] Clock Out failed:', err.message);
+  }
+
+  // ── Step 6: SMG Comments ───────────────────────────────────────────────────
+  console.log('[Intel Pipeline] Step 6: SMG Comments');
+  try {
+    const dl = await downloadSMGComments(targetDate);
+    if (!dl.success) throw new Error(dl.error);
+    const r = await processSMG(dl.filePath, targetDate);
+    cleanupFile(dl.filePath);
+    results.steps.smg = r;
+  } catch (err) {
+    results.errors.push(`SMG: ${err.message}`);
+    results.steps.smg = { success: false, error: err.message };
+    console.error('[Intel Pipeline] SMG failed:', err.message);
+  }
+
+  // ── Step 7: Hut Bot ────────────────────────────────────────────────────────
+  console.log('[Intel Pipeline] Step 7: Hut Bot');
+  try {
+    const r = await processHutBot(targetDate);
+    results.steps.hutBot = r;
+  } catch (err) {
+    results.errors.push(`HutBot: ${err.message}`);
+    results.steps.hutBot = { success: false, error: err.message };
+    console.error('[Intel Pipeline] Hut Bot failed:', err.message);
+  }
+
+  // ── Step 8: Archive old recovering flags ───────────────────────────────────
+  await db.archiveOldRecoveringFlags(targetDate);
+
+  // ── Step 9: Generate intel_cache for all users ─────────────────────────────
+  console.log('[Intel Pipeline] Step 9: Generating intel cache');
+  try {
+    await generateIntelCache(targetDate);
+    results.steps.cache = { success: true };
+  } catch (err) {
+    results.errors.push(`Cache: ${err.message}`);
+    results.steps.cache = { success: false, error: err.message };
+    console.error('[Intel Pipeline] Cache generation failed:', err.message);
+  }
+
+  const successCount = Object.values(results.steps).filter(s => s.success || s.skipped).length;
+  console.log(`\n[Intel Pipeline] Complete — ${successCount}/${Object.keys(results.steps).length} steps OK, ${results.errors.length} errors`);
+  return results;
+}
+
+async function generateIntelCache(targetDate) {
+  const assignments = await db.getStoreAssignments();
+  const client = new Anthropic();
+
+  for (const user of USER_ROSTER) {
+    const { username, name, role, scope } = user;
+
+    // Get flags in this user's scope
+    let flags = [];
+    if (role === 'rdo') {
+      flags = await db.getIntelFlags({ metric_date: targetDate, region_coach: scope?.rc_name || name });
+    } else if (role === 'area_coach') {
+      flags = await db.getIntelFlags({ metric_date: targetDate, area_coach: scope?.ac_name || name });
+    } else if (role === 'vp') {
+      // VP sees all — get flags where territory_vp matches
+      const p = db.getPool();
+      if (p) {
+        const res = await p.query(
+          `SELECT * FROM intel_flags WHERE metric_date=$1 AND territory_vp=$2 ORDER BY severity DESC, consecutive_days_out DESC`,
+          [targetDate, scope?.vp_name || name]
+        );
+        flags = res.rows;
+      }
+    }
+
+    const highCount   = flags.filter(f => f.severity === 'high').length;
+    const mediumCount = flags.filter(f => f.severity === 'medium').length;
+    const recovering  = flags.filter(f => f.trend_direction === 'recovering');
+
+    // Generate 2-3 sentence AI narrative (cheap — claude-sonnet-4-6, very short)
+    let trend_summary = '';
+    if (flags.length > 0 && process.env.ANTHROPIC_API_KEY) {
+      try {
+        const flagSummary = flags.slice(0, 20).map(f =>
+          `${f.store_name||f.store_id}: ${f.metric_type} (${f.severity}, ${f.consecutive_days_out}d)`
+        ).join('; ');
+        const msg = await client.messages.create({
+          model:      'claude-sonnet-4-6',
+          max_tokens: 150,
+          messages: [{
+            role:    'user',
+            content: `Write a 2-sentence morning briefing for a Pizza Hut ${role === 'rdo' ? 'Region Coach' : role === 'vp' ? 'VP' : 'Area Coach'}. \nFlags today: ${flagSummary}\nBe direct. No fluff. Plain text only.`,
+          }],
+        });
+        trend_summary = msg.content[0].text.trim();
+      } catch (_) { trend_summary = `${highCount} high-priority and ${mediumCount} medium-priority flags require attention today.`; }
+    } else {
+      trend_summary = `${highCount} high-priority and ${mediumCount} medium-priority flags require attention today.`;
+    }
+
+    const { getFiscalContextString } = require('./fiscal-calendar');
+    const fiscal_context = getFiscalContextString ? getFiscalContextString() : '';
+
+    const payload = {
+      user_id:           username,
+      role,
+      generated_at:      new Date().toISOString(),
+      fiscal_context,
+      high_severity_count:   highCount,
+      medium_severity_count: mediumCount,
+      flags:             flags.slice(0, 100), // cap for cache size
+      trend_summary,
+      recovering_stores: recovering.map(f => ({ store_id: f.store_id, store_name: f.store_name, metric_type: f.metric_type })),
+    };
+
+    await db.upsertIntelCache({ user_id: username, cache_date: targetDate, role, payload });
+  }
+  console.log(`[Intel Pipeline] Cache generated for ${USER_ROSTER.length} users`);
+}
+
+module.exports = { runIntelPipeline, generateIntelCache };

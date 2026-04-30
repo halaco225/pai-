@@ -494,6 +494,7 @@ async function getVelocityDOWDrill({ dow, weeks = 12 } = {}) {
   }
 }
 
+// add intel exports
 module.exports = {
   getPool,
   initDB, saveAnalysis, getHistory, getRecentDaily, getAnalysisById,
@@ -504,3 +505,324 @@ module.exports = {
   getVelocityWeek, getVelocityWeeks, logVelocityJob, getVelocityLogs,
   getVelocityDOWTrends, getVelocityDOWDrill
 };
+
+// ── Intel Tables ─────────────────────────────────────────────────────────────
+async function initIntelDB() {
+  const p = getPool();
+  if (!p) return;
+
+  // Store hierarchy — populated by DBS parser on every run
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS store_assignments (
+      store_id     VARCHAR(10) PRIMARY KEY,
+      store_name   VARCHAR(100),
+      area_coach   VARCHAR(100),
+      region_coach VARCHAR(100),
+      vp           VARCHAR(100),
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // Core flag table
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS intel_flags (
+      id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      store_id             VARCHAR(10) NOT NULL,
+      store_name           VARCHAR(100),
+      area_coach           VARCHAR(100),
+      region_coach         VARCHAR(100),
+      territory_vp         VARCHAR(100),
+      metric_type          VARCHAR(50) NOT NULL,
+      metric_date          DATE NOT NULL,
+      value                DECIMAL(12,4),
+      target               DECIMAL(12,4),
+      variance             DECIMAL(12,4),
+      source               VARCHAR(30),
+      tier                 INTEGER DEFAULT 1,
+      details              JSONB,
+      trend_direction      VARCHAR(20) DEFAULT 'stable_out',
+      consecutive_days_out INTEGER DEFAULT 1,
+      severity             VARCHAR(10) DEFAULT 'low',
+      is_new               BOOLEAN DEFAULT TRUE,
+      status               VARCHAR(20) DEFAULT 'open',
+      created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_intel_flags_date   ON intel_flags (metric_date DESC)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_intel_flags_store  ON intel_flags (store_id, metric_date DESC)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_intel_flags_area   ON intel_flags (area_coach, metric_date DESC)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_intel_flags_region ON intel_flags (region_coach, metric_date DESC)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_intel_flags_status ON intel_flags (status, metric_date DESC)`);
+
+  // Acknowledgments from area coaches
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS intel_acknowledgments (
+      id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      flag_id          UUID NOT NULL,
+      acknowledged_by  VARCHAR(100) NOT NULL,
+      role             VARCHAR(30),
+      action_taken     TEXT NOT NULL,
+      acknowledged_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_intel_ack_flag ON intel_acknowledgments (flag_id)`);
+
+  // Cached per-user intel payload (keyed by user_id + date)
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS intel_cache (
+      id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id      VARCHAR(100) NOT NULL,
+      cache_date   DATE NOT NULL,
+      role         VARCHAR(30),
+      generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      payload      JSONB NOT NULL,
+      UNIQUE(user_id, cache_date)
+    )
+  `);
+
+  // Survey tracking (SMG — detect stores with no surveys)
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS store_survey_log (
+      id             SERIAL PRIMARY KEY,
+      store_id       VARCHAR(10) NOT NULL,
+      survey_date    DATE NOT NULL,
+      comment_count  INTEGER DEFAULT 0,
+      positive_count INTEGER DEFAULT 0,
+      negative_count INTEGER DEFAULT 0,
+      UNIQUE(store_id, survey_date)
+    )
+  `);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_survey_log_date  ON store_survey_log (survey_date DESC)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_survey_log_store ON store_survey_log (store_id, survey_date DESC)`);
+
+  // Positive shout-outs (SMG — displayed on store cards, not flags)
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS store_shoutouts (
+      id            SERIAL PRIMARY KEY,
+      store_id      VARCHAR(10) NOT NULL,
+      shoutout_date DATE NOT NULL,
+      summary       TEXT NOT NULL,
+      full_comment  TEXT,
+      source        VARCHAR(30),
+      created_at    TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_shoutouts_store ON store_shoutouts (store_id, shoutout_date DESC)`);
+
+  // Soft indicator tracking (for stacked Tier 2 flags)
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS intel_soft_indicators (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      store_id    VARCHAR(10) NOT NULL,
+      metric_date DATE NOT NULL,
+      indicator   VARCHAR(50) NOT NULL,
+      value       DECIMAL(12,4),
+      target      DECIMAL(12,4),
+      source      VARCHAR(30),
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(store_id, metric_date, indicator)
+    )
+  `);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_soft_store_date ON intel_soft_indicators (store_id, metric_date DESC)`);
+}
+
+// ── Intel DB helpers ──────────────────────────────────────────────────────────
+
+async function upsertStoreAssignment({ store_id, store_name, area_coach, region_coach, vp }) {
+  const p = getPool(); if (!p) return;
+  await p.query(`
+    INSERT INTO store_assignments (store_id, store_name, area_coach, region_coach, vp, updated_at)
+    VALUES ($1,$2,$3,$4,$5,NOW())
+    ON CONFLICT (store_id) DO UPDATE SET
+      store_name   = EXCLUDED.store_name,
+      area_coach   = EXCLUDED.area_coach,
+      region_coach = EXCLUDED.region_coach,
+      vp           = EXCLUDED.vp,
+      updated_at   = NOW()
+  `, [store_id, store_name, area_coach, region_coach, vp]);
+}
+
+async function getStoreAssignments() {
+  const p = getPool(); if (!p) return {};
+  const res = await p.query('SELECT * FROM store_assignments');
+  const map = {};
+  for (const r of res.rows) map[r.store_id] = r;
+  return map;
+}
+
+async function insertIntelFlag(flag) {
+  const p = getPool(); if (!p) return null;
+  try {
+    const res = await p.query(`
+      INSERT INTO intel_flags
+        (store_id, store_name, area_coach, region_coach, territory_vp,
+         metric_type, metric_date, value, target, variance,
+         source, tier, details, trend_direction, consecutive_days_out,
+         severity, is_new, status)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+      RETURNING id
+    `, [
+      flag.store_id, flag.store_name || null, flag.area_coach || null,
+      flag.region_coach || null, flag.territory_vp || null,
+      flag.metric_type, flag.metric_date,
+      flag.value ?? null, flag.target ?? null, flag.variance ?? null,
+      flag.source || null, flag.tier ?? 1,
+      flag.details ? JSON.stringify(flag.details) : null,
+      flag.trend_direction || 'stable_out',
+      flag.consecutive_days_out || 1,
+      flag.severity || 'low',
+      flag.is_new !== false,
+      flag.status || 'open'
+    ]);
+    return res.rows[0].id;
+  } catch (err) {
+    console.error('[Intel DB] insertIntelFlag error:', err.message);
+    return null;
+  }
+}
+
+async function getConsecutiveDays(store_id, metric_type, metric_date) {
+  const p = getPool(); if (!p) return 0;
+  // Count how many consecutive days before metric_date this store had this flag
+  const res = await p.query(`
+    SELECT consecutive_days_out FROM intel_flags
+    WHERE store_id = $1 AND metric_type = $2
+      AND metric_date = $3::date - INTERVAL '1 day'
+      AND status != 'resolved'
+    ORDER BY created_at DESC LIMIT 1
+  `, [store_id, metric_type, metric_date]);
+  return res.rows[0] ? parseInt(res.rows[0].consecutive_days_out) : 0;
+}
+
+async function resolveRecoveredFlags(store_id, metric_type, metric_date) {
+  const p = getPool(); if (!p) return;
+  // Mark yesterday's flag as recovering if today the metric is in range
+  await p.query(`
+    UPDATE intel_flags SET status = 'resolved', trend_direction = 'recovering'
+    WHERE store_id = $1 AND metric_type = $2
+      AND metric_date = $3::date - INTERVAL '1 day'
+      AND status = 'open'
+  `, [store_id, metric_type, metric_date]);
+}
+
+async function archiveOldRecoveringFlags(before_date) {
+  const p = getPool(); if (!p) return;
+  // Archive recovering flags older than 1 day
+  await p.query(`
+    UPDATE intel_flags SET status = 'archived'
+    WHERE status = 'resolved' AND trend_direction = 'recovering'
+      AND metric_date < $1::date - INTERVAL '1 day'
+  `, [before_date]);
+}
+
+async function upsertSurveyLog({ store_id, survey_date, comment_count, positive_count, negative_count }) {
+  const p = getPool(); if (!p) return;
+  await p.query(`
+    INSERT INTO store_survey_log (store_id, survey_date, comment_count, positive_count, negative_count)
+    VALUES ($1,$2,$3,$4,$5)
+    ON CONFLICT (store_id, survey_date) DO UPDATE SET
+      comment_count  = EXCLUDED.comment_count,
+      positive_count = EXCLUDED.positive_count,
+      negative_count = EXCLUDED.negative_count
+  `, [store_id, survey_date, comment_count, positive_count, negative_count]);
+}
+
+async function getStoresWithNoRecentSurveys(scope_store_ids, check_date) {
+  const p = getPool(); if (!p) return [];
+  // Stores that had no surveys yesterday OR day before
+  const res = await p.query(`
+    SELECT DISTINCT store_id FROM store_assignments
+    WHERE store_id = ANY($1)
+      AND store_id NOT IN (
+        SELECT store_id FROM store_survey_log
+        WHERE survey_date >= $2::date - INTERVAL '1 day'
+          AND survey_date <= $2::date
+          AND comment_count > 0
+      )
+  `, [scope_store_ids, check_date]);
+  return res.rows.map(r => r.store_id);
+}
+
+async function insertShoutout({ store_id, shoutout_date, summary, full_comment, source }) {
+  const p = getPool(); if (!p) return;
+  try {
+    await p.query(`
+      INSERT INTO store_shoutouts (store_id, shoutout_date, summary, full_comment, source)
+      VALUES ($1,$2,$3,$4,$5)
+    `, [store_id, shoutout_date, summary, full_comment || null, source || null]);
+  } catch (err) {
+    console.error('[Intel DB] insertShoutout error:', err.message);
+  }
+}
+
+async function upsertSoftIndicator({ store_id, metric_date, indicator, value, target, source }) {
+  const p = getPool(); if (!p) return;
+  await p.query(`
+    INSERT INTO intel_soft_indicators (store_id, metric_date, indicator, value, target, source)
+    VALUES ($1,$2,$3,$4,$5,$6)
+    ON CONFLICT (store_id, metric_date, indicator) DO UPDATE SET
+      value = EXCLUDED.value, target = EXCLUDED.target
+  `, [store_id, metric_date, indicator, value, target, source]);
+}
+
+async function getStoreSoftIndicators(store_id, days = 3) {
+  const p = getPool(); if (!p) return [];
+  const res = await p.query(`
+    SELECT indicator, metric_date, value, target, source
+    FROM intel_soft_indicators
+    WHERE store_id = $1 AND metric_date >= NOW()::date - INTERVAL '${days} days'
+    ORDER BY metric_date DESC
+  `, [store_id]);
+  return res.rows;
+}
+
+async function getIntelFlags({ metric_date, region_coach, area_coach, store_id, status } = {}) {
+  const p = getPool(); if (!p) return [];
+  let q = 'SELECT * FROM intel_flags WHERE 1=1';
+  const params = [];
+  if (metric_date) { params.push(metric_date); q += ` AND metric_date = $${params.length}`; }
+  if (region_coach) { params.push(region_coach); q += ` AND region_coach = $${params.length}`; }
+  if (area_coach) { params.push(area_coach); q += ` AND area_coach = $${params.length}`; }
+  if (store_id) { params.push(store_id); q += ` AND store_id = $${params.length}`; }
+  if (status) { params.push(status); q += ` AND status = $${params.length}`; }
+  q += ' ORDER BY severity DESC, consecutive_days_out DESC, created_at DESC';
+  const res = await p.query(q, params);
+  return res.rows;
+}
+
+async function getIntelCache(user_id, cache_date) {
+  const p = getPool(); if (!p) return null;
+  const res = await p.query(
+    'SELECT payload FROM intel_cache WHERE user_id=$1 AND cache_date=$2',
+    [user_id, cache_date]
+  );
+  return res.rows[0]?.payload || null;
+}
+
+async function upsertIntelCache({ user_id, cache_date, role, payload }) {
+  const p = getPool(); if (!p) return;
+  await p.query(`
+    INSERT INTO intel_cache (user_id, cache_date, role, payload, generated_at)
+    VALUES ($1,$2,$3,$4,NOW())
+    ON CONFLICT (user_id, cache_date) DO UPDATE SET
+      role = EXCLUDED.role, payload = EXCLUDED.payload, generated_at = NOW()
+  `, [user_id, cache_date, role, JSON.stringify(payload)]);
+}
+
+async function getAcknowledgments({ flag_id, region_coach, area_coach } = {}) {
+  const p = getPool(); if (!p) return [];
+  let q = `
+    SELECT a.*, f.store_id, f.store_name, f.area_coach, f.region_coach,
+           f.metric_type, f.metric_date, f.severity, f.value, f.target, f.status
+    FROM intel_acknowledgments a
+    JOIN intel_flags f ON f.id = a.flag_id
+    WHERE 1=1
+  `;
+  const params = [];
+  if (flag_id) { params.push(flag_id); q += ` AND a.flag_id = $${params.length}`; }
+  if (region_coach) { params.push(region_coach); q += ` AND f.region_coach = $${params.length}`; }
+  if (area_coach) { params.push(area_coach); q += ` AND f.area_coach = $${params.length}`; }
+  q += ' ORDER BY a.acknowledged_at DESC';
+  const res = await p.query(q, params);
+  return res.rows;
+}

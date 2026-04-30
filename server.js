@@ -4,7 +4,7 @@ const session = require('express-session');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const { initDB, initVelocityDB } = require('./services/db');
+const { initDB, initVelocityDB, initIntelDB } = require('./services/db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -43,6 +43,7 @@ app.use('/api/recap', require('./routes/recap'));
 app.use('/api/daily', require('./routes/daily'));
 app.use('/api/alignment', require('./routes/alignment'));
 app.use('/api/velocity', require('./routes/velocity'));
+app.use('/api/intel',    require('./routes/intel'));
 
 // Serve login page as default
 app.get('/', (req, res) => {
@@ -68,6 +69,11 @@ app.get('/weekly-recap', (req, res) => {
 app.get('/daily-intel', (req, res) => {
   if (!req.session.user) return res.redirect('/');
   res.sendFile(path.join(__dirname, 'public', 'daily-intel.html'));
+});
+
+app.get('/intel', (req, res) => {
+  if (!req.session.user) return res.redirect('/');
+  res.sendFile(path.join(__dirname, 'public', 'intel.html'));
 });
 
 app.get('/velocity', (req, res) => {

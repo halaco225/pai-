@@ -198,3 +198,6 @@ router.get('/me', (req, res) => {
 });
 
 module.exports = router;
+
+// Export USER_ROSTER for Intel module cache generation
+module.exports.USER_ROSTER = USER_ROSTER;
