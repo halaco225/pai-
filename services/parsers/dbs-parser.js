@@ -8,6 +8,25 @@
 const XLSX = require('xlsx');
 const db   = require('../db');
 
+// Build hierarchy lookup from USER_ROSTER — DBS file goes VP → AC directly,
+// so positional depthStack counting misidentifies AC rows as region_coach.
+const VP_NAMES        = new Set();
+const RDO_NAMES       = new Set();
+const AC_TO_HIERARCHY = {};
+try {
+  const { USER_ROSTER } = require('../../routes/auth');
+  for (const u of USER_ROSTER) {
+    if (u.role === 'vp') { VP_NAMES.add(u.name); }
+    else if (u.role === 'rdo') {
+      RDO_NAMES.add(u.scope.rc_name);
+      if (u.scope.vp) VP_NAMES.add(u.scope.vp);
+      for (const ac of (u.scope.area_coaches || [])) {
+        AC_TO_HIERARCHY[ac] = { rc: u.scope.rc_name, vp: u.scope.vp };
+      }
+    }
+  }
+} catch (_) {}
+
 // ── Columns (0-indexed, confirmed from actual file) ──────────────────────────
 // Section 1 (Operations) — identified when col[4] header = "Net Sales $"
 const S1 = {
@@ -80,7 +99,6 @@ function parseDBS(filePath, targetDate) {
   let currentArea     = null;
   let currentRegion   = null;
   let currentVP       = null;
-  let depthStack      = [];   // track hierarchy depth
 
   for (const row of rows) {
     const colA = row[0];
@@ -99,20 +117,20 @@ function parseDBS(filePath, targetDate) {
     // Skip subtotals
     if (isSubtotal(colA)) continue;
 
-    // Grouping label — determine depth: VP > Region Coach > Area Coach
+    // Grouping label — classify by name, not by position.
     if (isGroupLabel(colA, colE)) {
       const label = String(colA).trim();
-      // Heuristic: track depth by how many labels we've seen since last reset
-      // We just store the last 3 labels as VP / Region / Area in order
-      depthStack.push(label);
-      if (depthStack.length === 1) currentVP     = label;
-      if (depthStack.length === 2) currentRegion = label;
-      if (depthStack.length >= 3) currentArea    = label;
+      if (VP_NAMES.has(label)) {
+        currentVP = label; currentRegion = null; currentArea = null;
+      } else if (RDO_NAMES.has(label)) {
+        currentRegion = label; currentArea = null;
+      } else {
+        currentArea = label;
+        const hier = AC_TO_HIERARCHY[label];
+        if (hier) { currentRegion = hier.rc; currentVP = hier.vp; }
+      }
       continue;
     }
-
-    // Reset depth on blank colA (section boundary)
-    if (!colA && !colE) { depthStack = []; continue; }
 
     // Store row
     if (isStoreRow(colA)) {

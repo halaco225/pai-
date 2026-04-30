@@ -10,7 +10,7 @@ services:
     name: pai-ayvaz
     env: node
     plan: starter
-    buildCommand: npm install && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src npx playwright install chromium
+    buildCommand: npm install && npx playwright install chromium
     startCommand: node server.js
     envVars:
       - key: NODE_ENV
@@ -34,25 +34,13 @@ services:
       - key: VELOCITY_AUTOMATION_TOKEN
         generateValue: true
       - key: INTEL_AUTOMATION_TOKEN
-        value: PAi-Intel-2025
-      - key: INTEL_REGEN_TOKEN
-        value: PAi-Intel-2025
-      - key: HUTBOT_USER
-        sync: false
-      - key: HUTBOT_PASSWORD
-        sync: false
-      - key: SMG_USER
-        sync: false
-      - key: SMG_PASSWORD
-        sync: false
-      - key: PLAYWRIGHT_BROWSERS_PATH
-        value: /opt/render/project/src
+        generateValue: true
 
   - type: cron
     name: velocity-ods-pull
     env: node
     plan: starter
-    schedule: "0 9 * * *"
+    schedule: "0 10 * * *"
     buildCommand: npm install
     startCommand: node scripts/velocity-cron-pull.js
     envVars:
@@ -70,7 +58,7 @@ services:
     env: node
     plan: starter
     schedule: "0 10 * * *"
-    buildCommand: npm install && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src npx playwright install chromium
+    buildCommand: npm install
     startCommand: node scripts/intel-cron.js
     envVars:
       - key: DATABASE_URL
@@ -80,14 +68,4 @@ services:
       - key: PAI_BASE_URL
         value: https://pai-ayvaz.onrender.com
       - key: INTEL_AUTOMATION_TOKEN
-        value: PAi-Intel-2025
-      - key: HUTBOT_USER
         sync: false
-      - key: HUTBOT_PASSWORD
-        sync: false
-      - key: SMG_USER
-        sync: false
-      - key: SMG_PASSWORD
-        sync: false
-      - key: PLAYWRIGHT_BROWSERS_PATH
-        value: /opt/render/project/src

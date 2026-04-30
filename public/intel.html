@@ -256,6 +256,41 @@
   border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;
   font-size: 13px; color: #F87171; display: flex; align-items: center; gap: 8px;
 }
+
+/* ── Performance tab ─────────────────────────────────────── */
+.perf-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.perf-table th {
+  text-align: left; padding: 10px 12px; font-size: 11px; letter-spacing: 0.5px;
+  text-transform: uppercase; color: var(--text-muted);
+  border-bottom: 1px solid var(--border); user-select: none;
+}
+.perf-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.perf-table tr:last-child td { border-bottom: none; }
+.perf-row-ac { cursor: pointer; }
+.perf-row-ac:hover td { background: var(--surface-2); }
+.perf-expand-icon { margin-right: 6px; display: inline-block; transition: transform 0.15s; font-size: 10px; }
+.perf-row-ac.expanded .perf-expand-icon { transform: rotate(90deg); }
+.perf-stores-row { display: none; background: var(--surface); }
+.perf-stores-row.visible { display: table-row; }
+.perf-stores-inner { padding: 0 12px 14px 32px; }
+.perf-store-list { list-style: none; padding: 0; margin: 8px 0 0 0; }
+.perf-store-list li {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 12px;
+}
+.perf-store-list li:last-child { border-bottom: none; }
+.perf-store-name { font-weight: 600; flex: 1; }
+.perf-metric-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.perf-chip {
+  display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px;
+  font-weight: 600; border: 1px solid var(--border);
+}
+.perf-chip.high { background: rgba(239,68,68,0.12); color: #F87171; border-color: rgba(239,68,68,0.3); }
+.perf-chip.medium { background: rgba(234,179,8,0.12); color: #FBBF24; border-color: rgba(234,179,8,0.3); }
+.perf-section-header {
+  font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--text-muted); font-weight: 700; padding: 18px 0 8px;
+}
 </style>
 </head>
 <body>
@@ -334,6 +369,9 @@
       </button>
       <button class="intel-tab" onclick="switchTab('shoutouts', this)" id="tabShoutouts">
         ★ Shoutouts
+      </button>
+      <button class="intel-tab" onclick="switchTab('performance', this); loadPerformance()">
+        ▦ Performance
       </button>
       <button class="intel-tab" onclick="switchTab('digest', this)">
         ☰ Weekly Digest
@@ -434,6 +472,13 @@
       </div>
     </div>
 
+    <!-- ── PANEL: Performance ───────────────────────────── -->
+    <div class="tab-panel" id="panel-performance">
+      <div id="perfContent">
+        <div style="color:var(--text-muted);font-size:13px;padding:20px 0">Click the Performance tab to load.</div>
+      </div>
+    </div>
+
     <!-- ── PANEL: Weekly Digest ──────────────────────────── -->
     <div class="tab-panel" id="panel-digest">
       <div class="digest-wrap">
@@ -491,7 +536,6 @@ async function init() {
     ]);
 
     renderBriefing(dashboard, flags, shoutouts);
-    renderFlags(flags.flags || []);
 
     if (currentUser.role === 'rdo' || currentUser.role === 'vp') {
       const accts = await fetch('/api/intel/accountability').then(r => r.json());
@@ -557,6 +601,9 @@ function renderBriefing(dashboard, flagsData, shoutoutsData) {
       document.getElementById('viewAllFlagsBtn').style.display = '';
     }
   }
+
+  // Populate the Flags tab
+  renderFlags(flags);
 }
 
 /* ── Flags ─────────────────────────────────────────────── */
@@ -609,6 +656,10 @@ function buildFlagCard(f, compact) {
           ${f.metric_date ? `<span>📅 ${formatDate(f.metric_date)}</span>` : ''}
           <span><span class="days-out-badge ${daysCls}">${days} day${days !== 1 ? 's' : ''}</span></span>
         </div>
+        ${f.metric_type === 'FORGOT_CLOCKOUT' && f.details && f.details.employees && f.details.employees.length > 0 ? `
+        <div class="flag-employees" style="margin-top:6px;font-size:12px;color:var(--text-secondary)">
+          ${f.details.employees.map(e => `<span style="display:inline-block;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:2px 7px;margin:2px 2px 0 0">${escHtml(e.name)}${e.punch_in ? ` · in ${formatDateTime(e.punch_in)}` : ''}</span>`).join('')}
+        </div>` : ''}
       </div>
       <div class="flag-actions">
         ${isAddressed
@@ -767,7 +818,7 @@ function escHtml(s) {
 }
 function formatDate(d) {
   if (!d) return '—';
-  const dt = new Date(d + 'T12:00:00');
+  const dt = String(d).includes('T') ? new Date(d) : new Date(d + 'T12:00:00');
   return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 function formatDateTime(d) {
@@ -805,6 +856,66 @@ function formatValue(metric, val) {
 }
 function logout() {
   fetch('/api/auth/logout', { method: 'POST' }).then(() => window.location.href = '/');
+}
+
+/* ── Performance tab ───────────────────────────────────── */
+let perfLoaded = false;
+
+async function loadPerformance() {
+  if (perfLoaded) return;
+  perfLoaded = true;
+  const container = document.getElementById('perfContent');
+  container.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:20px 0">Loading…</div>';
+  try {
+    const data = await fetch('/api/intel/performance').then(r => r.json());
+    if (!data.success) throw new Error(data.error || 'Failed');
+    renderPerformance(data.regions || [], data.date);
+  } catch (err) {
+    document.getElementById('perfContent').innerHTML =
+      `<div style="color:var(--danger);padding:20px 0;font-size:13px">Error: ${escHtml(err.message)}</div>`;
+  }
+}
+
+function renderPerformance(regions, date) {
+  const container = document.getElementById('perfContent');
+  if (!regions.length) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">✓</div><h3>No performance flags</h3><p>No flagged stores for this date.</p></div>';
+    return;
+  }
+  let html = `<div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Flagged stores · ${formatDate(date)}</div>`;
+  for (const region of regions) {
+    html += `<div class="perf-section-header">${escHtml(region.region_coach)}</div>`;
+    html += `<table class="perf-table"><thead><tr>
+      <th>Area Coach</th><th>Stores</th><th>High</th><th>Total Flags</th>
+    </tr></thead><tbody>`;
+    region.areas.forEach((area, ai) => {
+      const rowId = `perf-ac-${region.region_coach.replace(/\s/g,'-')}-${ai}`;
+      html += `<tr class="perf-row-ac" id="${rowId}" onclick="togglePerfAC('${rowId}')">
+        <td><span class="perf-expand-icon">▶</span>${escHtml(area.area_coach)}</td>
+        <td>${area.store_count}</td>
+        <td>${area.high_count > 0 ? `<span style="color:var(--danger);font-weight:700">${area.high_count}</span>` : '—'}</td>
+        <td>${area.flag_count}</td>
+      </tr>
+      <tr class="perf-stores-row" id="${rowId}-stores"><td colspan="4">
+        <div class="perf-stores-inner"><ul class="perf-store-list">`;
+      for (const store of area.stores) {
+        html += `<li>
+          <span class="perf-store-name">${escHtml(store.store_name)} <span style="color:var(--text-muted);font-weight:400">#${store.store_id}</span></span>
+          <span class="perf-metric-chips">${store.flags.map(f => `<span class="perf-chip ${f.severity}" title="${f.days} day${f.days!==1?'s':''}">${escHtml(formatMetricType(f.metric_type))}</span>`).join('')}</span>
+        </li>`;
+      }
+      html += `</ul></div></td></tr>`;
+    });
+    html += `</tbody></table>`;
+  }
+  container.innerHTML = html;
+}
+
+function togglePerfAC(rowId) {
+  const row    = document.getElementById(rowId);
+  const stores = document.getElementById(rowId + '-stores');
+  const expanded = row.classList.toggle('expanded');
+  stores.classList.toggle('visible', expanded);
 }
 
 /* ── Close modal on overlay click ─────────────────────── */

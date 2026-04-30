@@ -108,6 +108,65 @@ router.get('/dashboard', async (req, res) => {
   }
 });
 
+// ── GET /api/intel/performance — Region → AC → Store drill-down ──────────────
+router.get('/performance', async (req, res) => {
+  try {
+    const user = req.session.user;
+    const date = req.query.date || (() => {
+      const d = new Date(); d.setDate(d.getDate() - 1);
+      return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    })();
+
+    const p = db.getPool();
+    if (!p) return res.json({ success: true, date, regions: [] });
+
+    const PERF_METRICS = ['CANCEL_UNMADE','PRODUCTION_TIME','CASH_VARIANCE',
+                          'CHANGE_DOWN','CHANGED_MILES','PAIDOUT','REFUNDS'];
+    let where = `metric_date = $1 AND status != 'archived'`;
+    const params = [date];
+    if (user.scope?.type === 'rdo')        { params.push(user.scope.rc_name);  where += ` AND region_coach = $${params.length}`; }
+    if (user.scope?.type === 'area_coach') { params.push(user.scope.ac_name);  where += ` AND area_coach = $${params.length}`; }
+    const metricIn = PERF_METRICS.map((_, i) => `$${params.length + i + 1}`).join(',');
+    params.push(...PERF_METRICS);
+
+    const { rows } = await p.query(`
+      SELECT region_coach, area_coach, store_id, store_name, metric_type,
+             value, severity, consecutive_days_out, status
+      FROM intel_flags
+      WHERE ${where} AND metric_type IN (${metricIn})
+      ORDER BY region_coach, area_coach, store_id, metric_type
+    `, params);
+
+    const regions = {};
+    for (const row of rows) {
+      const r = row.region_coach || 'Unknown';
+      const a = row.area_coach   || 'Unknown';
+      if (!regions[r]) regions[r] = { name: r, areas: {} };
+      if (!regions[r].areas[a]) regions[r].areas[a] = { name: a, stores: {} };
+      const s = row.store_id;
+      if (!regions[r].areas[a].stores[s]) regions[r].areas[a].stores[s] = { store_id: s, store_name: row.store_name, flags: [] };
+      regions[r].areas[a].stores[s].flags.push({ metric_type: row.metric_type, value: row.value,
+        severity: row.severity, days: row.consecutive_days_out, status: row.status });
+    }
+
+    const output = Object.values(regions).map(r => ({
+      region_coach: r.name,
+      areas: Object.values(r.areas).map(a => {
+        const stores = Object.values(a.stores);
+        return { area_coach: a.name, store_count: stores.length,
+          flag_count: stores.reduce((n, s) => n + s.flags.length, 0),
+          high_count: stores.reduce((n, s) => n + s.flags.filter(f => f.severity === 'high').length, 0),
+          stores };
+      })
+    }));
+
+    res.json({ success: true, date, regions: output });
+  } catch (err) {
+    console.error('[Intel] /performance error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/intel/flags — live flag query (filters by session user scope) ────
 router.get('/flags', async (req, res) => {
   try {
