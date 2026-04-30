@@ -776,12 +776,16 @@ async function getStoreSoftIndicators(store_id, days = 3) {
   return res.rows;
 }
 
-async function getIntelFlags({ metric_date, region_coach, area_coach, store_id, status } = {}) {
+async function getIntelFlags({ metric_date, region_coach, area_coach, area_coach_in, store_id, status } = {}) {
   const p = getPool(); if (!p) return [];
   let q = 'SELECT * FROM intel_flags WHERE 1=1';
   const params = [];
   if (metric_date) { params.push(metric_date); q += ` AND metric_date = $${params.length}`; }
-  if (region_coach) { params.push(region_coach); q += ` AND region_coach = $${params.length}`; }
+  if (region_coach) { params.push(region_coach); q += ` AND (region_coach = $${params.length} OR area_coach = $${params.length})`; }
+  if (area_coach_in && area_coach_in.length > 0) {
+    params.push(area_coach_in);
+    q += ` AND (area_coach = ANY($${params.length}::text[]) OR region_coach = ANY($${params.length}::text[]))`;
+  }
   if (area_coach) { params.push(area_coach); q += ` AND area_coach = $${params.length}`; }
   if (store_id) { params.push(store_id); q += ` AND store_id = $${params.length}`; }
   if (status) { params.push(status); q += ` AND status = $${params.length}`; }
