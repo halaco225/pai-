@@ -38,7 +38,7 @@ services:
     name: velocity-ods-pull
     env: node
     plan: starter
-    schedule: "0 10 * * *"
+    schedule: "0 9 * * *"
     buildCommand: npm install
     startCommand: node scripts/velocity-cron-pull.js
     envVars:
@@ -55,7 +55,7 @@ services:
   name: intel-dbs-pull
   env: node
   plan: starter
-  schedule: "0 10 * * *"
+  schedule: "0 9 * * *"
   buildCommand: npm install && npx playwright install chromium
   startCommand: node scripts/intel-cron.js
   envVars:
