@@ -826,3 +826,14 @@ async function getAcknowledgments({ flag_id, region_coach, area_coach } = {}) {
   const res = await p.query(q, params);
   return res.rows;
 }
+
+// ── Intel exports (added after initIntelDB was defined post-module.exports) ──
+Object.assign(module.exports, {
+  initIntelDB,
+  upsertStoreAssignment, getStoreAssignments,
+  insertIntelFlag, getConsecutiveDays, resolveRecoveredFlags, archiveOldRecoveringFlags,
+  upsertSurveyLog, getStoresWithNoRecentSurveys,
+  insertShoutout,
+  upsertSoftIndicator, getStoreSoftIndicators,
+  getIntelFlags, getIntelCache, upsertIntelCache, getAcknowledgments
+});
