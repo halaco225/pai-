@@ -58,6 +58,27 @@ router.get('/automation/debug-cache', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+
+// ── POST /api/intel/automation/regenerate-cache — re-run cache step only ─────
+router.post('/automation/regenerate-cache', async (req, res) => {
+  const token = req.headers['x-automation-token'] || req.query.token;
+  if (token !== process.env.INTEL_AUTOMATION_TOKEN) return res.status(401).json({ error: 'Unauthorized' });
+  const targetDate = req.body?.date || req.query.date || null;
+  res.json({ status: 'started', targetDate });
+  try {
+    const { generateIntelCache } = require('../services/intel-pipeline');
+    const date = targetDate || (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    })();
+    await generateIntelCache(date);
+    console.log(`[Intel] Cache regenerated for ${date}`);
+  } catch (err) {
+    console.error('[Intel] Cache regen error:', err.message);
+  }
+});
+
 // All routes below require login
 router.use(requireAuth);
 
