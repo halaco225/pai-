@@ -138,8 +138,14 @@ function parseDBS(filePath, targetDate) {
       if (!parsed) continue;
       const { store_id, store_name } = parsed;
 
+      // Always resolve RC and VP from USER_ROSTER lookup — DBS file grouping structure
+      // cannot be trusted (VPs appear as intermediate labels under other VPs, etc.)
+      const hier = AC_TO_HIERARCHY[currentArea] || {};
+      const resolvedRC = hier.rc || currentRegion;
+      const resolvedVP = hier.vp || currentVP;
+
       // Record assignment
-      assignments.push({ store_id, store_name, area_coach: currentArea, region_coach: currentRegion, vp: currentVP });
+      assignments.push({ store_id, store_name, area_coach: currentArea, region_coach: resolvedRC, vp: resolvedVP });
 
       if (currentSection === 'financial') {
         // ── Tier 1 Hard Flags ──────────────────────────────────────────────
@@ -150,8 +156,8 @@ function parseDBS(filePath, targetDate) {
         const refunds      = cellVal(row, S2.REFUNDS);
         const cancelUnmade = cellVal(row, S2.CANCEL_UNMADE);
 
-        const base = { store_id, store_name, area_coach: currentArea, region_coach: currentRegion,
-                       territory_vp: currentVP, metric_date: targetDate, source: 'DBS', tier: 1 };
+        const base = { store_id, store_name, area_coach: currentArea, region_coach: resolvedRC,
+                       territory_vp: resolvedVP, metric_date: targetDate, source: 'DBS', tier: 1 };
 
         if (changeDown != null && changeDown > 30) {
           storeFlags.push({ ...base, metric_type: 'CHANGE_DOWN', value: changeDown, target: 30, variance: changeDown - 30 });
@@ -222,6 +228,13 @@ async function processDBS(filePath, targetDate) {
   // Write assignments (authoritative hierarchy for all other parsers)
   for (const a of assignments) {
     await db.upsertStoreAssignment(a);
+  }
+
+  // Clear any existing DBS flags for this date before re-inserting (prevents stacking on re-runs)
+  const pool = db.getPool();
+  if (pool) {
+    await pool.query('DELETE FROM intel_flags WHERE metric_date = $1 AND source = $2', [targetDate, 'DBS']);
+    console.log(`[DBS] Cleared existing DBS flags for ${targetDate}`);
   }
 
   // Write Tier 1 flags with consecutive day logic
