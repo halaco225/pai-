@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Intel | P.AI</title>
+<link rel="stylesheet" href="/css/styles.css">
+<style>
+/* ── Intel-specific overrides ─────────────────────────────── */
+.intel-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 28px; gap: 16px;
+}
+.intel-header-left h1 {
+  font-size: 26px; font-weight: 900; letter-spacing: -0.5px; color: var(--text-primary);
+}
+.intel-header-left .intel-sub {
+  font-size: 12px; color: var(--text-muted); margin-top: 4px; letter-spacing: 0.5px;
+}
+.intel-date-badge {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 14px; text-align: right; flex-shrink: 0;
+}
+.intel-date-badge .date-val { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.intel-date-badge .date-lbl { font-size: 10px; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
+
+/* ── Tabs ────────────────────────────────────────────────── */
+.intel-tabs {
+  display: flex; gap: 4px; margin-bottom: 24px;
+  border-bottom: 1px solid var(--border); padding-bottom: 0;
+}
+.intel-tab {
+  padding: 10px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
+  color: var(--text-muted); border: none; background: none; border-bottom: 2px solid transparent;
+  margin-bottom: -1px; transition: all 0.15s; display: flex; align-items: center; gap: 6px;
+}
+.intel-tab:hover { color: var(--text-primary); }
+.intel-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.intel-tab .tab-badge {
+  background: var(--accent); color: #fff; border-radius: 10px;
+  padding: 1px 7px; font-size: 10px; font-weight: 700;
+}
+.intel-tab .tab-badge.medium { background: var(--warning); color: #000; }
+.intel-tab .tab-badge.low { background: var(--surface-3); color: var(--text-secondary); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ── Morning Briefing ────────────────────────────────────── */
+.narrative-card {
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+  border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  border-radius: 12px; padding: 28px 32px; margin-bottom: 24px; position: relative;
+}
+.narrative-card::before {
+  content: '★ MORNING BRIEF'; position: absolute; top: 12px; right: 16px;
+  font-size: 9px; letter-spacing: 2px; color: var(--accent); font-weight: 700;
+}
+.narrative-text {
+  font-size: 16px; line-height: 1.8; color: var(--text-primary);
+  font-weight: 400;
+}
+.narrative-footer {
+  margin-top: 14px; font-size: 11px; color: var(--text-muted);
+  display: flex; align-items: center; gap: 6px;
+}
+
+.stat-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px;
+}
+.stat-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 20px; position: relative; overflow: hidden;
+}
+.stat-card::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+}
+.stat-card.high::after { background: var(--danger); }
+.stat-card.medium::after { background: var(--warning); }
+.stat-card.info::after { background: #3B82F6; }
+.stat-card.success::after { background: var(--success); }
+.stat-card .stat-val {
+  font-size: 36px; font-weight: 900; letter-spacing: -1px; line-height: 1;
+  margin-bottom: 6px;
+}
+.stat-card.high .stat-val { color: var(--danger); }
+.stat-card.medium .stat-val { color: var(--warning); }
+.stat-card.info .stat-val { color: #3B82F6; }
+.stat-card.success .stat-val { color: var(--success); }
+.stat-card .stat-lbl {
+  font-size: 11px; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase;
+}
+
+.quick-flags-section h3 {
+  font-size: 12px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: 12px;
+}
+
+/* ── Flag Cards ──────────────────────────────────────────── */
+.flag-filters {
+  display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; align-items: center;
+}
+.filter-btn {
+  background: var(--surface); border: 1px solid var(--border); color: var(--text-secondary);
+  border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; letter-spacing: 0.3px;
+}
+.filter-btn:hover, .filter-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+.filter-btn.active-high { border-color: var(--danger); color: var(--danger); background: rgba(239,68,68,0.1); }
+.filter-btn.active-medium { border-color: var(--warning); color: var(--warning); background: rgba(245,158,11,0.1); }
+
+.flags-list { display: flex; flex-direction: column; gap: 10px; }
+.flag-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 20px; display: grid; grid-template-columns: auto 1fr auto; gap: 16px;
+  align-items: start; transition: all 0.15s;
+}
+.flag-card:hover { border-color: var(--border-light); }
+.flag-card.addressed { opacity: 0.55; }
+.severity-pill {
+  padding: 4px 10px; border-radius: 20px; font-size: 10px; font-weight: 700;
+  letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; align-self: flex-start;
+}
+.sev-high { background: rgba(239,68,68,0.15); color: #F87171; border: 1px solid rgba(239,68,68,0.3); }
+.sev-medium { background: rgba(245,158,11,0.15); color: #FCD34D; border: 1px solid rgba(245,158,11,0.3); }
+.sev-low { background: rgba(59,130,246,0.1); color: #60A5FA; border: 1px solid rgba(59,130,246,0.2); }
+.flag-body .flag-store {
+  font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;
+}
+.flag-body .flag-metric {
+  font-size: 13px; color: var(--text-secondary); margin-bottom: 6px;
+}
+.flag-meta {
+  display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted);
+}
+.flag-meta span { display: flex; align-items: center; gap: 4px; }
+.flag-actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.btn-ack {
+  background: var(--accent); color: #fff; border: none; border-radius: 6px;
+  padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer;
+  transition: all 0.15s; white-space: nowrap; letter-spacing: 0.3px;
+}
+.btn-ack:hover { background: var(--accent-hover); }
+.addressed-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(16,185,129,0.1); color: var(--success);
+  border: 1px solid rgba(16,185,129,0.2); border-radius: 6px;
+  padding: 5px 10px; font-size: 11px; font-weight: 600;
+}
+.days-out-badge {
+  background: var(--surface-3); border: 1px solid var(--border); border-radius: 4px;
+  padding: 2px 8px; font-size: 11px; font-weight: 600; color: var(--warning);
+}
+.days-out-badge.days-1 { color: var(--text-secondary); }
+.days-out-badge.days-hi { color: var(--danger); }
+
+/* ── Empty / Loading states ──────────────────────────────── */
+.empty-state {
+  text-align: center; padding: 60px 20px;
+  color: var(--text-muted); font-size: 14px;
+}
+.empty-state .empty-icon { font-size: 40px; margin-bottom: 14px; opacity: 0.4; }
+.empty-state h3 { font-size: 16px; color: var(--text-secondary); margin-bottom: 6px; }
+.loading-shimmer {
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-2) 50%, var(--surface) 75%);
+  background-size: 200% 100%; animation: shimmer 1.4s infinite;
+  border-radius: 8px; height: 16px;
+}
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+
+/* ── Acknowledge Modal ───────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  display: none; align-items: center; justify-content: center; z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border-light);
+  border-radius: 14px; padding: 32px; width: 100%; max-width: 520px;
+  position: relative;
+}
+.modal h3 { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+.modal .modal-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+.modal label { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 6px; }
+.modal textarea {
+  width: 100%; background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text-primary); font-family: var(--font);
+  font-size: 13px; padding: 12px; resize: vertical; min-height: 100px;
+  transition: border-color 0.15s;
+}
+.modal textarea:focus { outline: none; border-color: var(--accent); }
+.modal-char-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; margin-bottom: 20px; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.btn-cancel {
+  background: var(--surface-3); border: 1px solid var(--border); color: var(--text-secondary);
+  border-radius: 6px; padding: 9px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.btn-cancel:hover { border-color: var(--border-light); color: var(--text-primary); }
+.btn-submit {
+  background: var(--accent); color: #fff; border: none; border-radius: 6px;
+  padding: 9px 20px; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.btn-submit:hover { background: var(--accent-hover); }
+.btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Accountability ──────────────────────────────────────── */
+.acct-table-wrap { overflow-x: auto; }
+.acct-table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+}
+.acct-table th {
+  background: var(--surface-2); color: var(--text-muted);
+  padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border);
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; white-space: nowrap;
+}
+.acct-table td {
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+  color: var(--text-secondary); vertical-align: top;
+}
+.acct-table tr:last-child td { border-bottom: none; }
+.acct-table tr:hover td { background: var(--surface-2); }
+.acct-table .action-text {
+  color: var(--text-primary); font-size: 12px; max-width: 280px; line-height: 1.5;
+}
+
+/* ── Shoutouts ───────────────────────────────────────────── */
+.shoutouts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.shoutout-card {
+  background: var(--surface); border: 1px solid var(--border); border-top: 2px solid var(--success);
+  border-radius: 10px; padding: 18px;
+}
+.shoutout-store { font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
+.shoutout-summary { font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 10px; }
+.shoutout-meta { font-size: 11px; color: var(--text-muted); }
+
+/* ── Weekly Digest ───────────────────────────────────────── */
+.digest-wrap {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 24px; position: relative;
+}
+.digest-copy-btn {
+  position: absolute; top: 16px; right: 16px;
+  background: var(--surface-3); border: 1px solid var(--border);
+  color: var(--text-secondary); border-radius: 6px; padding: 6px 12px;
+  font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+}
+.digest-copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+.digest-text {
+  font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.8;
+  color: var(--text-secondary); white-space: pre-wrap; word-break: break-word;
+}
+
+/* ── Unaddressed alert ───────────────────────────────────── */
+.alert-banner {
+  background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25);
+  border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;
+  font-size: 13px; color: #F87171; display: flex; align-items: center; gap: 8px;
+}
+</style>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ── Sidebar ─────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-text">P<span>.AI</span></div>
+      <div class="logo-sub">Ayvaz Pizza LLC</div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Navigation</div>
+      <a href="/dashboard" class="nav-item">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <div class="nav-section-label">Modules</div>
+      <a href="/pl-analyzer" class="nav-item">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        P&amp;L Analyzer
+      </a>
+      <a href="/intel" class="nav-item active">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        Daily Intel
+      </a>
+      <a href="/weekly-recap" class="nav-item">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        Weekly Recap
+      </a>
+      <a href="/velocity" class="nav-item">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
+        Velocity
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="user-avatar" id="userInitial">?</div>
+        <div class="user-info">
+          <div class="user-name" id="userName">Loading…</div>
+          <div class="user-role" id="userRole"></div>
+        </div>
+        <button class="btn-logout" onclick="logout()" title="Sign out">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main ────────────────────────────────────────────── -->
+  <main class="main-content">
+
+    <!-- Header -->
+    <div class="intel-header">
+      <div class="intel-header-left">
+        <h1>Daily Intel</h1>
+        <div class="intel-sub" id="intelSub">Loading intelligence…</div>
+      </div>
+      <div class="intel-date-badge">
+        <div class="date-val" id="headerDate">—</div>
+        <div class="date-lbl">Report Date</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="intel-tabs">
+      <button class="intel-tab active" onclick="switchTab('briefing', this)">
+        ☀ Morning Brief
+      </button>
+      <button class="intel-tab" onclick="switchTab('flags', this)" id="tabFlags">
+        ⚑ Flags
+        <span class="tab-badge" id="flagCountBadge" style="display:none">0</span>
+      </button>
+      <button class="intel-tab" onclick="switchTab('accountability', this)" id="tabAcct" style="display:none">
+        ✓ Accountability
+      </button>
+      <button class="intel-tab" onclick="switchTab('shoutouts', this)" id="tabShoutouts">
+        ★ Shoutouts
+      </button>
+      <button class="intel-tab" onclick="switchTab('digest', this)">
+        ☰ Weekly Digest
+      </button>
+    </div>
+
+    <!-- ── PANEL: Morning Briefing ───────────────────────── -->
+    <div class="tab-panel active" id="panel-briefing">
+      <!-- Narrative -->
+      <div class="narrative-card" id="narrativeCard">
+        <div class="narrative-text" id="narrativeText">
+          <div class="loading-shimmer" style="height:18px;width:90%;margin-bottom:10px"></div>
+          <div class="loading-shimmer" style="height:18px;width:75%"></div>
+        </div>
+        <div class="narrative-footer" id="narrativeFooter" style="display:none">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Generated at 5:00 AM · <span id="narrativeDate"></span>
+        </div>
+      </div>
+
+      <!-- Stats row -->
+      <div class="stat-grid" id="statGrid">
+        <div class="stat-card high">
+          <div class="stat-val" id="statHigh">—</div>
+          <div class="stat-lbl">High Severity Flags</div>
+        </div>
+        <div class="stat-card medium">
+          <div class="stat-val" id="statMedium">—</div>
+          <div class="stat-lbl">Medium Flags</div>
+        </div>
+        <div class="stat-card info">
+          <div class="stat-val" id="statStores">—</div>
+          <div class="stat-lbl">Stores Flagged</div>
+        </div>
+        <div class="stat-card success">
+          <div class="stat-val" id="statShoutouts">—</div>
+          <div class="stat-lbl">Shoutouts Today</div>
+        </div>
+      </div>
+
+      <!-- Top Flags preview -->
+      <div class="quick-flags-section">
+        <h3>Top Priority Flags</h3>
+        <div class="flags-list" id="quickFlagsList">
+          <div style="color:var(--text-muted);font-size:13px;padding:20px 0">Loading flags…</div>
+        </div>
+        <div id="viewAllFlagsBtn" style="display:none;margin-top:14px">
+          <button class="filter-btn" onclick="switchTab('flags', document.querySelector('[onclick*=flags]'))">
+            View All Flags →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PANEL: Full Flags ─────────────────────────────── -->
+    <div class="tab-panel" id="panel-flags">
+      <div class="flag-filters">
+        <button class="filter-btn active" onclick="filterFlags('all', this)">All</button>
+        <button class="filter-btn" onclick="filterFlags('high', this)">🔴 High</button>
+        <button class="filter-btn" onclick="filterFlags('medium', this)">🟡 Medium</button>
+        <button class="filter-btn" onclick="filterFlags('low', this)">🔵 Low</button>
+        <button class="filter-btn" onclick="filterFlags('open', this)">Open</button>
+        <button class="filter-btn" onclick="filterFlags('addressed', this)">Addressed</button>
+      </div>
+      <div class="flags-list" id="fullFlagsList">
+        <div style="color:var(--text-muted);font-size:13px;padding:20px 0">Loading…</div>
+      </div>
+    </div>
+
+    <!-- ── PANEL: Accountability ─────────────────────────── -->
+    <div class="tab-panel" id="panel-accountability">
+      <div id="unaddressedAlert" class="alert-banner" style="display:none">
+        ⚠ <span id="unaddressedText"></span>
+      </div>
+      <div class="acct-table-wrap">
+        <table class="acct-table">
+          <thead>
+            <tr>
+              <th>Store</th>
+              <th>Flag</th>
+              <th>Severity</th>
+              <th>Acknowledged By</th>
+              <th>Action Taken</th>
+              <th>When</th>
+            </tr>
+          </thead>
+          <tbody id="acctTableBody">
+            <tr><td colspan="6" style="color:var(--text-muted);padding:30px;text-align:center">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── PANEL: Shoutouts ──────────────────────────────── -->
+    <div class="tab-panel" id="panel-shoutouts">
+      <div class="shoutouts-grid" id="shoutoutsGrid">
+        <div style="color:var(--text-muted);font-size:13px;padding:20px 0">Loading…</div>
+      </div>
+    </div>
+
+    <!-- ── PANEL: Weekly Digest ──────────────────────────── -->
+    <div class="tab-panel" id="panel-digest">
+      <div class="digest-wrap">
+        <button class="digest-copy-btn" onclick="copyDigest()">Copy</button>
+        <pre class="digest-text" id="digestText">Generating digest…</pre>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── Acknowledge Modal ────────────────────────────────── -->
+<div class="modal-overlay" id="ackModal">
+  <div class="modal">
+    <h3>Acknowledge Flag</h3>
+    <div class="modal-sub" id="ackModalSub">Describe what action you took or plan to take.</div>
+    <label>Action Taken</label>
+    <textarea id="ackActionInput" placeholder="Describe specifically what you did or told the store manager (min 20 characters)…" oninput="updateAckBtn()"></textarea>
+    <div class="modal-char-hint" id="ackCharHint">0 / 20 min characters</div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeAckModal()">Cancel</button>
+      <button class="btn-submit" id="ackSubmitBtn" disabled onclick="submitAck()">Submit</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── State ─────────────────────────────────────────────── */
+let currentUser = null;
+let allFlags    = [];
+let currentFlagId = null;
+let currentFilter = 'all';
+
+/* ── Init ──────────────────────────────────────────────── */
+async function init() {
+  try {
+    const me = await fetch('/api/auth/me').then(r => r.json());
+    if (!me.authenticated) { window.location.href = '/'; return; }
+    currentUser = me.user;
+
+    document.getElementById('userInitial').textContent = (currentUser.name || currentUser.username || '?')[0].toUpperCase();
+    document.getElementById('userName').textContent    = currentUser.name || currentUser.username;
+    document.getElementById('userRole').textContent    = formatRole(currentUser.role);
+
+    // Show Accountability tab for RDO/VP
+    if (currentUser.role === 'rdo' || currentUser.role === 'vp') {
+      document.getElementById('tabAcct').style.display = '';
+    }
+
+    // Load all data in parallel
+    const [dashboard, flags, shoutouts] = await Promise.all([
+      fetch('/api/intel/dashboard').then(r => r.json()),
+      fetch('/api/intel/flags').then(r => r.json()),
+      fetch('/api/intel/shoutouts').then(r => r.json())
+    ]);
+
+    renderBriefing(dashboard, flags, shoutouts);
+    renderFlags(flags.flags || []);
+
+    if (currentUser.role === 'rdo' || currentUser.role === 'vp') {
+      const accts = await fetch('/api/intel/accountability').then(r => r.json());
+      renderAccountability(accts, flags.flags || []);
+    }
+
+    renderShoutouts(shoutouts.shoutouts || []);
+    loadDigest();
+
+  } catch (err) {
+    document.getElementById('narrativeText').textContent = 'Error loading intel: ' + err.message;
+  }
+}
+
+/* ── Briefing ──────────────────────────────────────────── */
+function renderBriefing(dashboard, flagsData, shoutoutsData) {
+  const flags = flagsData.flags || [];
+  const shoutouts = shoutoutsData.shoutouts || [];
+
+  if (dashboard.status === 'no_data' || !dashboard.narrative) {
+    document.getElementById('narrativeText').innerHTML =
+      `<span style="color:var(--text-muted)">${dashboard.message || 'Intel not yet generated. Check back after 5 AM.'}</span>`;
+    document.getElementById('intelSub').textContent = 'Automated batch runs daily at 5:00 AM EST';
+  } else {
+    document.getElementById('narrativeText').textContent = dashboard.narrative;
+    document.getElementById('narrativeFooter').style.display = 'flex';
+    document.getElementById('narrativeDate').textContent = formatDate(dashboard.metric_date || dashboard.date);
+    document.getElementById('headerDate').textContent = formatDate(dashboard.metric_date || dashboard.date);
+    document.getElementById('intelSub').textContent = `${currentUser.name || currentUser.username}'s intel for ${formatDate(dashboard.metric_date || dashboard.date)}`;
+  }
+
+  const high   = flags.filter(f => f.severity === 'high' && f.status !== 'archived').length;
+  const medium = flags.filter(f => f.severity === 'medium' && f.status !== 'archived').length;
+  const stores = new Set(flags.filter(f => f.status !== 'archived').map(f => f.store_id)).size;
+
+  document.getElementById('statHigh').textContent      = high;
+  document.getElementById('statMedium').textContent    = medium;
+  document.getElementById('statStores').textContent    = stores;
+  document.getElementById('statShoutouts').textContent = shoutouts.length;
+
+  // Update flag tab badge
+  const openCount = flags.filter(f => f.status !== 'addressed' && f.status !== 'archived').length;
+  if (openCount > 0) {
+    const badge = document.getElementById('flagCountBadge');
+    badge.textContent = openCount;
+    badge.style.display = '';
+    if (high > 0) badge.className = 'tab-badge';
+    else badge.className = 'tab-badge medium';
+  }
+
+  // Quick flags preview (top 5 high severity open)
+  const topFlags = flags
+    .filter(f => f.status !== 'archived' && f.status !== 'addressed')
+    .sort((a, b) => severityOrder(b.severity) - severityOrder(a.severity))
+    .slice(0, 5);
+
+  if (topFlags.length === 0) {
+    document.getElementById('quickFlagsList').innerHTML =
+      '<div class="empty-state"><div class="empty-icon">✓</div><h3>All clear</h3><p>No open flags for your scope today.</p></div>';
+  } else {
+    document.getElementById('quickFlagsList').innerHTML = topFlags.map(f => buildFlagCard(f, true)).join('');
+    if (flags.length > 5) {
+      document.getElementById('viewAllFlagsBtn').style.display = '';
+    }
+  }
+}
+
+/* ── Flags ─────────────────────────────────────────────── */
+function renderFlags(flags) {
+  allFlags = flags;
+  applyFlagFilter(currentFilter);
+}
+
+function filterFlags(filter, btn) {
+  currentFilter = filter;
+  document.querySelectorAll('.flag-filters .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFlagFilter(filter);
+}
+
+function applyFlagFilter(filter) {
+  let filtered = allFlags;
+  if (filter === 'high')      filtered = allFlags.filter(f => f.severity === 'high');
+  else if (filter === 'medium')   filtered = allFlags.filter(f => f.severity === 'medium');
+  else if (filter === 'low')      filtered = allFlags.filter(f => f.severity === 'low');
+  else if (filter === 'open')     filtered = allFlags.filter(f => f.status !== 'addressed' && f.status !== 'archived');
+  else if (filter === 'addressed') filtered = allFlags.filter(f => f.status === 'addressed');
+
+  const container = document.getElementById('fullFlagsList');
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">✓</div><h3>No flags match this filter</h3></div>';
+    return;
+  }
+  filtered.sort((a, b) => severityOrder(b.severity) - severityOrder(a.severity));
+  container.innerHTML = filtered.map(f => buildFlagCard(f, false)).join('');
+}
+
+function buildFlagCard(f, compact) {
+  const isAddressed = f.status === 'addressed';
+  const days = f.consecutive_days_out || 1;
+  const daysCls = days >= 3 ? 'days-hi' : days === 1 ? 'days-1' : '';
+  const canAck = currentUser.role === 'area_coach' && !isAddressed;
+
+  return `
+    <div class="flag-card ${isAddressed ? 'addressed' : ''}">
+      <div>
+        <span class="severity-pill sev-${f.severity}">${f.severity}</span>
+      </div>
+      <div class="flag-body">
+        <div class="flag-store">${f.store_name || f.store_id} <span style="color:var(--text-muted);font-weight:400;font-size:12px">#${f.store_id}</span></div>
+        <div class="flag-metric">${formatMetricType(f.metric_type)}${f.value != null ? ` — ${formatValue(f.metric_type, f.value)}` : ''}</div>
+        <div class="flag-meta">
+          ${f.area_coach ? `<span>📍 ${f.area_coach}</span>` : ''}
+          ${f.region_coach ? `<span>🏢 ${f.region_coach}</span>` : ''}
+          ${f.metric_date ? `<span>📅 ${formatDate(f.metric_date)}</span>` : ''}
+          <span><span class="days-out-badge ${daysCls}">${days} day${days !== 1 ? 's' : ''}</span></span>
+        </div>
+      </div>
+      <div class="flag-actions">
+        ${isAddressed
+          ? '<span class="addressed-badge">✓ Addressed</span>'
+          : canAck
+            ? `<button class="btn-ack" onclick="openAckModal(${f.id}, '${escHtml(f.store_name || f.store_id)}', '${escHtml(f.metric_type)}')">Acknowledge</button>`
+            : ''
+        }
+      </div>
+    </div>`;
+}
+
+/* ── Accountability ────────────────────────────────────── */
+function renderAccountability(accts, flags) {
+  const acks   = accts.acknowledgments || [];
+  const open   = flags.filter(f => f.status !== 'addressed' && f.status !== 'archived');
+
+  if (open.length > 0) {
+    document.getElementById('unaddressedAlert').style.display = 'flex';
+    document.getElementById('unaddressedText').textContent =
+      `${open.length} flag${open.length !== 1 ? 's' : ''} in your scope have not been acknowledged yet.`;
+  }
+
+  const tbody = document.getElementById('acctTableBody');
+  if (acks.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state" style="padding:40px;text-align:center;color:var(--text-muted)">No acknowledgments yet this period.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = acks.map(a => `
+    <tr>
+      <td style="font-weight:600;color:var(--text-primary)">${a.store_name || a.store_id || '—'}</td>
+      <td style="color:var(--text-secondary)">${formatMetricType(a.metric_type || '—')}</td>
+      <td><span class="severity-pill sev-${a.severity || 'medium'}">${a.severity || '—'}</span></td>
+      <td style="color:var(--text-primary)">${a.acknowledged_by}</td>
+      <td class="action-text">${escHtml(a.action_taken || '')}</td>
+      <td style="color:var(--text-muted);white-space:nowrap">${formatDateTime(a.acknowledged_at)}</td>
+    </tr>
+  `).join('');
+}
+
+/* ── Shoutouts ─────────────────────────────────────────── */
+function renderShoutouts(shoutouts) {
+  const container = document.getElementById('shoutoutsGrid');
+  if (shoutouts.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">★</div><h3>No shoutouts yet today</h3><p>Positive guest comments will appear here after the 5 AM batch runs.</p></div>';
+    return;
+  }
+  container.innerHTML = shoutouts.map(s => `
+    <div class="shoutout-card">
+      <div class="shoutout-store">★ ${s.store_name || s.store_id}</div>
+      <div class="shoutout-summary">${escHtml(s.summary || s.comment_text || '')}</div>
+      <div class="shoutout-meta">${s.area_coach ? s.area_coach + ' · ' : ''}${formatDate(s.shoutout_date || s.report_date)}</div>
+    </div>
+  `).join('');
+}
+
+/* ── Digest ────────────────────────────────────────────── */
+async function loadDigest() {
+  try {
+    const data = await fetch('/api/intel/weekly-digest').then(r => r.json());
+    document.getElementById('digestText').textContent = data.digest || 'No digest available yet.';
+  } catch (e) {
+    document.getElementById('digestText').textContent = 'Error loading digest.';
+  }
+}
+
+function copyDigest() {
+  const text = document.getElementById('digestText').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('.digest-copy-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 2000);
+  });
+}
+
+/* ── Acknowledge Modal ─────────────────────────────────── */
+function openAckModal(flagId, storeName, metricType) {
+  currentFlagId = flagId;
+  document.getElementById('ackModalSub').textContent = `${storeName} — ${formatMetricType(metricType)}`;
+  document.getElementById('ackActionInput').value = '';
+  document.getElementById('ackCharHint').textContent = '0 / 20 min characters';
+  document.getElementById('ackSubmitBtn').disabled = true;
+  document.getElementById('ackModal').classList.add('open');
+  setTimeout(() => document.getElementById('ackActionInput').focus(), 100);
+}
+
+function closeAckModal() {
+  document.getElementById('ackModal').classList.remove('open');
+  currentFlagId = null;
+}
+
+function updateAckBtn() {
+  const val = document.getElementById('ackActionInput').value.trim();
+  document.getElementById('ackCharHint').textContent = `${val.length} / 20 min characters`;
+  document.getElementById('ackSubmitBtn').disabled = val.length < 20;
+}
+
+async function submitAck() {
+  const action = document.getElementById('ackActionInput').value.trim();
+  if (action.length < 20 || !currentFlagId) return;
+
+  const btn = document.getElementById('ackSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  try {
+    const res = await fetch('/api/intel/acknowledge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ flag_id: currentFlagId, action_taken: action })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+
+    // Update flag in local state
+    const f = allFlags.find(f => f.id === currentFlagId);
+    if (f) f.status = 'addressed';
+
+    closeAckModal();
+    applyFlagFilter(currentFilter);
+
+    // Update quick flags on briefing
+    const quickCard = document.querySelector(`[data-flag-id="${currentFlagId}"]`);
+    if (quickCard) quickCard.closest('.flag-card').classList.add('addressed');
+
+    // Update badge count
+    const open = allFlags.filter(f => f.status !== 'addressed' && f.status !== 'archived').length;
+    const badge = document.getElementById('flagCountBadge');
+    if (open > 0) badge.textContent = open;
+    else badge.style.display = 'none';
+
+  } catch (err) {
+    alert('Error: ' + err.message);
+    btn.disabled = false;
+    btn.textContent = 'Submit';
+  }
+}
+
+/* ── Tab switching ─────────────────────────────────────── */
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.intel-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-' + tab).classList.add('active');
+  btn.classList.add('active');
+}
+
+/* ── Helpers ───────────────────────────────────────────── */
+function formatRole(role) {
+  const map = { rdo: 'RDO / Region Coach', area_coach: 'Area Coach', vp: 'VP' };
+  return map[role] || role;
+}
+function severityOrder(s) { return s === 'high' ? 3 : s === 'medium' ? 2 : 1; }
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function formatDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d + 'T12:00:00');
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function formatDateTime(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
+    dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+function formatMetricType(t) {
+  const map = {
+    CHANGE_DOWN: 'Change Down', CHANGED_MILES: 'Changed Miles', PAIDOUT: 'Paid Out',
+    CASH_VARIANCE: 'Cash Variance', REFUNDS: 'Refunds', CANCEL_UNMADE: 'Cancel/Unmade',
+    PRODUCTION_TIME: 'Production Time', LABOR_NOT_ADJUSTED: 'Labor Not Adjusted',
+    LABOR_OVER_BUDGET: 'Labor Over Budget', LABOR_UNDER_BUDGET: 'Labor Under Budget',
+    OT_OVER_SCHEDULED: 'OT Over Scheduled', OT_OVER_RUN: 'OT Over Run',
+    DOUBLE_TIME: 'Double Time', FORGOT_CLOCKOUT: 'Forgot Clock Out',
+    CLOCKOUT_REMINDER: 'Clock Out Reminder', GUEST_COMPLAINT: 'Guest Complaint',
+    PUSH_SURVEYS: 'Push Surveys Needed', ROUTINE_MISSED: 'Routine Missed',
+    ROUTINE_LATE: 'Routine Late', PERFORMANCE_TREND: 'Performance Trend',
+  };
+  return map[t] || t;
+}
+function formatValue(metric, val) {
+  if (val == null) return '';
+  if (['CHANGE_DOWN','PAIDOUT','CASH_VARIANCE','REFUNDS','CANCEL_UNMADE','LABOR_OVER_BUDGET','LABOR_UNDER_BUDGET'].includes(metric)) {
+    return '$' + Math.abs(Number(val)).toFixed(2);
+  }
+  if (['OT_OVER_SCHEDULED','OT_OVER_RUN','LABOR_NOT_ADJUSTED'].includes(metric)) {
+    return Number(val).toFixed(1) + ' hrs';
+  }
+  if (['PRODUCTION_TIME'].includes(metric)) {
+    return Number(val).toFixed(1) + ' min';
+  }
+  return val;
+}
+function logout() {
+  fetch('/api/auth/logout', { method: 'POST' }).then(() => window.location.href = '/');
+}
+
+/* ── Close modal on overlay click ─────────────────────── */
+document.getElementById('ackModal').addEventListener('click', function(e) {
+  if (e.target === this) closeAckModal();
+});
+
+init();
+</script>
+</body>
+</html>
