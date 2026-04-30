@@ -117,7 +117,13 @@ router.get('/flags', async (req, res) => {
 
     let flags = [];
     if (user.role === 'rdo') {
-      flags = await db.getIntelFlags({ metric_date: date, region_coach: user.scope?.rc_name || user.name, status: statusFilter });
+      const areaCoaches = user.scope?.area_coaches || [];
+      flags = await db.getIntelFlags({
+        metric_date: date,
+        area_coach_in: areaCoaches.length > 0 ? areaCoaches : undefined,
+        region_coach: areaCoaches.length === 0 ? (user.scope?.rc_name || user.name) : undefined,
+        status: statusFilter
+      });
     } else if (user.role === 'area_coach') {
       flags = await db.getIntelFlags({ metric_date: date, area_coach: user.scope?.ac_name || user.name, status: statusFilter });
     } else if (user.role === 'vp') {
