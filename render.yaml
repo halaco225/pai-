@@ -35,6 +35,8 @@ services:
         generateValue: true
       - key: INTEL_AUTOMATION_TOKEN
         value: PAi-Intel-2025
+      - key: INTEL_REGEN_TOKEN
+        value: PAi-Intel-2025
       - key: HUTBOT_USER
         sync: false
       - key: HUTBOT_PASSWORD
