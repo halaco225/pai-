@@ -189,7 +189,6 @@
       <div class="view-tabs" style="margin:4px 0 0">
         <div class="tab active" data-view="wtd" onclick="switchView('wtd')">WTD</div>
         <div class="tab" data-view="ptd" onclick="switchView('ptd')">PTD</div>
-        <div class="tab" data-view="day" onclick="switchView('day')">Daily</div>
         <div class="tab" data-view="trend" onclick="switchView('trend')">Trend</div>
         <div class="tab" data-view="dow" onclick="switchView('dow')">Day Pattern</div>
       </div>
@@ -459,9 +458,10 @@ async function loadWTD() {
   try {
     const r = await api(`/api/velocity/wtd?week=${weekKey}`);
     state.wtdData = r;
+    state.selectedDay = null;
+    state.view = 'wtd';
     renderDayPills(r.days || []);
-    renderScorecards(r.stores || []);
-    renderTable(r.stores || []);
+    applyFilters();
     setStatus(`${r.storeCount} stores · ${r.periodWeek} ${r.dateRange}`, 'ok');
   } catch(e) { setStatus('Error: ' + e.message, 'err'); }
 }
@@ -471,8 +471,7 @@ async function loadDay(dateStr) {
   try {
     const r = await api(`/api/velocity/day?date=${dateStr}`);
     state.dayData = r;
-    renderScorecards(r.stores || [], true);
-    renderTableDay(r.stores || []);
+    applyFilters();
     setStatus(`${r.storeCount} stores reporting · ${formatDate(dateStr)}`, 'ok');
   } catch(e) { setStatus('Error: ' + e.message, 'err'); }
 }
@@ -1213,15 +1212,12 @@ function switchView(view) {
   } else if (isDOW) {
     loadDOW();
   } else if (view === 'wtd' && state.wtdData) {
-    // Restore WTD table header
     const ths = document.querySelectorAll('#tableWrap table thead tr th');
     if (ths[3]) ths[3].innerHTML = 'Avg IST ↕';
-    renderTable(state.wtdData.stores || []);
-    renderScorecards(state.wtdData.stores || []);
-  } else if (view === 'day' && state.wtdData?.days?.length) {
-    const ths = document.querySelectorAll('#tableWrap table thead tr th');
-    if (ths[3]) ths[3].innerHTML = 'Avg IST ↕';
-    selectDay(state.wtdData.days[state.wtdData.days.length - 1]);
+    state.selectedDay = null;
+    // Reset day pills — make WTD Avg active
+    document.querySelectorAll('.day-pill').forEach(p => p.classList.toggle('active', !p.dataset.date));
+    applyFilters();
   }
 }
 
@@ -1253,7 +1249,7 @@ function renderDayPills(days) {
   const wtdPill = document.createElement('div');
   wtdPill.className = 'day-pill ' + (state.view === 'wtd' ? 'active' : '');
   wtdPill.textContent = 'WTD Avg';
-  wtdPill.onclick = () => { state.selectedDay = null; state.view = 'wtd'; document.querySelectorAll('.day-pill').forEach(p => p.classList.remove('active')); wtdPill.classList.add('active'); renderTable(state.wtdData?.stores || []); renderScorecards(state.wtdData?.stores || []); };
+  wtdPill.onclick = () => { state.selectedDay = null; state.view = 'wtd'; document.querySelectorAll('.day-pill').forEach(p => p.classList.remove('active')); wtdPill.classList.add('active'); applyFilters(); };
   container.appendChild(wtdPill);
 
   days.forEach(d => {
