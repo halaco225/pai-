@@ -174,16 +174,40 @@ async function generateIntelCache(targetDate) {
     // Get flags in this user's scope
     let flags = [];
     if (role === 'rdo') {
-      flags = await db.getIntelFlags({ metric_date: targetDate, region_coach: scope?.rc_name || name });
+      // Query by region_coach name OR area_coach IN scope list (handles hierarchy detection mismatches)
+      const p = db.getPool();
+      if (p) {
+        const areaCoaches = scope?.area_coaches || [];
+        const res = await p.query(
+          `SELECT * FROM intel_flags WHERE metric_date=$1
+           AND (region_coach=$2 OR area_coach = ANY($3::text[]))
+           ORDER BY severity DESC, consecutive_days_out DESC`,
+          [targetDate, scope?.rc_name || name, areaCoaches]
+        );
+        flags = res.rows;
+      }
     } else if (role === 'area_coach') {
-      flags = await db.getIntelFlags({ metric_date: targetDate, area_coach: scope?.ac_name || name });
-    } else if (role === 'vp') {
-      // VP sees all — get flags where territory_vp matches
+      const acName = scope?.ac_name || name;
       const p = db.getPool();
       if (p) {
         const res = await p.query(
-          `SELECT * FROM intel_flags WHERE metric_date=$1 AND territory_vp=$2 ORDER BY severity DESC, consecutive_days_out DESC`,
-          [targetDate, scope?.vp_name || name]
+          `SELECT * FROM intel_flags WHERE metric_date=$1
+           AND (area_coach=$2 OR region_coach=$2)
+           ORDER BY severity DESC, consecutive_days_out DESC`,
+          [targetDate, acName]
+        );
+        flags = res.rows;
+      }
+    } else if (role === 'vp') {
+      // VP sees all — get flags where territory_vp matches OR region_coach is one of their RDOs
+      const p = db.getPool();
+      if (p) {
+        const rdoNames = scope?.region_coaches || [];
+        const res = await p.query(
+          `SELECT * FROM intel_flags WHERE metric_date=$1
+           AND (territory_vp=$2 OR region_coach = ANY($3::text[]))
+           ORDER BY severity DESC, consecutive_days_out DESC`,
+          [targetDate, scope?.vp_name || name, rdoNames]
         );
         flags = res.rows;
       }
