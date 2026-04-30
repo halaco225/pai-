@@ -48,7 +48,8 @@ router.get('/automation/status', async (req, res) => {
 // ── GET /api/intel/automation/debug-cache — temp debug ───────────────────────
 router.get('/automation/debug-cache', async (req, res) => {
   const token = req.headers['x-automation-token'] || req.query.token;
-  if (token !== process.env.INTEL_AUTOMATION_TOKEN) return res.status(401).json({ error: 'Unauthorized' });
+  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, process.env.INTEL_REGEN_TOKEN].filter(Boolean);
+  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
   try {
     const p = db.getPool();
     if (!p) return res.json({ error: 'no pool' });
