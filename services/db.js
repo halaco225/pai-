@@ -721,15 +721,37 @@ async function upsertIntelFlag(flag) {
 }
 
 // ── Intel: get active flags for a date/scope ─────────────────────────────────
-async function getIntelFlags({ metricDate, regionCoach, areaCoach, storeId } = {}) {
+// Accepts snake_case params matching how routes/intel.js calls this:
+//   metric_date, region_coach, area_coach, area_coach_in, store_id, status
+async function getIntelFlags({
+  metric_date, region_coach, area_coach, area_coach_in, store_id, status,
+  // legacy camelCase aliases (backwards compat)
+  metricDate, regionCoach, areaCoach, storeId
+} = {}) {
   const p = getPool();
   if (!p) return [];
   try {
-    let query = `SELECT * FROM intel_flags WHERE metric_date = $1 AND status != 'archived'`;
-    const params = [metricDate];
-    if (regionCoach) { params.push(regionCoach); query += ` AND region_coach = $${params.length}`; }
-    if (areaCoach)   { params.push(areaCoach);   query += ` AND area_coach = $${params.length}`; }
-    if (storeId)     { params.push(storeId);      query += ` AND store_id = $${params.length}`; }
+    // Resolve aliases
+    const date  = metric_date  || metricDate  || null;
+    const rc    = region_coach || regionCoach || null;
+    const ac    = area_coach   || areaCoach   || null;
+    const sid   = store_id     || storeId     || null;
+    const acIn  = area_coach_in || null;
+
+    let query = 'SELECT * FROM intel_flags WHERE 1=1';
+    const params = [];
+
+    if (date)  { params.push(date);  query += ` AND metric_date = $${params.length}`; }
+    if (rc)    { params.push(rc);    query += ` AND (region_coach = $${params.length} OR area_coach = $${params.length})`; }
+    if (ac)    { params.push(ac);    query += ` AND area_coach = $${params.length}`; }
+    if (acIn && acIn.length > 0) {
+      params.push(acIn);
+      query += ` AND (area_coach = ANY($${params.length}::text[]) OR region_coach = ANY($${params.length}::text[]))`;
+    }
+    if (sid)   { params.push(sid);   query += ` AND store_id = $${params.length}`; }
+    if (status) { params.push(status); query += ` AND status != $${params.length}`; }
+    else { query += ` AND status != 'archived'`; }
+
     query += ` ORDER BY CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, consecutive_days_out DESC`;
     const res = await p.query(query, params);
     return res.rows;
