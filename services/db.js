@@ -822,7 +822,7 @@ async function getIntelFlags({
     if (ac)    { params.push(ac);    query += ` AND area_coach = $${params.length}`; }
     if (acIn && acIn.length > 0) {
       params.push(acIn);
-      query += ` AND (area_coach = ANY($${params.length}::text[]) OR region_coach = ANY($${params.length}::text[]))`;
+      query += ` AND (area_coach = ANY($${params.length}::text[]) OR region_coach = ANY($${params.length}::text[]) OR (area_coach IS NULL AND region_coach IS NULL))`;
     }
     if (sid)   { params.push(sid);   query += ` AND store_id = $${params.length}`; }
     if (status) { params.push(status); query += ` AND status != $${params.length}`; }
