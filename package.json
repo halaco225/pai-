@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "postinstall": "node_modules/.bin/playwright install chromium || true"
+    "postinstall": "PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src node_modules/.bin/playwright install chromium || true"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.3",
