@@ -60,6 +60,25 @@ router.get('/automation/debug-cache', async (req, res) => {
 });
 
 
+// ── GET /api/intel/automation/regenerate-cache — GET version for token-only callers ──
+router.get('/automation/regenerate-cache', async (req, res) => {
+  const token = req.headers['x-automation-token'] || req.query.token;
+  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, process.env.INTEL_REGEN_TOKEN].filter(Boolean);
+  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+  const date = req.query.date || (() => {
+    const d = new Date(); d.setDate(d.getDate() - 1);
+    return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  })();
+  res.json({ status: 'started', date });
+  try {
+    const { generateIntelCache } = require('../services/intel-pipeline');
+    await generateIntelCache(date);
+    console.log(`[Intel] Cache regenerated via GET for ${date}`);
+  } catch (err) {
+    console.error('[Intel] Cache regen error:', err.message);
+  }
+});
+
 // ── POST /api/intel/automation/regenerate-cache — re-run cache step only ─────
 router.post('/automation/regenerate-cache', async (req, res) => {
   const token = req.headers['x-automation-token'] || req.query.token;
