@@ -1,18 +1,24 @@
 #!/bin/bash
 cd /opt/render/project/src
 
-export PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src
+echo "==> PLAYWRIGHT_BROWSERS_PATH: ${PLAYWRIGHT_BROWSERS_PATH:-not set}"
+echo "==> Checking for chromium binary..."
 
-echo "==> CWD: $(pwd)"
-echo "==> PLAYWRIGHT_BROWSERS_PATH: $PLAYWRIGHT_BROWSERS_PATH"
-echo "==> Installing Playwright Chromium browser..."
+# Check if browser already exists from build step
+CHROME_BIN=$(find "${PLAYWRIGHT_BROWSERS_PATH:-/opt/render/project/src}" -name "chrome-headless-shell" -o -name "chrome" 2>/dev/null | head -1)
 
-# Use local playwright binary (no --with-deps at runtime — build handles system deps)
-./node_modules/.bin/playwright install chromium 2>&1 || echo "==> playwright install exited non-zero (may still work)"
+if [ -z "$CHROME_BIN" ]; then
+  echo "==> Browser not found from build — attempting install..."
+  ./node_modules/.bin/playwright install chromium 2>&1 || true
+  CHROME_BIN=$(find "${PLAYWRIGHT_BROWSERS_PATH:-/opt/render/project/src}" -name "chrome-headless-shell" -o -name "chrome" 2>/dev/null | head -1)
+fi
 
-# Show what was installed
-echo "==> Chromium dirs in $PLAYWRIGHT_BROWSERS_PATH:"
-ls "$PLAYWRIGHT_BROWSERS_PATH"/chromium* 2>/dev/null || echo "  (none found)"
+if [ -z "$CHROME_BIN" ]; then
+  echo "==> WARNING: Chromium binary still not found. Playwright scrapers will fail."
+  ls "${PLAYWRIGHT_BROWSERS_PATH:-/opt/render/project/src}"/chromium* 2>/dev/null || echo "  (no chromium dirs)"
+else
+  echo "==> Browser found: $CHROME_BIN"
+fi
 
 echo "==> Starting server..."
 exec node server.js
