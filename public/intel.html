@@ -392,7 +392,7 @@
 
     <!-- Tabs -->
     <div class="intel-tabs">
-      <button class="intel-tab active" onclick="switchTab('briefing', this)">
+      <button class="intel-tab" onclick="switchTab('briefing', this)">
         ☀ Morning Brief
       </button>
       <button class="intel-tab" onclick="switchTab('flags', this)" id="tabFlags">
@@ -405,7 +405,7 @@
       <button class="intel-tab" onclick="switchTab('shoutouts', this)" id="tabShoutouts">
         ★ Shoutouts
       </button>
-      <button class="intel-tab" onclick="switchTab('performance', this); loadPerformance()">
+      <button class="intel-tab active" id="tabPerformance" onclick="switchTab('performance', this); loadPerformance()">
         ▦ Performance
       </button>
       <button class="intel-tab" onclick="switchTab('digest', this)">
@@ -414,7 +414,7 @@
     </div>
 
     <!-- ── PANEL: Morning Briefing ───────────────────────── -->
-    <div class="tab-panel active" id="panel-briefing">
+    <div class="tab-panel" id="panel-briefing">
       <!-- Narrative -->
       <div class="narrative-card" id="narrativeCard">
         <div class="narrative-text" id="narrativeText">
@@ -447,18 +447,9 @@
         </div>
       </div>
 
-      <!-- Top Flags preview -->
-      <div class="quick-flags-section">
-        <h3>Top Priority Flags</h3>
-        <div class="flags-list" id="quickFlagsList">
-          <div style="color:var(--text-muted);font-size:13px;padding:20px 0">Loading flags…</div>
-        </div>
-        <div id="viewAllFlagsBtn" style="display:none;margin-top:14px">
-          <button class="filter-btn" onclick="switchTab('flags', document.querySelector('[onclick*=flags]'))">
-            View All Flags →
-          </button>
-        </div>
-      </div>
+      <!-- Top Flags preview (hidden — moved to Performance tab) -->
+      <div id="quickFlagsList" style="display:none"></div>
+      <div id="viewAllFlagsBtn" style="display:none"></div>
     </div>
 
     <!-- ── PANEL: Full Flags ─────────────────────────────── -->
@@ -508,7 +499,7 @@
     </div>
 
     <!-- ── PANEL: Performance ───────────────────────────── -->
-    <div class="tab-panel" id="panel-performance">
+    <div class="tab-panel active" id="panel-performance">
       <div id="perfContent">
         <div style="color:var(--text-muted);font-size:13px;padding:20px 0">Click the Performance tab to load.</div>
       </div>
@@ -622,22 +613,6 @@ function renderBriefing(dashboard, flagsData, shoutoutsData) {
     badge.style.display = '';
     if (high > 0) badge.className = 'tab-badge';
     else badge.className = 'tab-badge medium';
-  }
-
-  // Quick flags preview (top 5 high severity open)
-  const topFlags = flags
-    .filter(f => f.status !== 'archived' && f.status !== 'addressed')
-    .sort((a, b) => severityOrder(b.severity) - severityOrder(a.severity))
-    .slice(0, 5);
-
-  if (topFlags.length === 0) {
-    document.getElementById('quickFlagsList').innerHTML =
-      '<div class="empty-state"><div class="empty-icon">✓</div><h3>All clear</h3><p>No open flags for your scope today.</p></div>';
-  } else {
-    document.getElementById('quickFlagsList').innerHTML = topFlags.map(f => buildFlagCard(f, true)).join('');
-    if (flags.length > 5) {
-      document.getElementById('viewAllFlagsBtn').style.display = '';
-    }
   }
 
   // Populate the Flags tab
@@ -914,9 +889,13 @@ async function loadPerformance() {
   const container = document.getElementById('perfContent');
   container.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:20px 0">Loading…</div>';
   try {
-    const data = await fetch('/api/intel/kpis').then(r => r.json());
-    if (!data.success) throw new Error(data.error || 'Failed');
-    renderKPIDashboard(data);
+    // Load KPI data and flags in parallel
+    const [kpiData, flagsData] = await Promise.all([
+      fetch('/api/intel/kpis').then(r => r.json()),
+      fetch('/api/intel/flags').then(r => r.json())
+    ]);
+    if (!kpiData.success) throw new Error(kpiData.error || 'Failed');
+    renderKPIDashboard(kpiData, flagsData.flags || []);
   } catch (err) {
     document.getElementById('perfContent').innerHTML =
       `<div style="color:var(--danger);padding:20px 0;font-size:13px">Error: ${escHtml(err.message)}</div>`;
@@ -940,32 +919,48 @@ function growthClass(v) {
   return Number(v) >= 0 ? 'green' : 'red';
 }
 
-function renderKPIDashboard(data) {
+function renderKPIDashboard(data, allFlags) {
   const container = document.getElementById('perfContent');
   const { summary, areas, date } = data;
 
-  // Summary bar
-  let html = `<div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;text-transform:uppercase;letter-spacing:.5px">
-    Region Performance · ${formatDate(date)}</div>`;
+  // Build flag map by store_id for quick lookup
+  const storeFlagMap = {};
+  for (const f of (allFlags || [])) {
+    if (!storeFlagMap[f.store_id]) storeFlagMap[f.store_id] = [];
+    storeFlagMap[f.store_id].push(f);
+  }
 
+  // Region summary header
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+    <div>
+      <div style="font-size:18px;font-weight:700">Region Overview</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${formatDate(date)} · ${currentUser.name || currentUser.username}</div>
+    </div>
+    <button class="filter-btn" onclick="switchTab('briefing', document.querySelector('[onclick*=briefing]'))" style="font-size:12px">
+      ★ Morning Brief
+    </button>
+  </div>`;
+
+  // Summary stat cards
   if (summary) {
     const growthCls = summary.avg_growth != null ? (summary.avg_growth >= 0 ? 'green' : 'red') : '';
-    html += `<div class="kpi-summary-bar">
+    const salesFmt  = summary.total_sales ? '$' + (summary.total_sales/1000).toFixed(0) + 'k' : '—';
+    html += `<div class="kpi-summary-bar" style="margin-bottom:24px">
       <div class="kpi-summary-card">
         <div class="kpi-val">${summary.total_stores}</div>
         <div class="kpi-lbl">Total Stores</div>
+      </div>
+      <div class="kpi-summary-card">
+        <div class="kpi-val">${salesFmt}</div>
+        <div class="kpi-lbl">Region Net Sales</div>
       </div>
       <div class="kpi-summary-card">
         <div class="kpi-val ${growthCls}">${fmtGrowth(summary.avg_growth)}</div>
         <div class="kpi-lbl">Avg Sales Growth</div>
       </div>
       <div class="kpi-summary-card">
-        <div class="kpi-val ${summary.flagged_stores > 0 ? 'red' : 'green'}">${summary.flagged_stores}</div>
-        <div class="kpi-lbl">Flagged Stores</div>
-      </div>
-      <div class="kpi-summary-card">
         <div class="kpi-val ${summary.high_flags > 0 ? 'red' : summary.medium_flags > 0 ? 'yellow' : 'green'}">
-          ${summary.high_flags > 0 ? summary.high_flags + ' high' : summary.medium_flags > 0 ? summary.medium_flags + ' med' : '✓ clear'}
+          ${summary.high_flags > 0 ? summary.high_flags + ' High' : summary.medium_flags > 0 ? summary.medium_flags + ' Med' : '✓ Clear'}
         </div>
         <div class="kpi-lbl">Top Severity</div>
       </div>
@@ -973,87 +968,143 @@ function renderKPIDashboard(data) {
   }
 
   if (!areas || areas.length === 0) {
-    const msg = summary && summary.total_stores === 0
-      ? 'No KPI data yet — runs after first DBS file is processed.'
-      : 'No flagged stores today.';
-    html += `<div class="kpi-no-data">${msg}</div>`;
+    const hasKpi = summary && summary.total_stores > 0;
+    html += hasKpi
+      ? `<div class="kpi-no-data">KPI data available — no flags today. ✓</div>`
+      : `<div class="kpi-no-data" style="text-align:center;padding:40px;color:var(--text-muted)">
+          <div style="font-size:32px;margin-bottom:12px">📊</div>
+          <div style="font-weight:600;margin-bottom:6px">KPI data loads after 5 AM</div>
+          <div style="font-size:12px">Sales, labor, and comments populate automatically each morning.<br>Check back tomorrow or upload a DBS file to populate now.</div>
+         </div>`;
     container.innerHTML = html;
     return;
   }
 
-  html += '<div class="kpi-ac-grid">';
+  // Area coach table
+  html += `<div style="overflow-x:auto">
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead>
+      <tr style="border-bottom:1px solid var(--border)">
+        <th style="text-align:left;padding:10px 12px;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap">Area Coach</th>
+        <th style="text-align:right;padding:10px 12px;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Stores</th>
+        <th style="text-align:right;padding:10px 12px;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap">Net Sales</th>
+        <th style="text-align:right;padding:10px 12px;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Growth</th>
+        <th style="text-align:right;padding:10px 12px;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Cancels</th>
+        <th style="text-align:right;padding:10px 12px;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Labor %</th>
+        <th style="text-align:right;padding:10px 12px;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Comments</th>
+        <th style="text-align:right;padding:10px 12px;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Flags</th>
+      </tr>
+    </thead>
+    <tbody>`;
 
   areas.forEach((area, idx) => {
     const cardId = `kpi-ac-${idx}`;
-    const fc = area.flags;
-    let flagSummary = '';
-    if (fc.high > 0)   flagSummary += `<span style="color:#F87171;font-weight:700">${fc.high}H</span> `;
-    if (fc.medium > 0) flagSummary += `<span style="color:#FBBF24;font-weight:700">${fc.medium}M</span> `;
-    if (fc.low > 0)    flagSummary += `<span style="color:#60A5FA">${fc.low}L</span>`;
-    if (!flagSummary)  flagSummary = '<span style="color:#34D399">✓</span>';
+    const fc = area.flags || { high:0, medium:0, low:0 };
+    let flagBadge = '';
+    if (fc.high > 0)        flagBadge = `<span style="color:#F87171;font-weight:700">${fc.high}H</span>`;
+    else if (fc.medium > 0) flagBadge = `<span style="color:#FBBF24;font-weight:700">${fc.medium}M</span>`;
+    else if (fc.low > 0)    flagBadge = `<span style="color:#60A5FA">${fc.low}L</span>`;
+    else                    flagBadge = `<span style="color:#34D399">✓</span>`;
 
-    html += `<div class="kpi-ac-card" id="${cardId}">
-      <div class="kpi-ac-header" onclick="toggleKpiAC('${cardId}')">
-        <span class="kpi-ac-name">${escHtml(area.area_coach)}</span>
-        <div class="kpi-ac-stat">
-          <div class="val">${area.store_count}</div>
-          <div class="lbl">Stores</div>
-        </div>
-        <div class="kpi-ac-stat">
-          <div class="val ${growthClass(area.avg_growth)}">${fmtGrowth(area.avg_growth)}</div>
-          <div class="lbl">Avg Growth</div>
-        </div>
-        <div class="kpi-ac-stat">
-          <div class="val">${fmtSales(area.total_sales)}</div>
-          <div class="lbl">Total Sales</div>
-        </div>
-        <div class="kpi-ac-stat">
-          <div class="val" style="font-size:13px">${flagSummary}</div>
-          <div class="lbl">Flags</div>
-        </div>
-        <span class="kpi-chevron">▶</span>
-      </div>
-      <div class="kpi-stores-table">
-        <table class="kpi-store-tbl">
-          <thead><tr>
-            <th style="text-align:left">Store</th>
-            <th>Sales/Day</th>
-            <th>Growth</th>
-            <th>Chg Down</th>
-            <th>Issues</th>
+    const salesStr  = area.total_sales  ? '$' + (area.total_sales/1000).toFixed(1)+'k' : '—';
+    const cancelsStr = area.total_change_down != null ? '$' + Number(area.total_change_down).toFixed(0) : '—';
+
+    html += `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="toggleKpiAC('${cardId}')" class="kpi-ac-row">
+      <td style="padding:12px;font-weight:600">${escHtml(area.area_coach)} <span style="color:var(--text-muted);font-size:11px;font-weight:400">▶</span></td>
+      <td style="text-align:right;padding:12px">${area.store_count}</td>
+      <td style="text-align:right;padding:12px">${salesStr}</td>
+      <td style="text-align:right;padding:12px;color:${area.avg_growth == null ? 'var(--text-muted)' : area.avg_growth >= 0 ? '#34D399' : '#F87171'}">${fmtGrowth(area.avg_growth)}</td>
+      <td style="text-align:right;padding:12px;color:${area.total_change_down > 100 ? '#F87171' : 'inherit'}">${cancelsStr}</td>
+      <td style="text-align:right;padding:12px;color:var(--text-muted)">—</td>
+      <td style="text-align:right;padding:12px;color:var(--text-muted)">—</td>
+      <td style="text-align:right;padding:12px">${flagBadge}</td>
+    </tr>
+    <tr id="${cardId}" style="display:none">
+      <td colspan="8" style="padding:0;background:var(--surface)">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:var(--surface-2)">
+            <th style="text-align:left;padding:8px 24px;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Store</th>
+            <th style="text-align:right;padding:8px 12px;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap">Sales/Day</th>
+            <th style="text-align:right;padding:8px 12px;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Growth</th>
+            <th style="text-align:right;padding:8px 12px;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Cancels</th>
+            <th style="text-align:right;padding:8px 12px;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Labor</th>
+            <th style="text-align:right;padding:8px 12px;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Comments</th>
+            <th style="text-align:right;padding:8px 12px;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Flags</th>
           </tr></thead>
           <tbody>`;
 
     if (area.stores.length === 0) {
-      html += `<tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:14px">No KPI data</td></tr>`;
+      html += `<tr><td colspan="7" style="padding:14px 24px;color:var(--text-muted)">No KPI data for this area yet.</td></tr>`;
     } else {
       for (const store of area.stores) {
-        const storeFlags = store.flags || [];
-        const dots = storeFlags.map(f =>
-          `<div class="kpi-dot ${f.severity}" title="${formatMetricType(f.metric_type)} · ${f.days}d"></div>`
-        ).join('');
-        const growthVal = store.growth_pct_day;
-        const cdVal = store.change_down_day;
-        html += `<tr>
-          <td><span class="kpi-store-name">${escHtml(store.store_name || store.store_id)}</span><span class="kpi-store-id">#${store.store_id}</span></td>
-          <td>${fmtSales(store.net_sales_day)}</td>
-          <td style="color:${growthVal == null ? 'var(--text-muted)' : growthVal >= 0 ? '#34D399' : '#F87171'}">${fmtGrowth(growthVal)}</td>
-          <td style="color:${cdVal != null && cdVal > 30 ? '#F87171' : 'inherit'}">${cdVal != null ? '$'+Number(cdVal).toFixed(0) : '—'}</td>
-          <td><div class="kpi-flag-dots">${dots || '<span style="color:var(--text-muted);font-size:11px">—</span>'}</div></td>
+        const sf = storeFlagMap[store.store_id] || [];
+        const sHigh   = sf.filter(f => f.severity==='high').length;
+        const sMed    = sf.filter(f => f.severity==='medium').length;
+        const sLow    = sf.filter(f => f.severity==='low').length;
+        let sfBadge = '';
+        if (sHigh > 0)       sfBadge = `<button class="flag-link-btn" onclick="viewStoreFlags('${store.store_id}');event.stopPropagation()" style="color:#F87171;font-weight:700;background:none;border:none;cursor:pointer;font-size:12px;padding:0">${sHigh} High →</button>`;
+        else if (sMed > 0)   sfBadge = `<button class="flag-link-btn" onclick="viewStoreFlags('${store.store_id}');event.stopPropagation()" style="color:#FBBF24;font-weight:700;background:none;border:none;cursor:pointer;font-size:12px;padding:0">${sMed} Med →</button>`;
+        else if (sLow > 0)   sfBadge = `<button class="flag-link-btn" onclick="viewStoreFlags('${store.store_id}');event.stopPropagation()" style="color:#60A5FA;background:none;border:none;cursor:pointer;font-size:12px;padding:0">${sLow} Low →</button>`;
+        else                 sfBadge = '<span style="color:#34D399">✓</span>';
+
+        const storeGrowth = store.growth_pct_day;
+        const storeCancel = store.change_down_day;
+        html += `<tr style="border-bottom:1px solid var(--border)" onmouseenter="this.style.background='var(--surface-2)'" onmouseleave="this.style.background=''">
+          <td style="padding:9px 24px;font-weight:600">${escHtml(store.store_name||store.store_id)} <span style="color:var(--text-muted);font-weight:400">#${store.store_id}</span></td>
+          <td style="text-align:right;padding:9px 12px">${fmtSales(store.net_sales_day)}</td>
+          <td style="text-align:right;padding:9px 12px;color:${storeGrowth==null?'var(--text-muted)':storeGrowth>=0?'#34D399':'#F87171'}">${fmtGrowth(storeGrowth)}</td>
+          <td style="text-align:right;padding:9px 12px;color:${storeCancel>30?'#F87171':'inherit'}">${storeCancel!=null?'$'+Number(storeCancel).toFixed(0):'—'}</td>
+          <td style="text-align:right;padding:9px 12px;color:var(--text-muted)">—</td>
+          <td style="text-align:right;padding:9px 12px;color:var(--text-muted)">—</td>
+          <td style="text-align:right;padding:9px 12px">${sfBadge}</td>
         </tr>`;
       }
     }
 
-    html += `</tbody></table></div></div>`;
+    html += `</tbody></table></td></tr>`;
   });
 
-  html += '</div>';
+  html += `</tbody></table></div>`;
   container.innerHTML = html;
+
+  // Make chevrons toggle properly
+  document.querySelectorAll('.kpi-ac-row').forEach(row => {
+    row.addEventListener('mouseenter', () => { row.style.background = 'var(--surface-2)'; });
+    row.addEventListener('mouseleave', () => { row.style.background = ''; });
+  });
 }
 
 function toggleKpiAC(cardId) {
-  document.getElementById(cardId).classList.toggle('expanded');
+  const row = document.getElementById(cardId);
+  if (!row) return;
+  const visible = row.style.display !== 'none';
+  row.style.display = visible ? 'none' : 'table-row';
+  // Update chevron in the preceding row
+  const prevRow = row.previousElementSibling;
+  if (prevRow) {
+    const chevron = prevRow.querySelector('span[style*="text-muted"]');
+    if (chevron) chevron.textContent = visible ? '▶' : '▼';
+  }
 }
+
+function viewStoreFlags(storeId) {
+  // Switch to flags tab, filter by store
+  const flagsTab = document.querySelector('[onclick*="flags"]');
+  switchTab('flags', flagsTab);
+  // Filter allFlags to just this store
+  const storeFlags = allFlags.filter(f => f.store_id === storeId);
+  const container = document.getElementById('fullFlagsList');
+  if (storeFlags.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">✓</div><h3>No flags for this store</h3></div>';
+    return;
+  }
+  storeFlags.sort((a, b) => severityOrder(b.severity) - severityOrder(a.severity));
+  container.innerHTML = storeFlags.map(f => buildFlagCard(f, false)).join('');
+  // Update filter buttons to show "active" state
+  document.querySelectorAll('.flag-filters .filter-btn').forEach(b => b.classList.remove('active'));
+}
+
+// toggleKpiAC now defined inside renderKPIDashboard scope above
 
 function togglePerfAC(rowId) {
   const row    = document.getElementById(rowId);
@@ -1069,7 +1120,7 @@ document.getElementById('ackModal').addEventListener('click', function(e) {
   if (e.target === this) closeAckModal();
 });
 
-init();
+init(); loadPerformance();
 </script>
 </body>
 </html>
