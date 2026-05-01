@@ -702,6 +702,9 @@ async function initIntelDB() {
     CREATE INDEX IF NOT EXISTS idx_intel_log_date
     ON intel_automation_log (created_at DESC)
   `);
+
+  // Seed store assignments from velocity-alignment.js so all parsers have hierarchy
+  await seedStoreAssignmentsFromAlignment();
 }
 
 // ── Intel: upsert raw DBS metrics for a store/day ────────────────────────────
