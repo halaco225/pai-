@@ -18,7 +18,10 @@ const path = require('path');
  * Returns undefined when running locally (playwright finds it automatically).
  */
 function resolveExecutablePath() {
-  const base = process.env.PLAYWRIGHT_BROWSERS_PATH;
+  // Check /tmp/ms-playwright first (runtime install target), then env var path
+  const candidates = ['/tmp/ms-playwright', process.env.PLAYWRIGHT_BROWSERS_PATH].filter(Boolean);
+  const base = candidates.find(p => { try { return require('fs').readdirSync(p).some(e => e.startsWith('chromium')); } catch(_) { return false; } })
+    || process.env.PLAYWRIGHT_BROWSERS_PATH;
   if (!base) return undefined;
 
   // Sub-directory patterns Playwright uses (checked in priority order)
