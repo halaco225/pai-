@@ -197,7 +197,7 @@ router.get('/automation/raw-flags', async (req, res) => {
     const date = req.query.date || null;
     let q = `SELECT store_id, store_name, metric_type, metric_date, value, target,
                severity, consecutive_days_out, status, area_coach, region_coach,
-               territory_vp, notes, created_at
+               territory_vp, created_at
              FROM intel_flags WHERE status != 'archived'`;
     const params = [];
     if (date) { params.push(date); q += ` AND metric_date = $1`; }
