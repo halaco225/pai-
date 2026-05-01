@@ -939,7 +939,7 @@ function renderBriefing(dashboard, flagsData, shoutoutsData) {
     document.getElementById('narrativeText').textContent = dashboard.narrative;
     document.getElementById('narrativeFooter').style.display = 'flex';
     document.getElementById('narrativeDate').textContent = formatDate(dashboard.metric_date || dashboard.date);
-    document.getElementById('headerDate').textContent    = formatDate(dashboard.metric_date || dashboard.date);
+    const d = document.getElementById('datePicker'); if (d && !d.value) d.value = (dashboard.metric_date||dashboard.date||'').split('T')[0];
     document.getElementById('intelSub').textContent      = `${currentUser.name || currentUser.username}'s intel for ${formatDate(dashboard.metric_date || dashboard.date)}`;
   }
 
