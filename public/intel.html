@@ -600,6 +600,12 @@
             <div class="kpi-sub" id="kpisub-forgot_clockout"></div>
             <div class="kpi-drill-hint">▾ drill down</div>
           </div>
+          <div class="kpi-tile" onclick="drillMetric('routines')" id="tile-routines">
+            <div class="kpi-val muted" id="kpi-routines">—</div>
+            <div class="kpi-lbl">HutBot Routines</div>
+            <div class="kpi-sub" id="kpisub-routines"></div>
+            <div class="kpi-drill-hint">▾ drill down</div>
+          </div>
         </div>
 
         <!-- Drill-down panel (hidden until tile clicked) -->
@@ -989,6 +995,7 @@ const KPI_META = {
   ot_hours:        { label: 'OT Hours',         fmt: 'hours',   higherBetter: false },
   comments:        { label: 'Guest Comments',   fmt: 'comments',higherBetter: null  },
   forgot_clockout: { label: 'Forgot Clock Out', fmt: 'count',   higherBetter: false },
+  routines:        { label: 'HutBot Routines',  fmt: 'routines',higherBetter: false },
 };
 
 async function loadKPIs(metricDate) {
@@ -1035,6 +1042,12 @@ function renderKPITiles(data) {
   setTile('forgot_clockout', fco != null ? String(fco) : '—',
     fco != null ? (fco > 5 ? 'bad' : fco > 0 ? 'warn' : 'good') : 'muted',
     fco > 0 ? 'employees' : '');
+  const rm  = r.routines_missed || 0;
+  const rl  = r.routines_late   || 0;
+  const rtot = rm + rl;
+  setTile('routines', rtot > 0 ? String(rm) : '—',
+    rtot > 0 ? (rm > 0 ? 'bad' : 'warn') : (rtot === 0 && r.routines_missed != null ? 'good' : 'muted'),
+    rm > 0 ? `${rm} missed · ${rl} late` : (rl > 0 ? `${rl} late` : ''));
 }
 
 function setTile(key, val, cls, sub) {
@@ -1165,10 +1178,12 @@ function getMetricClass(val, metric) {
     case 'net_sales':       return val > 0 ? 'cell-good' : 'cell-muted';
     case 'growth_pct':      return val > 0 ? 'cell-good' : val < -2 ? 'cell-bad' : 'cell-warn';
     case 'cancels':         return val > 500 ? 'cell-bad' : val > 200 ? 'cell-warn' : 'cell-good';
+    case 'routines':        return val > 0 ? 'cell-bad' : 'cell-good';
     case 'labor_pct':       return val > 30 ? 'cell-bad' : val > 26 ? 'cell-warn' : 'cell-good';
     case 'ot_hours':        return val > 10 ? 'cell-bad' : val > 5 ? 'cell-warn' : 'cell-good';
     case 'comments':        return val > 0 ? 'cell-good' : 'cell-muted';
     case 'forgot_clockout': return val > 5 ? 'cell-bad' : val > 0 ? 'cell-warn' : 'cell-good';
+    case 'routines':        return ((a.routines_missed||0)+(a.routines_late||0)) - ((b.routines_missed||0)+(b.routines_late||0));
     default: return 'cell-muted';
   }
 }
@@ -1178,6 +1193,7 @@ function formatMetricVal(val, metric, row) {
   switch (metric) {
     case 'net_sales': case 'cancels': return fmtMoney(val);
     case 'growth_pct': case 'labor_pct': return fmtPct(val);
+    case 'routines': return val != null ? String(Math.round(val)) + ' missed' : '—';
     case 'ot_hours': return fmtHours(val);
     case 'comments': { const n = row.comments_neg || 0; return `${val} pos${n > 0 ? ` / ${n} neg` : ''}`; }
     case 'forgot_clockout': return String(val);
@@ -1234,7 +1250,19 @@ function buildFlagCard(f, compact) {
   const isRDO   = currentUser && (currentUser.role === 'rdo' || currentUser.role === 'vp');
 
   let employeeHtml = '';
-  if (f.metric_type === 'FORGOT_CLOCKOUT' || f.metric_type === 'CLOCKOUT_REMINDER') {
+  if (f.metric_type === 'ROUTINE_MISSED' || f.metric_type === 'ROUTINE_LATE') {
+    try {
+      const det = typeof f.details === 'string' ? JSON.parse(f.details) : (f.details || {});
+      const rname = det.routine_name || det.note || '';
+      const stime = det.scheduled_time || '';
+      if (rname) {
+        const statusBadge = f.metric_type === 'ROUTINE_MISSED'
+          ? '<span style="color:var(--danger);font-weight:600">MISSED</span>'
+          : '<span style="color:var(--warning);font-weight:600">LATE</span>';
+        employeeHtml = `<div class="flag-employees">📋 ${escHtml(rname)}${stime ? ' · scheduled ' + escHtml(stime) : ''} — ${statusBadge}</div>`;
+      }
+    } catch(e) {}
+  } else if (f.metric_type === 'FORGOT_CLOCKOUT' || f.metric_type === 'CLOCKOUT_REMINDER') {
     try {
       const det  = typeof f.details === 'string' ? JSON.parse(f.details) : (f.details || {});
       const emps = det.employees || det.employee_names || det.names || [];
@@ -1424,6 +1452,8 @@ function formatValue(metric, val) {
     return Number(val).toFixed(1) + ' hrs';
   if (metric === 'PRODUCTION_TIME') return Number(val).toFixed(1) + ' min';
   if (metric === 'FORGOT_CLOCKOUT') return Math.round(Number(val)) + ' employee' + (Math.round(Number(val)) !== 1 ? 's' : '');
+  if (metric === 'ROUTINE_MISSED') return 'missed';
+  if (metric === 'ROUTINE_LATE')   return 'late';
   return val;
 }
 function logout() { fetch('/api/auth/logout',{method:'POST'}).then(()=>window.location.href='/'); }

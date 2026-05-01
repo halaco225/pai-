@@ -325,7 +325,7 @@ router.get('/kpis', async (req, res) => {
       fp.push(ac); flagWhere   += ` AND area_coach = $${fp.length}`;
     }
 
-    const [metricsRes, flagCountRes, fcOtRes, surveyRes] = await Promise.all([
+    const [metricsRes, flagCountRes, fcOtRes, surveyRes, routinesRes] = await Promise.all([
       p.query(`SELECT area_coach, store_id, store_name,
         net_sales_day, growth_pct_day, cancel_unmade_day, paidouts_day, cash_variance_day
         FROM intel_dbs_metrics WHERE ${metricWhere} ORDER BY area_coach, store_id`, mp),
@@ -340,7 +340,11 @@ router.get('/kpis', async (req, res) => {
         COALESCE(SUM(sl.positive_count),0)::int as pos,
         COALESCE(SUM(sl.negative_count),0)::int as neg
         FROM intel_survey_log sl LEFT JOIN store_assignments a ON sl.store_id=a.store_id
-        WHERE sl.survey_date=$1 GROUP BY sl.store_id, a.area_coach`, [date])
+        WHERE sl.survey_date=$1 GROUP BY sl.store_id, a.area_coach`, [date]),
+      p.query(`SELECT store_id, area_coach,
+        COUNT(CASE WHEN metric_type='ROUTINE_MISSED' THEN 1 END)::int as routines_missed,
+        COUNT(CASE WHEN metric_type='ROUTINE_LATE'   THEN 1 END)::int as routines_late
+        FROM intel_flags WHERE ${flagWhere} GROUP BY store_id, area_coach`, fp)
     ]);
 
     // Build store-level map from DBS metrics
@@ -352,7 +356,7 @@ router.get('/kpis', async (req, res) => {
         growth_pct: r.growth_pct_day != null ? +r.growth_pct_day : null,
         cancels: r.cancel_unmade_day ? +r.cancel_unmade_day : null,
         labor_pct: null, ot_hours: 0, comments_pos: 0, comments_neg: 0,
-        forgot_clockout: 0, flag_count: 0
+        forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0
       };
     }
 
@@ -361,7 +365,8 @@ router.get('/kpis', async (req, res) => {
       if (!storeMap[r.store_id]) storeMap[r.store_id] = {
         area_coach: r.area_coach, store_id: r.store_id, store_name: r.store_id,
         net_sales: null, growth_pct: null, cancels: null, labor_pct: null,
-        ot_hours: 0, comments_pos: 0, comments_neg: 0, forgot_clockout: 0, flag_count: 0
+        ot_hours: 0, comments_pos: 0, comments_neg: 0, forgot_clockout: 0,
+        routines_missed: 0, routines_late: 0, flag_count: 0
       };
       storeMap[r.store_id].flag_count = (storeMap[r.store_id].flag_count || 0) + +r.cnt;
     }
@@ -378,6 +383,13 @@ router.get('/kpis', async (req, res) => {
       }
     }
 
+    for (const r of routinesRes.rows) {
+      if (storeMap[r.store_id]) {
+        storeMap[r.store_id].routines_missed = r.routines_missed || 0;
+        storeMap[r.store_id].routines_late   = r.routines_late   || 0;
+      }
+    }
+
     const by_store = Object.values(storeMap);
 
     // Group by area_coach
@@ -386,7 +398,7 @@ router.get('/kpis', async (req, res) => {
       const ac = s.area_coach || 'Unknown';
       if (!acMap[ac]) acMap[ac] = { area_coach: ac, store_count: 0, net_sales: 0,
         gsum: 0, gcnt: 0, cancels: 0, ot_hours: 0, comments_pos: 0,
-        comments_neg: 0, forgot_clockout: 0, flag_count: 0 };
+        comments_neg: 0, forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0 };
       const a = acMap[ac];
       a.store_count++;
       if (s.net_sales  != null) a.net_sales  += s.net_sales;
@@ -395,8 +407,10 @@ router.get('/kpis', async (req, res) => {
       a.ot_hours       += s.ot_hours       || 0;
       a.comments_pos   += s.comments_pos   || 0;
       a.comments_neg   += s.comments_neg   || 0;
-      a.forgot_clockout+= s.forgot_clockout|| 0;
-      a.flag_count     += s.flag_count     || 0;
+      a.forgot_clockout  += s.forgot_clockout   || 0;
+      a.routines_missed  += s.routines_missed  || 0;
+      a.routines_late    += s.routines_late    || 0;
+      a.flag_count       += s.flag_count       || 0;
     }
 
     const by_ac = Object.values(acMap).map(a => ({
@@ -408,8 +422,10 @@ router.get('/kpis', async (req, res) => {
       ot_hours:        a.ot_hours     || null,
       comments_pos:    a.comments_pos,
       comments_neg:    a.comments_neg,
-      forgot_clockout: a.forgot_clockout,
-      flag_count:      a.flag_count
+      forgot_clockout:  a.forgot_clockout,
+      routines_missed:  a.routines_missed,
+      routines_late:    a.routines_late,
+      flag_count:       a.flag_count
     }));
 
     const validGrowth = by_store.filter(s => s.growth_pct != null);
@@ -422,7 +438,9 @@ router.get('/kpis', async (req, res) => {
       ot_hours:        by_store.reduce((s,r) => s+(r.ot_hours||0), 0) || null,
       comments_pos:    by_store.reduce((s,r) => s+(r.comments_pos||0), 0),
       comments_neg:    by_store.reduce((s,r) => s+(r.comments_neg||0), 0),
-      forgot_clockout: by_store.reduce((s,r) => s+(r.forgot_clockout||0), 0)
+      forgot_clockout:  by_store.reduce((s,r) => s+(r.forgot_clockout||0), 0),
+      routines_missed:  by_store.reduce((s,r) => s+(r.routines_missed||0), 0),
+      routines_late:    by_store.reduce((s,r) => s+(r.routines_late||0), 0)
     };
 
     res.json({ region, by_ac, by_store, date });
