@@ -583,7 +583,16 @@ async function initIntelDB() {
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   `);
 
-  // Migration: add UNIQUE constraint if missing (needed for ON CONFLICT in upsertIntelFlag)
+  // Migration: dedup then add UNIQUE constraint (needed for ON CONFLICT in upsertIntelFlag)
+  await p.query(`
+    DELETE FROM intel_flags a
+    USING intel_flags b
+    WHERE a.id < b.id
+      AND a.store_id    = b.store_id
+      AND a.metric_type = b.metric_type
+      AND a.metric_date = b.metric_date
+  `);
+
   await p.query(`
     DO $$
     BEGIN
