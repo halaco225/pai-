@@ -23,6 +23,7 @@ services:
         fromDatabase:
           name: pai-db
           property: connectionString
+      # ── OneData (DBS / SOS / Forgot Clock Out) ──────────────
       - key: ODS_URL
         value: https://bi.onedatasource.com
       - key: ODS_ORG
@@ -31,10 +32,26 @@ services:
         sync: false
       - key: ODS_PASSWORD
         sync: false
+      # ── Fourth Analytics ────────────────────────────────────
+      - key: FOURTH_USER
+        sync: false
+      - key: FOURTH_PASSWORD
+        sync: false
+      # ── SMG Comments ────────────────────────────────────────
+      - key: SMG_USER
+        sync: false
+      - key: SMG_PASSWORD
+        sync: false
+      # ── Hut Bot / Yum SuperApp ──────────────────────────────
+      - key: HUTBOT_USER
+        sync: false
+      - key: HUTBOT_PASSWORD
+        sync: false
+      # ── Automation tokens ───────────────────────────────────
       - key: VELOCITY_AUTOMATION_TOKEN
         generateValue: true
       - key: INTEL_AUTOMATION_TOKEN
-        generateValue: true
+        value: 38b8091924e1f85583454212a9860038
 
   - type: cron
     name: velocity-ods-pull
@@ -68,4 +85,4 @@ services:
       - key: PAI_BASE_URL
         value: https://pai-ayvaz.onrender.com
       - key: INTEL_AUTOMATION_TOKEN
-        sync: false
+        value: 38b8091924e1f85583454212a9860038
