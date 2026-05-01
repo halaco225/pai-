@@ -892,19 +892,19 @@ async function init() {
       document.getElementById('tabAcct').style.display = '';
     }
 
-    // Load everything in parallel
-    const [dashboard, flags, shoutouts] = await Promise.all([
-      fetch('/api/intel/dashboard').then(r => r.json()),
-      fetch('/api/intel/flags').then(r => r.json()),
-      fetch('/api/intel/shoutouts').then(r => r.json())
-    ]);
-
-    // Set date picker to intel date
+    // Load dashboard first to get the intel date, then scope all other fetches to that date
+    const dashboard = await fetch('/api/intel/dashboard').then(r => r.json());
     const intelDate = (dashboard.metric_date || dashboard.date || '').split('T')[0] || null;
     currentIntelDate = intelDate;
     const dp = document.getElementById('datePicker');
     if (intelDate) dp.value = intelDate;
     dp.max = new Date().toLocaleDateString('en-CA');
+
+    const dateParam = intelDate ? `?date=${intelDate}` : '';
+    const [flags, shoutouts] = await Promise.all([
+      fetch(`/api/intel/flags${dateParam}`).then(r => r.json()),
+      fetch(`/api/intel/shoutouts${dateParam}`).then(r => r.json())
+    ]);
 
     renderBriefing(dashboard, flags, shoutouts);
     renderFlags(flags.flags || []);
@@ -1238,7 +1238,10 @@ function buildFlagCard(f, compact) {
     try {
       const det  = typeof f.details === 'string' ? JSON.parse(f.details) : (f.details || {});
       const emps = det.employees || det.employee_names || det.names || [];
-      if (emps.length) employeeHtml = `<div class="flag-employees">\u{1F464} ${emps.map(e => escHtml(e)).join(', ')}</div>`;
+      if (emps.length) {
+        const nameList = emps.map(e => escHtml(typeof e === 'object' ? (e.name || e.employee_name || JSON.stringify(e)) : String(e)));
+        employeeHtml = `<div class="flag-employees">\u{1F464} ${nameList.join(', ')}</div>`;
+      }
     } catch(e) {}
   }
 
@@ -1420,6 +1423,7 @@ function formatValue(metric, val) {
   if (['OT_OVER_SCHEDULED','OT_OVER_RUN','LABOR_NOT_ADJUSTED'].includes(metric))
     return Number(val).toFixed(1) + ' hrs';
   if (metric === 'PRODUCTION_TIME') return Number(val).toFixed(1) + ' min';
+  if (metric === 'FORGOT_CLOCKOUT') return Math.round(Number(val)) + ' employee' + (Math.round(Number(val)) !== 1 ? 's' : '');
   return val;
 }
 function logout() { fetch('/api/auth/logout',{method:'POST'}).then(()=>window.location.href='/'); }

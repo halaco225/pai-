@@ -822,7 +822,7 @@ async function getIntelFlags({
     if (ac)    { params.push(ac);    query += ` AND area_coach = $${params.length}`; }
     if (acIn && acIn.length > 0) {
       params.push(acIn);
-      query += ` AND (area_coach = ANY($${params.length}::text[]) OR region_coach = ANY($${params.length}::text[]) OR (area_coach IS NULL AND region_coach IS NULL))`;
+      query += ` AND (area_coach = ANY($${params.length}::text[]) OR region_coach = ANY($${params.length}::text[]))`;
     }
     if (sid)   { params.push(sid);   query += ` AND store_id = $${params.length}`; }
     if (status) { params.push(status); query += ` AND status != $${params.length}`; }
@@ -1129,6 +1129,35 @@ async function archiveOldRecoveringFlags(targetDate) {
   }
 }
 
+// ── Seed store_assignments from velocity-alignment.js (all stores, all RDOs) ──
+async function seedStoreAssignmentsFromAlignment() {
+  const p = getPool();
+  if (!p) return;
+  try {
+    let alignment = {};
+    try { alignment = require('../services/velocity-alignment'); } catch(e) {
+      try { alignment = require('./velocity-alignment'); } catch(e2) { return; }
+    }
+    let count = 0;
+    for (const [key, info] of Object.entries(alignment)) {
+      const store_id = key.replace(/^S/, '');
+      await p.query(`
+        INSERT INTO store_assignments (store_id, store_name, area_coach, region_coach, vp)
+        VALUES ($1,$2,$3,$4,$5)
+        ON CONFLICT (store_id) DO UPDATE SET
+          store_name   = EXCLUDED.store_name,
+          area_coach   = EXCLUDED.area_coach,
+          region_coach = EXCLUDED.region_coach,
+          vp           = EXCLUDED.vp
+      `, [store_id, info.name, info.area_coach, info.region_coach, info.vp]);
+      count++;
+    }
+    console.log(`[DB] Seeded ${count} store assignments from alignment data`);
+  } catch(err) {
+    console.error('[DB] seedStoreAssignments error:', err.message);
+  }
+}
+
 module.exports = {
   getPool,
   initDB, saveAnalysis, getHistory, getRecentDaily, getAnalysisById,
@@ -1145,6 +1174,7 @@ module.exports = {
   saveIntelCache, upsertIntelCache, getIntelCache, logIntelJob, getIntelLogs,
   // Aliases used by parsers
   insertIntelFlag: upsertIntelFlag,
+  seedStoreAssignmentsFromAlignment,
   upsertSoftIndicator,
   insertShoutout, upsertSurveyLog, getStoresWithNoRecentSurveys,
   resolveRecoveredFlags, getStoreSoftIndicators,
