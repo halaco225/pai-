@@ -928,6 +928,24 @@ async function getIntelLogs(limit = 20) {
   }
 }
 
+
+// ── Intel: archive old resolved/recovering flags (cleanup) ───────────────────
+async function archiveOldRecoveringFlags(targetDate) {
+  const p = getPool();
+  if (!p) return;
+  try {
+    // Archive flags resolved more than 7 days before targetDate
+    await p.query(`
+      UPDATE intel_flags
+      SET status = 'archived', updated_at = NOW()
+      WHERE status = 'resolved'
+        AND metric_date < ($1::date - INTERVAL '7 days')
+    `, [targetDate]);
+  } catch (err) {
+    console.error('DB archiveOldRecoveringFlags error:', err.message);
+  }
+}
+
 module.exports = {
   getPool,
   initDB, saveAnalysis, getHistory, getRecentDaily, getAnalysisById,
@@ -941,5 +959,9 @@ module.exports = {
   initIntelDB, upsertDBSMetrics, upsertIntelFlag, getIntelFlags,
   getRecentDBSMetrics, getConsecutiveFlagDays, resolveIntelFlags,
   upsertStoreAssignment, getStoreAssignments,
-  saveIntelCache, upsertIntelCache, getIntelCache, logIntelJob, getIntelLogs
+  saveIntelCache, upsertIntelCache, getIntelCache, logIntelJob, getIntelLogs,
+  // Aliases used by parsers
+  insertIntelFlag: upsertIntelFlag,
+  getConsecutiveDays: getConsecutiveFlagDays,
+  archiveOldRecoveringFlags
 };
