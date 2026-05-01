@@ -534,6 +534,23 @@ async function initIntelDB() {
   `);
 
   await p.query(`
+    CREATE TABLE IF NOT EXISTS store_assignments (
+      store_id      VARCHAR(20)  NOT NULL,
+      store_name    VARCHAR(100),
+      area_coach    VARCHAR(100),
+      region_coach  VARCHAR(100),
+      vp            VARCHAR(100),
+      updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (store_id)
+    )
+  `);
+
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_store_assignments_ac
+    ON store_assignments (area_coach)
+  `);
+
+  await p.query(`
     CREATE TABLE IF NOT EXISTS intel_flags (
       id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
       store_id            VARCHAR(10)   NOT NULL,
@@ -782,6 +799,40 @@ async function resolveIntelFlags(storeIds, metricType, metricDate) {
   }
 }
 
+// ── Store assignments (hierarchy lookup) ─────────────────────────────────────
+async function upsertStoreAssignment({ store_id, store_name, area_coach, region_coach, vp }) {
+  const p = getPool();
+  if (!p) return;
+  try {
+    await p.query(`
+      INSERT INTO store_assignments (store_id, store_name, area_coach, region_coach, vp, updated_at)
+      VALUES ($1, $2, $3, $4, $5, NOW())
+      ON CONFLICT (store_id) DO UPDATE SET
+        store_name   = EXCLUDED.store_name,
+        area_coach   = EXCLUDED.area_coach,
+        region_coach = EXCLUDED.region_coach,
+        vp           = EXCLUDED.vp,
+        updated_at   = NOW()
+    `, [store_id, store_name ?? null, area_coach ?? null, region_coach ?? null, vp ?? null]);
+  } catch (err) {
+    console.error('DB upsertStoreAssignment error:', err.message);
+  }
+}
+
+async function getStoreAssignments() {
+  const p = getPool();
+  if (!p) return {};
+  try {
+    const res = await p.query('SELECT * FROM store_assignments');
+    const map = {};
+    for (const r of res.rows) map[r.store_id] = r;
+    return map;
+  } catch (err) {
+    console.error('DB getStoreAssignments error:', err.message);
+    return {};
+  }
+}
+
 // ── Intel: cache save/get ─────────────────────────────────────────────────────
 async function saveIntelCache({ userId, cacheDate, cacheJson }) {
   return upsertIntelCache({ user_id: userId, cache_date: cacheDate, payload: cacheJson });
@@ -867,5 +918,6 @@ module.exports = {
   // Intel exports
   initIntelDB, upsertDBSMetrics, upsertIntelFlag, getIntelFlags,
   getRecentDBSMetrics, getConsecutiveFlagDays, resolveIntelFlags,
+  upsertStoreAssignment, getStoreAssignments,
   saveIntelCache, upsertIntelCache, getIntelCache, logIntelJob, getIntelLogs
 };
