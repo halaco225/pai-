@@ -13,11 +13,12 @@ services:
     buildCommand: npm install && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src npx playwright install --with-deps chromium
     startCommand: bash startup.sh
     envVars:
-      - key: PLAYWRIGHT_BROWSERS_PATH
-        value: /opt/render/project/src
-    envVars:
       - key: NODE_ENV
         value: production
+      # ── Playwright browser path (MUST be set for HutBot, Fourth, SMG scrapers) ──
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/project/src
+      # ── Anthropic / Claude ──────────────────────────────────
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: SESSION_SECRET
@@ -50,6 +51,8 @@ services:
         sync: false
       - key: HUTBOT_PASSWORD
         sync: false
+      - key: HUTBOT_PROFILE_DIR
+        value: /tmp/hutbot-profile
       # ── Automation tokens ───────────────────────────────────
       - key: VELOCITY_AUTOMATION_TOKEN
         generateValue: true
