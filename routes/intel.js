@@ -81,7 +81,9 @@ router.post('/automation/regenerate-cache', async (req, res) => {
   }
 });
 
-// ── GET /api/intel/automation/fix-hierarchy — token-authenticated, no session ──
+// ── GET /api/intel/automation/fix-hierarchy — token-auth, no session needed ──
+// Patches region_coach + territory_vp on intel_flags using USER_ROSTER AC→RC/VP map.
+// Also fixes null-hierarchy flags by joining store_assignments if populated.
 router.get('/automation/fix-hierarchy', async (req, res) => {
   const token = req.query.token;
   const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, process.env.INTEL_REGEN_TOKEN].filter(Boolean);
@@ -89,15 +91,41 @@ router.get('/automation/fix-hierarchy', async (req, res) => {
   try {
     const p = db.getPool();
     if (!p) return res.status(503).json({ error: 'No DB' });
-    const r = await p.query(`
+
+    // Build AC → { rc, vp } map from USER_ROSTER
+    const { USER_ROSTER } = require('../routes/auth');
+    const acMap = {};
+    for (const u of USER_ROSTER) {
+      if (u.role === 'rdo') {
+        for (const ac of (u.scope.area_coaches || [])) {
+          acMap[ac] = { rc: u.scope.rc_name, vp: u.scope.vp };
+        }
+      }
+    }
+
+    let totalUpdated = 0;
+    for (const [ac, hier] of Object.entries(acMap)) {
+      const r = await p.query(
+        `UPDATE intel_flags SET region_coach=$1, territory_vp=$2
+         WHERE area_coach=$3
+           AND (region_coach IS DISTINCT FROM $1 OR territory_vp IS DISTINCT FROM $2)`,
+        [hier.rc, hier.vp, ac]
+      );
+      totalUpdated += r.rowCount;
+    }
+
+    // Also fix flags where area_coach is null but store is in store_assignments
+    const r2 = await p.query(`
       UPDATE intel_flags f
-      SET region_coach  = a.region_coach,
-          territory_vp  = a.vp
+      SET area_coach   = a.area_coach,
+          region_coach = a.region_coach,
+          territory_vp = a.vp
       FROM store_assignments a
-      WHERE f.store_id = a.store_id
-        AND (f.region_coach IS DISTINCT FROM a.region_coach OR f.territory_vp IS DISTINCT FROM a.vp)
+      WHERE f.store_id = a.store_id AND f.area_coach IS NULL
     `);
-    res.json({ status: 'ok', rows_updated: r.rowCount });
+    totalUpdated += r2.rowCount;
+
+    res.json({ status: 'ok', rows_updated: totalUpdated, ac_entries: Object.keys(acMap).length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
