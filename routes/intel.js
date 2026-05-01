@@ -216,6 +216,53 @@ router.get('/automation/raw-flags', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── GET /api/intel/automation/seed-hierarchy — seed store_assignments from alignment then fix flags ──
+router.get('/automation/seed-hierarchy', async (req, res) => {
+  const token = req.query.token;
+  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, process.env.INTEL_REGEN_TOKEN].filter(Boolean);
+  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    // 1) Seed store_assignments from velocity-alignment
+    await db.seedStoreAssignmentsFromAlignment();
+
+    // 2) Fix null-hierarchy flags using the freshly seeded store_assignments
+    const p = db.getPool();
+    const r = await p.query(`
+      UPDATE intel_flags f
+      SET area_coach   = a.area_coach,
+          region_coach = a.region_coach,
+          territory_vp = a.vp
+      FROM store_assignments a
+      WHERE f.store_id = a.store_id AND f.area_coach IS NULL
+    `);
+
+    // 3) Also fix region_coach/vp on flags that have area_coach but missing RC/VP
+    const { USER_ROSTER } = require('../routes/auth');
+    const acMap = {};
+    for (const u of USER_ROSTER) {
+      if (u.role === 'rdo') {
+        for (const ac of (u.scope.area_coaches || [])) {
+          acMap[ac] = { rc: u.scope.rc_name, vp: u.scope.vp };
+        }
+      }
+    }
+    let rcFixed = 0;
+    for (const [ac, hier] of Object.entries(acMap)) {
+      const r2 = await p.query(
+        `UPDATE intel_flags SET region_coach=$1, territory_vp=$2
+         WHERE area_coach=$3
+           AND (region_coach IS DISTINCT FROM $1 OR territory_vp IS DISTINCT FROM $2)`,
+        [hier.rc, hier.vp, ac]
+      );
+      rcFixed += r2.rowCount;
+    }
+
+    res.json({ status: 'ok', null_hierarchy_fixed: r.rowCount, rc_vp_fixed: rcFixed });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.use(requireAuth);
 
 // ── GET /api/intel/dashboard — serve cached intel for logged-in user ──────────
