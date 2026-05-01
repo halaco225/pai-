@@ -784,18 +784,26 @@ async function resolveIntelFlags(storeIds, metricType, metricDate) {
 
 // ── Intel: cache save/get ─────────────────────────────────────────────────────
 async function saveIntelCache({ userId, cacheDate, cacheJson }) {
+  return upsertIntelCache({ user_id: userId, cache_date: cacheDate, payload: cacheJson });
+}
+
+// upsertIntelCache — used by intel-pipeline.js
+// Actual DB column is "payload" JSONB (table predates cache_json TEXT schema).
+async function upsertIntelCache({ user_id, cache_date, role, payload }) {
   const p = getPool();
   if (!p) return;
   try {
     await p.query(`
-      INSERT INTO intel_cache (user_id, cache_date, cache_json, generated_at)
-      VALUES ($1, $2, $3, NOW())
+      INSERT INTO intel_cache (user_id, cache_date, role, payload, generated_at)
+      VALUES ($1, $2, $3, $4, NOW())
       ON CONFLICT (user_id, cache_date) DO UPDATE SET
-        cache_json   = EXCLUDED.cache_json,
+        role         = EXCLUDED.role,
+        payload      = EXCLUDED.payload,
         generated_at = NOW()
-    `, [userId, cacheDate, JSON.stringify(cacheJson)]);
+    `, [user_id, cache_date, role || null,
+        typeof payload === 'string' ? payload : JSON.stringify(payload)]);
   } catch (err) {
-    console.error('DB saveIntelCache error:', err.message);
+    console.error('DB upsertIntelCache error:', err.message);
   }
 }
 
@@ -804,11 +812,13 @@ async function getIntelCache({ userId, cacheDate }) {
   if (!p) return null;
   try {
     const res = await p.query(
-      `SELECT cache_json, generated_at FROM intel_cache WHERE user_id = $1 AND cache_date = $2`,
+      `SELECT payload, generated_at FROM intel_cache WHERE user_id = $1 AND cache_date = $2`,
       [userId, cacheDate]
     );
     if (!res.rows[0]) return null;
-    return { data: JSON.parse(res.rows[0].cache_json), generatedAt: res.rows[0].generated_at };
+    const raw = res.rows[0].payload;
+    const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return { data, generatedAt: res.rows[0].generated_at };
   } catch (err) {
     console.error('DB getIntelCache error:', err.message);
     return null;
@@ -857,5 +867,5 @@ module.exports = {
   // Intel exports
   initIntelDB, upsertDBSMetrics, upsertIntelFlag, getIntelFlags,
   getRecentDBSMetrics, getConsecutiveFlagDays, resolveIntelFlags,
-  saveIntelCache, getIntelCache, logIntelJob, getIntelLogs
+  saveIntelCache, upsertIntelCache, getIntelCache, logIntelJob, getIntelLogs
 };
