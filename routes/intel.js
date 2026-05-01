@@ -226,126 +226,129 @@ router.get('/kpis', async (req, res) => {
       const d = new Date(); d.setDate(d.getDate() - 1);
       return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
     })();
-
     const p = db.getPool();
-    if (!p) return res.json({ success: true, date, summary: null, areas: [] });
+    if (!p) return res.json({ region: null, by_ac: [], by_store: [], date });
 
-    // Scope filter
-    let metricWhere = 'metric_date = $1';
-    const mp = [date];
+    // Scope filter — RDO sees all their ACs; null-hierarchy flags included
+    const mp = [date]; let metricWhere = 'metric_date = $1';
+    const fp = [date]; let flagWhere   = "metric_date = $1 AND status != 'archived'";
+
     if (user.scope?.type === 'rdo') {
-      // Use area_coach IN list to match regardless of stored region_coach value
       const acs = user.scope.area_coaches || [];
       if (acs.length) {
-        mp.push(acs);
-        metricWhere += ` AND area_coach = ANY($${mp.length}::text[])`;
+        mp.push(acs); metricWhere += ` AND area_coach = ANY($${mp.length}::text[])`;
+        fp.push(acs); flagWhere   += ` AND (area_coach = ANY($${fp.length}::text[]) OR area_coach IS NULL)`;
       } else {
-        mp.push(user.scope.rc_name);
-        metricWhere += ` AND region_coach = $${mp.length}`;
+        mp.push(user.scope.rc_name || user.name); metricWhere += ` AND region_coach = $${mp.length}`;
+        fp.push(user.scope.rc_name || user.name); flagWhere   += ` AND (region_coach = $${fp.length} OR region_coach IS NULL)`;
       }
     } else if (user.scope?.type === 'area_coach') {
-      mp.push(user.scope.ac_name);
-      metricWhere += ` AND area_coach = $${mp.length}`;
+      const ac = user.scope.ac_name || user.name;
+      mp.push(ac); metricWhere += ` AND area_coach = $${mp.length}`;
+      fp.push(ac); flagWhere   += ` AND area_coach = $${fp.length}`;
     }
 
-    // Flags scoped the same way
-    let flagWhere = "metric_date = $1 AND status != 'archived'";
-    const fp = [date];
-    if (user.scope?.type === 'rdo') {
-      const acs = user.scope.area_coaches || [];
-      if (acs.length) { fp.push(acs); flagWhere += ` AND area_coach = ANY($${fp.length}::text[])`; }
-      else { fp.push(user.scope.rc_name); flagWhere += ` AND region_coach = $${fp.length}`; }
-    } else if (user.scope?.type === 'area_coach') {
-      fp.push(user.scope.ac_name);
-      flagWhere += ` AND area_coach = $${fp.length}`;
-    }
-
-    const [metricsRes, flagsRes] = await Promise.all([
-      p.query(`SELECT area_coach, region_coach,
-        COUNT(*) as store_count,
-        SUM(net_sales_day) as total_sales,
-        AVG(net_sales_day) as avg_sales,
-        AVG(growth_pct_day) as avg_growth,
-        SUM(change_down_day) as total_change_down,
-        SUM(cash_variance_day) as total_cash_var,
-        SUM(paidouts_day) as total_paidouts
-        FROM intel_dbs_metrics WHERE ${metricWhere}
-        GROUP BY area_coach, region_coach ORDER BY area_coach`, mp),
-      p.query(`SELECT area_coach, severity, COUNT(*) as cnt
-        FROM intel_flags WHERE ${flagWhere}
-        GROUP BY area_coach, severity`, fp)
+    const [metricsRes, flagCountRes, fcOtRes, surveyRes] = await Promise.all([
+      p.query(`SELECT area_coach, store_id, store_name,
+        net_sales_day, growth_pct_day, cancel_unmade_day, paidouts_day, cash_variance_day
+        FROM intel_dbs_metrics WHERE ${metricWhere} ORDER BY area_coach, store_id`, mp),
+      p.query(`SELECT area_coach, store_id, severity, COUNT(*) as cnt
+        FROM intel_flags WHERE ${flagWhere} GROUP BY area_coach, store_id, severity`, fp),
+      p.query(`SELECT area_coach, store_id,
+        COUNT(CASE WHEN metric_type = 'FORGOT_CLOCKOUT' THEN 1 END)::int as forgot_clockout,
+        COALESCE(SUM(CASE WHEN metric_type IN ('OT_OVER_SCHEDULED','OT_OVER_RUN','DOUBLE_TIME')
+          THEN COALESCE(value::numeric, 0) ELSE 0 END), 0)::float as ot_hours
+        FROM intel_flags WHERE ${flagWhere} GROUP BY area_coach, store_id`, fp),
+      p.query(`SELECT sl.store_id, a.area_coach,
+        COALESCE(SUM(sl.positive_count),0)::int as pos,
+        COALESCE(SUM(sl.negative_count),0)::int as neg
+        FROM intel_survey_log sl LEFT JOIN store_assignments a ON sl.store_id=a.store_id
+        WHERE sl.survey_date=$1 GROUP BY sl.store_id, a.area_coach`, [date])
     ]);
 
-    // Build per-area flag counts
-    const flagMap = {};
-    for (const r of flagsRes.rows) {
-      if (!flagMap[r.area_coach]) flagMap[r.area_coach] = { high: 0, medium: 0, low: 0, total: 0 };
-      flagMap[r.area_coach][r.severity] = (flagMap[r.area_coach][r.severity] || 0) + Number(r.cnt);
-      flagMap[r.area_coach].total += Number(r.cnt);
-    }
-
-    // Store-level detail for drill-down
-    const storeRes = await p.query(`
-      SELECT area_coach, store_id, store_name,
-        net_sales_day, growth_pct_day, change_down_day,
-        cash_variance_day, paidouts_day, production_lt15_day
-      FROM intel_dbs_metrics WHERE ${metricWhere}
-      ORDER BY area_coach, store_id`, mp);
-
-    const storeFlagRes = await p.query(`
-      SELECT store_id, metric_type, severity, value, consecutive_days_out
-      FROM intel_flags WHERE ${flagWhere}
-      ORDER BY store_id, severity DESC`, fp);
-
-    const storeFlagMap = {};
-    for (const r of storeFlagRes.rows) {
-      if (!storeFlagMap[r.store_id]) storeFlagMap[r.store_id] = [];
-      storeFlagMap[r.store_id].push({ metric_type: r.metric_type, severity: r.severity, value: Number(r.value), days: r.consecutive_days_out });
-    }
-
-    const storesByAC = {};
-    for (const r of storeRes.rows) {
-      const ac = r.area_coach || 'Unknown';
-      if (!storesByAC[ac]) storesByAC[ac] = [];
-      storesByAC[ac].push({
-        store_id: r.store_id, store_name: r.store_name,
-        net_sales_day: r.net_sales_day ? Number(r.net_sales_day) : null,
-        growth_pct_day: r.growth_pct_day ? Number(r.growth_pct_day) : null,
-        change_down_day: r.change_down_day ? Number(r.change_down_day) : null,
-        flags: storeFlagMap[r.store_id] || []
-      });
-    }
-
-    const areas = metricsRes.rows.map(r => {
-      const ac = r.area_coach;
-      const flags = flagMap[ac] || { high: 0, medium: 0, low: 0, total: 0 };
-      return {
-        area_coach: ac,
-        region_coach: r.region_coach,
-        store_count: Number(r.store_count),
-        total_sales: r.total_sales ? Number(r.total_sales) : null,
-        avg_sales: r.avg_sales ? Number(r.avg_sales) : null,
-        avg_growth: r.avg_growth ? Number(r.avg_growth) : null,
-        total_change_down: r.total_change_down ? Number(r.total_change_down) : null,
-        total_cash_var: r.total_cash_var ? Number(r.total_cash_var) : null,
-        total_paidouts: r.total_paidouts ? Number(r.total_paidouts) : null,
-        flags,
-        stores: storesByAC[ac] || []
+    // Build store-level map from DBS metrics
+    const storeMap = {};
+    for (const r of metricsRes.rows) {
+      storeMap[r.store_id] = {
+        area_coach: r.area_coach, store_id: r.store_id, store_name: r.store_name,
+        net_sales: r.net_sales_day ? +r.net_sales_day : null,
+        growth_pct: r.growth_pct_day != null ? +r.growth_pct_day : null,
+        cancels: r.cancel_unmade_day ? +r.cancel_unmade_day : null,
+        labor_pct: null, ot_hours: 0, comments_pos: 0, comments_neg: 0,
+        forgot_clockout: 0, flag_count: 0
       };
-    });
+    }
 
-    // Region-level summary
-    const summary = {
-      total_stores: areas.reduce((n, a) => n + a.store_count, 0),
-      total_sales: areas.reduce((n, a) => n + (a.total_sales || 0), 0),
-      avg_growth: areas.length ? areas.reduce((n, a) => n + (a.avg_growth || 0), 0) / areas.filter(a => a.avg_growth != null).length : null,
-      flagged_stores: new Set(storeFlagRes.rows.map(r => r.store_id)).size,
-      high_flags: areas.reduce((n, a) => n + a.flags.high, 0),
-      medium_flags: areas.reduce((n, a) => n + a.flags.medium, 0),
-      low_flags: areas.reduce((n, a) => n + a.flags.low, 0),
+    // Merge flag counts
+    for (const r of flagCountRes.rows) {
+      if (!storeMap[r.store_id]) storeMap[r.store_id] = {
+        area_coach: r.area_coach, store_id: r.store_id, store_name: r.store_id,
+        net_sales: null, growth_pct: null, cancels: null, labor_pct: null,
+        ot_hours: 0, comments_pos: 0, comments_neg: 0, forgot_clockout: 0, flag_count: 0
+      };
+      storeMap[r.store_id].flag_count = (storeMap[r.store_id].flag_count || 0) + +r.cnt;
+    }
+    for (const r of fcOtRes.rows) {
+      if (storeMap[r.store_id]) {
+        storeMap[r.store_id].forgot_clockout = r.forgot_clockout || 0;
+        storeMap[r.store_id].ot_hours = +r.ot_hours || 0;
+      }
+    }
+    for (const r of surveyRes.rows) {
+      if (storeMap[r.store_id]) {
+        storeMap[r.store_id].comments_pos = r.pos || 0;
+        storeMap[r.store_id].comments_neg = r.neg || 0;
+      }
+    }
+
+    const by_store = Object.values(storeMap);
+
+    // Group by area_coach
+    const acMap = {};
+    for (const s of by_store) {
+      const ac = s.area_coach || 'Unknown';
+      if (!acMap[ac]) acMap[ac] = { area_coach: ac, store_count: 0, net_sales: 0,
+        gsum: 0, gcnt: 0, cancels: 0, ot_hours: 0, comments_pos: 0,
+        comments_neg: 0, forgot_clockout: 0, flag_count: 0 };
+      const a = acMap[ac];
+      a.store_count++;
+      if (s.net_sales  != null) a.net_sales  += s.net_sales;
+      if (s.growth_pct != null) { a.gsum += s.growth_pct; a.gcnt++; }
+      if (s.cancels    != null) a.cancels += s.cancels;
+      a.ot_hours       += s.ot_hours       || 0;
+      a.comments_pos   += s.comments_pos   || 0;
+      a.comments_neg   += s.comments_neg   || 0;
+      a.forgot_clockout+= s.forgot_clockout|| 0;
+      a.flag_count     += s.flag_count     || 0;
+    }
+
+    const by_ac = Object.values(acMap).map(a => ({
+      area_coach: a.area_coach, store_count: a.store_count,
+      net_sales:       a.net_sales    || null,
+      growth_pct:      a.gcnt > 0 ? a.gsum / a.gcnt : null,
+      cancels:         a.cancels      || null,
+      labor_pct:       null,
+      ot_hours:        a.ot_hours     || null,
+      comments_pos:    a.comments_pos,
+      comments_neg:    a.comments_neg,
+      forgot_clockout: a.forgot_clockout,
+      flag_count:      a.flag_count
+    }));
+
+    const validGrowth = by_store.filter(s => s.growth_pct != null);
+    const region = {
+      store_count:     by_store.length,
+      net_sales:       by_store.reduce((s,r) => s+(r.net_sales||0), 0) || null,
+      growth_pct:      validGrowth.length ? validGrowth.reduce((s,r) => s+r.growth_pct,0)/validGrowth.length : null,
+      cancels:         by_store.reduce((s,r) => s+(r.cancels||0), 0) || null,
+      labor_pct:       null,
+      ot_hours:        by_store.reduce((s,r) => s+(r.ot_hours||0), 0) || null,
+      comments_pos:    by_store.reduce((s,r) => s+(r.comments_pos||0), 0),
+      comments_neg:    by_store.reduce((s,r) => s+(r.comments_neg||0), 0),
+      forgot_clockout: by_store.reduce((s,r) => s+(r.forgot_clockout||0), 0)
     };
 
-    res.json({ success: true, date, summary, areas });
+    res.json({ region, by_ac, by_store, date });
   } catch (err) {
     console.error('[Intel] /kpis error:', err.message);
     res.status(500).json({ error: err.message });
@@ -638,10 +641,13 @@ router.post('/automation/fix-hierarchy', async (req, res) => {
     const r = await p.query(`
       UPDATE intel_flags f
       SET region_coach  = a.region_coach,
+          area_coach    = COALESCE(f.area_coach, a.area_coach),
           territory_vp  = a.vp
       FROM store_assignments a
       WHERE f.store_id = a.store_id
-        AND (f.region_coach IS DISTINCT FROM a.region_coach OR f.territory_vp IS DISTINCT FROM a.vp)
+        AND (f.region_coach IS DISTINCT FROM a.region_coach
+          OR f.territory_vp IS DISTINCT FROM a.vp
+          OR (f.area_coach IS NULL AND a.area_coach IS NOT NULL))
     `);
     res.json({ status: 'ok', rows_updated: r.rowCount });
   } catch (err) {
@@ -659,7 +665,6 @@ router.get('/store-assignments', requireRole('rdo', 'vp'), async (req, res) => {
   }
 });
 
-module.exports = router;
 
 // ── GET /api/intel/automation/raw-flags — full flag detail for review ─────────
 router.get('/automation/raw-flags', async (req, res) => {
@@ -670,30 +675,58 @@ router.get('/automation/raw-flags', async (req, res) => {
     const p = db.getPool();
     if (!p) return res.json({ error: 'no pool' });
     const date = req.query.date || null;
-    let q = `SELECT store_id, store_name, metric_type, metric_date, value, target, severity,
-               consecutive_days_out, status, area_coach, region_coach, territory_vp, notes, created_at
-             FROM intel_flags
-             WHERE status != 'archived'`;
+    let q = `SELECT store_id, store_name, metric_type, metric_date, value, target,
+               severity, consecutive_days_out, status, area_coach, region_coach,
+               territory_vp, notes, created_at
+             FROM intel_flags WHERE status != 'archived'`;
     const params = [];
     if (date) { params.push(date); q += ` AND metric_date = $1`; }
-    q += ` ORDER BY metric_date DESC, CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, consecutive_days_out DESC`;
+    q += ` ORDER BY metric_date DESC,
+           CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+           consecutive_days_out DESC`;
     const result = await p.query(q, params);
-
-    // also grab soft indicators
-    const soft = await p.query(`SELECT store_id, metric_date, indicator, value, target, source FROM dbs_soft_indicators ORDER BY metric_date DESC LIMIT 100`);
-
-    // group flags by metric_type for easy scanning
+    const soft   = await p.query(`SELECT store_id, metric_date, indicator, value, target, source
+      FROM dbs_soft_indicators ORDER BY metric_date DESC LIMIT 100`);
     const byType = {};
     for (const row of result.rows) {
       if (!byType[row.metric_type]) byType[row.metric_type] = [];
       byType[row.metric_type].push(row);
     }
-
-    res.json({
-      total_flags: result.rows.length,
-      by_type: byType,
-      soft_indicators: soft.rows,
-      all_flags: result.rows
-    });
+    res.json({ total_flags: result.rows.length, by_type: byType, soft_indicators: soft.rows, all_flags: result.rows });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// ── GET /api/intel/store-trend — 7-day flag history for a store+metric ────────
+router.get('/store-trend', async (req, res) => {
+  try {
+    const { store_id, metric_type, days = 14 } = req.query;
+    if (!store_id || !metric_type) return res.status(400).json({ error: 'store_id and metric_type required' });
+    const p = db.getPool();
+    if (!p) return res.json({ history: [] });
+    const r = await p.query(`
+      SELECT metric_date, value, target, severity, status, consecutive_days_out
+      FROM intel_flags
+      WHERE store_id=$1 AND metric_type=$2
+      ORDER BY metric_date DESC LIMIT $3
+    `, [store_id, metric_type, parseInt(days)]);
+    res.json({ store_id, metric_type, history: r.rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── POST /api/intel/rdo-signoff — RDO clears an addressed flag ────────────────
+router.post('/rdo-signoff', requireRole('rdo', 'vp'), async (req, res) => {
+  try {
+    const { flag_id } = req.body;
+    if (!flag_id) return res.status(400).json({ error: 'flag_id required' });
+    const p = db.getPool();
+    if (!p) return res.status(503).json({ error: 'Database unavailable' });
+    const flagRes = await p.query('SELECT * FROM intel_flags WHERE id=$1', [flag_id]);
+    if (!flagRes.rows.length) return res.status(404).json({ error: 'Flag not found' });
+    await p.query("UPDATE intel_flags SET status='resolved', updated_at=NOW() WHERE id=$1", [flag_id]);
+    await p.query(`INSERT INTO intel_acknowledgments (flag_id, acknowledged_by, role, action_taken)
+      VALUES ($1,$2,$3,$4)`, [flag_id, req.session.user.username, req.session.user.role, 'RDO sign-off — issue closed']);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+module.exports = router;

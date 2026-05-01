@@ -383,6 +383,70 @@
   border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;
   font-size: 13px; color: #F87171; display: flex; align-items: center; gap: 8px;
 }
+
+/* ── Date Picker ─────────────────────────────────────────── */
+.date-input-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.date-input-wrap .date-lbl { font-size: 10px; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
+.date-nav { display: flex; align-items: center; gap: 6px; }
+.date-picker-input {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 10px; color: var(--text-primary); font-size: 13px; font-weight: 700;
+  font-family: var(--font); cursor: pointer; transition: border-color 0.15s;
+}
+.date-picker-input:focus { outline: none; border-color: var(--accent); }
+.date-nav-btn {
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-secondary);
+  border-radius: 6px; padding: 5px 11px; font-size: 15px; cursor: pointer;
+  transition: all 0.15s; font-family: var(--font);
+}
+.date-nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+/* ── Trend Modal ─────────────────────────────────────────── */
+.trend-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  display: none; align-items: center; justify-content: center; z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+.trend-modal-overlay.open { display: flex; }
+.trend-modal {
+  background: var(--surface); border: 1px solid var(--border-light);
+  border-radius: 14px; padding: 28px 32px; width: 100%; max-width: 560px; position: relative;
+}
+.trend-modal h3 { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
+.trend-modal-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 18px; }
+.trend-close {
+  position: absolute; top: 16px; right: 16px;
+  background: var(--surface-3); border: 1px solid var(--border);
+  color: var(--text-muted); border-radius: 6px; padding: 4px 12px;
+  font-size: 12px; cursor: pointer; font-family: var(--font);
+}
+.trend-close:hover { color: var(--text-primary); }
+.trend-sparkline { display: flex; align-items: flex-end; gap: 5px; height: 44px; margin-bottom: 18px; }
+.trend-bar { flex: 1; border-radius: 3px 3px 0 0; min-width: 18px; cursor: default; }
+.trend-bar.sev-high   { background: var(--danger); }
+.trend-bar.sev-medium { background: var(--warning); }
+.trend-bar.sev-low    { background: #3B82F6; }
+.trend-bar.clear      { background: var(--success); opacity: 0.4; }
+.trend-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.trend-table th {
+  background: var(--surface-2); color: var(--text-muted); padding: 8px 12px;
+  text-align: left; border-bottom: 1px solid var(--border);
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+}
+.trend-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+.trend-table tr:last-child td { border-bottom: none; }
+/* ── Two-stage flag actions ──────────────────────────────── */
+.btn-signoff {
+  background: transparent; color: var(--success); border: 1px solid var(--success);
+  border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 700;
+  cursor: pointer; transition: all 0.15s; white-space: nowrap; font-family: var(--font);
+}
+.btn-signoff:hover { background: rgba(16,185,129,0.12); }
+.btn-trend {
+  background: transparent; color: var(--text-muted); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 9px; font-size: 11px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; font-family: var(--font);
+}
+.btn-trend:hover { border-color: var(--accent); color: var(--accent); }
 </style>
 </head>
 <body>
@@ -441,9 +505,13 @@
         <h1>Daily Intel</h1>
         <div class="intel-sub" id="intelSub">Loading intelligence…</div>
       </div>
-      <div class="intel-date-badge">
-        <div class="date-val" id="headerDate">—</div>
+      <div class="date-input-wrap">
         <div class="date-lbl">Report Date</div>
+        <div class="date-nav">
+          <button class="date-nav-btn" onclick="shiftDate(-1)" title="Previous day">&#8249;</button>
+          <input type="date" class="date-picker-input" id="datePicker" onchange="loadDataForDate(this.value)">
+          <button class="date-nav-btn" onclick="shiftDate(1)" title="Next day">&#8250;</button>
+        </div>
       </div>
     </div>
 
@@ -648,6 +716,20 @@
   </main>
 </div>
 
+<!-- ── Trend Modal ────────────────────────────────────── -->
+<div class="trend-modal-overlay" id="trendModal">
+  <div class="trend-modal">
+    <button class="trend-close" onclick="closeTrendModal()">&#10005; Close</button>
+    <h3 id="trendTitle">Flag History</h3>
+    <div class="trend-modal-sub" id="trendSub"></div>
+    <div class="trend-sparkline" id="trendSparkline"></div>
+    <table class="trend-table">
+      <thead><tr><th>Date</th><th>Value</th><th>Severity</th><th>Days Out</th><th>Status</th></tr></thead>
+      <tbody id="trendBody"><tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
 <!-- ── Acknowledge Modal ────────────────────────────────── -->
 <div class="modal-overlay" id="ackModal">
   <div class="modal">
@@ -671,12 +753,126 @@ let currentUser   = null;
 let allFlags      = [];
 let currentFlagId = null;
 let currentFilter = 'all';
+let currentIntelDate = null;
 
 // KPI drill-down state
 let kpiData       = null;   // full response from /api/intel/kpis
 let activeDrill   = null;   // metric key currently drilled ('net_sales', etc.)
 let drillLevel    = 'ac';   // 'ac' | 'store'
 let drillAC       = null;   // selected area coach name when drillLevel='store'
+
+
+/* ═══════════════════════════════════════════════════════════
+   DATE PICKER
+   ═══════════════════════════════════════════════════════════ */
+async function loadDataForDate(date) {
+  if (!date) return;
+  currentIntelDate = date;
+  document.getElementById('datePicker').value = date;
+
+  // Show loading state
+  document.getElementById('narrativeText').innerHTML =
+    '<div class="loading-shimmer" style="height:18px;width:90%;margin-bottom:10px"></div><div class="loading-shimmer" style="height:18px;width:70%"></div>';
+  document.getElementById('quickFlagsList').innerHTML =
+    '<div style="color:var(--text-muted);font-size:13px;padding:20px 0">Loading flags…</div>';
+
+  try {
+    const [dashboard, flags, shoutouts] = await Promise.all([
+      fetch(`/api/intel/dashboard?date=${date}`).then(r => r.json()),
+      fetch(`/api/intel/flags?date=${date}`).then(r => r.json()),
+      fetch(`/api/intel/shoutouts?date=${date}`).then(r => r.json())
+    ]);
+    renderBriefing(dashboard, flags, shoutouts);
+    renderFlags(flags.flags || []);
+    renderShoutouts(shoutouts.shoutouts || []);
+    loadKPIs(date);
+    if (currentUser.role === 'rdo' || currentUser.role === 'vp') {
+      const accts = await fetch(`/api/intel/accountability`).then(r => r.json());
+      renderAccountability(accts, flags.flags || []);
+    }
+  } catch (err) {
+    document.getElementById('narrativeText').textContent = 'Error loading data: ' + err.message;
+  }
+}
+
+function shiftDate(delta) {
+  const dp = document.getElementById('datePicker');
+  const base = dp.value || currentIntelDate || new Date().toLocaleDateString('en-CA');
+  const d = new Date(base + 'T12:00:00');
+  d.setDate(d.getDate() + delta);
+  const newDate = d.toLocaleDateString('en-CA');
+  loadDataForDate(newDate);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TREND MODAL
+   ═══════════════════════════════════════════════════════════ */
+async function openTrendModal(storeId, storeName, metricType) {
+  document.getElementById('trendTitle').textContent = `${storeName} — ${formatMetricType(metricType)}`;
+  document.getElementById('trendSub').textContent   = 'Last 14 days of flag history';
+  document.getElementById('trendBody').innerHTML    = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px">Loading…</td></tr>';
+  document.getElementById('trendSparkline').innerHTML = '';
+  document.getElementById('trendModal').classList.add('open');
+
+  try {
+    const data = await fetch(`/api/intel/store-trend?store_id=${encodeURIComponent(storeId)}&metric_type=${encodeURIComponent(metricType)}&days=14`).then(r => r.json());
+    const history = data.history || [];
+
+    if (!history.length) {
+      document.getElementById('trendBody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px">No history found.</td></tr>';
+      return;
+    }
+
+    // Sparkline — oldest to newest
+    const sorted = [...history].reverse();
+    const spark  = document.getElementById('trendSparkline');
+    spark.innerHTML = sorted.map(h => {
+      const cls = h.status === 'resolved' || h.status === 'archived' ? 'clear' : `sev-${h.severity}`;
+      const ht  = Math.max(20, Math.min(44, (h.consecutive_days_out || 1) * 12));
+      return `<div class="trend-bar ${cls}" style="height:${ht}px" title="${formatDate(h.metric_date)}"></div>`;
+    }).join('');
+
+    // Table — newest first
+    document.getElementById('trendBody').innerHTML = history.map(h => {
+      const sevCls = h.severity === 'high' ? 'cell-bad' : h.severity === 'medium' ? 'cell-warn' : 'cell-muted';
+      const statusStr = h.status === 'resolved' ? '\u2713 Resolved' : h.status === 'addressed' ? '\u25CF Addressed' : '\u25CF Open';
+      return `<tr>
+        <td>${formatDate(h.metric_date)}</td>
+        <td>${h.value != null ? formatValue(metricType, h.value) : '\u2014'}</td>
+        <td class="${sevCls}">${h.severity || '\u2014'}</td>
+        <td>${h.consecutive_days_out || 1} day${(h.consecutive_days_out||1)!==1?'s':''}</td>
+        <td style="color:var(--text-muted)">${statusStr}</td>
+      </tr>`;
+    }).join('');
+  } catch(err) {
+    document.getElementById('trendBody').innerHTML = `<tr><td colspan="5" style="color:var(--danger);padding:20px">${err.message}</td></tr>`;
+  }
+}
+
+function closeTrendModal() {
+  document.getElementById('trendModal').classList.remove('open');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RDO SIGN-OFF
+   ═══════════════════════════════════════════════════════════ */
+async function rdoSignOff(flagId, storeName) {
+  if (!confirm(`Sign off on ${storeName}? This will mark the flag resolved and remove it from active view.`)) return;
+  try {
+    const res  = await fetch('/api/intel/rdo-signoff', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ flag_id: flagId })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    const f = allFlags.find(f => f.id === flagId);
+    if (f) f.status = 'resolved';
+    applyFlagFilter(currentFilter);
+    const open  = allFlags.filter(f => f.status !== 'addressed' && f.status !== 'archived' && f.status !== 'resolved').length;
+    const badge = document.getElementById('flagCountBadge');
+    if (open > 0) badge.textContent = open; else badge.style.display = 'none';
+  } catch(err) { alert('Error: ' + err.message); }
+}
 
 /* ═══════════════════════════════════════════════════════════
    INIT
@@ -703,6 +899,13 @@ async function init() {
       fetch('/api/intel/shoutouts').then(r => r.json())
     ]);
 
+    // Set date picker to intel date
+    const intelDate = (dashboard.metric_date || dashboard.date || '').split('T')[0] || null;
+    currentIntelDate = intelDate;
+    const dp = document.getElementById('datePicker');
+    if (intelDate) dp.value = intelDate;
+    dp.max = new Date().toLocaleDateString('en-CA');
+
     renderBriefing(dashboard, flags, shoutouts);
     renderFlags(flags.flags || []);
     renderShoutouts(shoutouts.shoutouts || []);
@@ -714,7 +917,7 @@ async function init() {
     }
 
     // Load KPI dashboard (non-blocking — fills in after flag data)
-    loadKPIs(dashboard.metric_date || dashboard.date);
+    loadKPIs(intelDate);
 
   } catch (err) {
     document.getElementById('narrativeText').textContent = 'Error loading intel: ' + err.message;
@@ -1024,9 +1227,11 @@ function applyFlagFilter(filter) {
 
 function buildFlagCard(f, compact) {
   const isAddressed = f.status === 'addressed';
+  const isResolved  = f.status === 'resolved';
   const days    = f.consecutive_days_out || 1;
   const daysCls = days >= 3 ? 'days-hi' : days === 1 ? 'days-1' : '';
-  const canAck  = currentUser.role === 'area_coach' && !isAddressed;
+  const isAC    = currentUser && currentUser.role === 'area_coach';
+  const isRDO   = currentUser && (currentUser.role === 'rdo' || currentUser.role === 'vp');
 
   let employeeHtml = '';
   if (f.metric_type === 'FORGOT_CLOCKOUT' || f.metric_type === 'CLOCKOUT_REMINDER') {
@@ -1037,7 +1242,23 @@ function buildFlagCard(f, compact) {
     } catch(e) {}
   }
 
-  const metricLine = formatMetricType(f.metric_type) + (f.value != null ? ` \u2014 ${formatValue(f.metric_type, f.value)}` : '');
+  const metricLine  = formatMetricType(f.metric_type) + (f.value != null ? ` — ${formatValue(f.metric_type, f.value)}` : '');
+  const storeKey    = JSON.stringify(String(f.store_id));
+  const storeLabel  = JSON.stringify(f.store_name || String(f.store_id));
+  const metricKey   = JSON.stringify(String(f.metric_type));
+
+  let actionsHtml = `<button class="btn-trend" onclick="openTrendModal(${storeKey},${storeLabel},${metricKey})">&#128200; Trend</button>`;
+
+  if (isAddressed) {
+    actionsHtml += '<span class="addressed-badge">✓ AC Addressed</span>';
+    if (isRDO) actionsHtml += `<button class="btn-signoff" onclick="rdoSignOff(${f.id},${storeLabel})">✓ Sign Off</button>`;
+  } else if (!isResolved) {
+    if (isAC) {
+      actionsHtml += `<button class="btn-ack" onclick="openAckModal(${f.id},'${escHtml(f.store_name||f.store_id)}','${escHtml(f.metric_type)}')">Acknowledge</button>`;
+    } else if (isRDO) {
+      actionsHtml += '<span style="font-size:11px;color:var(--text-muted)">Awaiting AC</span>';
+    }
+  }
 
   return `<div class="flag-card ${isAddressed ? 'addressed' : ''}">
     <div><span class="severity-pill sev-${f.severity}">${f.severity}</span></div>
@@ -1052,13 +1273,7 @@ function buildFlagCard(f, compact) {
         <span><span class="days-out-badge ${daysCls}">${days} day${days !== 1 ? 's' : ''}</span></span>
       </div>
     </div>
-    <div class="flag-actions">
-      ${isAddressed
-        ? '<span class="addressed-badge">\u2713 Addressed</span>'
-        : canAck
-          ? `<button class="btn-ack" onclick="openAckModal(${f.id}, '${escHtml(f.store_name || f.store_id)}', '${escHtml(f.metric_type)}')">Acknowledge</button>`
-          : ''}
-    </div>
+    <div class="flag-actions">${actionsHtml}</div>
   </div>`;
 }
 
@@ -1178,7 +1393,8 @@ function escHtml(s) {
 }
 function formatDate(d) {
   if (!d) return '\u2014';
-  return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const dateOnly = String(d).split('T')[0];
+  return new Date(dateOnly + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 function formatDateTime(d) {
   if (!d) return '\u2014';
@@ -1209,6 +1425,7 @@ function formatValue(metric, val) {
 function logout() { fetch('/api/auth/logout',{method:'POST'}).then(()=>window.location.href='/'); }
 
 document.getElementById('ackModal').addEventListener('click', function(e) { if (e.target === this) closeAckModal(); });
+document.getElementById('trendModal').addEventListener('click', function(e) { if (e.target === this) closeTrendModal(); });
 
 init();
 </script>
