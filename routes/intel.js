@@ -100,6 +100,41 @@ router.post('/automation/regenerate-cache', async (req, res) => {
   }
 });
 
+
+// ── GET /api/intel/automation/test-cache-write — diagnose upsertIntelCache ───
+router.get('/automation/test-cache-write', async (req, res) => {
+  const token = req.query.token;
+  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, process.env.INTEL_REGEN_TOKEN].filter(Boolean);
+  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const p = db.getPool();
+    if (!p) return res.json({ error: 'no pool' });
+
+    // 1. Show actual table columns
+    const cols = await p.query(`SELECT column_name, data_type, is_nullable
+      FROM information_schema.columns WHERE table_name='intel_cache' ORDER BY ordinal_position`);
+
+    // 2. Try a direct insert matching actual columns
+    let insertResult = null, insertError = null;
+    try {
+      await p.query(
+        `INSERT INTO intel_cache (user_id, cache_date, role, payload, generated_at)
+         VALUES ('__test__', '2026-01-01', 'test', $1, NOW())
+         ON CONFLICT (user_id, cache_date) DO UPDATE SET payload=EXCLUDED.payload, generated_at=NOW()`,
+        [JSON.stringify({ test: true })]
+      );
+      insertResult = 'ok';
+    } catch (e) { insertError = e.message; }
+
+    // 3. Clean up test row
+    await p.query("DELETE FROM intel_cache WHERE user_id='__test__'").catch(()=>{});
+
+    res.json({ columns: cols.rows, insertResult, insertError });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/intel/automation/fix-hierarchy — token-auth, no session needed ──
 // Patches region_coach + territory_vp on intel_flags using USER_ROSTER AC→RC/VP map.
 // Also fixes null-hierarchy flags by joining store_assignments if populated.
