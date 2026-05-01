@@ -17,7 +17,7 @@ services:
         value: production
       # ── Playwright browser path (MUST be set for HutBot, Fourth, SMG scrapers) ──
       - key: PLAYWRIGHT_BROWSERS_PATH
-        value: /tmp/ms-playwright
+        value: /opt/render/project/src
       # ── Anthropic / Claude ──────────────────────────────────
       - key: ANTHROPIC_API_KEY
         sync: false
