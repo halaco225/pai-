@@ -94,6 +94,7 @@ function parseDBS(filePath, targetDate) {
   const storeFlags     = [];  // Tier 1 flag records
   const softIndicators = [];  // Tier 2 soft indicator records
   const assignments    = [];  // store → area/region/VP mappings
+  const storeMetrics   = {};  // store_id → raw KPI snapshot (for intel_dbs_metrics)
 
   let currentSection  = null; // 'operations' | 'financial'
   let currentArea     = null;
@@ -159,6 +160,19 @@ function parseDBS(filePath, targetDate) {
         const base = { store_id, store_name, area_coach: currentArea, region_coach: resolvedRC,
                        territory_vp: resolvedVP, metric_date: targetDate, source: 'DBS', tier: 1 };
 
+        // Capture raw KPI snapshot — merged with ops section data below
+        if (!storeMetrics[store_id]) storeMetrics[store_id] = { store_id, store_name, area_coach: currentArea, region_coach: resolvedRC, territory_vp: resolvedVP, metric_date: targetDate };
+        Object.assign(storeMetrics[store_id], {
+          change_down_day:   changeDown,
+          allowance_pct_day: cellVal(row, S2.ALLOWANCE),
+          discount_pct_day:  cellVal(row, S2.DISCOUNT),
+          cancel_unmade_day: cancelUnmade,
+          changed_miles_day: changedMiles,
+          paidouts_day:      paidouts,
+          refunds_day:       refunds,
+          cash_variance_day: cashVar,
+        });
+
         if (changeDown != null && changeDown > 30) {
           storeFlags.push({ ...base, metric_type: 'CHANGE_DOWN', value: changeDown, target: 30, variance: changeDown - 30 });
         }
@@ -192,13 +206,22 @@ function parseDBS(filePath, targetDate) {
       }
 
       if (currentSection === 'operations') {
+        // ── Raw KPI: net sales + growth ────────────────────────────────────
+        const netSalesDay = cellVal(row, S1.NET_SALES_DAY);
+        const netSalesWtd = cellVal(row, S1.NET_SALES_WTD);
+        const netSalesPtd = cellVal(row, S1.NET_SALES_PTD);
+        if (!storeMetrics[store_id]) storeMetrics[store_id] = { store_id, store_name, area_coach: currentArea, region_coach: resolvedRC, territory_vp: resolvedVP, metric_date: targetDate };
+        Object.assign(storeMetrics[store_id], { net_sales_day: netSalesDay, net_sales_wtd: netSalesWtd, net_sales_ptd: netSalesPtd });
+
         // ── Tier 2 Soft: Sales Growth % ───────────────────────────────────
         const growthDay = cellVal(row, S1.GROWTH_DAY);
+        if (growthDay != null) storeMetrics[store_id].growth_pct_day = growthDay;
         if (growthDay != null && growthDay < 0) {
           softIndicators.push({ store_id, metric_date: targetDate, indicator: 'growth_pct_day', value: growthDay, target: 0, source: 'DBS' });
         }
         // ── Tier 2 Soft: Production < 15% score ───────────────────────────
         const prodLt15 = cellVal(row, S1.PROD_LT15_DAY);
+        if (prodLt15 != null) storeMetrics[store_id].production_lt15_day = prodLt15;
         if (prodLt15 != null && prodLt15 <= 55) {
           softIndicators.push({ store_id, metric_date: targetDate, indicator: 'production_lt15', value: prodLt15, target: 60, source: 'DBS' });
         }
@@ -206,7 +229,7 @@ function parseDBS(filePath, targetDate) {
     }
   }
 
-  return { storeFlags, softIndicators, assignments };
+  return { storeFlags, softIndicators, assignments, storeMetrics: Object.values(storeMetrics) };
 }
 
 /**
@@ -222,7 +245,7 @@ async function processDBS(filePath, targetDate) {
     return { success: false, error: err.message };
   }
 
-  const { storeFlags, softIndicators, assignments } = result;
+  const { storeFlags, softIndicators, assignments, storeMetrics } = result;
   console.log(`[DBS] Found: ${assignments.length} store assignments, ${storeFlags.length} flags, ${softIndicators.length} soft indicators`);
 
   // Write assignments (authoritative hierarchy for all other parsers)
@@ -237,12 +260,19 @@ async function processDBS(filePath, targetDate) {
     console.log(`[DBS] Cleared existing DBS flags for ${targetDate}`);
   }
 
+  // Write raw KPI snapshots (powers the performance dashboard)
+  let metricsWritten = 0;
+  for (const m of storeMetrics) {
+    await db.upsertDBSMetrics(m);
+    metricsWritten++;
+  }
+
   // Write Tier 1 flags with consecutive day logic
   let flagsWritten = 0;
   for (const flag of storeFlags) {
     const prevDays = await db.getConsecutiveDays(flag.store_id, flag.metric_type, flag.metric_date);
     const consecutiveDays = prevDays + 1;
-    const severity = 'high'; // Tier 1 is always high
+    const severity = consecutiveDays >= 4 ? 'high' : consecutiveDays >= 2 ? 'medium' : 'low';
     await db.insertIntelFlag({ ...flag, consecutive_days_out: consecutiveDays, severity, is_new: prevDays === 0 });
     flagsWritten++;
   }
@@ -252,8 +282,8 @@ async function processDBS(filePath, targetDate) {
     await db.upsertSoftIndicator(si);
   }
 
-  console.log(`[DBS] Done — ${flagsWritten} flags written`);
-  return { success: true, assignmentsWritten: assignments.length, flagsWritten, softIndicatorsWritten: softIndicators.length };
+  console.log(`[DBS] Done — ${metricsWritten} KPI rows, ${flagsWritten} flags written`);
+  return { success: true, assignmentsWritten: assignments.length, metricsWritten, flagsWritten, softIndicatorsWritten: softIndicators.length };
 }
 
 module.exports = { processDBS, parseDBS };

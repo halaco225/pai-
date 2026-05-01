@@ -113,6 +113,141 @@ router.get('/dashboard', async (req, res) => {
   }
 });
 
+
+// ── GET /api/intel/kpis — aggregated KPI dashboard (sales, growth, flags) ────
+router.get('/kpis', async (req, res) => {
+  try {
+    const user = req.session.user;
+    const date = req.query.date || (() => {
+      const d = new Date(); d.setDate(d.getDate() - 1);
+      return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    })();
+
+    const p = db.getPool();
+    if (!p) return res.json({ success: true, date, summary: null, areas: [] });
+
+    // Scope filter
+    let metricWhere = 'metric_date = $1';
+    const mp = [date];
+    if (user.scope?.type === 'rdo') {
+      // Use area_coach IN list to match regardless of stored region_coach value
+      const acs = user.scope.area_coaches || [];
+      if (acs.length) {
+        mp.push(acs);
+        metricWhere += ` AND area_coach = ANY($${mp.length}::text[])`;
+      } else {
+        mp.push(user.scope.rc_name);
+        metricWhere += ` AND region_coach = $${mp.length}`;
+      }
+    } else if (user.scope?.type === 'area_coach') {
+      mp.push(user.scope.ac_name);
+      metricWhere += ` AND area_coach = $${mp.length}`;
+    }
+
+    // Flags scoped the same way
+    let flagWhere = "metric_date = $1 AND status != 'archived'";
+    const fp = [date];
+    if (user.scope?.type === 'rdo') {
+      const acs = user.scope.area_coaches || [];
+      if (acs.length) { fp.push(acs); flagWhere += ` AND area_coach = ANY($${fp.length}::text[])`; }
+      else { fp.push(user.scope.rc_name); flagWhere += ` AND region_coach = $${fp.length}`; }
+    } else if (user.scope?.type === 'area_coach') {
+      fp.push(user.scope.ac_name);
+      flagWhere += ` AND area_coach = $${fp.length}`;
+    }
+
+    const [metricsRes, flagsRes] = await Promise.all([
+      p.query(`SELECT area_coach, region_coach,
+        COUNT(*) as store_count,
+        SUM(net_sales_day) as total_sales,
+        AVG(net_sales_day) as avg_sales,
+        AVG(growth_pct_day) as avg_growth,
+        SUM(change_down_day) as total_change_down,
+        SUM(cash_variance_day) as total_cash_var,
+        SUM(paidouts_day) as total_paidouts
+        FROM intel_dbs_metrics WHERE ${metricWhere}
+        GROUP BY area_coach, region_coach ORDER BY area_coach`, mp),
+      p.query(`SELECT area_coach, severity, COUNT(*) as cnt
+        FROM intel_flags WHERE ${flagWhere}
+        GROUP BY area_coach, severity`, fp)
+    ]);
+
+    // Build per-area flag counts
+    const flagMap = {};
+    for (const r of flagsRes.rows) {
+      if (!flagMap[r.area_coach]) flagMap[r.area_coach] = { high: 0, medium: 0, low: 0, total: 0 };
+      flagMap[r.area_coach][r.severity] = (flagMap[r.area_coach][r.severity] || 0) + Number(r.cnt);
+      flagMap[r.area_coach].total += Number(r.cnt);
+    }
+
+    // Store-level detail for drill-down
+    const storeRes = await p.query(`
+      SELECT area_coach, store_id, store_name,
+        net_sales_day, growth_pct_day, change_down_day,
+        cash_variance_day, paidouts_day, production_lt15_day
+      FROM intel_dbs_metrics WHERE ${metricWhere}
+      ORDER BY area_coach, store_id`, mp);
+
+    const storeFlagRes = await p.query(`
+      SELECT store_id, metric_type, severity, value, consecutive_days_out
+      FROM intel_flags WHERE ${flagWhere}
+      ORDER BY store_id, severity DESC`, fp);
+
+    const storeFlagMap = {};
+    for (const r of storeFlagRes.rows) {
+      if (!storeFlagMap[r.store_id]) storeFlagMap[r.store_id] = [];
+      storeFlagMap[r.store_id].push({ metric_type: r.metric_type, severity: r.severity, value: Number(r.value), days: r.consecutive_days_out });
+    }
+
+    const storesByAC = {};
+    for (const r of storeRes.rows) {
+      const ac = r.area_coach || 'Unknown';
+      if (!storesByAC[ac]) storesByAC[ac] = [];
+      storesByAC[ac].push({
+        store_id: r.store_id, store_name: r.store_name,
+        net_sales_day: r.net_sales_day ? Number(r.net_sales_day) : null,
+        growth_pct_day: r.growth_pct_day ? Number(r.growth_pct_day) : null,
+        change_down_day: r.change_down_day ? Number(r.change_down_day) : null,
+        flags: storeFlagMap[r.store_id] || []
+      });
+    }
+
+    const areas = metricsRes.rows.map(r => {
+      const ac = r.area_coach;
+      const flags = flagMap[ac] || { high: 0, medium: 0, low: 0, total: 0 };
+      return {
+        area_coach: ac,
+        region_coach: r.region_coach,
+        store_count: Number(r.store_count),
+        total_sales: r.total_sales ? Number(r.total_sales) : null,
+        avg_sales: r.avg_sales ? Number(r.avg_sales) : null,
+        avg_growth: r.avg_growth ? Number(r.avg_growth) : null,
+        total_change_down: r.total_change_down ? Number(r.total_change_down) : null,
+        total_cash_var: r.total_cash_var ? Number(r.total_cash_var) : null,
+        total_paidouts: r.total_paidouts ? Number(r.total_paidouts) : null,
+        flags,
+        stores: storesByAC[ac] || []
+      };
+    });
+
+    // Region-level summary
+    const summary = {
+      total_stores: areas.reduce((n, a) => n + a.store_count, 0),
+      total_sales: areas.reduce((n, a) => n + (a.total_sales || 0), 0),
+      avg_growth: areas.length ? areas.reduce((n, a) => n + (a.avg_growth || 0), 0) / areas.filter(a => a.avg_growth != null).length : null,
+      flagged_stores: new Set(storeFlagRes.rows.map(r => r.store_id)).size,
+      high_flags: areas.reduce((n, a) => n + a.flags.high, 0),
+      medium_flags: areas.reduce((n, a) => n + a.flags.medium, 0),
+      low_flags: areas.reduce((n, a) => n + a.flags.low, 0),
+    };
+
+    res.json({ success: true, date, summary, areas });
+  } catch (err) {
+    console.error('[Intel] /kpis error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/intel/performance — Region → AC → Store drill-down ──────────────
 router.get('/performance', async (req, res) => {
   try {

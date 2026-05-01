@@ -257,40 +257,75 @@
   font-size: 13px; color: #F87171; display: flex; align-items: center; gap: 8px;
 }
 
-/* ── Performance tab ─────────────────────────────────────── */
-.perf-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.perf-table th {
-  text-align: left; padding: 10px 12px; font-size: 11px; letter-spacing: 0.5px;
-  text-transform: uppercase; color: var(--text-muted);
-  border-bottom: 1px solid var(--border); user-select: none;
+/* ── Performance / KPI tab ───────────────────────────────── */
+.kpi-summary-bar {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;
 }
-.perf-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
-.perf-table tr:last-child td { border-bottom: none; }
-.perf-row-ac { cursor: pointer; }
-.perf-row-ac:hover td { background: var(--surface-2); }
-.perf-expand-icon { margin-right: 6px; display: inline-block; transition: transform 0.15s; font-size: 10px; }
-.perf-row-ac.expanded .perf-expand-icon { transform: rotate(90deg); }
-.perf-stores-row { display: none; background: var(--surface); }
-.perf-stores-row.visible { display: table-row; }
-.perf-stores-inner { padding: 0 12px 14px 32px; }
-.perf-store-list { list-style: none; padding: 0; margin: 8px 0 0 0; }
-.perf-store-list li {
-  display: flex; align-items: baseline; gap: 8px;
-  padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 12px;
+.kpi-summary-card {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px;
 }
-.perf-store-list li:last-child { border-bottom: none; }
-.perf-store-name { font-weight: 600; flex: 1; }
-.perf-metric-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.kpi-summary-card .kpi-val { font-size: 22px; font-weight: 700; line-height: 1; }
+.kpi-summary-card .kpi-lbl { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+.kpi-summary-card .kpi-val.green  { color: #34D399; }
+.kpi-summary-card .kpi-val.red    { color: #F87171; }
+.kpi-summary-card .kpi-val.yellow { color: #FBBF24; }
+.kpi-ac-grid { display: flex; flex-direction: column; gap: 10px; }
+.kpi-ac-card {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+  overflow: hidden;
+}
+.kpi-ac-header {
+  display: grid; grid-template-columns: 1fr auto auto auto auto auto; align-items: center;
+  gap: 12px; padding: 14px 16px; cursor: pointer; user-select: none;
+}
+.kpi-ac-header:hover { background: var(--surface); }
+.kpi-ac-name { font-weight: 600; font-size: 14px; }
+.kpi-ac-stat { text-align: right; }
+.kpi-ac-stat .val { font-size: 14px; font-weight: 600; }
+.kpi-ac-stat .lbl { font-size: 10px; color: var(--text-muted); }
+.kpi-ac-stat .val.red    { color: #F87171; }
+.kpi-ac-stat .val.green  { color: #34D399; }
+.kpi-ac-stat .val.yellow { color: #FBBF24; }
+.kpi-chevron { color: var(--text-muted); font-size: 11px; transition: transform 0.15s; }
+.kpi-ac-card.expanded .kpi-chevron { transform: rotate(90deg); }
+.kpi-stores-table {
+  display: none; border-top: 1px solid var(--border);
+  overflow-x: auto;
+}
+.kpi-ac-card.expanded .kpi-stores-table { display: block; }
+.kpi-store-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.kpi-store-tbl th {
+  text-align: right; padding: 8px 14px; font-size: 10px; letter-spacing: 0.5px;
+  text-transform: uppercase; color: var(--text-muted); border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.kpi-store-tbl th:first-child { text-align: left; }
+.kpi-store-tbl td { padding: 9px 14px; border-bottom: 1px solid var(--border); text-align: right; }
+.kpi-store-tbl td:first-child { text-align: left; }
+.kpi-store-tbl tr:last-child td { border-bottom: none; }
+.kpi-store-tbl tr:hover td { background: var(--surface); }
+.kpi-store-name { font-weight: 600; }
+.kpi-store-id { color: var(--text-muted); font-weight: 400; margin-left: 4px; }
+.kpi-flag-dots { display: flex; gap: 3px; justify-content: flex-end; flex-wrap: wrap; }
+.kpi-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+}
+.kpi-dot.high   { background: #F87171; }
+.kpi-dot.medium { background: #FBBF24; }
+.kpi-dot.low    { background: #60A5FA; }
+.kpi-no-data { text-align: center; padding: 32px; color: var(--text-muted); font-size: 13px; }
+.perf-section-header {
+  font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--text-muted); font-weight: 700; padding: 18px 0 8px;
+}
 .perf-chip {
   display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px;
   font-weight: 600; border: 1px solid var(--border);
 }
 .perf-chip.high { background: rgba(239,68,68,0.12); color: #F87171; border-color: rgba(239,68,68,0.3); }
 .perf-chip.medium { background: rgba(234,179,8,0.12); color: #FBBF24; border-color: rgba(234,179,8,0.3); }
-.perf-section-header {
-  font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
-  color: var(--text-muted); font-weight: 700; padding: 18px 0 8px;
-}
+.perf-chip.low { background: rgba(96,165,250,0.12); color: #60A5FA; border-color: rgba(96,165,250,0.3); }
 </style>
 </head>
 <body>
@@ -870,7 +905,7 @@ function logout() {
   fetch('/api/auth/logout', { method: 'POST' }).then(() => window.location.href = '/');
 }
 
-/* ── Performance tab ───────────────────────────────────── */
+/* ── Performance / KPI tab ──────────────────────────────── */
 let perfLoaded = false;
 
 async function loadPerformance() {
@@ -879,55 +914,154 @@ async function loadPerformance() {
   const container = document.getElementById('perfContent');
   container.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:20px 0">Loading…</div>';
   try {
-    const data = await fetch('/api/intel/performance').then(r => r.json());
+    const data = await fetch('/api/intel/kpis').then(r => r.json());
     if (!data.success) throw new Error(data.error || 'Failed');
-    renderPerformance(data.regions || [], data.date);
+    renderKPIDashboard(data);
   } catch (err) {
     document.getElementById('perfContent').innerHTML =
       `<div style="color:var(--danger);padding:20px 0;font-size:13px">Error: ${escHtml(err.message)}</div>`;
   }
 }
 
-function renderPerformance(regions, date) {
+function fmtSales(v) {
+  if (v == null) return '—';
+  const n = Number(v);
+  if (Math.abs(n) >= 1000) return '$' + (n/1000).toFixed(1) + 'k';
+  return '$' + n.toFixed(0);
+}
+function fmtGrowth(v) {
+  if (v == null) return '—';
+  const n = Number(v);
+  const sign = n >= 0 ? '+' : '';
+  return sign + n.toFixed(1) + '%';
+}
+function growthClass(v) {
+  if (v == null) return '';
+  return Number(v) >= 0 ? 'green' : 'red';
+}
+
+function renderKPIDashboard(data) {
   const container = document.getElementById('perfContent');
-  if (!regions.length) {
-    container.innerHTML = '<div class="empty-state"><div class="empty-icon">✓</div><h3>No performance flags</h3><p>No flagged stores for this date.</p></div>';
+  const { summary, areas, date } = data;
+
+  // Summary bar
+  let html = `<div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;text-transform:uppercase;letter-spacing:.5px">
+    Region Performance · ${formatDate(date)}</div>`;
+
+  if (summary) {
+    const growthCls = summary.avg_growth != null ? (summary.avg_growth >= 0 ? 'green' : 'red') : '';
+    html += `<div class="kpi-summary-bar">
+      <div class="kpi-summary-card">
+        <div class="kpi-val">${summary.total_stores}</div>
+        <div class="kpi-lbl">Total Stores</div>
+      </div>
+      <div class="kpi-summary-card">
+        <div class="kpi-val ${growthCls}">${fmtGrowth(summary.avg_growth)}</div>
+        <div class="kpi-lbl">Avg Sales Growth</div>
+      </div>
+      <div class="kpi-summary-card">
+        <div class="kpi-val ${summary.flagged_stores > 0 ? 'red' : 'green'}">${summary.flagged_stores}</div>
+        <div class="kpi-lbl">Flagged Stores</div>
+      </div>
+      <div class="kpi-summary-card">
+        <div class="kpi-val ${summary.high_flags > 0 ? 'red' : summary.medium_flags > 0 ? 'yellow' : 'green'}">
+          ${summary.high_flags > 0 ? summary.high_flags + ' high' : summary.medium_flags > 0 ? summary.medium_flags + ' med' : '✓ clear'}
+        </div>
+        <div class="kpi-lbl">Top Severity</div>
+      </div>
+    </div>`;
+  }
+
+  if (!areas || areas.length === 0) {
+    const msg = summary && summary.total_stores === 0
+      ? 'No KPI data yet — runs after first DBS file is processed.'
+      : 'No flagged stores today.';
+    html += `<div class="kpi-no-data">${msg}</div>`;
+    container.innerHTML = html;
     return;
   }
-  let html = `<div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Flagged stores · ${formatDate(date)}</div>`;
-  for (const region of regions) {
-    html += `<div class="perf-section-header">${escHtml(region.region_coach)}</div>`;
-    html += `<table class="perf-table"><thead><tr>
-      <th>Area Coach</th><th>Stores</th><th>High</th><th>Total Flags</th>
-    </tr></thead><tbody>`;
-    region.areas.forEach((area, ai) => {
-      const rowId = `perf-ac-${region.region_coach.replace(/\s/g,'-')}-${ai}`;
-      html += `<tr class="perf-row-ac" id="${rowId}" onclick="togglePerfAC('${rowId}')">
-        <td><span class="perf-expand-icon">▶</span>${escHtml(area.area_coach)}</td>
-        <td>${area.store_count}</td>
-        <td>${area.high_count > 0 ? `<span style="color:var(--danger);font-weight:700">${area.high_count}</span>` : '—'}</td>
-        <td>${area.flag_count}</td>
-      </tr>
-      <tr class="perf-stores-row" id="${rowId}-stores"><td colspan="4">
-        <div class="perf-stores-inner"><ul class="perf-store-list">`;
+
+  html += '<div class="kpi-ac-grid">';
+
+  areas.forEach((area, idx) => {
+    const cardId = `kpi-ac-${idx}`;
+    const fc = area.flags;
+    let flagSummary = '';
+    if (fc.high > 0)   flagSummary += `<span style="color:#F87171;font-weight:700">${fc.high}H</span> `;
+    if (fc.medium > 0) flagSummary += `<span style="color:#FBBF24;font-weight:700">${fc.medium}M</span> `;
+    if (fc.low > 0)    flagSummary += `<span style="color:#60A5FA">${fc.low}L</span>`;
+    if (!flagSummary)  flagSummary = '<span style="color:#34D399">✓</span>';
+
+    html += `<div class="kpi-ac-card" id="${cardId}">
+      <div class="kpi-ac-header" onclick="toggleKpiAC('${cardId}')">
+        <span class="kpi-ac-name">${escHtml(area.area_coach)}</span>
+        <div class="kpi-ac-stat">
+          <div class="val">${area.store_count}</div>
+          <div class="lbl">Stores</div>
+        </div>
+        <div class="kpi-ac-stat">
+          <div class="val ${growthClass(area.avg_growth)}">${fmtGrowth(area.avg_growth)}</div>
+          <div class="lbl">Avg Growth</div>
+        </div>
+        <div class="kpi-ac-stat">
+          <div class="val">${fmtSales(area.total_sales)}</div>
+          <div class="lbl">Total Sales</div>
+        </div>
+        <div class="kpi-ac-stat">
+          <div class="val" style="font-size:13px">${flagSummary}</div>
+          <div class="lbl">Flags</div>
+        </div>
+        <span class="kpi-chevron">▶</span>
+      </div>
+      <div class="kpi-stores-table">
+        <table class="kpi-store-tbl">
+          <thead><tr>
+            <th style="text-align:left">Store</th>
+            <th>Sales/Day</th>
+            <th>Growth</th>
+            <th>Chg Down</th>
+            <th>Issues</th>
+          </tr></thead>
+          <tbody>`;
+
+    if (area.stores.length === 0) {
+      html += `<tr><td colspan="5" style="color:var(--text-muted);text-align:center;padding:14px">No KPI data</td></tr>`;
+    } else {
       for (const store of area.stores) {
-        html += `<li>
-          <span class="perf-store-name">${escHtml(store.store_name)} <span style="color:var(--text-muted);font-weight:400">#${store.store_id}</span></span>
-          <span class="perf-metric-chips">${store.flags.map(f => `<span class="perf-chip ${f.severity}" title="${f.days} day${f.days!==1?'s':''}">${escHtml(formatMetricType(f.metric_type))}</span>`).join('')}</span>
-        </li>`;
+        const storeFlags = store.flags || [];
+        const dots = storeFlags.map(f =>
+          `<div class="kpi-dot ${f.severity}" title="${formatMetricType(f.metric_type)} · ${f.days}d"></div>`
+        ).join('');
+        const growthVal = store.growth_pct_day;
+        const cdVal = store.change_down_day;
+        html += `<tr>
+          <td><span class="kpi-store-name">${escHtml(store.store_name || store.store_id)}</span><span class="kpi-store-id">#${store.store_id}</span></td>
+          <td>${fmtSales(store.net_sales_day)}</td>
+          <td style="color:${growthVal == null ? 'var(--text-muted)' : growthVal >= 0 ? '#34D399' : '#F87171'}">${fmtGrowth(growthVal)}</td>
+          <td style="color:${cdVal != null && cdVal > 30 ? '#F87171' : 'inherit'}">${cdVal != null ? '$'+Number(cdVal).toFixed(0) : '—'}</td>
+          <td><div class="kpi-flag-dots">${dots || '<span style="color:var(--text-muted);font-size:11px">—</span>'}</div></td>
+        </tr>`;
       }
-      html += `</ul></div></td></tr>`;
-    });
-    html += `</tbody></table>`;
-  }
+    }
+
+    html += `</tbody></table></div></div>`;
+  });
+
+  html += '</div>';
   container.innerHTML = html;
+}
+
+function toggleKpiAC(cardId) {
+  document.getElementById(cardId).classList.toggle('expanded');
 }
 
 function togglePerfAC(rowId) {
   const row    = document.getElementById(rowId);
   const stores = document.getElementById(rowId + '-stores');
-  const expanded = row.classList.toggle('expanded');
-  stores.classList.toggle('visible', expanded);
+  if (row && stores) {
+    const expanded = row.classList.toggle('expanded');
+    stores.classList.toggle('visible', expanded);
+  }
 }
 
 /* ── Close modal on overlay click ─────────────────────── */

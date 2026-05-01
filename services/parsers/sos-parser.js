@@ -92,7 +92,7 @@ async function processSOS(filePath, targetDate) {
     if (s.prod_min != null && s.prod_min > 20) {
       const prevDays = await db.getConsecutiveDays(s.store_id, 'PRODUCTION_TIME', targetDate);
       const consecutive = prevDays + 1;
-      const severity = s.prod_min > 25 ? 'high' : 'high'; // >20 is always high per spec
+      const severity = consecutive >= 4 ? 'high' : consecutive >= 2 ? 'medium' : 'low';
       const details  = { label: s.prod_min > 25 ? 'critical' : null, pct_prod_lt15: s.pct_prod_lt15 };
       await db.insertIntelFlag({
         ...base, tier: 1, metric_type: 'PRODUCTION_TIME',
