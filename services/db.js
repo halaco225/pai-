@@ -577,6 +577,12 @@ async function initIntelDB() {
     )
   `);
 
+  // Migration: add updated_at if table was created before this column was added
+  await p.query(`
+    ALTER TABLE intel_flags
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  `);
+
   await p.query(`
     CREATE INDEX IF NOT EXISTS idx_intel_flags_date_severity
     ON intel_flags (metric_date DESC, severity)
@@ -595,6 +601,52 @@ async function initIntelDB() {
       role            VARCHAR(20) NOT NULL,
       action_taken    TEXT        NOT NULL,
       acknowledged_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS dbs_soft_indicators (
+      id          UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+      store_id    VARCHAR(10)   NOT NULL,
+      metric_date DATE          NOT NULL,
+      indicator   VARCHAR(50)   NOT NULL,
+      value       DECIMAL(12,4),
+      target      DECIMAL(12,4),
+      source      VARCHAR(10)   DEFAULT 'DBS',
+      updated_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+      UNIQUE(store_id, metric_date, indicator)
+    )
+  `);
+
+
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS intel_shoutouts (
+      id            UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+      store_id      VARCHAR(10)   NOT NULL,
+      shoutout_date DATE          NOT NULL,
+      summary       TEXT,
+      full_comment  TEXT,
+      source        VARCHAR(20),
+      created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS idx_intel_shoutouts_date
+    ON intel_shoutouts (shoutout_date DESC)
+  `);
+
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS intel_survey_log (
+      id             UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+      store_id       VARCHAR(10)   NOT NULL,
+      survey_date    DATE          NOT NULL,
+      comment_count  INTEGER       DEFAULT 0,
+      positive_count INTEGER       DEFAULT 0,
+      negative_count INTEGER       DEFAULT 0,
+      updated_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+      UNIQUE(store_id, survey_date)
     )
   `);
 
@@ -929,6 +981,113 @@ async function getIntelLogs(limit = 20) {
 }
 
 
+
+
+// ── Intel: insert a shoutout (positive SMG comment) ─────────────────────────
+async function insertShoutout({ store_id, shoutout_date, summary, full_comment, source }) {
+  const p = getPool();
+  if (!p) return;
+  try {
+    await p.query(`
+      INSERT INTO intel_shoutouts (store_id, shoutout_date, summary, full_comment, source)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [store_id, shoutout_date, summary || null, full_comment || null, source || 'SMG']);
+  } catch (err) {
+    console.error('DB insertShoutout error:', err.message);
+  }
+}
+
+// ── Intel: upsert daily survey log ──────────────────────────────────────────
+async function upsertSurveyLog({ store_id, survey_date, comment_count, positive_count, negative_count }) {
+  const p = getPool();
+  if (!p) return;
+  try {
+    await p.query(`
+      INSERT INTO intel_survey_log (store_id, survey_date, comment_count, positive_count, negative_count, updated_at)
+      VALUES ($1, $2, $3, $4, $5, NOW())
+      ON CONFLICT (store_id, survey_date) DO UPDATE SET
+        comment_count  = EXCLUDED.comment_count,
+        positive_count = EXCLUDED.positive_count,
+        negative_count = EXCLUDED.negative_count,
+        updated_at     = NOW()
+    `, [store_id, survey_date, comment_count || 0, positive_count || 0, negative_count || 0]);
+  } catch (err) {
+    console.error('DB upsertSurveyLog error:', err.message);
+  }
+}
+
+// ── Intel: get stores with no recent surveys (for PUSH_SURVEYS flag) ─────────
+async function getStoresWithNoRecentSurveys(allStoreIds, targetDate) {
+  const p = getPool();
+  if (!p) return [];
+  try {
+    const result = await p.query(`
+      SELECT DISTINCT store_id FROM intel_survey_log
+      WHERE survey_date >= ($1::date - INTERVAL '7 days')
+        AND store_id = ANY($2)
+    `, [targetDate, allStoreIds]);
+    const hasRecent = new Set(result.rows.map(r => r.store_id));
+    return allStoreIds.filter(id => !hasRecent.has(id));
+  } catch (err) {
+    console.error('DB getStoresWithNoRecentSurveys error:', err.message);
+    return [];
+  }
+}
+
+// ── Intel: resolve flags for a single store that has recovered ───────────────
+async function resolveRecoveredFlags(storeId, metricType, metricDate) {
+  const p = getPool();
+  if (!p) return;
+  try {
+    await p.query(`
+      UPDATE intel_flags
+      SET status = 'resolved', trend_direction = 'recovering', updated_at = NOW()
+      WHERE store_id = $1
+        AND metric_type = $2
+        AND metric_date < $3
+        AND status = 'open'
+    `, [storeId, metricType, metricDate]);
+  } catch (err) {
+    console.error('DB resolveRecoveredFlags error:', err.message);
+  }
+}
+
+// ── Intel: get soft indicators for a store over last N days ─────────────────
+async function getStoreSoftIndicators(storeId, days) {
+  const p = getPool();
+  if (!p) return [];
+  try {
+    const result = await p.query(`
+      SELECT * FROM dbs_soft_indicators
+      WHERE store_id = $1
+        AND metric_date >= (CURRENT_DATE - INTERVAL '1 day' * $2)
+      ORDER BY metric_date DESC
+    `, [storeId, days]);
+    return result.rows;
+  } catch (err) {
+    console.error('DB getStoreSoftIndicators error:', err.message);
+    return [];
+  }
+}
+
+// ── Intel: upsert a DBS soft indicator ───────────────────────────────────────
+async function upsertSoftIndicator({ store_id, metric_date, indicator, value, target, source }) {
+  const p = getPool();
+  if (!p) return;
+  try {
+    await p.query(`
+      INSERT INTO dbs_soft_indicators (store_id, metric_date, indicator, value, target, source, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      ON CONFLICT (store_id, metric_date, indicator) DO UPDATE SET
+        value      = EXCLUDED.value,
+        target     = EXCLUDED.target,
+        updated_at = NOW()
+    `, [store_id, metric_date, indicator, value ?? null, target ?? null, source || 'DBS']);
+  } catch (err) {
+    console.error('DB upsertSoftIndicator error:', err.message);
+  }
+}
+
 // ── Intel: archive old resolved/recovering flags (cleanup) ───────────────────
 async function archiveOldRecoveringFlags(targetDate) {
   const p = getPool();
@@ -962,6 +1121,9 @@ module.exports = {
   saveIntelCache, upsertIntelCache, getIntelCache, logIntelJob, getIntelLogs,
   // Aliases used by parsers
   insertIntelFlag: upsertIntelFlag,
+  upsertSoftIndicator,
+  insertShoutout, upsertSurveyLog, getStoresWithNoRecentSurveys,
+  resolveRecoveredFlags, getStoreSoftIndicators,
   getConsecutiveDays: getConsecutiveFlagDays,
   archiveOldRecoveringFlags
 };
