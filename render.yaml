@@ -52,9 +52,6 @@ services:
         generateValue: true
       - key: INTEL_AUTOMATION_TOKEN
         value: 38b8091924e1f85583454212a9860038
-      # Playwright: install browsers into project dir so they survive restarts
-      - key: PLAYWRIGHT_BROWSERS_PATH
-        value: "0"
 
   - type: cron
     name: velocity-ods-pull

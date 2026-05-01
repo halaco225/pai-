@@ -583,6 +583,21 @@ async function initIntelDB() {
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   `);
 
+  // Migration: add UNIQUE constraint if missing (needed for ON CONFLICT in upsertIntelFlag)
+  await p.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'intel_flags_store_metric_date_unique'
+      ) THEN
+        ALTER TABLE intel_flags
+        ADD CONSTRAINT intel_flags_store_metric_date_unique
+        UNIQUE (store_id, metric_type, metric_date);
+      END IF;
+    END $$
+  `);
+
   await p.query(`
     CREATE INDEX IF NOT EXISTS idx_intel_flags_date_severity
     ON intel_flags (metric_date DESC, severity)
