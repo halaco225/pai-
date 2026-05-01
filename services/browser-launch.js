@@ -5,9 +5,9 @@
  * Render (where the executable lives under PLAYWRIGHT_BROWSERS_PATH) and
  * locally (where `playwright` manages the path itself).
  *
- * Usage:
- *   const { launchContext } = require('./browser-launch');
- *   const browser = await launchContext(PROFILE_DIR, { acceptDownloads: true });
+ * Supports both old and new Playwright directory structures:
+ *   Old (< 1.40): chromium-*/chrome-linux/chrome
+ *   New (>= 1.40): chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell
  */
 const { chromium } = require('playwright');
 const fs   = require('fs');
@@ -21,41 +21,61 @@ function resolveExecutablePath() {
   const base = process.env.PLAYWRIGHT_BROWSERS_PATH;
   if (!base) return undefined;
 
-  // Playwright 1.40+ uses chromium_headless_shell; older builds use chrome
-  // Binary lives at:  <base>/chromium-<build>/chrome-linux/<binary>
-  const binaryNames = ['chromium_headless_shell', 'chrome', 'chromium'];
+  // Sub-directory patterns Playwright uses (checked in priority order)
+  const subDirs = [
+    'chrome-headless-shell-linux64', // Playwright >= 1.40 (chromium_headless_shell-*)
+    'chrome-linux',                  // Playwright <  1.40 (chromium-*)
+    '',                              // binary directly in the versioned dir
+  ];
+  // Binary names to try within each subDir
+  const binaryNames = [
+    'chrome-headless-shell',
+    'chromium_headless_shell',
+    'chrome',
+    'chromium',
+  ];
+
+  let entries;
   try {
-    const entries = fs.readdirSync(base);
-    for (const entry of entries) {
-      if (!entry.startsWith('chromium')) continue;
-      const entryPath = path.join(base, entry);
-      // Check chrome-linux subdirectory first (standard location)
-      for (const bin of binaryNames) {
-        const candidate = path.join(entryPath, 'chrome-linux', bin);
-        if (fs.existsSync(candidate)) {
-          console.log(`[browser-launch] Using executablePath: ${candidate}`);
-          return candidate;
-        }
-      }
-      // Also check directly in the entry dir (some builds)
-      for (const bin of binaryNames) {
-        const candidate = path.join(entryPath, bin);
-        if (fs.existsSync(candidate)) {
-          console.log(`[browser-launch] Using executablePath: ${candidate}`);
-          return candidate;
-        }
-      }
-    }
-    // Log what IS in the base dir to help debug
-    const entries2 = fs.readdirSync(base).filter(e => e.startsWith('chromium'));
-    console.warn('[browser-launch] chromium dirs found:', entries2);
-    if (entries2.length) {
-      const sub = path.join(base, entries2[0], 'chrome-linux');
-      try { console.warn('[browser-launch] chrome-linux contents:', fs.readdirSync(sub)); } catch(e2) {}
-    }
+    entries = fs.readdirSync(base);
   } catch (e) {
-    console.warn('[browser-launch] Could not resolve executablePath:', e.message);
+    console.warn('[browser-launch] Cannot read PLAYWRIGHT_BROWSERS_PATH:', e.message);
+    return undefined;
   }
+
+  // Look in any directory starting with "chromium"
+  const chromiumDirs = entries
+    .filter(e => e.startsWith('chromium'))
+    .map(e => path.join(base, e));
+
+  for (const dir of chromiumDirs) {
+    for (const sub of subDirs) {
+      const searchDir = sub ? path.join(dir, sub) : dir;
+      for (const bin of binaryNames) {
+        const candidate = path.join(searchDir, bin);
+        if (fs.existsSync(candidate)) {
+          console.log(`[browser-launch] Using executablePath: ${candidate}`);
+          return candidate;
+        }
+      }
+    }
+  }
+
+  // Log what we found to help debug
+  console.warn('[browser-launch] Could not resolve executablePath. Dirs found:', entries.filter(e => e.startsWith('chromium')));
+  if (chromiumDirs.length > 0) {
+    try {
+      const firstDir = chromiumDirs[0];
+      console.warn('[browser-launch] Contents of', firstDir + ':', fs.readdirSync(firstDir));
+      for (const sub of subDirs.filter(Boolean)) {
+        const subPath = path.join(firstDir, sub);
+        if (fs.existsSync(subPath)) {
+          console.warn('[browser-launch] Contents of', subPath + ':', fs.readdirSync(subPath));
+        }
+      }
+    } catch (_) {}
+  }
+
   return undefined;
 }
 
@@ -69,7 +89,7 @@ const BASE_ARGS = [
 /**
  * Wraps chromium.launchPersistentContext with Render-safe defaults.
  * @param {string} profileDir  - persistent profile directory path
- * @param {object} extraOpts   - any additional launchPersistentContext options (e.g. acceptDownloads)
+ * @param {object} extraOpts   - any additional launchPersistentContext options
  */
 async function launchContext(profileDir, extraOpts = {}) {
   const executablePath = resolveExecutablePath();
