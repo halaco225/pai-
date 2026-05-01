@@ -2,7 +2,7 @@
 /**
  * SMG download helper — logs in and downloads previous-day comments export.
  */
-const { chromium } = require('playwright');
+const { launchContext } = require('./browser-launch');
 const fs   = require('fs');
 const path = require('path');
 
@@ -15,11 +15,7 @@ async function downloadSMGComments(targetDate) {
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
   const outPath = path.join(tmpDir, `intel-smg-${targetDate}.xlsx`);
 
-  const browser = await chromium.launchPersistentContext(PROFILE_DIR, {
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    acceptDownloads: true,
-  });
+  const browser = await launchContext(PROFILE_DIR, { acceptDownloads: true });
 
   try {
     const page = await browser.newPage();

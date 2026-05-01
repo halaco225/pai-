@@ -4,7 +4,7 @@
  * Downloads Labor and OT reports from analytics.na1.fourth.com
  * GoodData dashboards load async — we wait for export button, not just navigation.
  */
-const { chromium } = require('playwright');
+const { launchContext } = require('./browser-launch');
 const fs   = require('fs');
 const path = require('path');
 
@@ -21,11 +21,7 @@ async function downloadFourthReport(reportKey, targetDate) {
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
   const outPath = path.join(tmpDir, `intel-fourth-${reportKey.toLowerCase()}-${targetDate}.xlsx`);
 
-  const browser = await chromium.launchPersistentContext(PROFILE_DIR, {
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    acceptDownloads: true,
-  });
+  const browser = await launchContext(PROFILE_DIR, { acceptDownloads: true });
 
   try {
     const page = await browser.newPage();

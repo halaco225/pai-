@@ -4,7 +4,7 @@
  * Scrapes https://admin.superapp.yum.com/routines for missed/late routines.
  * Uses SAML SSO — try direct URL first, fall back to credential login.
  */
-const { chromium } = require('playwright');
+const { launchContext } = require('./browser-launch');
 const db = require('./db');
 
 const ROUTINES_URL = 'https://admin.superapp.yum.com/routines';
@@ -12,10 +12,7 @@ const PROFILE_DIR  = process.env.HUTBOT_PROFILE_DIR || '/tmp/hutbot-profile';
 
 async function scrapeHutBot(targetDate) {
   console.log(`[HutBot] Scraping routines for ${targetDate}`);
-  const browser = await chromium.launchPersistentContext(PROFILE_DIR, {
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
+  const browser = await launchContext(PROFILE_DIR);
 
   const records = [];
   try {

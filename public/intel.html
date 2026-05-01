@@ -552,7 +552,10 @@ async function init() {
 
 /* ── Briefing ──────────────────────────────────────────── */
 function renderBriefing(dashboard, flagsData, shoutoutsData) {
-  const flags = flagsData.flags || [];
+  // Dedup by id in case the API returns duplicate rows
+  const rawFlags = flagsData.flags || [];
+  const seen = new Set();
+  const flags = rawFlags.filter(f => { if (seen.has(f.id)) return false; seen.add(f.id); return true; });
   const shoutouts = shoutoutsData.shoutouts || [];
 
   if (dashboard.status === 'no_data' || !dashboard.narrative) {
@@ -652,7 +655,7 @@ function buildFlagCard(f, compact) {
         <div class="flag-metric">${formatMetricType(f.metric_type)}${f.value != null ? ` — ${formatValue(f.metric_type, f.value)}` : ''}</div>
         <div class="flag-meta">
           ${f.area_coach ? `<span>📍 ${f.area_coach}</span>` : ''}
-          ${f.region_coach ? `<span>🏢 ${f.region_coach}</span>` : ''}
+          ${f.region_coach && currentUser.role !== 'rdo' ? `<span>🏢 ${f.region_coach}</span>` : ''}
           ${f.metric_date ? `<span>📅 ${formatDate(f.metric_date)}</span>` : ''}
           <span><span class="days-out-badge ${daysCls}">${days} day${days !== 1 ? 's' : ''}</span></span>
         </div>
@@ -820,8 +823,10 @@ function formatDate(d) {
   if (d == null || d === '' || d === 'null' || d === 'undefined') return '—';
   const s = String(d);
   let dt;
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-    dt = new Date(s.length === 10 ? s + 'T12:00:00' : s);
+  // Extract YYYY-MM-DD and build LOCAL date to avoid UTC midnight timezone shift
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    dt = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
   } else {
     dt = new Date(s);
   }
