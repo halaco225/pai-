@@ -295,10 +295,21 @@ router.get('/debug/playwright', async (req, res) => {
   const fs   = require('fs');
   const path = require('path');
   const base = process.env.PLAYWRIGHT_BROWSERS_PATH || 'NOT SET';
-  const result = { PLAYWRIGHT_BROWSERS_PATH: base, cwd: process.cwd(), entries: [] };
+  const home = process.env.HOME || '/root';
+  const defaultCache = path.join(home, '.cache', 'ms-playwright');
+  const result = {
+    PLAYWRIGHT_BROWSERS_PATH: base,
+    HOME: home,
+    cwd: process.cwd(),
+    defaultCacheExists: fs.existsSync(defaultCache),
+    defaultCacheEntries: [],
+    browserPathEntries: [],
+  };
+  // Check PLAYWRIGHT_BROWSERS_PATH
   try {
     if (base !== 'NOT SET' && fs.existsSync(base)) {
       const top = fs.readdirSync(base);
+      result.browserPathTopLevel = top.filter(x => x.startsWith('chromium') || x.startsWith('firefox') || x.startsWith('webkit'));
       for (const e of top.filter(x => x.startsWith('chromium'))) {
         const dir = path.join(base, e);
         const sub = { name: e, contents: [] };
@@ -306,18 +317,21 @@ router.get('/debug/playwright', async (req, res) => {
           const subEntries = fs.readdirSync(dir);
           for (const s of subEntries) {
             const sp = path.join(dir, s);
-            try {
-              const deep = fs.readdirSync(sp);
-              sub.contents.push({ name: s, files: deep });
-            } catch (_) { sub.contents.push({ name: s }); }
+            try { sub.contents.push({ name: s, files: fs.readdirSync(sp) }); }
+            catch (_) { sub.contents.push({ name: s }); }
           }
         } catch (_) {}
-        result.entries.push(sub);
+        result.browserPathEntries.push(sub);
       }
-    } else {
-      result.error = 'PLAYWRIGHT_BROWSERS_PATH not set or does not exist';
     }
-  } catch (err) { result.error = err.message; }
+  } catch (err) { result.browserPathError = err.message; }
+  // Check default cache
+  try {
+    if (fs.existsSync(defaultCache)) {
+      const entries = fs.readdirSync(defaultCache);
+      result.defaultCacheEntries = entries;
+    }
+  } catch (_) {}
   res.json(result);
 });
 
