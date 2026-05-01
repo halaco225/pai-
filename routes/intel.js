@@ -660,3 +660,40 @@ router.get('/store-assignments', requireRole('rdo', 'vp'), async (req, res) => {
 });
 
 module.exports = router;
+
+// ── GET /api/intel/automation/raw-flags — full flag detail for review ─────────
+router.get('/automation/raw-flags', async (req, res) => {
+  const token = req.headers['x-automation-token'] || req.query.token;
+  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, process.env.INTEL_REGEN_TOKEN].filter(Boolean);
+  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const p = db.getPool();
+    if (!p) return res.json({ error: 'no pool' });
+    const date = req.query.date || null;
+    let q = `SELECT store_id, store_name, metric_type, metric_date, value, target, severity,
+               consecutive_days_out, status, area_coach, region_coach, territory_vp, notes, created_at
+             FROM intel_flags
+             WHERE status != 'archived'`;
+    const params = [];
+    if (date) { params.push(date); q += ` AND metric_date = $1`; }
+    q += ` ORDER BY metric_date DESC, CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, consecutive_days_out DESC`;
+    const result = await p.query(q, params);
+
+    // also grab soft indicators
+    const soft = await p.query(`SELECT store_id, metric_date, indicator, value, target, source FROM dbs_soft_indicators ORDER BY metric_date DESC LIMIT 100`);
+
+    // group flags by metric_type for easy scanning
+    const byType = {};
+    for (const row of result.rows) {
+      if (!byType[row.metric_type]) byType[row.metric_type] = [];
+      byType[row.metric_type].push(row);
+    }
+
+    res.json({
+      total_flags: result.rows.length,
+      by_type: byType,
+      soft_indicators: soft.rows,
+      all_flags: result.rows
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
