@@ -524,6 +524,27 @@ function buildDigestText({ user, flags, acks, weekStartStr, yesterdayStr }) {
 // Corrects intel_flags rows where region_coach was set to the VP name instead of
 // the RDO name. Joins intel_flags to store_assignments and updates region_coach
 // and territory_vp from the authoritative assignments table.
+router.get('/automation/fix-hierarchy', async (req, res) => {
+  const token = req.query.token;
+  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, process.env.INTEL_REGEN_TOKEN].filter(Boolean);
+  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const p = db.getPool();
+    if (!p) return res.status(503).json({ error: 'No DB' });
+    const r = await p.query(`
+      UPDATE intel_flags f
+      SET region_coach  = a.region_coach,
+          territory_vp  = a.vp
+      FROM store_assignments a
+      WHERE f.store_id = a.store_id
+        AND (f.region_coach IS DISTINCT FROM a.region_coach OR f.territory_vp IS DISTINCT FROM a.vp)
+    `);
+    res.json({ status: 'ok', rows_updated: r.rowCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/automation/fix-hierarchy', async (req, res) => {
   const token = req.headers['x-automation-token'] || req.body?.token;
   const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, process.env.INTEL_REGEN_TOKEN].filter(Boolean);
