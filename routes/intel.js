@@ -8,6 +8,8 @@ const router  = express.Router();
 const { requireAuth, requireRole } = require('../middleware/auth');
 const db = require('../services/db');
 
+let lastPipelineResult = null; // in-memory store of most recent pipeline run
+
 // ── POST /api/intel/automation/run-batch — cron trigger ──────────────────────
 router.post('/automation/run-batch', async (req, res) => {
   const token = req.headers['x-automation-token'] || req.query.token;
@@ -23,6 +25,7 @@ router.post('/automation/run-batch', async (req, res) => {
   try {
     const { runIntelPipeline } = require('../services/intel-pipeline');
     const result = await runIntelPipeline(targetDate);
+    lastPipelineResult = { ...result, completedAt: new Date().toISOString() };
     console.log('[Intel] Pipeline complete:', JSON.stringify(result.steps, null, 2));
     if (result.errors.length) console.warn('[Intel] Pipeline errors:', result.errors);
   } catch (err) {
@@ -44,6 +47,15 @@ router.get('/automation/status', async (req, res) => {
   }
 });
 
+
+// ── GET /api/intel/automation/last-run — result of most recent pipeline run ────
+router.get('/automation/last-run', async (req, res) => {
+  const token = req.query.token || req.headers['x-automation-token'];
+  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, process.env.INTEL_REGEN_TOKEN].filter(Boolean);
+  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!lastPipelineResult) return res.json({ status: 'no_run_yet', message: 'No pipeline run since last server restart' });
+  res.json(lastPipelineResult);
+});
 
 // ── GET /api/intel/automation/debug-cache — temp debug ───────────────────────
 router.get('/automation/debug-cache', async (req, res) => {
