@@ -1137,12 +1137,15 @@ async function seedStoreAssignmentsFromAlignment() {
   const p = getPool();
   if (!p) return;
   try {
-    let alignment = {};
-    try { alignment = require('../services/velocity-alignment'); } catch(e) {
-      try { alignment = require('./velocity-alignment'); } catch(e2) { return; }
+    let alignmentModule = {};
+    try { alignmentModule = require('../services/velocity-alignment'); } catch(e) {
+      try { alignmentModule = require('./velocity-alignment'); } catch(e2) { return; }
     }
+    // Module exports { ALIGNMENT, REGIONS, AREA_COACHES, AREAS } — stores are under ALIGNMENT
+    const alignment = alignmentModule.ALIGNMENT || alignmentModule;
     let count = 0;
     for (const [key, info] of Object.entries(alignment)) {
+      if (!info || typeof info !== 'object' || !info.area_coach) continue; // skip non-store entries
       const store_id = key.replace(/^S/, '');
       await p.query(`
         INSERT INTO store_assignments (store_id, store_name, area_coach, region_coach, vp)
