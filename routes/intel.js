@@ -7,6 +7,18 @@ const express = require('express');
 const router  = express.Router();
 const { requireAuth, requireRole } = require('../middleware/auth');
 const db = require('../services/db');
+const multer = require('multer');
+const path   = require('path');
+const fs     = require('fs');
+
+// ── Multer config for HutBot file uploads ─────────────────────────────────────
+const hutbotUploadDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(hutbotUploadDir)) fs.mkdirSync(hutbotUploadDir, { recursive: true });
+const hutbotStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, hutbotUploadDir),
+  filename: (req, file, cb) => cb(null, `hutbot_${Date.now()}_${file.originalname}`),
+});
+const hutbotUpload = multer({ storage: hutbotStorage, limits: { fileSize: 10 * 1024 * 1024 } });
 
 let lastPipelineResult = null; // in-memory store of most recent pipeline run
 
@@ -804,6 +816,87 @@ router.post('/rdo-signoff', requireRole('rdo', 'vp'), async (req, res) => {
       VALUES ($1,$2,$3,$4)`, [flag_id, req.session.user.username, req.session.user.role, 'RDO sign-off — issue closed']);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+
+// ── POST /api/intel/upload/hutbot — manual HutBot routines file upload ─────────
+// Accepts CSV or Excel export from the Yum SuperApp routines page.
+// Processes it and writes ROUTINE_MISSED / ROUTINE_LATE flags to the DB.
+router.post('/upload/hutbot', requireRole('rdo', 'vp', 'area_coach'), hutbotUpload.single('file'), async (req, res) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: 'No file uploaded. Attach a CSV or Excel file.' });
+
+  const targetDate = req.body.date || (() => {
+    // Default to yesterday EST
+    const now = new Date();
+    const est = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    est.setDate(est.getDate() - 1);
+    return est.toISOString().split('T')[0];
+  })();
+
+  console.log(`[HutBot Upload] Processing ${file.originalname} for ${targetDate}`);
+
+  try {
+    const { parseHutBotFile } = require('../services/parsers/hutbot-parser');
+    const { writeHutBotFlags } = require('../services/intel-hutbot');
+
+    const { records, summary } = await parseHutBotFile(file.path);
+    console.log(`[HutBot Upload] Parsed ${records.length} records — ${summary.missed} missed, ${summary.late} late, ${summary.stores} stores`);
+
+    if (records.length === 0) {
+      fs.unlink(file.path, () => {});
+      return res.json({ success: true, message: 'File parsed — no missed or late routines found.', summary });
+    }
+
+    const flagsWritten = await writeHutBotFlags(records, targetDate);
+
+    // Regenerate intel cache so dashboard reflects new flags immediately
+    try {
+      const { generateIntelCache } = require('../services/intel-pipeline');
+      await generateIntelCache(targetDate);
+    } catch (cacheErr) {
+      console.warn('[HutBot Upload] Cache regen failed (non-fatal):', cacheErr.message);
+    }
+
+    fs.unlink(file.path, () => {});
+    res.json({
+      success: true,
+      message: `Processed ${records.length} routines — ${flagsWritten} flags written for ${targetDate}.`,
+      summary: { ...summary, flagsWritten, targetDate },
+    });
+  } catch (err) {
+    console.error('[HutBot Upload] Error:', err.message);
+    fs.unlink(file.path, () => {});
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/intel/hutbot/status — last scrape status for dashboard tile ──────
+router.get('/hutbot/status', requireAuth, async (req, res) => {
+  try {
+    const p = db.getPool();
+    if (!p) return res.json({ configured: false });
+    const credentialsSet = !!(process.env.HUTBOT_USER && process.env.HUTBOT_PASSWORD);
+    // Check if we have any HutBot data for yesterday
+    const yesterday = (() => {
+      const now = new Date();
+      const est = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      est.setDate(est.getDate() - 1);
+      return est.toISOString().split('T')[0];
+    })();
+    const r = await p.query(
+      "SELECT COUNT(*)::int as cnt FROM intel_flags WHERE source='HUTBOT' AND metric_date=$1",
+      [yesterday]
+    );
+    res.json({
+      configured: credentialsSet,
+      hasDataToday: r.rows[0].cnt > 0,
+      flagCount: r.rows[0].cnt,
+      yesterday,
+    });
+  } catch (err) {
+    res.json({ configured: false, error: err.message });
+  }
 });
 
 module.exports = router;
