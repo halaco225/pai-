@@ -10,8 +10,11 @@ services:
     name: pai-ayvaz
     env: node
     plan: starter
-    buildCommand: npm install && npx playwright install --with-deps chromium
+    buildCommand: npm install && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src npx playwright install --with-deps chromium
     startCommand: bash startup.sh
+    envVars:
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/project/src
     envVars:
       - key: NODE_ENV
         value: production
