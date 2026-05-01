@@ -899,4 +899,38 @@ router.get('/hutbot/status', requireAuth, async (req, res) => {
   }
 });
 
+
+// ── GET /api/intel/debug/playwright — check browser binary filesystem ──────────
+router.get('/debug/playwright', async (req, res) => {
+  const token = req.headers['x-automation-token'] || req.query.token;
+  if (token !== process.env.INTEL_AUTOMATION_TOKEN) return res.status(401).json({ error: 'Unauthorized' });
+  const fs   = require('fs');
+  const path = require('path');
+  const base = process.env.PLAYWRIGHT_BROWSERS_PATH || 'NOT SET';
+  const result = { PLAYWRIGHT_BROWSERS_PATH: base, cwd: process.cwd(), entries: [] };
+  try {
+    if (base !== 'NOT SET' && fs.existsSync(base)) {
+      const top = fs.readdirSync(base);
+      for (const e of top.filter(x => x.startsWith('chromium'))) {
+        const dir = path.join(base, e);
+        const sub = { name: e, contents: [] };
+        try {
+          const subEntries = fs.readdirSync(dir);
+          for (const s of subEntries) {
+            const sp = path.join(dir, s);
+            try {
+              const deep = fs.readdirSync(sp);
+              sub.contents.push({ name: s, files: deep });
+            } catch (_) { sub.contents.push({ name: s }); }
+          }
+        } catch (_) {}
+        result.entries.push(sub);
+      }
+    } else {
+      result.error = 'PLAYWRIGHT_BROWSERS_PATH not set or does not exist';
+    }
+  } catch (err) { result.error = err.message; }
+  res.json(result);
+});
+
 module.exports = router;
