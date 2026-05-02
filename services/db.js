@@ -1116,6 +1116,25 @@ async function upsertSoftIndicator({ store_id, metric_date, indicator, value, ta
 }
 
 // ── Intel: archive old resolved/recovering flags (cleanup) ───────────────────
+async function getAcknowledgments({ region_coach, area_coach, territory_vp } = {}) {
+  const p = getPool();
+  if (!p) return [];
+  let where = '1=1';
+  const params = [];
+  if (region_coach)  { params.push(region_coach);  where += ` AND f.region_coach=$${params.length}`; }
+  if (area_coach)    { params.push(area_coach);     where += ` AND f.area_coach=$${params.length}`; }
+  if (territory_vp)  { params.push(territory_vp);   where += ` AND f.territory_vp=$${params.length}`; }
+  const r = await p.query(`
+    SELECT a.*, f.store_id, f.store_name, f.area_coach, f.region_coach,
+           f.metric_type, f.metric_date, f.severity, f.value, f.status
+    FROM intel_acknowledgments a
+    JOIN intel_flags f ON f.id = a.flag_id
+    WHERE ${where}
+    ORDER BY a.acknowledged_at DESC
+  `, params);
+  return r.rows;
+}
+
 async function archiveOldRecoveringFlags(targetDate) {
   const p = getPool();
   if (!p) return;
@@ -1185,5 +1204,6 @@ module.exports = {
   insertShoutout, upsertSurveyLog, getStoresWithNoRecentSurveys,
   resolveRecoveredFlags, getStoreSoftIndicators,
   getConsecutiveDays: getConsecutiveFlagDays,
-  archiveOldRecoveringFlags
+  archiveOldRecoveringFlags,
+  getAcknowledgments
 };
