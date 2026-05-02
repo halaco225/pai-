@@ -319,7 +319,6 @@
           <th>Area Coach</th>
           <th>Region</th>
           <th onclick="sortBy('wtd_ist')" style="cursor:pointer">Avg IST ↕</th>
-          <th>&lt;10</th><th>10–14</th><th>15–18</th><th>19–25</th><th>&gt;25</th>
           <th>Orders</th>
           <th>Days</th>
         </tr>
@@ -635,8 +634,6 @@ function ptdStoreRow(s, priorMap) {
     <td>${s.area_coach||'—'}</td>
     <td style="color:var(--muted);font-size:12px">${s.region_coach||'—'}</td>
     <td><span class="${istColorClass(s.wtd_ist)}">${s.wtd_ist != null ? s.wtd_ist + ' min' : '—'}</span>${deltaHtml}</td>
-    <td>${s.wtd_lt10||0}</td><td>${s.wtd_1014||0}</td><td>${s.wtd_1518||0}</td>
-    <td>${s.wtd_1925||0}</td><td class="${(s.wtd_gt25||0)>0?'ist-orange':''}">${s.wtd_gt25||0}</td>
     <td>${s.wtd_orders||0}</td><td>${s.days_reported||0}</td>
   </tr>`;
 }
@@ -645,12 +642,6 @@ function ptdSummaryRow(stores, level, region, area, cls, priorMap) {
   const valid  = stores.filter(s => s.wtd_ist != null);
   const avgIST = valid.length ? parseFloat((valid.reduce((a,s)=>a+s.wtd_ist,0)/valid.length).toFixed(1)) : null;
   const orders = stores.reduce((a,s)=>a+(s.wtd_orders||0),0);
-  const lt10   = stores.reduce((a,s)=>a+(s.wtd_lt10||0),0);
-  const t1014  = stores.reduce((a,s)=>a+(s.wtd_1014||0),0);
-  const t1518  = stores.reduce((a,s)=>a+(s.wtd_1518||0),0);
-  const t1925  = stores.reduce((a,s)=>a+(s.wtd_1925||0),0);
-  const gt25   = stores.reduce((a,s)=>a+(s.wtd_gt25||0),0);
-
   let priorAvg = null;
   if (priorMap) {
     const pv = stores.filter(s => priorMap[s.store_id] != null);
@@ -663,8 +654,6 @@ function ptdSummaryRow(stores, level, region, area, cls, priorMap) {
     <td colspan="2"><strong>${label}</strong> <small style="color:var(--muted)">${stores.length} stores</small></td>
     <td style="color:var(--muted);font-size:12px">${level === 'AREA' ? region : ''}</td>
     <td><span class="${istColorClass(avgIST)}">${avgIST != null ? avgIST + ' min' : '—'}</span>${deltaHtml}</td>
-    <td>${lt10}</td><td>${t1014}</td><td>${t1518}</td>
-    <td>${t1925}</td><td class="${gt25>0?'ist-orange':''}">${gt25}</td>
     <td>${orders.toLocaleString()}</td><td>—</td>
   </tr>`;
 }
@@ -1362,18 +1351,11 @@ function summaryRowDay(stores, level, region, area, cls) {
   const valid = stores.filter(s => s.ist_avg != null);
   const avgIST = valid.length ? (valid.reduce((a,s)=>a+s.ist_avg,0)/valid.length).toFixed(1) : null;
   const orders = stores.reduce((a,s)=>a+(s.total_orders||0),0);
-  const lt10   = stores.reduce((a,s)=>a+(s.ist_lt10||0),0);
-  const t1014  = stores.reduce((a,s)=>a+(s.ist_1014||0),0);
-  const t1518  = stores.reduce((a,s)=>a+(s.ist_1518||0),0);
-  const t1925  = stores.reduce((a,s)=>a+(s.ist_1925||0),0);
-  const gt25   = stores.reduce((a,s)=>a+(s.ist_gt25||0),0);
   const label  = level === 'REGION' ? region : area;
   return `<tr class="${cls}">
     <td colspan="2"><strong>${label}</strong> <small style="color:var(--muted)">${stores.length} stores</small></td>
     <td style="color:var(--muted);font-size:12px">${level === 'AREA' ? region : ''}</td>
     <td><span class="${istColorClass(parseFloat(avgIST))}">${avgIST != null ? avgIST + ' min' : '—'}</span></td>
-    <td>${lt10}</td><td>${t1014}</td><td>${t1518}</td>
-    <td>${t1925}</td><td class="${gt25>0?'ist-orange':''}">${gt25}</td>
     <td>${orders.toLocaleString()}</td>
     <td>—</td>
   </tr>`;
@@ -1414,8 +1396,6 @@ function renderTableDay(stores) {
             <td>${s.area_coach||'—'}</td>
             <td style="color:var(--muted);font-size:12px">${s.region_coach||'—'}</td>
             <td><span class="${istColorClass(s.ist_avg)}">${s.ist_avg != null ? s.ist_avg + ' min' : '—'}</span></td>
-            <td>${s.ist_lt10||0}</td><td>${s.ist_1014||0}</td><td>${s.ist_1518||0}</td>
-            <td>${s.ist_1925||0}</td><td class="${(s.ist_gt25||0)>0?'ist-orange':''}">${s.ist_gt25||0}</td>
             <td>${s.total_orders||0}</td>
             <td>1</td>
           </tr>`));
@@ -1432,8 +1412,6 @@ function storeRow(s, cls) {
     <td>${s.area_coach||'—'}</td>
     <td style="color:var(--muted);font-size:12px">${s.region_coach||'—'}</td>
     <td><span class="${istColorClass(s.wtd_ist)}">${s.wtd_ist != null ? s.wtd_ist + ' min' : '—'}</span></td>
-    <td>${s.wtd_lt10||0}</td><td>${s.wtd_1014||0}</td><td>${s.wtd_1518||0}</td>
-    <td>${s.wtd_1925||0}</td><td class="${(s.wtd_gt25||0)>0?'ist-orange':''}">${s.wtd_gt25||0}</td>
     <td>${s.wtd_orders||0}</td>
     <td>${s.days_reported||0}</td>
   </tr>`;
@@ -1443,12 +1421,6 @@ function summaryRow(stores, level, region, area, cls) {
   const valid = stores.filter(s => s.wtd_ist != null);
   const avgIST = valid.length ? (valid.reduce((a,s)=>a+s.wtd_ist,0)/valid.length).toFixed(1) : null;
   const orders = stores.reduce((a,s)=>a+(s.wtd_orders||0),0);
-  const lt10 = stores.reduce((a,s)=>a+(s.wtd_lt10||0),0);
-  const t1014 = stores.reduce((a,s)=>a+(s.wtd_1014||0),0);
-  const t1518 = stores.reduce((a,s)=>a+(s.wtd_1518||0),0);
-  const t1925 = stores.reduce((a,s)=>a+(s.wtd_1925||0),0);
-  const gt25 = stores.reduce((a,s)=>a+(s.wtd_gt25||0),0);
-
   const label = level === 'REGION' ? region : area;
   const sub = `${stores.length} stores`;
 
@@ -1456,8 +1428,6 @@ function summaryRow(stores, level, region, area, cls) {
     <td colspan="2"><strong>${label}</strong> <small style="color:var(--muted)">${sub}</small></td>
     <td style="color:var(--muted);font-size:12px">${level === 'AREA' ? region : ''}</td>
     <td><span class="${istColorClass(parseFloat(avgIST))}">${avgIST != null ? avgIST + ' min' : '—'}</span></td>
-    <td>${lt10}</td><td>${t1014}</td><td>${t1518}</td>
-    <td>${t1925}</td><td class="${gt25>0?'ist-orange':''}">${gt25}</td>
     <td>${orders.toLocaleString()}</td>
     <td>—</td>
   </tr>`;
