@@ -12,8 +12,8 @@ const path   = require('path');
 const fs     = require('fs');
 
 // ── Multer config for HutBot file uploads ─────────────────────────────────────
-const hutbotUploadDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(hutbotUploadDir)) fs.mkdirSync(hutbotUploadDir, { recursive: true });
+const hutbotUploadDir = '/tmp/uploads';
+fs.mkdirSync(hutbotUploadDir, { recursive: true });
 const hutbotStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, hutbotUploadDir),
   filename: (req, file, cb) => cb(null, `hutbot_${Date.now()}_${file.originalname}`),

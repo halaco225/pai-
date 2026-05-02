@@ -7,8 +7,10 @@ const { requireAuth } = require('../middleware/auth');
 const { MASTER_ALIGNMENT_TEXT } = require('../services/alignment-data');
 const { getAlignment } = require('../services/db');
 
+const UPLOAD_DIR = '/tmp/uploads';
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(__dirname, '../uploads')),
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
   filename: (req, file, cb) => {
     const ts = Date.now();
     cb(null, `pl_${ts}_${file.fieldname}_${file.originalname}`);

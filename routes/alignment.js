@@ -7,8 +7,10 @@ const XLSX = require('xlsx');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { saveAlignment, getAlignment, clearAlignment } = require('../services/db');
 
+const UPLOAD_DIR = '/tmp/uploads';
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const upload = multer({
-  dest: path.join(__dirname, '../uploads'),
+  dest: UPLOAD_DIR,
   limits: { fileSize: 25 * 1024 * 1024 }
 });
 

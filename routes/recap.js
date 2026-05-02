@@ -7,8 +7,10 @@ const { requireAuth } = require('../middleware/auth');
 const { MASTER_ALIGNMENT_TEXT } = require('../services/alignment-data');
 const { getAlignment, saveRecapSession, getRecapSessions, getRecapSessionById } = require('../services/db');
 
+const UPLOAD_DIR = '/tmp/uploads';
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(__dirname, '../uploads')),
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
   filename: (req, file, cb) => {
     const ts = Date.now();
     cb(null, 'recap_' + ts + '_' + Math.random().toString(36).slice(2) + '_' + file.originalname);
