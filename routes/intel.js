@@ -397,7 +397,17 @@ router.get('/kpis', async (req, res) => {
       fp.push(ac); flagWhere   += ` AND area_coach = $${fp.length}`;
     }
 
-    const [metricsRes, flagCountRes, fcOtRes, surveyRes, routinesRes] = await Promise.all([
+    // Build scope filter for store_assignments
+    const sp = []; let assignWhere = '1=1';
+    if (user.scope?.type === 'rdo') {
+      const acs = user.scope.area_coaches || [];
+      if (acs.length) { sp.push(acs); assignWhere += ` AND area_coach = ANY($${sp.length}::text[])`; }
+      else if (user.scope.rc_name || user.name) { sp.push(user.scope.rc_name || user.name); assignWhere += ` AND region_coach = $${sp.length}`; }
+    } else if (user.scope?.type === 'area_coach') {
+      sp.push(user.scope.ac_name || user.name); assignWhere += ` AND area_coach = $${sp.length}`;
+    }
+
+    const [metricsRes, flagCountRes, fcOtRes, surveyRes, routinesRes, assignRes, laborRes] = await Promise.all([
       p.query(`SELECT area_coach, store_id, store_name,
         net_sales_day, growth_pct_day, cancel_unmade_day, paidouts_day, cash_variance_day
         FROM intel_dbs_metrics WHERE ${metricWhere} ORDER BY area_coach, store_id`, mp),
@@ -416,20 +426,34 @@ router.get('/kpis', async (req, res) => {
       p.query(`SELECT store_id, area_coach,
         COUNT(CASE WHEN metric_type='ROUTINE_MISSED' THEN 1 END)::int as routines_missed,
         COUNT(CASE WHEN metric_type='ROUTINE_LATE'   THEN 1 END)::int as routines_late
-        FROM intel_flags WHERE ${flagWhere} GROUP BY store_id, area_coach`, fp)
+        FROM intel_flags WHERE ${flagWhere} GROUP BY store_id, area_coach`, fp),
+      p.query(`SELECT store_id, store_name, area_coach, region_coach FROM store_assignments WHERE ${assignWhere}`, sp),
+      p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='labor_pct'`, [date])
     ]);
 
-    // Build store-level map from DBS metrics
+    // Seed storeMap from store_assignments so all ACs appear even with no sales data
     const storeMap = {};
-    for (const r of metricsRes.rows) {
+    for (const r of assignRes.rows) {
       storeMap[r.store_id] = {
         area_coach: r.area_coach, store_id: r.store_id, store_name: r.store_name,
-        net_sales: r.net_sales_day ? +r.net_sales_day : null,
-        growth_pct: r.growth_pct_day != null ? +r.growth_pct_day : null,
-        cancels: r.cancel_unmade_day ? +r.cancel_unmade_day : null,
+        net_sales: null, growth_pct: null, cancels: null,
         labor_pct: null, ot_hours: 0, comments_pos: 0, comments_neg: 0,
         forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0
       };
+    }
+    // Overlay DBS metrics
+    for (const r of metricsRes.rows) {
+      if (!storeMap[r.store_id]) storeMap[r.store_id] = {
+        area_coach: r.area_coach, store_id: r.store_id, store_name: r.store_name,
+        net_sales: null, growth_pct: null, cancels: null,
+        labor_pct: null, ot_hours: 0, comments_pos: 0, comments_neg: 0,
+        forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0
+      };
+      Object.assign(storeMap[r.store_id], {
+        net_sales: r.net_sales_day ? +r.net_sales_day : null,
+        growth_pct: r.growth_pct_day != null ? +r.growth_pct_day : null,
+        cancels: r.cancel_unmade_day ? +r.cancel_unmade_day : null,
+      });
     }
 
     // Merge flag counts
@@ -461,6 +485,9 @@ router.get('/kpis', async (req, res) => {
         storeMap[r.store_id].routines_late   = r.routines_late   || 0;
       }
     }
+    for (const r of laborRes.rows) {
+      if (storeMap[r.store_id]) storeMap[r.store_id].labor_pct = r.value != null ? +r.value : null;
+    }
 
     const by_store = Object.values(storeMap);
 
@@ -469,13 +496,14 @@ router.get('/kpis', async (req, res) => {
     for (const s of by_store) {
       const ac = s.area_coach || 'Unknown';
       if (!acMap[ac]) acMap[ac] = { area_coach: ac, store_count: 0, net_sales: 0,
-        gsum: 0, gcnt: 0, cancels: 0, ot_hours: 0, comments_pos: 0,
+        gsum: 0, gcnt: 0, cancels: 0, lpsum: 0, lpcnt: 0, ot_hours: 0, comments_pos: 0,
         comments_neg: 0, forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0 };
       const a = acMap[ac];
       a.store_count++;
       if (s.net_sales  != null) a.net_sales  += s.net_sales;
       if (s.growth_pct != null) { a.gsum += s.growth_pct; a.gcnt++; }
       if (s.cancels    != null) a.cancels += s.cancels;
+      if (s.labor_pct  != null) { a.lpsum += s.labor_pct; a.lpcnt++; }
       a.ot_hours       += s.ot_hours       || 0;
       a.comments_pos   += s.comments_pos   || 0;
       a.comments_neg   += s.comments_neg   || 0;
@@ -490,7 +518,7 @@ router.get('/kpis', async (req, res) => {
       net_sales:       a.net_sales    || null,
       growth_pct:      a.gcnt > 0 ? a.gsum / a.gcnt : null,
       cancels:         a.cancels      || null,
-      labor_pct:       null,
+      labor_pct:       a.lpcnt > 0 ? a.lpsum / a.lpcnt : null,
       ot_hours:        a.ot_hours     || null,
       comments_pos:    a.comments_pos,
       comments_neg:    a.comments_neg,
@@ -506,7 +534,7 @@ router.get('/kpis', async (req, res) => {
       net_sales:       by_store.reduce((s,r) => s+(r.net_sales||0), 0) || null,
       growth_pct:      validGrowth.length ? validGrowth.reduce((s,r) => s+r.growth_pct,0)/validGrowth.length : null,
       cancels:         by_store.reduce((s,r) => s+(r.cancels||0), 0) || null,
-      labor_pct:       null,
+      labor_pct:       (() => { const lp = by_store.filter(s => s.labor_pct != null); return lp.length ? lp.reduce((s,r) => s+r.labor_pct, 0)/lp.length : null; })(),
       ot_hours:        by_store.reduce((s,r) => s+(r.ot_hours||0), 0) || null,
       comments_pos:    by_store.reduce((s,r) => s+(r.comments_pos||0), 0),
       comments_neg:    by_store.reduce((s,r) => s+(r.comments_neg||0), 0),
