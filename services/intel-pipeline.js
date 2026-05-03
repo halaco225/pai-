@@ -40,10 +40,24 @@ function cleanupFile(fp) {
   try { if (fp && fs.existsSync(fp)) fs.unlinkSync(fp); } catch (_) {}
 }
 
+async function logStep(step, result, targetDate) {
+  try {
+    await db.logIntelJob({
+      jobType: `step:${step}`, targetDate,
+      status: result.success ? 'success' : (result.skipped ? 'skipped' : 'error'),
+      storesProcessed: result.storesProcessed || 0,
+      flagsCreated: result.flagsWritten || 0,
+      message: result.error || JSON.stringify(result)
+    });
+  } catch (_) {}
+}
+
 async function runIntelPipeline(targetDate) {
   if (!targetDate) targetDate = getYesterdayEST();
   console.log(`\n[Intel Pipeline] Starting for ${targetDate}`);
   const results = { targetDate, steps: {}, errors: [] };
+
+  await db.logIntelJob({ jobType: 'pipeline:start', targetDate, status: 'running', message: 'Pipeline started' });
 
   // ── Step 1: DBS ────────────────────────────────────────────────────────────
   console.log('[Intel Pipeline] Step 1: DBS');
@@ -58,6 +72,7 @@ async function runIntelPipeline(targetDate) {
     results.steps.dbs = { success: false, error: err.message };
     console.error('[Intel Pipeline] DBS failed:', err.message);
   }
+  await logStep('dbs', results.steps.dbs, targetDate);
 
   // ── Step 2: SOS ────────────────────────────────────────────────────────────
   console.log('[Intel Pipeline] Step 2: SOS');
@@ -72,6 +87,7 @@ async function runIntelPipeline(targetDate) {
     results.steps.sos = { success: false, error: err.message };
     console.error('[Intel Pipeline] SOS failed:', err.message);
   }
+  await logStep('sos', results.steps.sos, targetDate);
 
   // ── Step 3: Fourth Labor ───────────────────────────────────────────────────
   console.log('[Intel Pipeline] Step 3: Fourth Labor');
@@ -86,6 +102,7 @@ async function runIntelPipeline(targetDate) {
     results.steps.fourthLabor = { success: false, error: err.message };
     console.error('[Intel Pipeline] Fourth Labor failed:', err.message);
   }
+  await logStep('fourthLabor', results.steps.fourthLabor, targetDate);
 
   // ── Step 4: Fourth OT (Sun/Mon only) ──────────────────────────────────────
   const dow = new Date(targetDate + 'T12:00:00Z').getUTCDay();
@@ -102,6 +119,7 @@ async function runIntelPipeline(targetDate) {
       results.steps.fourthOT = { success: false, error: err.message };
       console.error('[Intel Pipeline] Fourth OT failed:', err.message);
     }
+    await logStep('fourthOT', results.steps.fourthOT, targetDate);
   } else {
     results.steps.fourthOT = { skipped: true, reason: 'Only runs Sun/Mon' };
   }
@@ -119,6 +137,7 @@ async function runIntelPipeline(targetDate) {
     results.steps.clockOut = { success: false, error: err.message };
     console.error('[Intel Pipeline] Clock Out failed:', err.message);
   }
+  await logStep('clockOut', results.steps.clockOut, targetDate);
 
   // ── Step 6: SMG Comments ───────────────────────────────────────────────────
   console.log('[Intel Pipeline] Step 6: SMG Comments');
@@ -133,6 +152,7 @@ async function runIntelPipeline(targetDate) {
     results.steps.smg = { success: false, error: err.message };
     console.error('[Intel Pipeline] SMG failed:', err.message);
   }
+  await logStep('smg', results.steps.smg, targetDate);
 
   // ── Step 7: Hut Bot ────────────────────────────────────────────────────────
   console.log('[Intel Pipeline] Step 7: Hut Bot');
@@ -144,6 +164,7 @@ async function runIntelPipeline(targetDate) {
     results.steps.hutBot = { success: false, error: err.message };
     console.error('[Intel Pipeline] Hut Bot failed:', err.message);
   }
+  await logStep('hutBot', results.steps.hutBot, targetDate);
 
   // ── Step 8: Archive old recovering flags ───────────────────────────────────
   await db.archiveOldRecoveringFlags(targetDate);
