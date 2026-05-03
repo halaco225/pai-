@@ -69,6 +69,22 @@ router.get('/automation/last-run', async (req, res) => {
   res.json(lastPipelineResult);
 });
 
+// ── GET /api/intel/automation/logs — persistent pipeline run history ─────────
+router.get('/automation/logs', async (req, res) => {
+  const token = req.query.token || req.headers['x-automation-token'];
+  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, process.env.INTEL_REGEN_TOKEN].filter(Boolean);
+  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const logs = await db.getIntelLogs(20);
+    const parsed = logs.map(l => {
+      try { return { ...l, message: JSON.parse(l.message) }; } catch { return l; }
+    });
+    res.json({ logs: parsed });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/intel/automation/debug-cache — temp debug ───────────────────────
 router.get('/automation/debug-cache', async (req, res) => {
   const token = req.headers['x-automation-token'] || req.query.token;

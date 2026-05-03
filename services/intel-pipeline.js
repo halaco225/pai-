@@ -160,7 +160,22 @@ async function runIntelPipeline(targetDate) {
   }
 
   const successCount = Object.values(results.steps).filter(s => s.success || s.skipped).length;
-  console.log(`\n[Intel Pipeline] Complete — ${successCount}/${Object.keys(results.steps).length} steps OK, ${results.errors.length} errors`);
+  const totalSteps = Object.keys(results.steps).length;
+  console.log(`\n[Intel Pipeline] Complete — ${successCount}/${totalSteps} steps OK, ${results.errors.length} errors`);
+
+  try {
+    await db.logIntelJob({
+      jobType: 'pipeline',
+      targetDate,
+      status: results.errors.length === 0 ? 'success' : (successCount === 0 ? 'error' : 'partial'),
+      storesProcessed: results.steps.dbs?.storesProcessed || 0,
+      flagsCreated: Object.values(results.steps).reduce((s, r) => s + (r.flagsWritten || 0), 0),
+      message: JSON.stringify({ steps: results.steps, errors: results.errors })
+    });
+  } catch (logErr) {
+    console.error('[Intel Pipeline] Failed to write job log:', logErr.message);
+  }
+
   return results;
 }
 
