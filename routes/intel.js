@@ -124,6 +124,35 @@ router.get('/automation/regenerate-cache', async (req, res) => {
   }
 });
 
+// ── GET /api/intel/automation/browser-check — diagnose Playwright binary path ──
+router.get('/automation/browser-check', async (req, res) => {
+  const token = req.query.token || req.headers['x-automation-token'];
+  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, process.env.INTEL_REGEN_TOKEN].filter(Boolean);
+  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+  const fss = require('fs');
+  const pathh = require('path');
+  const browsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH || '/tmp/ms-playwright';
+  const result = { browsersPath, exists: false, dirs: [], files: [] };
+  try {
+    result.exists = fss.existsSync(browsersPath);
+    if (result.exists) {
+      result.dirs = fss.readdirSync(browsersPath);
+      for (const d of result.dirs.filter(e => e.startsWith('chromium'))) {
+        const full = pathh.join(browsersPath, d);
+        try {
+          const sub = fss.readdirSync(full);
+          result.files.push({ dir: d, contents: sub });
+          for (const s of sub) {
+            const sub2 = pathh.join(full, s);
+            try { result.files.push({ dir: d + '/' + s, contents: fss.readdirSync(sub2) }); } catch (_) {}
+          }
+        } catch (_) {}
+      }
+    }
+  } catch (e) { result.error = e.message; }
+  res.json(result);
+});
+
 // ── POST /api/intel/automation/regenerate-cache — re-run cache step only ─────
 router.post('/automation/regenerate-cache', async (req, res) => {
   const token = req.headers['x-automation-token'] || req.query.token;
