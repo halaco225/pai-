@@ -6,7 +6,7 @@
  * locally (where `playwright` manages the path itself).
  *
  * Supports both old and new Playwright directory structures:
- *   Old (< 1.40): chromium-*/chrome-linux/chrome
+ *   Old (< 1.40): chromium-NNN/chrome-linux/chrome
  *   New (>= 1.40): chromium_headless_shell-NNN/chrome-headless-shell-linux64/chrome-headless-shell
  */
 const { chromium } = require('playwright');
