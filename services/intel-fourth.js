@@ -3,11 +3,11 @@
  * Fourth Analytics Playwright helper.
  * Downloads Labor and OT reports from analytics.na1.fourth.com (GoodData).
  *
- * Export: hover over "Labor %" column header to reveal .s-options-menu, then export.
- *
- * Auth strategy: always navigate to account.html first.
- * On Render, profile dirs are ephemeral so login is required every run.
- * GoodData redirects away from account.html if session is already valid.
+ * Key facts from production logs:
+ * - Login redirects correctly: account.html → report URL ✓
+ * - Page title loads: "Labor Overview - 03. Labor Optimization" ✓
+ * - Dashboard container selectors (.s-dash-item, table, etc.) do NOT match GoodData's actual DOM
+ * - Fix: skip container wait, go straight for the "Labor %" column header (what we need anyway)
  */
 const { launchContext } = require('./browser-launch');
 const fs   = require('fs');
@@ -25,9 +25,8 @@ async function screenshot(page, label) {
   try {
     const dir = '/tmp/fourth-debug';
     fs.mkdirSync(dir, { recursive: true });
-    const file = path.join(dir, `${label}-${Date.now()}.png`);
-    await page.screenshot({ path: file, fullPage: false });
-    console.log(`[Fourth] Screenshot: ${file}`);
+    await page.screenshot({ path: path.join(dir, `${label}-${Date.now()}.png`), fullPage: false });
+    console.log(`[Fourth] Screenshot: ${label}`);
   } catch (_) {}
 }
 
@@ -39,85 +38,36 @@ async function logPageState(page, label) {
   } catch (_) {}
 }
 
-/**
- * Logs all visible interactive elements — used to debug when selectors fail.
- */
-async function logPageElements(page, label) {
+/** Dumps visible DOM classes so we can identify GoodData's actual element structure */
+async function logDomClasses(page, label) {
   try {
-    const elements = await page.evaluate(() => {
-      const out = [];
-      for (const el of document.querySelectorAll('button, a, [role="button"], input[type="submit"]')) {
-        const text       = (el.innerText || el.textContent || '').trim().slice(0, 60);
-        const title      = el.getAttribute('title') || '';
-        const ariaLabel  = el.getAttribute('aria-label') || '';
-        const cls        = (el.className || '').toString().slice(0, 80);
-        if (text || title || ariaLabel) out.push({ text, title, ariaLabel, cls });
-      }
-      return out.slice(0, 40);
+    const info = await page.evaluate(() => {
+      // Top-level children of body
+      const bodyChildren = Array.from(document.body.children)
+        .map(el => ({ tag: el.tagName, cls: (el.className||'').toString().slice(0,80), id: el.id }));
+
+      // All elements with 'gd' or 'visualization' or 'dash' or 'widget' in class
+      const gdEls = Array.from(document.querySelectorAll('[class]'))
+        .filter(el => {
+          const c = (el.className||'').toString().toLowerCase();
+          return c.includes('gd-') || c.includes('s-dash') || c.includes('visual')
+              || c.includes('widget') || c.includes('kpi') || c.includes('highchart');
+        })
+        .slice(0, 30)
+        .map(el => ({ tag: el.tagName, cls: (el.className||'').toString().slice(0,100) }));
+
+      // Any visible text that contains "Labor"
+      const laborEls = Array.from(document.querySelectorAll('*'))
+        .filter(el => el.children.length === 0 && (el.textContent||'').includes('Labor'))
+        .slice(0, 10)
+        .map(el => ({ tag: el.tagName, cls: (el.className||'').toString().slice(0,60), text: el.textContent.trim().slice(0,40) }));
+
+      return { bodyChildren, gdEls, laborEls };
     });
-    console.log(`[Fourth] ${label} elements:`, JSON.stringify(elements));
-  } catch (_) {}
-}
-
-/**
- * Login to GoodData via account.html.
- * Skips form fill if GoodData already redirected us to the app (valid session).
- */
-async function loginToFourth(page) {
-  const user = process.env.FOURTH_USER || '';
-  const pass = process.env.FOURTH_PASSWORD || '';
-  if (!user || !pass) throw new Error('FOURTH_USER / FOURTH_PASSWORD env vars not set');
-
-  console.log('[Fourth] Navigating to account.html for auth...');
-  await page.goto(`${FOURTH_URL}/account.html`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  // GoodData SPA may redirect immediately if session is valid
-  await page.waitForTimeout(4000);
-  await logPageState(page, 'account-page');
-  await screenshot(page, 'step1-account-page');
-
-  const urlAfter = page.url();
-  if (!urlAfter.includes('account.html')) {
-    console.log(`[Fourth] Already authenticated — redirected to: ${urlAfter}`);
-    return;
+    console.log(`[Fourth] ${label} DOM:`, JSON.stringify(info, null, 2));
+  } catch (e) {
+    console.log(`[Fourth] logDomClasses failed: ${e.message}`);
   }
-
-  console.log('[Fourth] Login form present — filling credentials');
-
-  // Email/username field
-  const emailField = await page.waitForSelector(
-    'input[type="email"], input[name="username"], #username, input[type="text"]',
-    { timeout: 10000 }
-  );
-  await emailField.fill(user);
-  console.log('[Fourth] Email filled');
-
-  // Password — may be on same screen or next screen
-  let passField = await page.$('input[type="password"], input[name="password"], #password');
-  if (!passField) {
-    // Click Next to advance to password screen
-    await page.click('button[type="submit"], button:has-text("Next"), button:has-text("Continue")').catch(() => {});
-    await page.waitForTimeout(2500);
-    passField = await page.waitForSelector('input[type="password"], #password', { timeout: 8000 });
-  }
-  await passField.fill(pass);
-  console.log('[Fourth] Password filled');
-  await screenshot(page, 'step1-creds-filled');
-
-  // Submit
-  await page.click('button[type="submit"], .s-login-button, button:has-text("Log In"), button:has-text("Sign In")');
-
-  // Wait for redirect off account.html
-  try {
-    await page.waitForURL(url => !url.includes('account.html'), { timeout: 30000 });
-  } catch {
-    await screenshot(page, 'step1-login-stuck');
-    await logPageState(page, 'login-redirect-timeout');
-    throw new Error(`[Fourth] Login did not redirect from account.html. Current: ${page.url()}`);
-  }
-
-  await logPageState(page, 'after-login');
-  await screenshot(page, 'step1-after-login');
-  console.log('[Fourth] Login successful');
 }
 
 async function downloadFourthReport(reportKey, targetDate) {
@@ -133,80 +83,104 @@ async function downloadFourthReport(reportKey, targetDate) {
   try {
     const page = await browser.newPage();
 
-    // ── Step 1: Login ────────────────────────────────────────────────────────
-    await loginToFourth(page);
-
-    // ── Step 2: Navigate to report ───────────────────────────────────────────
-    console.log(`[Fourth] Navigating to ${reportKey} report...`);
+    // ── Step 1: Navigate to report URL — GoodData will redirect to login if needed
+    console.log(`[Fourth] Navigating to ${reportKey} report URL`);
     await page.goto(reportUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await logPageState(page, 'after-report-nav');
-    await screenshot(page, 'step2-report-nav');
-
-    // GoodData SPA needs time to parse hash route and request data
     await page.waitForTimeout(5000);
+    await logPageState(page, 'after-initial-nav');
+    await screenshot(page, 'step1-initial');
 
-    // Wait for network to settle (GoodData fetches dashboard data via XHR)
-    try {
-      await page.waitForLoadState('networkidle', { timeout: 25000 });
-      console.log('[Fourth] Network idle');
-    } catch (_) {
-      console.log('[Fourth] networkidle timeout — continuing');
-    }
+    // ── Step 2: Login if redirected to account.html ───────────────────────────
+    const urlAfterNav = page.url();
+    const isNotOnReport = !urlAfterNav.includes('analytics.na1.fourth.com')
+      || urlAfterNav.includes('account.html')
+      || urlAfterNav.includes('/login')
+      || urlAfterNav.includes('/sso')
+      || urlAfterNav.includes('/auth');
+    const hasLoginField = await page.$('input[type="email"], input[type="password"], input[name="username"], #username')
+      .then(el => !!el).catch(() => false);
 
-    await logPageState(page, 'after-networkidle');
-    await screenshot(page, 'step2-after-networkidle');
+    if (isNotOnReport || hasLoginField) {
+      console.log(`[Fourth] Login required`);
+      const user = process.env.FOURTH_USER || '';
+      const pass = process.env.FOURTH_PASSWORD || '';
+      if (!user || !pass) throw new Error('FOURTH_USER / FOURTH_PASSWORD env vars not set');
 
-    // ── Step 3: Wait for dashboard content ──────────────────────────────────
-    console.log('[Fourth] Waiting for dashboard to render (up to 90s)...');
-    let dashRendered = false;
-    try {
-      await page.waitForSelector(
-        [
-          '.s-dash-item',
-          '[class*="dashboardItem"]',
-          '.gd-fluidlayout-item',
-          '.visualization-container',
-          '.gd-kpi-value',
-          '.highcharts-container',
-          '.s-table',
-          'table',
-        ].join(', '),
-        { timeout: 90000 }
+      if (!hasLoginField) {
+        await page.goto(`${FOURTH_URL}/account.html`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        await page.waitForTimeout(3000);
+      }
+      await screenshot(page, 'step2-login-page');
+
+      const emailField = await page.waitForSelector(
+        'input[type="email"], input[name="username"], #username, input[type="text"]',
+        { timeout: 10000 }
       );
-      dashRendered = true;
-      console.log('[Fourth] Dashboard content visible');
-    } catch (err) {
-      await logPageState(page, 'dashboard-timeout');
-      await screenshot(page, 'step3-dashboard-timeout');
-      await logPageElements(page, 'dashboard-timeout');
-      throw new Error(`Dashboard did not render. ${err.message} [page_url=${page.url()}]`);
+      await emailField.fill(user);
+
+      let passField = await page.$('input[type="password"], input[name="password"], #password');
+      if (!passField) {
+        await page.click('button[type="submit"], button:has-text("Next"), button:has-text("Continue")').catch(() => {});
+        await page.waitForTimeout(2000);
+        passField = await page.waitForSelector('input[type="password"], #password', { timeout: 8000 });
+      }
+      await passField.fill(pass);
+      await screenshot(page, 'step2-creds-filled');
+
+      await page.click('button[type="submit"], .s-login-button, button:has-text("Log In"), button:has-text("Sign In")');
+      await page.waitForTimeout(5000);
+      await logPageState(page, 'after-login-submit');
+      await screenshot(page, 'step2-post-login');
+
+      console.log('[Fourth] Navigating to report post-login');
+      await page.goto(reportUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(5000);
+      await logPageState(page, 'after-report-nav-post-login');
     }
 
-    await page.waitForTimeout(2000);
-    await screenshot(page, 'step3-dashboard-loaded');
+    await screenshot(page, 'step3-report-page');
 
-    // ── Step 4: Hover over "Labor %" header to reveal 3-dot menu ─────────────
-    console.log('[Fourth] Looking for Labor % header...');
-    const HEADER_SELECTORS = [
+    // ── Step 3: Wait for GoodData to finish loading data (networkidle) ────────
+    // The page title already loads quickly ("Labor Overview - ...").
+    // We need to wait for GoodData to fetch the actual data via XHR.
+    console.log('[Fourth] Waiting for network idle (GoodData data fetch)...');
+    try {
+      await page.waitForLoadState('networkidle', { timeout: 45000 });
+      console.log('[Fourth] Network idle reached');
+    } catch (_) {
+      console.log('[Fourth] networkidle timeout — proceeding anyway');
+    }
+    await page.waitForTimeout(3000);
+    await logPageState(page, 'after-networkidle');
+    await screenshot(page, 'step3-after-networkidle');
+
+    // ── Step 4: Find "Labor %" column header directly ─────────────────────────
+    // We skip waiting for a dashboard container (GoodData uses unpredictable class names).
+    // If the title says "Labor Overview", the header text must be in the DOM.
+    console.log('[Fourth] Looking for Labor % column header (up to 60s)...');
+    const LABOR_HEADER_SELECTORS = [
       'th:has-text("Labor %")',
       '[role="columnheader"]:has-text("Labor %")',
       '[class*="header"]:has-text("Labor %")',
       '[class*="gd-column-header"]:has-text("Labor %")',
       '[class*="s-header-cell"]:has-text("Labor %")',
+      'span:has-text("Labor %")',
+      'div:has-text("Labor %")',
     ];
 
     let laborHeader = null;
-    for (const sel of HEADER_SELECTORS) {
+    for (const sel of LABOR_HEADER_SELECTORS) {
       try {
-        laborHeader = await page.waitForSelector(sel, { timeout: 8000 });
+        laborHeader = await page.waitForSelector(sel, { timeout: 10000 });
         if (laborHeader) { console.log(`[Fourth] Found Labor % header via: ${sel}`); break; }
       } catch (_) {}
     }
 
     if (!laborHeader) {
-      await logPageElements(page, 'no-labor-header');
+      // Dump DOM so we can identify the actual element class names
+      await logDomClasses(page, 'labor-header-not-found');
       await screenshot(page, 'step4-no-labor-header');
-      throw new Error(`Labor % column header not found. [page_url=${page.url()}]`);
+      throw new Error(`Labor % column header not found after networkidle. [page_url=${page.url()}]`);
     }
 
     await laborHeader.hover();
@@ -214,27 +188,27 @@ async function downloadFourthReport(reportKey, targetDate) {
     await screenshot(page, 'step4-after-hover');
     console.log('[Fourth] Hovered Labor % — looking for options menu');
 
-    // ── Step 5: Click 3-dot options menu ────────────────────────────────────
+    // ── Step 5: Click 3-dot options menu ─────────────────────────────────────
     const MENU_SELECTORS = [
       '.s-options-menu',
       'button[class*="optionsMenu"]',
       '[class*="s-options-menu"]',
       'button[aria-label*="option" i]',
       'button[title*="option" i]',
-      '[class*="menu-icon"]:visible',
+      'button[aria-label*="more" i]',
     ];
 
     let optionsBtn = null;
     for (const sel of MENU_SELECTORS) {
       try {
         optionsBtn = await page.waitForSelector(sel, { state: 'visible', timeout: 4000 });
-        if (optionsBtn) { console.log(`[Fourth] Found options button via: ${sel}`); break; }
+        if (optionsBtn) { console.log(`[Fourth] Options button via: ${sel}`); break; }
       } catch (_) {}
     }
 
     if (!optionsBtn) {
+      await logDomClasses(page, 'no-options-btn');
       await screenshot(page, 'step5-no-options-btn');
-      await logPageElements(page, 'no-options-btn');
       throw new Error(`Options menu not found after hover. [page_url=${page.url()}]`);
     }
 
@@ -243,21 +217,18 @@ async function downloadFourthReport(reportKey, targetDate) {
     await page.waitForTimeout(600);
     await screenshot(page, 'step5-menu-open');
 
-    // Try Export menu item
     try {
       await page.click(
         '.s-options-menu-export, li:has-text("Export"), button:has-text("Export"), [role="menuitem"]:has-text("Export")',
         { timeout: 5000 }
       );
       console.log('[Fourth] Clicked Export');
-    } catch (_) { console.log('[Fourth] No Export item — trying direct download'); }
+    } catch (_) {}
 
     await page.waitForTimeout(400);
-
-    // Try XLSX format picker if a submenu appeared
     try {
       await page.click(
-        'li:has-text("XLSX"), button:has-text("XLSX"), li:has-text("Excel"), button:has-text("Excel"), [role="menuitem"]:has-text("XLSX")',
+        'li:has-text("XLSX"), button:has-text("XLSX"), li:has-text("Excel"), [role="menuitem"]:has-text("XLSX")',
         { timeout: 3000 }
       );
       console.log('[Fourth] Clicked XLSX');
@@ -265,18 +236,14 @@ async function downloadFourthReport(reportKey, targetDate) {
 
     const download = await downloadPromise;
     const dlPath   = await download.path();
-    if (!dlPath) throw new Error('Download path null after export');
-
+    if (!dlPath) throw new Error('Download path null');
     fs.copyFileSync(dlPath, outPath);
     console.log(`[Fourth] ${reportKey} downloaded → ${outPath}`);
     return { success: true, filePath: outPath };
 
   } catch (err) {
     let url = '?';
-    try {
-      const ctxs = browser.contexts();
-      if (ctxs.length) url = ctxs[0].pages()[0]?.url() || '?';
-    } catch (_) {}
+    try { url = browser.contexts()[0]?.pages()[0]?.url() || '?'; } catch (_) {}
     const errMsg = `${err.message} [page_url=${url}]`;
     console.error(`[Fourth] ${reportKey} FAILED:`, errMsg);
     return { success: false, error: errMsg };
