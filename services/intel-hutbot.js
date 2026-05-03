@@ -179,8 +179,20 @@ async function scrapeHutBot(targetDate) {
     const page = await browser.newPage();
     page.setDefaultTimeout(NAV_TIMEOUT);
 
-    // ── Navigate to routines ─────────────────────────────────────────────────
-    await page.goto(ROUTINES_URL, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT });
+    // ── Navigate to routines — retry once on HTTP/2 protocol error ─────────
+    let navError = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        await page.goto(ROUTINES_URL, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT });
+        navError = null;
+        break;
+      } catch (err) {
+        navError = err;
+        console.warn(`[HutBot] Nav attempt ${attempt} failed: ${err.message}`);
+        if (attempt < 2) await page.waitForTimeout(3000);
+      }
+    }
+    if (navError) throw navError;
     await page.waitForTimeout(2000);
 
     const currentUrl = page.url();

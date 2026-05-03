@@ -6,8 +6,8 @@
  * locally (where `playwright` manages the path itself).
  *
  * Supports both old and new Playwright directory structures:
- *   Old (< 1.40):  chromium-[rev]/chrome-linux/chrome
- *   New (>= 1.40): chromium_headless_shell-[rev]/chrome-headless-shell-linux64/chrome-headless-shell
+ *   Old (< 1.40): chromium-*/chrome-linux/chrome
+ *   New (>= 1.40): chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell
  */
 const { chromium } = require('playwright');
 const fs   = require('fs');
@@ -87,6 +87,8 @@ const BASE_ARGS = [
   '--disable-setuid-sandbox',
   '--disable-dev-shm-usage',
   '--disable-gpu',
+  '--disable-http2',            // prevents ERR_HTTP2_PROTOCOL_ERROR on some sites
+  '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
 ];
 
 /**
