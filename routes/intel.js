@@ -34,13 +34,18 @@ router.post('/automation/run-batch', async (req, res) => {
   // Respond immediately so cron doesn't timeout, then run async
   res.json({ status: 'started', targetDate });
 
+  // Log route entry to DB immediately — if this shows up, the async block runs
+  await db.logIntelJob({ jobType: 'route:triggered', targetDate, status: 'running', message: 'run-batch route entered' });
+
   try {
     const { runIntelPipeline } = require('../services/intel-pipeline');
+    await db.logIntelJob({ jobType: 'route:require_ok', targetDate, status: 'running', message: 'intel-pipeline required OK' });
     const result = await runIntelPipeline(targetDate);
     lastPipelineResult = { ...result, completedAt: new Date().toISOString() };
     console.log('[Intel] Pipeline complete:', JSON.stringify(result.steps, null, 2));
     if (result.errors.length) console.warn('[Intel] Pipeline errors:', result.errors);
   } catch (err) {
+    await db.logIntelJob({ jobType: 'route:fatal', targetDate, status: 'error', message: err.message + '\n' + (err.stack || '') });
     console.error('[Intel] Pipeline fatal error:', err.message);
   }
 });
