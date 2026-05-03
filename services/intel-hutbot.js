@@ -12,10 +12,10 @@
 const { launchContext } = require('./browser-launch');
 const db = require('./db');
 
-const ROUTINES_URL = 'https://admin.superapp.yum.com/routines';
-const PROFILE_DIR  = process.env.HUTBOT_PROFILE_DIR || '/tmp/hutbot-profile';
-const LOGIN_TIMEOUT = 45_000;
-const NAV_TIMEOUT   = 30_000;
+const ROUTINES_URL  = 'https://admin.superapp.yum.com/routines';
+const PROFILE_DIR   = process.env.HUTBOT_PROFILE_DIR || '/tmp/hutbot-profile';
+const LOGIN_TIMEOUT = 60_000;   // SSO redirects can be slow
+const NAV_TIMEOUT   = 60_000;   // Yum enterprise portal is slow to respond
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Helpers
@@ -25,7 +25,6 @@ function credentialsPresent() {
   return !!(process.env.HUTBOT_USER && process.env.HUTBOT_PASSWORD);
 }
 
-/** Save a debug screenshot when something goes wrong (non-fatal). */
 async function screenshot(page, label) {
   try {
     const fs   = require('fs');
@@ -38,11 +37,6 @@ async function screenshot(page, label) {
   } catch (_) {}
 }
 
-/** Wait for navigation, tolerating timeouts gracefully. */
-async function safeWaitForNav(page, opts = {}) {
-  try { await page.waitForLoadState('networkidle', { timeout: 8000 }); } catch (_) {}
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 //  Login
 // ─────────────────────────────────────────────────────────────────────────────
@@ -52,8 +46,8 @@ async function handleLogin(page) {
   const pass = process.env.HUTBOT_PASSWORD;
 
   console.log('[HutBot] Handling SSO login...');
+  await screenshot(page, 'login-start');
 
-  // Yum portalsso — username first, then password on next screen
   const userSelectors = [
     'input[name="username"]',
     'input[type="email"]',
@@ -74,12 +68,12 @@ async function handleLogin(page) {
     'button:has-text("Continue")',
   ];
 
-  // Fill username
+  // Fill username — wait up to 15s for form to appear
   let filled = false;
   for (const sel of userSelectors) {
     try {
-      const el = await page.$(sel);
-      if (el && await el.isVisible()) {
+      const el = await page.waitForSelector(sel, { state: 'visible', timeout: 15000 });
+      if (el) {
         await el.fill(user);
         filled = true;
         console.log(`[HutBot] Filled username via: ${sel}`);
@@ -89,10 +83,10 @@ async function handleLogin(page) {
   }
   if (!filled) {
     await screenshot(page, 'login-no-username');
-    throw new Error('HutBot login: could not find username field');
+    throw new Error(`HutBot login: could not find username field. URL: ${page.url()}`);
   }
 
-  // Click submit / Next (some flows show username-only first)
+  // Click submit / Next
   for (const sel of submitSelectors) {
     try {
       const el = await page.$(sel);
@@ -100,24 +94,22 @@ async function handleLogin(page) {
     } catch (_) {}
   }
 
-  // Wait briefly then fill password (may be same screen or next screen)
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(3000);
 
-  let passPage = page;
+  // Fill password — may be on same screen or next screen
   let passEl = null;
   for (const sel of passSelectors) {
     try {
-      const el = await page.$(sel);
+      const el = await page.$( sel);
       if (el && await el.isVisible()) { passEl = el; break; }
     } catch (_) {}
   }
 
   if (!passEl) {
-    // password might be on a new page — wait for it
     await page.waitForTimeout(3000);
     for (const sel of passSelectors) {
       try {
-        const el = await page.$(sel);
+        const el = await page.$( sel);
         if (el && await el.isVisible()) { passEl = el; break; }
       } catch (_) {}
     }
@@ -125,7 +117,7 @@ async function handleLogin(page) {
 
   if (!passEl) {
     await screenshot(page, 'login-no-password');
-    throw new Error('HutBot login: could not find password field');
+    throw new Error(`HutBot login: could not find password field. URL: ${page.url()}`);
   }
 
   await passEl.fill(pass);
@@ -145,7 +137,6 @@ async function handleLogin(page) {
     console.log('[HutBot] Login successful — redirected to SuperApp');
   } catch (_) {
     await screenshot(page, 'login-redirect-timeout');
-    // Check if we landed somewhere useful anyway
     const finalUrl = page.url();
     console.warn(`[HutBot] Login redirect timeout — current URL: ${finalUrl}`);
     if (!finalUrl.includes('superapp')) {
@@ -159,7 +150,6 @@ async function handleLogin(page) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function scrapeHutBot(targetDate) {
-  // ── Fail fast if no credentials ──────────────────────────────────────────
   if (!credentialsPresent()) {
     console.error('[HutBot] HUTBOT_USER / HUTBOT_PASSWORD env vars not set — skipping scrape');
     return { success: false, error: 'HUTBOT_USER / HUTBOT_PASSWORD env vars not set. Set them in Render environment variables.' };
@@ -179,24 +169,31 @@ async function scrapeHutBot(targetDate) {
     const page = await browser.newPage();
     page.setDefaultTimeout(NAV_TIMEOUT);
 
-    // ── Navigate to routines — retry once on HTTP/2 protocol error ─────────
+    // ── Navigate to routines ─────────────────────────────────────────────────
+    // Use 'commit' — fires on first byte received, not after DOM parse.
+    // Yum's enterprise portal is slow; domcontentloaded was timing out at 30s.
+    console.log(`[HutBot] Navigating to ${ROUTINES_URL} (waitUntil: commit, timeout: ${NAV_TIMEOUT}ms)`);
+
     let navError = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        await page.goto(ROUTINES_URL, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT });
+        await page.goto(ROUTINES_URL, { waitUntil: 'commit', timeout: NAV_TIMEOUT });
         navError = null;
+        console.log(`[HutBot] Navigation commit on attempt ${attempt}`);
         break;
       } catch (err) {
         navError = err;
-        console.warn(`[HutBot] Nav attempt ${attempt} failed: ${err.message}`);
-        if (attempt < 2) await page.waitForTimeout(3000);
+        console.warn(`[HutBot] Nav attempt ${attempt} failed: ${err.message}. URL at fail: ${page.url()}`);
+        if (attempt < 2) await page.waitForTimeout(5000);
       }
     }
-    if (navError) throw navError;
-    await page.waitForTimeout(2000);
+    if (navError) throw new Error(`Navigation to routines URL failed after 2 attempts: ${navError.message}`);
 
+    // Wait for page to actually start rendering content
+    await page.waitForTimeout(3000);
     const currentUrl = page.url();
     console.log(`[HutBot] After goto — URL: ${currentUrl}`);
+    await screenshot(page, 'after-nav');
 
     // ── Detect login requirement ─────────────────────────────────────────────
     const needsLogin = currentUrl.includes('portalsso')
@@ -206,17 +203,24 @@ async function scrapeHutBot(targetDate) {
       || await page.$('input[type="password"], input[name="username"]').then(el => !!el).catch(() => false);
 
     if (needsLogin) {
+      console.log(`[HutBot] Login required. URL: ${currentUrl}`);
       await handleLogin(page);
-      // Navigate (or re-navigate) to routines after login
       const postLoginUrl = page.url();
       if (!postLoginUrl.includes('routines')) {
         console.log('[HutBot] Navigating to routines after login...');
-        await page.goto(ROUTINES_URL, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT });
-        await page.waitForTimeout(2000);
+        await page.goto(ROUTINES_URL, { waitUntil: 'commit', timeout: NAV_TIMEOUT });
+        await page.waitForTimeout(3000);
       }
     }
 
     console.log(`[HutBot] On routines page — URL: ${page.url()}`);
+
+    // Wait for page content to load (after auth redirect settles)
+    try {
+      await page.waitForLoadState('domcontentloaded', { timeout: 20000 });
+    } catch (_) {}
+    await page.waitForTimeout(2000);
+    await screenshot(page, 'routines-page');
 
     // ── Apply date filter ────────────────────────────────────────────────────
     try {
@@ -224,10 +228,8 @@ async function scrapeHutBot(targetDate) {
       for (const inp of dateInputs) {
         await inp.fill(targetDate).catch(() => {});
       }
-      // Also try placeholder-based date pickers
       const dateByPlaceholder = await page.$$('input[placeholder*="date" i], input[placeholder*="mm/dd" i]');
       for (const inp of dateByPlaceholder) {
-        // Format as MM/DD/YYYY for US-style pickers
         const [y, m, d] = targetDate.split('-');
         await inp.fill(`${m}/${d}/${y}`).catch(() => {});
       }
@@ -255,7 +257,7 @@ async function scrapeHutBot(targetDate) {
       const searchBtn = await page.$('button:has-text("Search"), button:has-text("Apply"), button:has-text("Filter"), button[type="submit"]');
       if (searchBtn) {
         await searchBtn.click();
-        await page.waitForTimeout(3500);
+        await page.waitForTimeout(4000);
       }
     } catch (_) {}
 
@@ -268,8 +270,7 @@ async function scrapeHutBot(targetDate) {
     } catch (err) {
       await screenshot(page, 'no-results-table');
       console.warn('[HutBot] Results table not found:', err.message);
-      // Return zero records (no issues today) rather than an error
-      return { success: true, records: [], note: 'No results table found — may mean zero issues' };
+      return { success: true, records: [], note: 'No results table found — may mean zero issues today' };
     }
 
     // ── Parse rows ───────────────────────────────────────────────────────────
@@ -278,12 +279,10 @@ async function scrapeHutBot(targetDate) {
       try {
         const cells = await row.$$('td, [role="cell"]');
         if (cells.length < 3) continue;
-        const texts = await Promise.all(cells.map(c => c.innerText().catch(() => '')));
+        const texts  = await Promise.all(cells.map(c => c.innerText().catch(() => '')));
         const rowText = texts.join(' ').toLowerCase();
-
         if (!rowText.includes('late') && !rowText.includes('missed')) continue;
 
-        // Extract store number (5-6 digits)
         const storeMatch = texts.join(' ').match(/\b(\d{5,6})\b/);
         if (!storeMatch) continue;
 
@@ -311,7 +310,7 @@ async function scrapeHutBot(targetDate) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Write flags to DB (shared by scraper + manual upload parser)
+//  Write flags to DB
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function writeHutBotFlags(records, targetDate) {
@@ -393,7 +392,7 @@ async function writeHutBotFlags(records, targetDate) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Main entry point (called by intel-pipeline.js)
+//  Main entry point
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function processHutBot(targetDate) {

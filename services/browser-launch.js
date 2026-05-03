@@ -88,6 +88,7 @@ const BASE_ARGS = [
   '--disable-dev-shm-usage',
   '--disable-gpu',
   '--disable-http2',            // prevents ERR_HTTP2_PROTOCOL_ERROR on some sites
+  '--ignore-certificate-errors', // needed for some enterprise portals (Yum SSO)
   '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
 ];
 
