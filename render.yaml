@@ -10,14 +10,14 @@ services:
     name: pai-ayvaz
     env: node
     plan: starter
-    buildCommand: npm install && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src node_modules/.bin/playwright install chromium
+    buildCommand: npm install && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/cache/playwright-browsers npx playwright install chromium
     startCommand: bash startup.sh
     envVars:
       - key: NODE_ENV
         value: production
       # ── Playwright browser path (MUST be set for HutBot, Fourth, SMG scrapers) ──
       - key: PLAYWRIGHT_BROWSERS_PATH
-        value: /opt/render/project/src
+        value: /opt/render/project/cache/playwright-browsers
       # ── Anthropic / Claude ──────────────────────────────────
       - key: ANTHROPIC_API_KEY
         sync: false
