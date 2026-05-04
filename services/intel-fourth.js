@@ -403,12 +403,23 @@ async function downloadFourthReport(reportKey, targetDate) {
         '[class*="widget-body"]',
         'main, .gd-content-div',
       ];
+      // Log all frame URLs for diagnostics — needed to identify iframe report pages
+      const frameUrls = page.frames().map(f => ({ url: f.url().slice(0, 100) }));
+      console.log('[Fourth] Frame URLs:', JSON.stringify(frameUrls));
+
       for (const wSel of WIDGET_SELECTORS) {
         try {
           const widget = await page.$(wSel);
           if (!widget) continue;
-          await widget.hover();
-          await page.waitForTimeout(1500);
+          // Try both Playwright hover AND JS event dispatch.
+          // GoodData Classic uses JS mouseenter/mouseover listeners — .hover() alone
+          // may not trigger them in headless mode.
+          try { await widget.hover({ timeout: 3000 }); } catch (_) {}
+          await page.evaluate(el => {
+            ['mouseenter', 'mouseover', 'mousemove'].forEach(evt =>
+              el.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true, view: window })));
+          }, widget);
+          await page.waitForTimeout(2000);
           const WIDGET_MENU_SELECTORS = [
             // GoodData Classic download/export button (appears on widget hover)
             '.s-gdw-s3download-button',
@@ -438,16 +449,6 @@ async function downloadFourthReport(reportKey, targetDate) {
             } catch (_) {}
           }
           if (optionsBtn) break;
-        } catch (_) {}
-      }
-    }
-
-    // Strategy: GoodData Classic dashboard-level actions button (already in DOM, no hover)
-    if (!optionsBtn) {
-      for (const sel of ['.s-actionsButton', '[class*="actionsButton"]']) {
-        try {
-          const el = await page.$(sel);
-          if (el) { console.log(`[Fourth] Found dashboard actions button: ${sel}`); optionsBtn = el; break; }
         } catch (_) {}
       }
     }
