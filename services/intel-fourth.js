@@ -96,19 +96,96 @@ async function logDomInfo(page, label) {
 }
 
 /**
- * Finds the element containing "Labor %" text using DOM TreeWalker.
- * Works regardless of class names, split text, or AG Grid structure.
+ * Finds the element containing "Labor %" text.
+ * GoodData often splits "Labor" and "%" across child <span> elements, so
+ * TreeWalker on individual text nodes never sees "Labor %" as a whole.
+ * Every strategy here reads el.textContent (combined child text) instead.
  * Returns a Playwright ElementHandle or null.
  */
 async function findLaborHeader(page) {
-  // Strategy 1: TreeWalker — find text node containing "Labor %",
-  //             walk up to a visible ancestor with dimensions > 0
-  const handle = await page.evaluateHandle(() => {
+  // Before searching, scroll the header row right so AG Grid renders
+  // any virtualised columns that are off-screen to the right.
+  try {
+    await page.evaluate(() => {
+      const scroller = document.querySelector(
+        '.ag-header-viewport, .ag-body-horizontal-scroll-viewport, ' +
+        '[class*="tableScrollView"], [class*="ScrollPane"], [class*="scrollContainer"]'
+      );
+      if (scroller) scroller.scrollLeft = 99999;
+    });
+    await page.waitForTimeout(800);
+  } catch (_) {}
+
+  // Strategy 1: combined textContent on known header-element types.
+  // Covers AG Grid, GoodData pivot tables, plain <th>, and any *header* class.
+  const headerHandle = await page.evaluateHandle(() => {
+    const HEADER_SELECTORS = [
+      '[role="columnheader"]',
+      '.ag-header-cell',
+      'th',
+      '[class*="header-cell"]',
+      '[class*="headerCell"]',
+      '[class*="HeaderCell"]',
+      '[class*="column-header"]',
+      '[class*="ColumnHeader"]',
+      '[class*="pivot-table-header"]',
+      '[class*="tableHeader"]',
+    ];
+    function normalize(t) { return (t || '').replace(/\s+/g, ' ').trim(); }
+    for (const sel of HEADER_SELECTORS) {
+      for (const el of document.querySelectorAll(sel)) {
+        const t = normalize(el.textContent);
+        if (t.includes('Labor %') || t === 'Labor%') {
+          // Prefer elements that are actually visible
+          const rect = el.getBoundingClientRect();
+          if (rect.width > 0 || rect.height > 0) return el;
+        }
+      }
+    }
+    return null;
+  });
+  const headerEl = headerHandle.asElement();
+  if (headerEl) { console.log('[Fourth] Found Labor % via textContent header search'); return headerEl; }
+
+  // Strategy 2: aria-label / title attribute
+  for (const attr of [
+    '[aria-label*="Labor %"]', '[aria-label*="Labor%"]',
+    '[title*="Labor %"]',     '[title*="Labor%"]',
+    '[aria-label*="Labor"]',  '[title*="Labor"]',
+  ]) {
+    try {
+      const el2 = await page.$(attr);
+      if (el2) { console.log(`[Fourth] Found Labor % via attr: ${attr}`); return el2; }
+    } catch (_) {}
+  }
+
+  // Strategy 3: broad textContent sweep — any element whose full combined text
+  // includes "Labor" and is positioned in the upper portion of the page
+  // (likely a header, not a data cell).
+  const broadHandle = await page.evaluateHandle(() => {
+    function normalize(t) { return (t || '').replace(/\s+/g, ' ').trim(); }
+    const candidates = [];
+    for (const el of document.querySelectorAll('span, div, td, th, li, button')) {
+      const t = normalize(el.textContent);
+      if (t === 'Labor %' || t === 'Labor%') {
+        const rect = el.getBoundingClientRect();
+        candidates.push({ el, top: rect.top, w: rect.width, h: rect.height });
+      }
+    }
+    // Prefer elements closest to top of page (column headers are above data)
+    candidates.sort((a, b) => a.top - b.top);
+    return candidates[0]?.el || null;
+  });
+  const broadEl = broadHandle.asElement();
+  if (broadEl) { console.log('[Fourth] Found Labor % via broad exact-text sweep'); return broadEl; }
+
+  // Strategy 4: TreeWalker — catches cases where the text IS a single node
+  const twHandle = await page.evaluateHandle(() => {
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) {
-      const text = node.textContent || '';
-      if (text.includes('Labor %') || text.trim() === 'Labor %') {
+      const t = (node.textContent || '').replace(/\s+/g, ' ').trim();
+      if (t === 'Labor %' || t === 'Labor%' || t.includes('Labor %')) {
         let el = node.parentElement;
         while (el && el !== document.body) {
           const rect = el.getBoundingClientRect();
@@ -119,37 +196,8 @@ async function findLaborHeader(page) {
     }
     return null;
   });
-  const el = handle.asElement();
-  if (el) { console.log('[Fourth] Found Labor % via TreeWalker text node'); return el; }
-
-  // Strategy 2: aria-label / title attribute
-  for (const attr of ['[aria-label*="Labor %"]', '[title*="Labor %"]', '[aria-label*="Labor"]']) {
-    try {
-      const el2 = await page.$(attr);
-      if (el2) { console.log(`[Fourth] Found Labor % via attr: ${attr}`); return el2; }
-    } catch (_) {}
-  }
-
-  // Strategy 3: AG Grid specific — .ag-header-cell containing "Labor"
-  const agHandle = await page.evaluateHandle(() => {
-    for (const el of document.querySelectorAll('.ag-header-cell, [role="columnheader"]')) {
-      if ((el.textContent || '').includes('Labor')) return el;
-    }
-    return null;
-  });
-  const agEl = agHandle.asElement();
-  if (agEl) { console.log('[Fourth] Found Labor % via AG Grid selector'); return agEl; }
-
-  // Strategy 4: Any element whose combined text is exactly "Labor %"
-  const exactHandle = await page.evaluateHandle(() => {
-    for (const el of document.querySelectorAll('span, div, td, th, li')) {
-      const t = (el.textContent || '').trim();
-      if (t === 'Labor %' || t === 'Labor%') return el;
-    }
-    return null;
-  });
-  const exactEl = exactHandle.asElement();
-  if (exactEl) { console.log('[Fourth] Found Labor % via exact text match'); return exactEl; }
+  const twEl = twHandle.asElement();
+  if (twEl) { console.log('[Fourth] Found Labor % via TreeWalker (single text node)'); return twEl; }
 
   return null;
 }
@@ -258,81 +306,126 @@ async function downloadFourthReport(reportKey, targetDate) {
     if (!laborHeader) {
       await logDomInfo(page, 'labor-not-found');
       await screenshot(page, 'step4-labor-not-found', true);
-      throw new Error(`Labor % header not found in DOM after networkidle + settle. DOM info logged above. [page_url=${page.url()}]`);
+      console.log('[Fourth] Labor % header not found — will try widget-level export fallback');
     }
 
-    // Scroll into view (AG Grid virtualizes — element may be off-screen)
-    await laborHeader.evaluate(el => el.scrollIntoView({ block: 'center', inline: 'center' }));
-    await page.waitForTimeout(800);
-    await screenshot(page, 'step4-before-hover');
-
-    await laborHeader.hover();
-    await page.waitForTimeout(1500); // GoodData hover delay before showing menu
-    await screenshot(page, 'step4-after-hover');
-    console.log('[Fourth] Hovered Labor % — looking for options menu');
-
-    // ── Step 5: Options menu ─────────────────────────────────────────────────
-    const MENU_SELECTORS = [
-      '.s-options-menu',
-      'button[class*="optionsMenu"]',
-      '[class*="s-options-menu"]',
-      'button[aria-label*="option" i]',
-      'button[title*="option" i]',
-      'button[aria-label*="more" i]',
-      '[class*="HeaderMenu"]',
-      '[class*="headerMenu"]',
-      '.ag-header-cell-menu-button',  // AG Grid native sort/menu button
-    ];
-
+    // ── Step 4b: Widget-level export fallback ────────────────────────────────
+    // If we couldn't find "Labor %" column header, hover the whole visualization
+    // widget and use GoodData's three-dot menu export — which works on ANY widget.
     let optionsBtn = null;
-    for (const sel of MENU_SELECTORS) {
-      try {
-        optionsBtn = await page.waitForSelector(sel, { state: 'visible', timeout: 3000 });
-        if (optionsBtn) { console.log(`[Fourth] Options button via: ${sel}`); break; }
-      } catch (_) {}
-    }
 
-    // Fallback: re-hover the laborHeader (sometimes needs two hovers) then try again
-    if (!optionsBtn) {
-      console.log('[Fourth] Menu not found on first hover — re-hovering...');
-      await page.mouse.move(0, 0); // move away first
-      await page.waitForTimeout(500);
+    if (laborHeader) {
+      // Scroll into view (AG Grid virtualizes — element may be off-screen)
+      await laborHeader.evaluate(el => el.scrollIntoView({ block: 'center', inline: 'center' }));
+      await page.waitForTimeout(800);
+      await screenshot(page, 'step4-before-hover');
+
       await laborHeader.hover();
-      await page.waitForTimeout(2000);
-      await screenshot(page, 'step5-second-hover');
+      await page.waitForTimeout(1500);
+      await screenshot(page, 'step4-after-hover');
+      console.log('[Fourth] Hovered Labor % — looking for column options menu');
 
-      for (const sel of MENU_SELECTORS) {
+      const COLUMN_MENU_SELECTORS = [
+        '.s-options-menu',
+        'button[class*="optionsMenu"]',
+        '[class*="s-options-menu"]',
+        'button[aria-label*="option" i]',
+        'button[title*="option" i]',
+        'button[aria-label*="more" i]',
+        '[class*="HeaderMenu"]',
+        '[class*="headerMenu"]',
+        '.ag-header-cell-menu-button',
+      ];
+
+      for (const sel of COLUMN_MENU_SELECTORS) {
         try {
           optionsBtn = await page.waitForSelector(sel, { state: 'visible', timeout: 3000 });
-          if (optionsBtn) { console.log(`[Fourth] Options button (2nd hover) via: ${sel}`); break; }
+          if (optionsBtn) { console.log(`[Fourth] Column options button via: ${sel}`); break; }
         } catch (_) {}
       }
+
+      // Re-hover if not found yet
+      if (!optionsBtn) {
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(500);
+        await laborHeader.hover();
+        await page.waitForTimeout(2000);
+        for (const sel of COLUMN_MENU_SELECTORS) {
+          try {
+            optionsBtn = await page.waitForSelector(sel, { state: 'visible', timeout: 3000 });
+            if (optionsBtn) { console.log(`[Fourth] Column options button (2nd hover): ${sel}`); break; }
+          } catch (_) {}
+        }
+      }
+    }
+
+    // Widget-level three-dot menu (GoodData BUI) — hover the widget container,
+    // then click the "..." button that appears. Works regardless of column structure.
+    if (!optionsBtn) {
+      console.log('[Fourth] Trying widget-level three-dot export menu...');
+      const WIDGET_SELECTORS = [
+        '.s-dash-item',
+        '.gd-widget-content',
+        '[class*="DashboardItem"]',
+        '[class*="visualization"]',
+        '[class*="widget-body"]',
+        '[class*="widgetContent"]',
+        'main, .gd-content-div',
+      ];
+      for (const wSel of WIDGET_SELECTORS) {
+        try {
+          const widget = await page.$(wSel);
+          if (!widget) continue;
+          await widget.hover();
+          await page.waitForTimeout(1200);
+          const WIDGET_MENU_SELECTORS = [
+            '.s-dash-item-action-menu-button',
+            'button[class*="DashboardItemActionMenu"]',
+            '.gd-icon-more',
+            '.gd-icon-kebab-horizontal',
+            'button[aria-label*="more" i]',
+            'button[aria-label*="option" i]',
+            'button[title*="more" i]',
+            '[class*="ActionMenu"] button',
+            '[class*="actionMenu"] button',
+          ];
+          for (const mSel of WIDGET_MENU_SELECTORS) {
+            try {
+              optionsBtn = await page.waitForSelector(mSel, { state: 'visible', timeout: 2000 });
+              if (optionsBtn) { console.log(`[Fourth] Widget menu button via ${wSel} → ${mSel}`); break; }
+            } catch (_) {}
+          }
+          if (optionsBtn) break;
+        } catch (_) {}
+      }
+      await screenshot(page, 'step5-widget-hover');
     }
 
     if (!optionsBtn) {
       await logDomInfo(page, 'no-options-btn');
       await screenshot(page, 'step5-no-options-btn', true);
-      throw new Error(`Options menu not found after hover. [page_url=${page.url()}]`);
+      throw new Error(`No export menu found via column header OR widget-level hover. DOM info logged above. [page_url=${page.url()}]`);
     }
 
-    // ── Step 6: Export ───────────────────────────────────────────────────────
+    // ── Step 5: Export ───────────────────────────────────────────────────────
     const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
     await optionsBtn.click();
     await page.waitForTimeout(600);
     await screenshot(page, 'step6-menu-open');
 
+    // Try "Export" submenu item first (column-header path), then XLSX directly
     try {
       await page.click(
         '.s-options-menu-export, li:has-text("Export"), button:has-text("Export"), [role="menuitem"]:has-text("Export")',
         { timeout: 5000 }
       );
       console.log('[Fourth] Clicked Export');
-    } catch (_) { console.log('[Fourth] No separate Export item'); }
+    } catch (_) { console.log('[Fourth] No separate Export item — trying XLSX directly'); }
 
     await page.waitForTimeout(400);
     try {
       await page.click(
-        'li:has-text("XLSX"), button:has-text("XLSX"), li:has-text("Excel"), [role="menuitem"]:has-text("XLSX")',
+        'li:has-text("XLSX"), button:has-text("XLSX"), li:has-text("Excel"), [role="menuitem"]:has-text("XLSX"), [role="menuitem"]:has-text("Excel")',
         { timeout: 3000 }
       );
       console.log('[Fourth] Clicked XLSX');
