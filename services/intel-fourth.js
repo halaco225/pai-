@@ -83,19 +83,26 @@ async function gdcLoginViaBrowser() {
     const authCookies = allCookies.filter(c =>
       c.domain.includes('fourth.com') || c.domain.includes('gooddata.com') || c.domain.includes('fourth.io')
     );
-    const cookieStr = (authCookies.length > 0 ? authCookies : allCookies)
-      .map(c => `${c.name}=${c.value}`).join('; ');
-    console.log(`[Fourth] Browser login OK — ${allCookies.length} cookies, using ${(authCookies.length > 0 ? authCookies : allCookies).length} for API`);
-    return cookieStr;
+    const useCookies = authCookies.length > 0 ? authCookies : allCookies;
+    const cookieStr = useCookies.map(c => `${c.name}=${c.value}`).join('; ');
+    const tt = allCookies.find(c => c.name === 'GDCAuthTT')?.value || '';
+    console.log(`[Fourth] Browser login OK — ${allCookies.length} cookies, TT=${tt ? 'present' : 'missing'}`);
+    return { cookieStr, tt };
 
   } finally {
     try { await browser.close(); } catch (_) {}
   }
 }
 
-async function getDashboardReportUris(cookie, dashObjId, tabId) {
+function gdcHeaders(cookieStr, tt) {
+  const h = { Cookie: cookieStr, Accept: 'application/json', 'Content-Type': 'application/json' };
+  if (tt) h['X-GDC-AuthTT'] = tt;
+  return h;
+}
+
+async function getDashboardReportUris(cookieStr, tt, dashObjId, tabId) {
   const res = await fetch(`${FOURTH_API}/gdc/md/${PROJECT_ID}/objects/${dashObjId}`, {
-    headers: { Cookie: cookie, Accept: 'application/json' },
+    headers: gdcHeaders(cookieStr, tt),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -126,9 +133,9 @@ async function getDashboardReportUris(cookie, dashObjId, tabId) {
   return reportUris;
 }
 
-async function queryReportsByName(cookie, keywords) {
+async function queryReportsByName(cookieStr, tt, keywords) {
   const res = await fetch(`${FOURTH_API}/gdc/md/${PROJECT_ID}/query/reports`, {
-    headers: { Cookie: cookie, Accept: 'application/json' },
+    headers: gdcHeaders(cookieStr, tt),
   });
   if (!res.ok) {
     console.log('[Fourth] query/reports failed:', res.status);
@@ -142,10 +149,10 @@ async function queryReportsByName(cookie, keywords) {
     .map(r => r.link);
 }
 
-async function executeAndExport(cookie, reportUri) {
+async function executeAndExport(cookieStr, tt, reportUri) {
   const execRes = await fetch(`${FOURTH_API}/gdc/app/projects/${PROJECT_ID}/execute/raw/`, {
     method: 'POST',
-    headers: { Cookie: cookie, 'Content-Type': 'application/json', Accept: 'application/json' },
+    headers: gdcHeaders(cookieStr, tt),
     body: JSON.stringify({ report_req: { report: reportUri, format: 'xlsx' } }),
   });
   if (!execRes.ok) {
@@ -159,7 +166,7 @@ async function executeAndExport(cookie, reportUri) {
 
   for (let i = 1; i <= 30; i++) {
     await sleep(3000);
-    const pollRes = await fetch(`${FOURTH_API}${resultUri}`, { headers: { Cookie: cookie } });
+    const pollRes = await fetch(`${FOURTH_API}${resultUri}`, { headers: gdcHeaders(cookieStr, tt) });
     console.log(`[Fourth] Poll ${i}: ${pollRes.status}`);
     if (pollRes.status === 200) return pollRes.buffer();
     if (pollRes.status !== 202) {
@@ -179,16 +186,16 @@ async function downloadFourthReport(reportKey, targetDate) {
   if (!dashInfo) throw new Error(`Unknown report key: ${reportKey}`);
 
   try {
-    const cookie = await gdcLoginViaBrowser();
+    const { cookieStr, tt } = await gdcLoginViaBrowser();
 
-    let reportUris = await getDashboardReportUris(cookie, dashInfo.obj, dashInfo.tab);
+    let reportUris = await getDashboardReportUris(cookieStr, tt, dashInfo.obj, dashInfo.tab);
 
     if (reportUris.length === 0) {
       const keywords = reportKey === 'LABOR'
         ? ['location', 'overview', 'labor']
         : ['overtime'];
       console.log('[Fourth] No URIs from dashboard — querying project reports by name');
-      reportUris = await queryReportsByName(cookie, keywords);
+      reportUris = await queryReportsByName(cookieStr, tt, keywords);
     }
 
     if (reportUris.length === 0) throw new Error('No report URIs found via dashboard or query');
@@ -196,7 +203,7 @@ async function downloadFourthReport(reportKey, targetDate) {
     for (const reportUri of reportUris) {
       try {
         console.log(`[Fourth] Trying export: ${reportUri}`);
-        const buf = await executeAndExport(cookie, reportUri);
+        const buf = await executeAndExport(cookieStr, tt, reportUri);
         if (buf.length < 500) {
           console.log(`[Fourth] Skip ${reportUri} — too small (${buf.length}b)`);
           continue;
