@@ -48,97 +48,52 @@ async function handleLogin(page) {
   console.log('[HutBot] Handling SSO login...');
   await screenshot(page, 'login-start');
 
-  const userSelectors = [
-    'input[name="username"]',
-    'input[type="email"]',
-    '#username',
-    'input[type="text"]',
-  ];
-  const passSelectors = [
-    'input[name="password"]',
-    'input[type="password"]',
-    '#password',
-  ];
-  const submitSelectors = [
-    'button[type="submit"]',
-    'input[type="submit"]',
-    'button:has-text("Sign In")',
-    'button:has-text("Log In")',
-    'button:has-text("Next")',
-    'button:has-text("Continue")',
-  ];
+  // Combined selectors — one waitForSelector call instead of 4 × 15s loops
+  const USER_SEL   = 'input[name="username"], input[type="email"], #username, input[type="text"]';
+  const PASS_SEL   = 'input[name="password"], input[type="password"], #password';
+  const SUBMIT_SEL = 'button[type="submit"], input[type="submit"], button:has-text("Sign In"), button:has-text("Log In"), button:has-text("Next"), button:has-text("Continue")';
 
-  // Fill username — wait up to 15s for form to appear
-  let filled = false;
-  for (const sel of userSelectors) {
-    try {
-      const el = await page.waitForSelector(sel, { state: 'visible', timeout: 15000 });
-      if (el) {
-        await el.fill(user);
-        filled = true;
-        console.log(`[HutBot] Filled username via: ${sel}`);
-        break;
-      }
-    } catch (_) {}
-  }
-  if (!filled) {
+  // Wait up to 20s for username field to appear
+  let userEl;
+  try {
+    userEl = await page.waitForSelector(USER_SEL, { state: 'visible', timeout: 20000 });
+  } catch (_) {}
+
+  if (!userEl) {
     await screenshot(page, 'login-no-username');
-    throw new Error(`HutBot login: could not find username field. URL: ${page.url()}`);
+    throw new Error(`HutBot login: username field not found. URL: ${page.url()}`);
   }
 
-  // Click submit / Next
-  for (const sel of submitSelectors) {
-    try {
-      const el = await page.$(sel);
-      if (el && await el.isVisible()) { await el.click(); break; }
-    } catch (_) {}
-  }
+  await userEl.fill(user);
+  console.log('[HutBot] Filled username');
 
-  await page.waitForTimeout(3000);
-
-  // Fill password — may be on same screen or next screen
-  let passEl = null;
-  for (const sel of passSelectors) {
-    try {
-      const el = await page.$( sel);
-      if (el && await el.isVisible()) { passEl = el; break; }
-    } catch (_) {}
-  }
-
-  if (!passEl) {
+  // If password is not yet on screen, click Next/Continue to advance SSO step
+  let passEl = await page.$(PASS_SEL).catch(() => null);
+  if (!passEl || !(await passEl.isVisible().catch(() => false))) {
+    await page.click(SUBMIT_SEL).catch(() => {});
     await page.waitForTimeout(3000);
-    for (const sel of passSelectors) {
-      try {
-        const el = await page.$( sel);
-        if (el && await el.isVisible()) { passEl = el; break; }
-      } catch (_) {}
-    }
+    passEl = await page.waitForSelector(PASS_SEL, { state: 'visible', timeout: 15000 }).catch(() => null);
   }
 
   if (!passEl) {
     await screenshot(page, 'login-no-password');
-    throw new Error(`HutBot login: could not find password field. URL: ${page.url()}`);
+    throw new Error(`HutBot login: password field not found. URL: ${page.url()}`);
   }
 
   await passEl.fill(pass);
   console.log('[HutBot] Filled password');
+  await screenshot(page, 'login-creds-filled');
 
-  // Submit
-  for (const sel of submitSelectors) {
-    try {
-      const el = await page.$(sel);
-      if (el && await el.isVisible()) { await el.click(); break; }
-    } catch (_) {}
-  }
+  await page.click(SUBMIT_SEL).catch(() => {});
 
-  // Wait for redirect to superapp domain
+  // Wait for redirect back to superapp domain
   try {
     await page.waitForURL(/superapp\.yum\.com/, { timeout: LOGIN_TIMEOUT });
     console.log('[HutBot] Login successful — redirected to SuperApp');
   } catch (_) {
     await screenshot(page, 'login-redirect-timeout');
     const finalUrl = page.url();
-    console.warn(`[HutBot] Login redirect timeout — current URL: ${finalUrl}`);
+    console.warn(`[HutBot] Login redirect timeout — URL: ${finalUrl}`);
     if (!finalUrl.includes('superapp')) {
       throw new Error(`HutBot login failed — stuck at: ${finalUrl}`);
     }
@@ -213,7 +168,9 @@ async function scrapeHutBot(targetDate) {
       }
     }
 
-    console.log(`[HutBot] On routines page — URL: ${page.url()}`);
+    const routinesUrl = page.url();
+    const routinesTitle = await page.title().catch(() => '?');
+    console.log(`[HutBot] On routines page — URL: ${routinesUrl} | Title: ${routinesTitle}`);
 
     // Wait for page content to load (after auth redirect settles)
     try {
@@ -221,6 +178,19 @@ async function scrapeHutBot(targetDate) {
     } catch (_) {}
     await page.waitForTimeout(2000);
     await screenshot(page, 'routines-page');
+
+    // Dump page body so we can diagnose selector issues
+    try {
+      const pageInfo = await page.evaluate(() => ({
+        url:         location.href,
+        title:       document.title,
+        bodyText:    document.body.innerText.slice(0, 600),
+        inputCount:  document.querySelectorAll('input').length,
+        tableCount:  document.querySelectorAll('table, [role="grid"]').length,
+        buttonCount: document.querySelectorAll('button').length,
+      }));
+      console.log('[HutBot] Page info:', JSON.stringify(pageInfo));
+    } catch (_) {}
 
     // ── Apply date filter ────────────────────────────────────────────────────
     try {
@@ -269,8 +239,14 @@ async function scrapeHutBot(targetDate) {
       );
     } catch (err) {
       await screenshot(page, 'no-results-table');
+      const currentPageUrl = page.url();
       console.warn('[HutBot] Results table not found:', err.message);
-      return { success: true, records: [], note: 'No results table found — may mean zero issues today' };
+      // Only treat missing table as "no issues" if we're actually on the routines page.
+      // If we ended up somewhere else (login page, error page) it's a real failure.
+      if (!currentPageUrl.includes('superapp.yum.com')) {
+        throw new Error(`HutBot: results table missing AND not on superapp domain. Likely login failure. URL: ${currentPageUrl}`);
+      }
+      return { success: true, records: [], note: 'No results table found on routines page — likely zero issues today' };
     }
 
     // ── Parse rows ───────────────────────────────────────────────────────────
