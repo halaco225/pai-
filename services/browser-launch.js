@@ -90,6 +90,24 @@ const BASE_ARGS = [
   '--disable-http2',            // prevents ERR_HTTP2_PROTOCOL_ERROR on some sites
   '--ignore-certificate-errors', // needed for some enterprise portals (Yum SSO)
   '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  // Memory reduction for Render Starter (512MB RAM)
+  '--single-process',           // all renderer/GPU work in main process — eliminates subprocess overhead (~100MB)
+  '--disable-extensions',
+  '--disable-default-apps',
+  '--no-first-run',
+  '--disable-sync',
+  '--disable-background-networking',
+  '--disable-client-side-phishing-detection',
+  '--disable-component-extensions-with-background-pages',
+  '--disable-hang-monitor',
+  '--disable-prompt-on-repost',
+  '--disable-renderer-backgrounding',
+  '--disable-backgrounding-occluded-windows',
+  '--metrics-recording-only',
+  '--no-default-browser-check',
+  '--safebrowsing-disable-auto-update',
+  '--mute-audio',
+  '--window-size=1280,800',
 ];
 
 /**

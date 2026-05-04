@@ -245,7 +245,6 @@ async function downloadFourthReport(reportKey, targetDate) {
     await page.goto(reportUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(5000);
     await logPageState(page, 'after-initial-nav');
-    await screenshot(page, 'step1-initial');
 
     // ── Step 2: Login if redirected ──────────────────────────────────────────
     const urlAfterNav = page.url();
@@ -267,8 +266,6 @@ async function downloadFourthReport(reportKey, targetDate) {
         await page.goto(`${FOURTH_URL}/account.html`, { waitUntil: 'domcontentloaded', timeout: 20000 });
         await page.waitForTimeout(3000);
       }
-      await screenshot(page, 'step2-login-page');
-
       const emailField = await page.waitForSelector(
         'input[type="email"], input[name="username"], #username, input[type="text"]',
         { timeout: 10000 }
@@ -282,20 +279,16 @@ async function downloadFourthReport(reportKey, targetDate) {
         passField = await page.waitForSelector('input[type="password"], #password', { timeout: 8000 });
       }
       await passField.fill(pass);
-      await screenshot(page, 'step2-creds-filled');
 
       await page.click('button[type="submit"], .s-login-button, button:has-text("Log In"), button:has-text("Sign In")');
       await page.waitForTimeout(5000);
       await logPageState(page, 'after-login-submit');
-      await screenshot(page, 'step2-post-login');
 
       console.log('[Fourth] Navigating to report post-login');
       await page.goto(reportUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(5000);
       await logPageState(page, 'after-report-nav-post-login');
     }
-
-    await screenshot(page, 'step3-report-page');
 
     // ── Step 3: Wait for GoodData to fully render ─────────────────────────────
     // networkidle = all XHR complete. Then wait extra for React render cycle.
@@ -322,7 +315,6 @@ async function downloadFourthReport(reportKey, targetDate) {
     console.log('[Fourth] Waiting 8s for GoodData React render...');
     await page.waitForTimeout(8000);
     await logPageState(page, 'after-settle');
-    await screenshot(page, 'step3-after-settle', true); // fullPage
 
     // ── Step 4: Find "Labor %" header ────────────────────────────────────────
     console.log('[Fourth] Searching for Labor % header...');
@@ -343,7 +335,6 @@ async function downloadFourthReport(reportKey, targetDate) {
       // Scroll into view (AG Grid virtualizes — element may be off-screen)
       await laborHeader.evaluate(el => el.scrollIntoView({ block: 'center', inline: 'center' }));
       await page.waitForTimeout(800);
-      await screenshot(page, 'step4-before-hover');
 
       let hoverOk = false;
       try {
@@ -355,7 +346,6 @@ async function downloadFourthReport(reportKey, targetDate) {
 
       if (hoverOk) {
       await page.waitForTimeout(1500);
-      await screenshot(page, 'step4-after-hover');
       console.log('[Fourth] Hovered Labor % — looking for column options menu');
 
       const COLUMN_MENU_SELECTORS = [
@@ -450,7 +440,6 @@ async function downloadFourthReport(reportKey, targetDate) {
           if (optionsBtn) break;
         } catch (_) {}
       }
-      await screenshot(page, 'step5-widget-hover');
     }
 
     if (!optionsBtn) {
