@@ -96,14 +96,63 @@ async function downloadSMGComments(targetDate) {
       console.log('[SMG] No login form — session may already be valid');
     }
 
+    // ── Step 1b: Establish auth on 360.smg.com (separate auth from reporting.smg.com) ──
+    // reporting.smg.com and 360.smg.com use different auth systems.
+    // Navigate to 360.smg.com base first so it can redirect or show its own login form.
+    console.log('[SMG] Navigating to 360.smg.com base to establish auth...');
+    await page.goto('https://360.smg.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(6000);
+    const smg360Base = page.url();
+    const smg360Title = await page.title().catch(() => '?');
+    console.log(`[SMG] 360.smg.com base URL: ${smg360Base} | Title: ${smg360Title}`);
+    await screenshot(page, 'step1b-360-base', true);
+
+    // Dump body to diagnose auth state
+    try {
+      const info = await page.evaluate(() => ({
+        url: location.href, title: document.title,
+        bodyText: document.body.innerText.slice(0, 400),
+        inputCount: document.querySelectorAll('input').length,
+        buttonCount: document.querySelectorAll('button').length,
+      }));
+      console.log('[SMG] 360 base info:', JSON.stringify(info));
+    } catch (_) {}
+
+    // If 360.smg.com has its own login form, fill it
+    const smg360UserField = await page.$('#UserName, input[name="Username"], input[name="email"], input[type="email"], input[type="text"]');
+    if (smg360UserField) {
+      console.log('[SMG] Login form found at 360.smg.com — filling credentials');
+      await smg360UserField.fill(user);
+      const smg360PassField = await page.$('#Password, input[name="Password"], input[type="password"]');
+      if (smg360PassField) {
+        await smg360PassField.fill(pass);
+        await page.click('input[type="submit"], button[type="submit"], #LoginButton, .btn-primary').catch(() => {});
+        await page.waitForTimeout(5000);
+        console.log(`[SMG] 360.smg.com post-login URL: ${page.url()}`);
+        await screenshot(page, 'step1b-360-post-login', true);
+      }
+    } else {
+      console.log('[SMG] No login form at 360.smg.com base — may need SSO redirect or already authed');
+    }
+
     // ── Step 2: Navigate to report ────────────────────────────────────────────
     console.log('[SMG] Navigating to report URL...');
     await page.goto(SMG_REPORT_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(8000);
     const reportUrl = page.url();
     const reportTitle = await page.title().catch(() => '?');
     console.log(`[SMG] Report URL: ${reportUrl} | Title: ${reportTitle}`);
     await screenshot(page, 'step2-report-initial', true);
+
+    // If SPA is still at home route, wait more for auth/routing to settle
+    if (reportUrl.endsWith('/#/') || reportUrl === 'https://360.smg.com/#/') {
+      console.log('[SMG] SPA at home route — waiting 10s more for auth/SPA routing to complete...');
+      await page.waitForTimeout(10000);
+      const urlAfterWait = page.url();
+      const bodyAfterWait = await page.evaluate(() => document.body.innerText.slice(0, 200)).catch(() => '');
+      console.log(`[SMG] After extra wait — URL: ${urlAfterWait} | body: ${bodyAfterWait}`);
+      await screenshot(page, 'step2-after-extra-wait', true);
+    }
 
     // If still on login/reporting domain, session didn't stick — abort clearly
     if (!reportUrl.includes('360.smg.com') || reportUrl.includes('login') || reportUrl.includes('reporting.smg')) {
