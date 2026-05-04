@@ -442,6 +442,49 @@ async function downloadFourthReport(reportKey, targetDate) {
       }
     }
 
+    // Strategy: GoodData Classic dashboard-level actions button (already in DOM, no hover)
+    if (!optionsBtn) {
+      for (const sel of ['.s-actionsButton', '[class*="actionsButton"]']) {
+        try {
+          const el = await page.$(sel);
+          if (el) { console.log(`[Fourth] Found dashboard actions button: ${sel}`); optionsBtn = el; break; }
+        } catch (_) {}
+      }
+    }
+
+    // Strategy: search inside iframes for export buttons
+    // GoodData Classic uses yui3-c-iframedashboardwidget — content lives in child frames
+    if (!optionsBtn) {
+      console.log(`[Fourth] Searching ${page.frames().length} frames for export buttons...`);
+      for (const frame of page.frames()) {
+        if (frame === page.mainFrame()) continue;
+        try {
+          // Trigger hover inside frame to reveal any hover-only toolbars
+          await frame.evaluate(() => document.body.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })));
+          await page.waitForTimeout(600);
+          const IFRAME_EXPORT_SELS = [
+            '[title*="Export" i]', '[title*="Download" i]',
+            '[aria-label*="Export" i]', '[aria-label*="Download" i]',
+            '.s-export', '.s-download', '.s-reportExport', '.s-xls-export',
+            'button:has-text("Export")', 'a:has-text("Export")',
+            'button:has-text("Download")', 'a:has-text("Download")',
+            '[class*="exportButton"]', '[class*="export-button"]',
+          ];
+          for (const sel of IFRAME_EXPORT_SELS) {
+            try {
+              const el = await frame.waitForSelector(sel, { state: 'visible', timeout: 800 });
+              if (el) {
+                console.log(`[Fourth] Iframe export button: ${sel} (${frame.url().slice(0, 80)})`);
+                optionsBtn = el;
+                break;
+              }
+            } catch (_) {}
+          }
+          if (optionsBtn) break;
+        } catch (_) {}
+      }
+    }
+
     if (!optionsBtn) {
       await logDomInfo(page, 'no-options-btn');
       await screenshot(page, 'step5-no-options-btn', true);
@@ -452,21 +495,21 @@ async function downloadFourthReport(reportKey, targetDate) {
     const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
     await optionsBtn.click();
     await page.waitForTimeout(600);
-    await screenshot(page, 'step6-menu-open');
 
-    // Try "Export" submenu item first (column-header path), then XLSX directly
+    // Try "Export" submenu item first (column-header path), then XLSX/CSV directly
+    // Also handles GoodData Classic dashboard actions menu (s-actionsButton)
     try {
       await page.click(
-        '.s-options-menu-export, li:has-text("Export"), button:has-text("Export"), [role="menuitem"]:has-text("Export")',
+        '.s-options-menu-export, li:has-text("Export"), button:has-text("Export"), [role="menuitem"]:has-text("Export"), .s-export, li.s-export',
         { timeout: 5000 }
       );
       console.log('[Fourth] Clicked Export');
-    } catch (_) { console.log('[Fourth] No separate Export item — trying XLSX directly'); }
+    } catch (_) { console.log('[Fourth] No separate Export item — trying XLSX/CSV directly'); }
 
     await page.waitForTimeout(400);
     try {
       await page.click(
-        'li:has-text("XLSX"), button:has-text("XLSX"), li:has-text("Excel"), [role="menuitem"]:has-text("XLSX"), [role="menuitem"]:has-text("Excel")',
+        'li:has-text("XLSX"), button:has-text("XLSX"), li:has-text("Excel"), [role="menuitem"]:has-text("XLSX"), [role="menuitem"]:has-text("Excel"), li:has-text("XLS"), li:has-text("CSV"), .s-csv-export, .s-xls-export',
         { timeout: 3000 }
       );
       console.log('[Fourth] Clicked XLSX');
