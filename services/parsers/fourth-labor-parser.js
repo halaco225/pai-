@@ -32,11 +32,19 @@ function num(v) {
 
 function parseFourthLaborFile(filePath) {
   const wb   = XLSX.readFile(filePath, { cellDates: false, raw: true });
+  console.log('[FourthLabor] SheetNames:', wb.SheetNames);
   const ws   = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+  console.log('[FourthLabor] Total rows:', rows.length, '| First 5 rows:', JSON.stringify(rows.slice(0, 5)));
   const stores = [];
   // Data starts at row index 3 (0-based), skip header rows and rollup
-  for (let i = 3; i < rows.length; i++) {
+  // Auto-detect: if row 3 col 0 doesn't match, scan for the first row matching (NNNNNN)
+  let dataStart = 3;
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    if (rows[i] && rows[i][0] && parseLocation(rows[i][0])) { dataStart = i; break; }
+  }
+  if (dataStart !== 3) console.log(`[FourthLabor] Data start auto-detected at row ${dataStart} (expected 3)`);
+  for (let i = dataStart; i < rows.length; i++) {
     const row = rows[i];
     if (!row[0] || String(row[0]).trim() === 'Rollup' || String(row[0]).trim() === 'Location') continue;
     const loc = parseLocation(row[0]);
