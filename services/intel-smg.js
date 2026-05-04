@@ -91,6 +91,23 @@ async function downloadSMGComments(targetDate) {
         await page.waitForTimeout(4000);
         console.log(`[SMG] Post-login URL: ${page.url()}`);
         await screenshot(page, 'step1-post-login');
+
+        // Scan all links on the post-login page for any 360.smg.com SSO link
+        // reporting.smg.com often generates a token-bearing redirect link to 360.smg.com
+        try {
+          const links360 = await page.evaluate(() =>
+            Array.from(document.querySelectorAll('a[href*="360.smg.com"], a[href*="smg360"]'))
+              .map(a => ({ text: (a.innerText||'').trim().slice(0,60), href: a.href }))
+              .slice(0, 10)
+          );
+          console.log('[SMG] 360.smg.com links on post-login page:', JSON.stringify(links360));
+          if (links360.length > 0) {
+            console.log(`[SMG] Following SSO link to 360.smg.com: ${links360[0].href}`);
+            await page.goto(links360[0].href, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await page.waitForTimeout(6000);
+            console.log(`[SMG] After SSO link — URL: ${page.url()} | Title: ${await page.title().catch(()=>'?')}`);
+          }
+        } catch (_) {}
       }
     } else {
       console.log('[SMG] No login form — session may already be valid');
@@ -154,10 +171,11 @@ async function downloadSMGComments(targetDate) {
       await screenshot(page, 'step2-after-extra-wait', true);
     }
 
-    // If still on login/reporting domain, session didn't stick — abort clearly
-    if (!reportUrl.includes('360.smg.com') || reportUrl.includes('login') || reportUrl.includes('reporting.smg')) {
+    // If still on login/reporting domain OR stuck on SPA home, session didn't stick
+    const stuckAtHome = reportUrl.endsWith('/#/') || reportUrl === 'https://360.smg.com/#/';
+    if (!reportUrl.includes('360.smg.com') || reportUrl.includes('login') || reportUrl.includes('reporting.smg') || stuckAtHome) {
       await screenshot(page, 'step2-still-on-login', true);
-      throw new Error(`SMG login failed — stuck on: ${reportUrl}. Check SMG_USER / SMG_PASSWORD.`);
+      throw new Error(`SMG auth failed — stuck on: ${reportUrl}. 360.smg.com needs separate SSO. Check links on reporting.smg.com post-login page (logged above).`);
     }
 
     // ── Step 3: Wait for SPA to fully render ─────────────────────────────────

@@ -14,8 +14,8 @@ const db = require('./db');
 
 const ROUTINES_URL  = 'https://admin.superapp.yum.com/routines';
 const PROFILE_DIR   = process.env.HUTBOT_PROFILE_DIR || '/tmp/hutbot-profile';
-const LOGIN_TIMEOUT = 60_000;   // SSO redirects can be slow
-const NAV_TIMEOUT   = 60_000;   // Yum enterprise portal is slow to respond
+const LOGIN_TIMEOUT = 20_000;   // fail fast — host is VPN-gated, TCP connects but HTTP hangs
+const NAV_TIMEOUT   = 20_000;   // fail fast — Yum enterprise portal unreachable from Render
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Helpers
@@ -149,7 +149,7 @@ async function scrapeHutBot(targetDate) {
     console.log(`[HutBot] Navigating to ${ROUTINES_URL} (waitUntil: commit, timeout: ${NAV_TIMEOUT}ms)`);
 
     let navError = null;
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    for (let attempt = 1; attempt <= 1; attempt++) {
       try {
         await page.goto(ROUTINES_URL, { waitUntil: 'commit', timeout: NAV_TIMEOUT });
         navError = null;
