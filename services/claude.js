@@ -533,33 +533,40 @@ ALIGNMENT LOOKUP RULES (apply regardless of source):
 2. If a file shows a store name instead of a number, match against store name/city (partial match OK).
 3. RGM names for HUT Bot Bottom 5 and non-completers come from the alignment source above. If marked OPEN, note "Position Open".
 4. Never output "[Store not mapped]", "[Unknown]", or "[Data mapping needed]" — if you cannot find a store, use the identifier exactly as it appears in the file and note it could not be matched.
-DECK STRUCTURE — Always build 13 slides in this exact order:
+DECK STRUCTURE — DYNAMIC, DATA-DRIVEN:
+Build slides ONLY for data that was actually uploaded. Do NOT include a slide if its source file was not provided. An absent JSON key is correct — never generate placeholder, empty, or "data not available" content. First inventory what files were uploaded, identify what data is present, then build only the slides you have real data for.
 
-SLIDE 1 — TITLE: Region name from Velocity file | Week label from IST file | 4 preview stat cards: Sales Growth, Labor Var, WIN, HUT Bot
+The possible slides and their required data sources are listed below. If the source file for a slide was not uploaded, omit that slide's key from the JSON entirely.
 
-SLIDE 2 — REGION SCORECARD: 5 stat cards — Sales Growth | Labor Var | OTD Avg Time | WIN Score | HUT Bot. Below cards: HUT Bot Breakdown box (On Time %, Late %, Missed %) + Bottom 5 worst stores by HUT Bot On Time % — store name, number, AC name, on-time %, and the store manager name from the Org Summary or Routines file if available. Below that: Routine Non-Completers table — pull from the Routines Status file, cross-referenced with org summary. Show each person's name, store, AC, which specific routines they missed, and their status (Not Started / Late). Up to 6 rows. This is the accountability callout: the team sees exactly WHO dropped the ball, not just which store.
+Slide order (when data is available):
 
-SLIDE 3 — AC PERFORMANCE TABLE: One row per AC read from Velocity WTD IST file. Columns: Area Coach | Sales Growth | Labor Var | WIN Score | HUT Bot. Highlight best performer in each column with green cell background.
+SLIDE 1 — TITLE [REQUIRED SOURCE: Velocity WTD IST file]: Region name | Week label | 4 preview stat cards: Sales Growth, Labor Var, WIN, HUT Bot. OMIT if no Velocity file uploaded.
 
-SLIDE 4 — WINS THIS WEEK: 3-5 specific store wins. Store name, number, metric, what it means. Tone: direct, genuine, no corporate fluff.
+SLIDE 2 — REGION SCORECARD [REQUIRED SOURCE: Velocity WTD IST + HUT Bot file. OPTIONAL: Routines Status file for non-completers]: 5 stat cards — Sales Growth | Labor Var | OTD Avg Time | WIN Score | HUT Bot. HUT Bot Breakdown box only if HUT Bot file uploaded. Routine Non-Completers table only if Routines Status file uploaded. Do NOT show empty tables or "upload X to see Y" text — if the file isn't there, that section simply doesn't appear.
 
-SLIDE 5 — FOCUS AREAS: 3-5 stores needing attention. Same format as Wins.
+SLIDE 3 — AC PERFORMANCE TABLE [REQUIRED SOURCE: Velocity WTD IST file]: One row per AC. Columns: Area Coach | Sales Growth | Labor Var | WIN Score | HUT Bot. OMIT columns for metrics not present in the uploaded files.
 
-SLIDE 6 — LABOR VARIANCE DEEP DIVE: Region summary strip + AC-level table (Sales Growth, Labor Var %, Crew OT $, HAM OT $, PCA %, COS Var %). OT Flags callout at bottom naming specific ACs and dollar amounts.
+SLIDE 4 — WINS THIS WEEK [REQUIRED SOURCE: Any performance file — derive wins from whatever data is present]: 3-5 specific store wins with store name, number, metric, description. Tone: direct, genuine, no corporate fluff. OMIT if no meaningful performance data was uploaded.
 
-SLIDE 7 — SPEED OUTLIER ANALYSIS: Left = daily IST bar chart (region avg by day, target line at 18 min, bars color-coded). Right = WTD outlier stores IST >22 with day-level pattern pulled from daily tabs in Velocity file.
+SLIDE 5 — FOCUS AREAS [REQUIRED SOURCE: Any performance file — derive focus areas from whatever data is present]: 3-5 stores needing attention. Same format as Wins. OMIT if no meaningful performance data was uploaded.
 
-SLIDE 8 — WIN SCORE BY AREA COACH: One row per AC. For each AC: WIN score (from ComparisonReport.xls), their top-performing store (highest WIN%) and bottom store (lowest WIN%), and 1-2 SMG focus areas from that AC's customer comments. Region average WIN score at top. Use WIN score thresholds: Green >=60% | Yellow 40-59% | Red <40%. Complaint themes always in this order: Late/Slow | Wrong Order | Undercooked | Cold Food | Missing Items | Rude Staff.
+SLIDE 6 — LABOR VARIANCE DEEP DIVE [REQUIRED SOURCE: FRS file (PH_DGIFRS.xlsx)]: Region summary strip + AC-level table (Sales Growth, Labor Var %, Crew OT $, HAM OT $, PCA %, COS Var %). OT Flags callout naming specific ACs and dollar amounts. OMIT ENTIRELY if FRS file not uploaded.
 
-SLIDE 9 — WIN STORE SPOTLIGHT: Top 5 stores with highest WIN score + Bottom 5 stores with lowest WIN score (from ComparisonReport.xls). For each store: store name, number, AC name, WIN score, and one key SMG insight (best stores = what they're doing right; worst stores = their top complaint theme). This is WIN-score-driven, not SMG-driven.
+SLIDE 7 — SPEED OUTLIER ANALYSIS [REQUIRED SOURCE: Velocity file with daily tabs]: Daily IST chart + WTD outlier stores IST >22. OMIT ENTIRELY if Velocity file not uploaded or has no daily tabs.
 
-SLIDE 10 — CUSTOMER VOICE: Pull 5 positive and 5 negative VERBATIM quotes directly from the SMG comments file — real customer words, not summaries. Positives = best comments deserving recognition. Negatives = worst complaints that need AC follow-up. For each, include store name/number, AC name, and that store's WIN score. The WIN score context matters: a low WIN score + a bad customer comment = operational breakdown, not a one-off. Complaint themes in footer.
+SLIDE 8 — WIN SCORE BY AREA COACH [REQUIRED SOURCE: ComparisonReport.xls/xlsx]: One row per AC with WIN score, top store, bottom store, SMG focus areas. Region average at top. OMIT ENTIRELY if ComparisonReport not uploaded.
 
-SLIDE 11 — SMART GOALS: 3 data-specific SMART goals. Each goal must include: Metric | Current | Target | By When | Owner (specific AC name + store numbers they're responsible for) | Why It Matters (1 sentence: what the data shows and what's at risk) | How (specific action steps naming ACs and stores — never generic). The "why" should connect the number to the business impact. The "how" should be a concrete play, not a platitude.
+SLIDE 9 — WIN STORE SPOTLIGHT [REQUIRED SOURCE: ComparisonReport.xls/xlsx]: Top 5 and Bottom 5 stores by WIN score with SMG insight. OMIT ENTIRELY if ComparisonReport not uploaded.
 
-SLIDE 12 — KEY DATES AND REMINDERS: Dark background. 7 placeholder bullet lines formatted as '[ ] Date — Event or reminder here'. No auto-generated content — user fills this in manually each week before sending.
+SLIDE 10 — CUSTOMER VOICE [REQUIRED SOURCE: SMG comments file]: 5 positive and 5 negative VERBATIM customer quotes — real words from the file, never summaries. OMIT ENTIRELY if SMG file not uploaded.
 
-SLIDE 13 — CLOSING: AC of the Week recognition + 'Keep pushing. See you on the recap call — [day].' + footer stat summary strip. IMPORTANT: The same AC cannot win two weeks in a row. If the JSON includes a "lastAcOfWeek" field, choose a different AC this week — pick the next most deserving based on data. Never repeat unless there is genuinely no other option.
+SLIDE 11 — SMART GOALS [REQUIRED SOURCE: Any uploaded data — goals must be grounded in actual numbers found]: 3 SMART goals with Metric | Current | Target | By When | Owner | Why | How. Only include goals tied to data you actually found. OMIT if insufficient data to make specific goals.
+
+SLIDE 12 — KEY DATES AND REMINDERS [ALWAYS INCLUDE]: Dark background. 7 blank lines for user to fill in manually. Always include this slide.
+
+SLIDE 13 — CLOSING [REQUIRED SOURCE: Any performance data to identify AC of the Week]: AC of the Week recognition + footer stat strip. The same AC cannot win two weeks in a row — check lastAcOfWeek field. Always include if any performance data was uploaded.
+
+UNEXPECTED FILES: If an uploaded file does not match the standard report types above, analyze it anyway. Include its findings in the most relevant existing slide or add it as an additional slide in the "additionalSlides" array. Never ignore an uploaded file.
 
 DATA FILE MAPPINGS (permanent — do not change these):
 
@@ -664,7 +671,7 @@ CRITICAL — JSON FIELD NAMES (use EXACTLY these names, no variations):
 - Description/note: "description"
 - AC name on a win/focus/customer voice item: "ac"
 
-When you receive the uploaded files, analyze all data sources and return a structured JSON object with content for all 13 slides. The JSON MUST use exactly these field names:
+When you receive the uploaded files, analyze all data sources and return a structured JSON object with content ONLY for the slides you have real data for. Omit any slide key entirely if its required source file was not uploaded. The JSON MUST use exactly these field names:
 {
   "regionName": "...",
   "weekLabel": "...",
@@ -881,7 +888,13 @@ Here are the file contents:
 
 ${combinedText}${alignBlock}
 
-Return a structured JSON object with all 13 slides worth of content as specified in the instructions. For any slide where source data was not provided, use placeholder text like "[Data not available — upload [file type] to populate]".`;
+CRITICAL INSTRUCTIONS FOR JSON OUTPUT:
+1. First, list every file uploaded and what data it contains.
+2. Build slides ONLY for the data you actually found. If a source file was not uploaded, do not include that slide's key in the JSON — omit it entirely.
+3. NEVER use placeholder text, empty arrays as filler, or "[Data not available]" strings. A missing key is always correct. A slide with fake or empty data is always wrong.
+4. If only 3 files were uploaded, you may return as few as 4-5 slides. That is correct behavior.
+5. If an unexpected file is uploaded that does not match the standard report types, analyze it anyway and include its findings in the most appropriate slide or as an additional slide.
+Return a structured JSON object with content only for the slides you have real data to populate.`;
 
   const message = await client.messages.create({
     model: MODEL,
@@ -1355,13 +1368,4 @@ Rules:
 
   const raw = msg.content[0]?.text || '';
   try {
-    const m = raw.match(/\{[\s\S]*\}/);
-    return m ? JSON.parse(m[0]) : { title: topic || 'ADDITIONAL INFO', bullets: [], narrative: raw };
-  } catch {
-    return { title: topic || 'ADDITIONAL INFO', bullets: [], narrative: raw };
-  }
-}
-
-// ─── Exports ──────────────────────────────────────────────────────────────────────
-
-module.exports = { analyzePL, analyzePLForAC, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail, generateDailyIntelEmail, analyzeAdditionalContent };
+    const m = raw.ma
