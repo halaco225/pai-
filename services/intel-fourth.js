@@ -171,7 +171,7 @@ async function downloadFourthReport(reportKey, targetDate) {
           } catch (e) { return { status: -1, body: '', error: e.message }; }
         }, { api: FOURTH_API, projId: PROJECT_ID, uri: reportUri });
 
-        if (execResult.status !== 200) {
+        if (execResult.status !== 200 && execResult.status !== 201) {
           console.log(`[Fourth] Execute ${execResult.status} — ${execResult.body.slice(0, 200)}`);
           continue;
         }
