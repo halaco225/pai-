@@ -231,6 +231,10 @@ async function downloadFourthReport(reportKey, targetDate) {
   const reportUrl = REPORTS[reportKey];
   if (!reportUrl) throw new Error(`Unknown report key: ${reportKey}`);
 
+  // Clear stale profile cache — accumulated GoodData/YUI3 cache files bloat
+  // browser startup RAM and hit the 512MB Render limit within seconds of launch.
+  try { fs.rmSync(PROFILE_DIR, { recursive: true, force: true }); } catch (_) {}
+
   const browser = await launchContext(PROFILE_DIR, { acceptDownloads: true });
 
   try {
