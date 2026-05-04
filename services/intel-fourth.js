@@ -102,12 +102,17 @@ async function gdcLoginViaBrowser() {
     const ttBody = await ttRes.json().catch(() => null);
     console.log(`[Fourth] Token body keys: ${ttBody ? Object.keys(ttBody).join(',') : 'null'}`);
     const freshTT = ttBody?.userToken?.token || '';
-    console.log(`[Fourth] Fresh TT: ${freshTT ? 'obtained from body' : 'missing from body — using browser TT'}`);
+    console.log(`[Fourth] Fresh TT: ${freshTT ? `obtained (len=${freshTT.length})` : 'missing from body — using browser TT'}`);
 
     const browserTT = allCookies.find(c => c.name === 'GDCAuthTT')?.value || '';
     const tt = freshTT || browserTT;
     if (!tt) throw new Error('No GDCAuthTT available (neither fresh nor browser)');
-    const cookieStr = [`GDCAuthSST=${sst}`, `GDCAuthTT=${tt}`].join('; ');
+    // Include ALL browser cookies so _csrfToken, locale etc. are present
+    const csrfToken = allCookies.find(c => c.name === '_csrfToken')?.value || '';
+    const cookieParts = [`GDCAuthSST=${sst}`, `GDCAuthTT=${tt}`];
+    if (csrfToken) cookieParts.push(`_csrfToken=${csrfToken}`);
+    const cookieStr = cookieParts.join('; ');
+    console.log(`[Fourth] Cookie string parts: ${cookieParts.map(c => c.split('=')[0]).join(', ')}`);
     return { cookieStr, tt };
 
   } finally {
@@ -127,7 +132,7 @@ async function getDashboardReportUris(cookieStr, tt, dashObjId, tabId) {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`Dashboard fetch failed: ${res.status} — ${body.slice(0, 200)}`);
+    throw new Error(`Dashboard fetch failed: ${res.status} — ${body.slice(0, 500)}`);
   }
   const raw = await res.text();
   console.log('[Fourth] Dashboard JSON (first 1000):', raw.slice(0, 1000));
@@ -208,6 +213,16 @@ async function downloadFourthReport(reportKey, targetDate) {
 
   try {
     const { cookieStr, tt } = await gdcLoginViaBrowser();
+
+    // Verify auth works before hitting metadata
+    const profileRes = await fetch(`${FOURTH_API}/gdc/account/profile/current`, {
+      headers: gdcHeaders(cookieStr, tt),
+    });
+    console.log(`[Fourth] Profile check: ${profileRes.status}`);
+    if (!profileRes.ok) {
+      const profileBody = await profileRes.text().catch(() => '');
+      console.log(`[Fourth] Profile body: ${profileBody.slice(0, 300)}`);
+    }
 
     let reportUris = await getDashboardReportUris(cookieStr, tt, dashInfo.obj, dashInfo.tab);
 
