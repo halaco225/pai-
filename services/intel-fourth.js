@@ -82,70 +82,47 @@ async function downloadFourthReport(reportKey, targetDate) {
       throw new Error(`Auth check failed: profile returned ${profileCheck.status}`);
     }
 
-    // ── Navigate to dashboard to activate project context ─────────────────
-    // GoodData Classic returns 403 on metadata API until the project is
-    // "activated" by navigating into its workspace URL.
+    // ── Navigate to dashboard and intercept the SPA's own metadata request ──
+    // Our own fetch to /gdc/md/.../objects/{id} returns 403 because GoodData
+    // Classic binds metadata permission to the SPA session context.
+    // Solution: let the SPA navigate to the dashboard (which it CAN do) and
+    // intercept the XHR it makes internally to fetch the same metadata.
     const dashUrl = `${FOURTH_API}/#s=/gdc/workspaces/${PROJECT_ID}|workspaceDashboardPage|/gdc/md/${PROJECT_ID}/obj/${dashInfo.obj}|${dashInfo.tab}`;
-    console.log(`[Fourth] Navigating to dashboard: ${dashUrl}`);
-    await page.goto(dashUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-    await page.waitForTimeout(3000);
-    console.log(`[Fourth] Dashboard page URL: ${page.url()}`);
+    const metaPattern = new RegExp(`/gdc/md/${PROJECT_ID}/objects/${dashInfo.obj}`);
 
-    // ── Get dashboard report URIs ──────────────────────────────────────────
-    const dashResult = await page.evaluate(async ({ api, projId, dashId }) => {
-      try {
-        const res = await fetch(`${api}/gdc/md/${projId}/objects/${dashId}`, {
-          headers: { Accept: 'application/json' },
-          credentials: 'include',
-        });
-        return { status: res.status, body: await res.text() };
-      } catch (e) { return { status: -1, body: '', error: e.message }; }
-    }, { api: FOURTH_API, projId: PROJECT_ID, dashId: dashInfo.obj });
-
-    console.log(`[Fourth] Dashboard fetch: ${dashResult.status}`);
-    if (dashResult.status !== 200) {
-      console.log(`[Fourth] Dashboard fetch failed: ${dashResult.status} — ${dashResult.body.slice(0, 300)}`);
-      // fall through to query/reports fallback below
-    }
-
-    let reportUris = [];
+    let dashBody = '';
     try {
-      const data = JSON.parse(dashResult.body);
-      const tabs = data.projectDashboard?.content?.tabs || [];
-      console.log('[Fourth] Tabs:', tabs.map(t => `${t.title || '?'}(${t.identifier})`).join(', '));
-      const tab = tabs.find(t => t.identifier === dashInfo.tab) || tabs[0];
-      if (tab) {
-        const tabRaw = JSON.stringify(tab);
-        reportUris = [...new Set((tabRaw.match(/\/gdc\/md\/[^"]+\/obj\/\d+/g) || []))];
-        console.log(`[Fourth] Report URIs from tab:`, JSON.stringify(reportUris));
-      }
-    } catch (_) {}
-
-    if (reportUris.length === 0) {
-      // Fallback: scan all obj URIs in the dashboard JSON
-      reportUris = [...new Set((dashResult.body.match(/\/gdc\/md\/[^"]+\/obj\/\d+/g) || []))];
-      console.log('[Fourth] Fallback URIs:', JSON.stringify(reportUris));
+      const [response] = await Promise.all([
+        page.waitForResponse(
+          r => metaPattern.test(r.url()) && r.status() === 200,
+          { timeout: 25000 }
+        ),
+        page.goto(dashUrl, { waitUntil: 'domcontentloaded', timeout: 20000 }),
+      ]);
+      dashBody = await response.text();
+      console.log(`[Fourth] Intercepted SPA metadata (${dashBody.length} bytes)`);
+    } catch (e) {
+      console.log(`[Fourth] SPA metadata intercept failed: ${e.message} — will try query/reports`);
     }
 
-    if (reportUris.length === 0) {
-      // Last resort: query all project reports by keyword
-      const keywords = reportKey === 'LABOR' ? ['location', 'overview', 'labor'] : ['overtime'];
-      const qResult = await page.evaluate(async ({ api, projId }) => {
-        try {
-          const res = await fetch(`${api}/gdc/md/${projId}/query/reports`, {
-            headers: { Accept: 'application/json' },
-            credentials: 'include',
-          });
-          return { status: res.status, body: await res.text() };
-        } catch (e) { return { status: -1, body: '' }; }
-      }, { api: FOURTH_API, projId: PROJECT_ID });
+    // ── Parse report URIs from intercepted dashboard JSON ─────────────────
+    let reportUris = [];
+    if (dashBody) {
+      try {
+        const data = JSON.parse(dashBody);
+        const tabs = data.projectDashboard?.content?.tabs || [];
+        console.log('[Fourth] Tabs:', tabs.map(t => `${t.title || '?'}(${t.identifier})`).join(', '));
+        const tab = tabs.find(t => t.identifier === dashInfo.tab) || tabs[0];
+        if (tab) {
+          const tabRaw = JSON.stringify(tab);
+          reportUris = [...new Set((tabRaw.match(/\/gdc\/md\/[^"]+\/obj\/\d+/g) || []))];
+          console.log(`[Fourth] Report URIs from tab:`, JSON.stringify(reportUris));
+        }
+      } catch (_) {}
 
-      if (qResult.status === 200) {
-        const entries = JSON.parse(qResult.body).query?.entries || [];
-        reportUris = entries
-          .filter(r => keywords.some(k => (r.title || '').toLowerCase().includes(k)))
-          .map(r => r.link);
-        console.log('[Fourth] Query reports URIs:', JSON.stringify(reportUris.slice(0, 5)));
+      if (reportUris.length === 0) {
+        reportUris = [...new Set((dashBody.match(/\/gdc\/md\/[^"]+\/obj\/\d+/g) || []))];
+        console.log('[Fourth] Fallback URIs from body scan:', JSON.stringify(reportUris));
       }
     }
 
@@ -168,7 +145,7 @@ async function downloadFourthReport(reportKey, targetDate) {
         }, { api: FOURTH_API, projId: PROJECT_ID, uri: reportUri });
 
         if (execResult.status !== 200) {
-          console.log(`[Fourth] Execute ${execResult.status} — skip`);
+          console.log(`[Fourth] Execute ${execResult.status} — ${execResult.body.slice(0, 200)}`);
           continue;
         }
         const resultUri = JSON.parse(execResult.body).uri;
