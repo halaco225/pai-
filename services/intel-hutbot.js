@@ -104,10 +104,29 @@ async function handleLogin(page) {
 //  Scrape
 // ─────────────────────────────────────────────────────────────────────────────
 
+async function checkReachable(hostname) {
+  return new Promise(resolve => {
+    const net = require('net');
+    const socket = net.createConnection({ host: hostname, port: 443 });
+    socket.setTimeout(8000);
+    socket.on('connect', () => { socket.destroy(); resolve(true); });
+    socket.on('error', () => resolve(false));
+    socket.on('timeout', () => { socket.destroy(); resolve(false); });
+  });
+}
+
 async function scrapeHutBot(targetDate) {
   if (!credentialsPresent()) {
     console.error('[HutBot] HUTBOT_USER / HUTBOT_PASSWORD env vars not set — skipping scrape');
     return { success: false, error: 'HUTBOT_USER / HUTBOT_PASSWORD env vars not set. Set them in Render environment variables.' };
+  }
+
+  // Quick TCP reachability check — avoids 2×60s browser timeout if host is VPN-gated
+  const host = 'admin.superapp.yum.com';
+  const reachable = await checkReachable(host);
+  if (!reachable) {
+    console.warn(`[HutBot] ${host} is not reachable from this network (VPN/corp-gated?) — skipping`);
+    return { success: false, error: `${host} unreachable — likely requires corporate VPN` };
   }
 
   console.log(`[HutBot] Scraping routines for ${targetDate}`);
