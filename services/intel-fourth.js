@@ -165,7 +165,7 @@ async function downloadFourthReport(reportKey, targetDate) {
               method: 'POST',
               headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
               credentials: 'include',
-              body: JSON.stringify({ report_req: { report: uri, format: 'xlsx' } }),
+              body: JSON.stringify({ report_req: { report: uri } }),
             });
             return { status: res.status, body: await res.text() };
           } catch (e) { return { status: -1, body: '', error: e.message }; }
@@ -191,13 +191,13 @@ async function downloadFourthReport(reportKey, targetDate) {
                 const bytes = new Uint8Array(ab);
                 let binary = '';
                 for (let j = 0; j < bytes.length; j++) binary += String.fromCharCode(bytes[j]);
-                return { status: 200, data: btoa(binary) };
+                return { status: 200, data: btoa(binary), ct: res.headers.get('content-type') };
               }
               return { status: res.status, data: null };
             } catch (e) { return { status: -1, data: null, error: e.message }; }
           }, `${FOURTH_API}${resultUri}`);
 
-          console.log(`[Fourth] Poll ${i}: ${pollResult.status}`);
+          console.log(`[Fourth] Poll ${i}: ${pollResult.status}${pollResult.ct ? ' ct=' + pollResult.ct : ''}`);
           if (pollResult.status === 200 && pollResult.data) {
             base64data = pollResult.data;
             break;
