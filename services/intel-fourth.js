@@ -83,10 +83,28 @@ async function gdcLoginViaBrowser() {
     const authCookies = allCookies.filter(c =>
       c.domain.includes('fourth.com') || c.domain.includes('gooddata.com') || c.domain.includes('fourth.io')
     );
-    const useCookies = authCookies.length > 0 ? authCookies : allCookies;
-    const cookieStr = useCookies.map(c => `${c.name}=${c.value}`).join('; ');
-    const tt = allCookies.find(c => c.name === 'GDCAuthTT')?.value || '';
-    console.log(`[Fourth] Browser login OK — ${allCookies.length} cookies, TT=${tt ? 'present' : 'missing'}`);
+    const sst = allCookies.find(c => c.name === 'GDCAuthSST')?.value || '';
+    if (!sst) throw new Error(`GDCAuthSST not found. Cookies: ${allCookies.map(c => c.name).join(', ')}`);
+    console.log(`[Fourth] Browser login OK — ${allCookies.length} cookies, SST present`);
+
+    // Exchange SST for a fresh TT via API (the browser TT is context-bound;
+    // a new token exchange makes a TT valid for this node-fetch request context)
+    const ttRes = await fetch(`${FOURTH_API}/gdc/account/token`, {
+      headers: {
+        Cookie: `GDCAuthSST=${sst}`,
+        'X-GDC-AuthSST': sst,
+        Accept: 'application/json',
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      },
+    });
+    console.log(`[Fourth] Token refresh status: ${ttRes.status}`);
+    const ttCookies = parseCookies(ttRes);
+    const freshTT = ttCookies.find(c => c.startsWith('GDCAuthTT='))?.split('=').slice(1).join('=') || '';
+    console.log(`[Fourth] Fresh TT: ${freshTT ? 'obtained' : 'missing — using browser TT'}`);
+
+    const browserTT = allCookies.find(c => c.name === 'GDCAuthTT')?.value || '';
+    const tt = freshTT || browserTT;
+    const cookieStr = [`GDCAuthSST=${sst}`, `GDCAuthTT=${tt}`].join('; ');
     return { cookieStr, tt };
 
   } finally {
