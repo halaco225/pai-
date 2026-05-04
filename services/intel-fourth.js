@@ -82,6 +82,15 @@ async function downloadFourthReport(reportKey, targetDate) {
       throw new Error(`Auth check failed: profile returned ${profileCheck.status}`);
     }
 
+    // ── Navigate to dashboard to activate project context ─────────────────
+    // GoodData Classic returns 403 on metadata API until the project is
+    // "activated" by navigating into its workspace URL.
+    const dashUrl = `${FOURTH_API}/#s=/gdc/workspaces/${PROJECT_ID}|workspaceDashboardPage|/gdc/md/${PROJECT_ID}/obj/${dashInfo.obj}|${dashInfo.tab}`;
+    console.log(`[Fourth] Navigating to dashboard: ${dashUrl}`);
+    await page.goto(dashUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+    await page.waitForTimeout(3000);
+    console.log(`[Fourth] Dashboard page URL: ${page.url()}`);
+
     // ── Get dashboard report URIs ──────────────────────────────────────────
     const dashResult = await page.evaluate(async ({ api, projId, dashId }) => {
       try {
@@ -95,7 +104,8 @@ async function downloadFourthReport(reportKey, targetDate) {
 
     console.log(`[Fourth] Dashboard fetch: ${dashResult.status}`);
     if (dashResult.status !== 200) {
-      throw new Error(`Dashboard fetch failed: ${dashResult.status} — ${dashResult.body.slice(0, 300)}`);
+      console.log(`[Fourth] Dashboard fetch failed: ${dashResult.status} — ${dashResult.body.slice(0, 300)}`);
+      // fall through to query/reports fallback below
     }
 
     let reportUris = [];
