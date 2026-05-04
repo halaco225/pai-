@@ -98,12 +98,15 @@ async function gdcLoginViaBrowser() {
       },
     });
     console.log(`[Fourth] Token refresh status: ${ttRes.status}`);
-    const ttCookies = parseCookies(ttRes);
-    const freshTT = ttCookies.find(c => c.startsWith('GDCAuthTT='))?.split('=').slice(1).join('=') || '';
-    console.log(`[Fourth] Fresh TT: ${freshTT ? 'obtained' : 'missing — using browser TT'}`);
+    // TT is returned in JSON body as userToken.token (not as set-cookie header)
+    const ttBody = await ttRes.json().catch(() => null);
+    console.log(`[Fourth] Token body keys: ${ttBody ? Object.keys(ttBody).join(',') : 'null'}`);
+    const freshTT = ttBody?.userToken?.token || '';
+    console.log(`[Fourth] Fresh TT: ${freshTT ? 'obtained from body' : 'missing from body — using browser TT'}`);
 
     const browserTT = allCookies.find(c => c.name === 'GDCAuthTT')?.value || '';
     const tt = freshTT || browserTT;
+    if (!tt) throw new Error('No GDCAuthTT available (neither fresh nor browser)');
     const cookieStr = [`GDCAuthSST=${sst}`, `GDCAuthTT=${tt}`].join('; ');
     return { cookieStr, tt };
 
