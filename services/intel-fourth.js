@@ -199,6 +199,27 @@ async function findLaborHeader(page) {
   const twEl = twHandle.asElement();
   if (twEl) { console.log('[Fourth] Found Labor % via TreeWalker (single text node)'); return twEl; }
 
+  // Strategy 5: GoodData Classic uses iframes for embedded reports — search inside each iframe
+  for (const frame of page.frames()) {
+    if (frame === page.mainFrame()) continue;
+    try {
+      const iframeEl = await frame.evaluateHandle(() => {
+        function norm(t) { return (t || '').replace(/\s+/g, ' ').trim(); }
+        for (const el of document.querySelectorAll('[role="columnheader"], th, td, span, div')) {
+          const t = norm(el.textContent);
+          if (t.includes('Labor %') || t === 'Labor%') {
+            const rect = el.getBoundingClientRect();
+            if (rect.width > 0 || rect.height > 0) return el;
+          }
+        }
+        return null;
+      });
+      const iframeFoundEl = iframeEl.asElement();
+      if (iframeFoundEl) { console.log(`[Fourth] Found Labor % inside iframe: ${frame.url().slice(0, 80)}`); return iframeFoundEl; }
+    } catch (_) {}
+  }
+  console.log(`[Fourth] Checked ${page.frames().length} frames — Labor % not found anywhere`);
+
   return null;
 }
 
@@ -368,17 +389,24 @@ async function downloadFourthReport(reportKey, targetDate) {
       } // end if (hoverOk)
     }
 
-    // Widget-level three-dot menu (GoodData BUI) — hover the widget container,
-    // then click the "..." button that appears. Works regardless of column structure.
+    // Widget-level export menu — hover the widget container, then click the export button.
+    // GoodData Classic (YUI3): widgets are .yui3-c-dashboardwidget / .widgetContent / .c-widgetcontent
+    // GoodData BUI (React):    widgets are .s-dash-item / .gd-widget-content
     if (!optionsBtn) {
-      console.log('[Fourth] Trying widget-level three-dot export menu...');
+      console.log('[Fourth] Trying widget-level export menu...');
       const WIDGET_SELECTORS = [
+        // GoodData Classic (YUI3) — confirmed via gdClasses in logs
+        '.yui3-c-dashboardwidget',
+        '.c-widgetcontent',
+        '.widgetContent',
+        '.yui3-c-iframedashboardwidget',
+        '.c-projectdashboard-items',
+        // GoodData BUI (React)
         '.s-dash-item',
         '.gd-widget-content',
         '[class*="DashboardItem"]',
         '[class*="visualization"]',
         '[class*="widget-body"]',
-        '[class*="widgetContent"]',
         'main, .gd-content-div',
       ];
       for (const wSel of WIDGET_SELECTORS) {
@@ -386,8 +414,19 @@ async function downloadFourthReport(reportKey, targetDate) {
           const widget = await page.$(wSel);
           if (!widget) continue;
           await widget.hover();
-          await page.waitForTimeout(1200);
+          await page.waitForTimeout(1500);
           const WIDGET_MENU_SELECTORS = [
+            // GoodData Classic download/export button (appears on widget hover)
+            '.s-gdw-s3download-button',
+            '[class*="s-gdw-"][class*="download"]',
+            '[class*="gdw-download"]',
+            '[class*="s-download"]',
+            '.gd-report-download',
+            '[class*="report-download"]',
+            // GoodData Classic options menu
+            '.s-options-menu',
+            '[class*="s-options-menu"]',
+            // GoodData BUI
             '.s-dash-item-action-menu-button',
             'button[class*="DashboardItemActionMenu"]',
             '.gd-icon-more',
