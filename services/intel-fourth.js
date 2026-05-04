@@ -83,7 +83,7 @@ async function downloadFourthReport(reportKey, targetDate) {
     }
 
     // ── Get dashboard report URIs ──────────────────────────────────────────
-    const dashResult = await page.evaluate(async (api, projId, dashId) => {
+    const dashResult = await page.evaluate(async ({ api, projId, dashId }) => {
       try {
         const res = await fetch(`${api}/gdc/md/${projId}/objects/${dashId}`, {
           headers: { Accept: 'application/json' },
@@ -91,7 +91,7 @@ async function downloadFourthReport(reportKey, targetDate) {
         });
         return { status: res.status, body: await res.text() };
       } catch (e) { return { status: -1, body: '', error: e.message }; }
-    }, FOURTH_API, PROJECT_ID, dashInfo.obj);
+    }, { api: FOURTH_API, projId: PROJECT_ID, dashId: dashInfo.obj });
 
     console.log(`[Fourth] Dashboard fetch: ${dashResult.status}`);
     if (dashResult.status !== 200) {
@@ -120,7 +120,7 @@ async function downloadFourthReport(reportKey, targetDate) {
     if (reportUris.length === 0) {
       // Last resort: query all project reports by keyword
       const keywords = reportKey === 'LABOR' ? ['location', 'overview', 'labor'] : ['overtime'];
-      const qResult = await page.evaluate(async (api, projId) => {
+      const qResult = await page.evaluate(async ({ api, projId }) => {
         try {
           const res = await fetch(`${api}/gdc/md/${projId}/query/reports`, {
             headers: { Accept: 'application/json' },
@@ -128,7 +128,7 @@ async function downloadFourthReport(reportKey, targetDate) {
           });
           return { status: res.status, body: await res.text() };
         } catch (e) { return { status: -1, body: '' }; }
-      }, FOURTH_API, PROJECT_ID);
+      }, { api: FOURTH_API, projId: PROJECT_ID });
 
       if (qResult.status === 200) {
         const entries = JSON.parse(qResult.body).query?.entries || [];
@@ -145,7 +145,7 @@ async function downloadFourthReport(reportKey, targetDate) {
     for (const reportUri of reportUris) {
       try {
         console.log(`[Fourth] Executing: ${reportUri}`);
-        const execResult = await page.evaluate(async (api, projId, uri) => {
+        const execResult = await page.evaluate(async ({ api, projId, uri }) => {
           try {
             const res = await fetch(`${api}/gdc/app/projects/${projId}/execute/raw/`, {
               method: 'POST',
@@ -155,7 +155,7 @@ async function downloadFourthReport(reportKey, targetDate) {
             });
             return { status: res.status, body: await res.text() };
           } catch (e) { return { status: -1, body: '', error: e.message }; }
-        }, FOURTH_API, PROJECT_ID, reportUri);
+        }, { api: FOURTH_API, projId: PROJECT_ID, uri: reportUri });
 
         if (execResult.status !== 200) {
           console.log(`[Fourth] Execute ${execResult.status} — skip`);
