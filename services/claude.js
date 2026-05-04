@@ -1368,4 +1368,13 @@ Rules:
 
   const raw = msg.content[0]?.text || '';
   try {
-    const m = raw.ma
+    const m = raw.match(/\{[\s\S]*\}/);
+    return m ? JSON.parse(m[0]) : { title: topic || 'ADDITIONAL INFO', bullets: [], narrative: raw };
+  } catch {
+    return { title: topic || 'ADDITIONAL INFO', bullets: [], narrative: raw };
+  }
+}
+
+// ─── Exports ──────────────────────────────────────────────────────────────────────
+
+module.exports = { analyzePL, analyzePLForAC, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail, generateDailyIntelEmail, analyzeAdditionalContent };
