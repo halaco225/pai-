@@ -320,7 +320,15 @@ async function downloadFourthReport(reportKey, targetDate) {
       await page.waitForTimeout(800);
       await screenshot(page, 'step4-before-hover');
 
-      await laborHeader.hover();
+      let hoverOk = false;
+      try {
+        await laborHeader.hover({ timeout: 8000 });
+        hoverOk = true;
+      } catch (hoverErr) {
+        console.log(`[Fourth] Labor % header not hoverable (${hoverErr.message.split('\n')[0]}) — falling through to widget export`);
+      }
+
+      if (hoverOk) {
       await page.waitForTimeout(1500);
       await screenshot(page, 'step4-after-hover');
       console.log('[Fourth] Hovered Labor % — looking for column options menu');
@@ -348,7 +356,7 @@ async function downloadFourthReport(reportKey, targetDate) {
       if (!optionsBtn) {
         await page.mouse.move(0, 0);
         await page.waitForTimeout(500);
-        await laborHeader.hover();
+        try { await laborHeader.hover({ timeout: 5000 }); } catch (_) {}
         await page.waitForTimeout(2000);
         for (const sel of COLUMN_MENU_SELECTORS) {
           try {
@@ -357,6 +365,7 @@ async function downloadFourthReport(reportKey, targetDate) {
           } catch (_) {}
         }
       }
+      } // end if (hoverOk)
     }
 
     // Widget-level three-dot menu (GoodData BUI) — hover the widget container,
