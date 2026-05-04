@@ -82,28 +82,33 @@ async function downloadFourthReport(reportKey, targetDate) {
       throw new Error(`Auth check failed: profile returned ${profileCheck.status}`);
     }
 
-    // ── Navigate to dashboard and intercept the SPA's own metadata request ──
-    // Our own fetch to /gdc/md/.../objects/{id} returns 403 because GoodData
-    // Classic binds metadata permission to the SPA session context.
-    // Solution: let the SPA navigate to the dashboard (which it CAN do) and
-    // intercept the XHR it makes internally to fetch the same metadata.
+    // ── Navigate to dashboard and capture any XHR containing dashboard JSON ──
+    // Direct /gdc/md/.../objects/{id} fetch returns 403. Instead we listen to
+    // ALL responses from the GoodData host during SPA navigation and grab the
+    // first one whose body contains "projectDashboard".
     const dashUrl = `${FOURTH_API}/#s=/gdc/workspaces/${PROJECT_ID}|workspaceDashboardPage|/gdc/md/${PROJECT_ID}/obj/${dashInfo.obj}|${dashInfo.tab}`;
-    const metaPattern = new RegExp(`/gdc/md/${PROJECT_ID}/objects/${dashInfo.obj}`);
 
     let dashBody = '';
+    const onResponse = async (resp) => {
+      if (dashBody) return; // already found it
+      if (!resp.url().includes(FOURTH_API)) return;
+      if (resp.status() !== 200) return;
+      try {
+        const text = await resp.text();
+        if (text.includes('projectDashboard')) {
+          dashBody = text;
+          console.log(`[Fourth] Captured dashboard JSON from: ${resp.url().slice(0, 100)} (${text.length} bytes)`);
+        }
+      } catch (_) {}
+    };
+    page.on('response', onResponse);
     try {
-      const [response] = await Promise.all([
-        page.waitForResponse(
-          r => metaPattern.test(r.url()) && r.status() === 200,
-          { timeout: 25000 }
-        ),
-        page.goto(dashUrl, { waitUntil: 'domcontentloaded', timeout: 20000 }),
-      ]);
-      dashBody = await response.text();
-      console.log(`[Fourth] Intercepted SPA metadata (${dashBody.length} bytes)`);
+      await page.goto(dashUrl, { waitUntil: 'networkidle', timeout: 30000 });
     } catch (e) {
-      console.log(`[Fourth] SPA metadata intercept failed: ${e.message} — will try query/reports`);
+      console.log(`[Fourth] Dashboard nav warning: ${e.message}`);
     }
+    page.off('response', onResponse);
+    if (!dashBody) console.log('[Fourth] No projectDashboard JSON found in network responses');
 
     // ── Parse report URIs from intercepted dashboard JSON ─────────────────
     let reportUris = [];
