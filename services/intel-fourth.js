@@ -70,19 +70,22 @@ async function gdcLoginViaBrowser() {
     await page.waitForTimeout(5000);
     console.log(`[Fourth] Browser login post-submit URL: ${page.url()}`);
 
-    // Extract GoodData auth cookies from the browser context
-    const cookies = await page.context().cookies(FOURTH_API);
-    console.log('[Fourth] Available cookies:', cookies.map(c => c.name));
+    // Get ALL cookies in context (no URL filter — GoodData sets cookies on /gdc
+    // path and possibly sibling domains; a URL-scoped call misses them)
+    const allCookies = await page.context().cookies();
+    console.log('[Fourth] All cookies:', JSON.stringify(
+      allCookies.map(c => ({ name: c.name, domain: c.domain, path: c.path }))
+    ));
 
-    const sst = cookies.find(c => c.name === 'GDCAuthSST');
-    const tt  = cookies.find(c => c.name === 'GDCAuthTT');
-    if (!sst && !tt) throw new Error(`GDC auth cookies not found. Got: ${cookies.map(c => c.name).join(', ')}`);
+    if (allCookies.length === 0) throw new Error('No cookies found after browser login');
 
-    const parts = [];
-    if (sst) parts.push(`GDCAuthSST=${sst.value}`);
-    if (tt)  parts.push(`GDCAuthTT=${tt.value}`);
-    const cookieStr = parts.join('; ');
-    console.log('[Fourth] Browser login OK — cookies extracted');
+    // Use all cookies from fourth.com and related domains
+    const authCookies = allCookies.filter(c =>
+      c.domain.includes('fourth.com') || c.domain.includes('gooddata.com') || c.domain.includes('fourth.io')
+    );
+    const cookieStr = (authCookies.length > 0 ? authCookies : allCookies)
+      .map(c => `${c.name}=${c.value}`).join('; ');
+    console.log(`[Fourth] Browser login OK — ${allCookies.length} cookies, using ${(authCookies.length > 0 ? authCookies : allCookies).length} for API`);
     return cookieStr;
 
   } finally {
