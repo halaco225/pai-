@@ -107,7 +107,29 @@ async function downloadFourthReport(reportKey, targetDate) {
     } catch (e) {
       console.log(`[Fourth] Dashboard nav warning: ${e.message}`);
     }
+    // Hash-based SPA navigation fires networkidle immediately; wait for deferred XHR
+    if (!dashBody) {
+      console.log('[Fourth] Waiting 8s for SPA deferred requests...');
+      await sleep(8000);
+    }
     page.off('response', onResponse);
+
+    // Fallback: direct fetch now that project context is established in browser
+    if (!dashBody) {
+      console.log('[Fourth] No dashboard JSON from listener — trying direct fetch post-nav');
+      const r = await page.evaluate(async ({ api, projId, dashId }) => {
+        try {
+          const res = await fetch(`${api}/gdc/md/${projId}/objects/${dashId}`, {
+            headers: { Accept: 'application/json' }, credentials: 'include',
+          });
+          return { status: res.status, body: await res.text() };
+        } catch (e) { return { status: -1, body: '' }; }
+      }, { api: FOURTH_API, projId: PROJECT_ID, dashId: dashInfo.obj });
+      console.log(`[Fourth] Post-nav direct fetch: ${r.status} (${r.body.length} bytes)`);
+      if (r.status === 200) dashBody = r.body;
+      else console.log(`[Fourth] Post-nav body: ${r.body.slice(0, 300)}`);
+    }
+
     if (!dashBody) console.log('[Fourth] No projectDashboard JSON found in network responses');
 
     // ── Parse report URIs from intercepted dashboard JSON ─────────────────
