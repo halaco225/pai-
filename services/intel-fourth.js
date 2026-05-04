@@ -1,25 +1,24 @@
 'use strict';
 /**
  * Fourth Analytics — exports Labor and OT reports via GoodData Classic REST API.
- * No browser required.
  *
- * Auth flow (GoodData Classic):
- *   POST /gdc/account/login  → GDCAuthSST cookie
- *   GET  /gdc/account/token  → GDCAuthTT cookie (working auth)
+ * Auth: browser login extracts GDCAuthSST + GDCAuthTT cookies (direct API login
+ * returns 403 on metadata endpoints; browser-established session passes).
+ * Browser closes after login (~10s). All data work is done via REST API.
  *
  * Export flow:
- *   GET  /gdc/md/{project}/objects/{dashboardId}  → parse out report URIs
+ *   GET  /gdc/md/{project}/objects/{dashboardId}  → parse report URIs
  *   POST /gdc/app/projects/{project}/execute/raw/ → get result URI
  *   GET  result URI (poll until 200)              → xlsx bytes
  */
+const { launchContext } = require('./browser-launch');
 const fs   = require('fs');
 const path = require('path');
 
-const FOURTH_API = 'https://analytics.na1.fourth.com';
-const PROJECT_ID = 'q0t16mq5dgsreqiq8macw3ghv3k1iuqc';
+const FOURTH_API  = 'https://analytics.na1.fourth.com';
+const PROJECT_ID  = 'q0t16mq5dgsreqiq8macw3ghv3k1iuqc';
+const PROFILE_DIR = process.env.FOURTH_PROFILE_DIR || '/tmp/fourth-profile';
 
-// Dashboard object IDs and their primary tab identifiers
-// (from the dashboard URL hash: obj/{dashObjId}|{tabId})
 const DASHBOARDS = {
   LABOR: { obj: '607717', tab: '8e923313686e' },
   OT:    { obj: '607556', tab: '9103c1ea9b50' },
@@ -34,41 +33,74 @@ function mergeCookies(...arrs) {
 }
 function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
 
-async function gdcLogin() {
+/**
+ * Logs into analytics.na1.fourth.com via the web UI, extracts GDCAuthSST and
+ * GDCAuthTT cookies from the browser context, then closes the browser.
+ * Returns a cookie string usable for subsequent REST API calls.
+ */
+async function gdcLoginViaBrowser() {
   const user = process.env.FOURTH_USER || '';
   const pass = process.env.FOURTH_PASSWORD || '';
   if (!user || !pass) throw new Error('FOURTH_USER / FOURTH_PASSWORD env vars not set');
 
-  const loginRes = await fetch(`${FOURTH_API}/gdc/account/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ postUserLogin: { login: user, password: pass, remember: 1, captcha: '' } }),
-  });
-  if (!loginRes.ok) {
-    const t = await loginRes.text().catch(() => '');
-    throw new Error(`GDC login failed ${loginRes.status}: ${t.slice(0, 200)}`);
-  }
-  const sstCookies = parseCookies(loginRes);
-  console.log('[Fourth] GDC login OK');
+  try { fs.rmSync(PROFILE_DIR, { recursive: true, force: true }); } catch (_) {}
+  const browser = await launchContext(PROFILE_DIR, {});
 
-  const ttRes = await fetch(`${FOURTH_API}/gdc/account/token`, {
-    headers: { Cookie: mergeCookies(sstCookies), Accept: 'application/json' },
-  });
-  const cookie = mergeCookies(sstCookies, parseCookies(ttRes));
-  console.log('[Fourth] GDC token refresh OK');
-  return cookie;
+  try {
+    const page = await browser.newPage();
+
+    console.log('[Fourth] Browser login: navigating to account page...');
+    await page.goto(`${FOURTH_API}/account.html`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+    await page.waitForTimeout(2000);
+
+    const emailField = await page.waitForSelector(
+      'input[type="email"], input[name="username"], #username, input[type="text"]',
+      { timeout: 10000 }
+    );
+    await emailField.fill(user);
+
+    let passField = await page.$('input[type="password"], input[name="password"], #password');
+    if (!passField) {
+      await page.click('button[type="submit"], button:has-text("Next"), button:has-text("Continue")').catch(() => {});
+      await page.waitForTimeout(2000);
+      passField = await page.waitForSelector('input[type="password"]', { timeout: 8000 });
+    }
+    await passField.fill(pass);
+    await page.click('button[type="submit"], .s-login-button, button:has-text("Log In"), button:has-text("Sign In")');
+    await page.waitForTimeout(5000);
+    console.log(`[Fourth] Browser login post-submit URL: ${page.url()}`);
+
+    // Extract GoodData auth cookies from the browser context
+    const cookies = await page.context().cookies(FOURTH_API);
+    console.log('[Fourth] Available cookies:', cookies.map(c => c.name));
+
+    const sst = cookies.find(c => c.name === 'GDCAuthSST');
+    const tt  = cookies.find(c => c.name === 'GDCAuthTT');
+    if (!sst && !tt) throw new Error(`GDC auth cookies not found. Got: ${cookies.map(c => c.name).join(', ')}`);
+
+    const parts = [];
+    if (sst) parts.push(`GDCAuthSST=${sst.value}`);
+    if (tt)  parts.push(`GDCAuthTT=${tt.value}`);
+    const cookieStr = parts.join('; ');
+    console.log('[Fourth] Browser login OK — cookies extracted');
+    return cookieStr;
+
+  } finally {
+    try { await browser.close(); } catch (_) {}
+  }
 }
 
 async function getDashboardReportUris(cookie, dashObjId, tabId) {
   const res = await fetch(`${FOURTH_API}/gdc/md/${PROJECT_ID}/objects/${dashObjId}`, {
     headers: { Cookie: cookie, Accept: 'application/json' },
   });
-  if (!res.ok) throw new Error(`Dashboard fetch failed: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Dashboard fetch failed: ${res.status} — ${body.slice(0, 200)}`);
+  }
   const raw = await res.text();
   console.log('[Fourth] Dashboard JSON (first 1000):', raw.slice(0, 1000));
 
-  // Extract all /gdc/md/.../obj/NNN URIs scoped to the target tab first,
-  // then fall back to all URIs in the dashboard.
   let reportUris = [];
   try {
     const data = JSON.parse(raw);
@@ -78,12 +110,12 @@ async function getDashboardReportUris(cookie, dashObjId, tabId) {
     if (tab) {
       const tabRaw = JSON.stringify(tab);
       reportUris = [...new Set((tabRaw.match(/\/gdc\/md\/[^"]+\/obj\/\d+/g) || []))];
-      console.log(`[Fourth] Tab "${tab.title}" report URIs:`, JSON.stringify(reportUris));
+      console.log(`[Fourth] Tab "${tab.title || tab.identifier}" report URIs:`, JSON.stringify(reportUris));
     }
   } catch (_) {}
 
   if (reportUris.length === 0) {
-    // Regex fallback across full dashboard JSON
+    // Regex scan across full dashboard JSON
     reportUris = [...new Set((raw.match(/\/gdc\/md\/[^"]+\/obj\/\d+/g) || []))];
     console.log('[Fourth] Fallback — all dashboard obj URIs:', JSON.stringify(reportUris));
   }
@@ -95,10 +127,13 @@ async function queryReportsByName(cookie, keywords) {
   const res = await fetch(`${FOURTH_API}/gdc/md/${PROJECT_ID}/query/reports`, {
     headers: { Cookie: cookie, Accept: 'application/json' },
   });
-  if (!res.ok) return [];
+  if (!res.ok) {
+    console.log('[Fourth] query/reports failed:', res.status);
+    return [];
+  }
   const data = await res.json();
   const entries = data.query?.entries || [];
-  console.log('[Fourth] All project reports:', JSON.stringify(entries.slice(0, 20).map(r => ({ title: r.title, link: r.link }))));
+  console.log('[Fourth] Project reports:', JSON.stringify(entries.slice(0, 20).map(r => ({ title: r.title, link: r.link }))));
   return entries
     .filter(r => keywords.some(k => (r.title || '').toLowerCase().includes(k)))
     .map(r => r.link);
@@ -141,7 +176,7 @@ async function downloadFourthReport(reportKey, targetDate) {
   if (!dashInfo) throw new Error(`Unknown report key: ${reportKey}`);
 
   try {
-    const cookie = await gdcLogin();
+    const cookie = await gdcLoginViaBrowser();
 
     let reportUris = await getDashboardReportUris(cookie, dashInfo.obj, dashInfo.tab);
 

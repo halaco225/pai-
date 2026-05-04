@@ -87,7 +87,24 @@ async function downloadSMGComments(targetDate) {
       const passField = await page.$('#Password, input[name="Password"], input[type="password"]');
       if (passField) {
         await passField.fill(pass);
-        await page.click('input[type="submit"], button[type="submit"], #LoginButton, .btn-primary');
+        // Dispatch input/change so JS form validators run and enable the submit button
+        await passField.dispatchEvent('input');
+        await passField.dispatchEvent('change');
+        await page.waitForTimeout(1500);
+        // Wait up to 8s for submit button to become enabled
+        try {
+          await page.waitForSelector(
+            'input[type="submit"]:not([disabled]), button[type="submit"]:not([disabled]), #LoginButton:not([disabled]), .btn-primary:not([disabled])',
+            { state: 'visible', timeout: 8000 }
+          );
+        } catch (_) {
+          console.log('[SMG] Submit button still disabled — trying Enter key');
+        }
+        const clicked = await page.click(
+          'input[type="submit"]:not([disabled]), button[type="submit"]:not([disabled]), #LoginButton:not([disabled]), .btn-primary:not([disabled])',
+          { timeout: 3000 }
+        ).then(() => true).catch(() => false);
+        if (!clicked) await passField.press('Enter');
         await page.waitForTimeout(4000);
         console.log(`[SMG] Post-login URL: ${page.url()}`);
         await screenshot(page, 'step1-post-login');
