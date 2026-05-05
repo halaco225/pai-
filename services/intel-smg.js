@@ -3,19 +3,23 @@
  * SMG download helper — logs in via the referrerUri SSO flow and downloads
  * the previous-day "Comments By Comment" Excel export from SMG360.
  *
- * Auth flow (discovered from browser tab inspection):
- *   1. Navigate to the 360.smg.com report card URL
- *   2. 360.smg.com redirects to reporting.smg.com/index.aspx?referrerUri=<card_url>
- *   3. Login on reporting.smg.com
- *   4. reporting.smg.com redirects back to 360.smg.com via referrerUri — session established
- *   5. SPA loads the card, find the export button, download Excel
+ * Auth flow:
+ *   1. Navigate directly to reporting.smg.com/index.aspx?referrerUri=<card_url>
+ *      — this always shows the login page (or redirects straight to 360.smg.com
+ *        if a valid session cookie already exists on reporting.smg.com)
+ *   2. If redirected to 360.smg.com already → session cached, skip login
+ *   3. Otherwise fill credentials + submit → reporting.smg.com redirects to
+ *      360.smg.com via referrerUri, establishing the SPA session
+ *   4. Navigate to card URL, find export button, download Excel
  */
 const { launchContext } = require('./browser-launch');
 const fs   = require('fs');
 const path = require('path');
 
-const SMG_REPORT_URL = 'https://360.smg.com/#/card/5b621d617485e95d90e0a370?languageiso=en-US&view=comments&id=5b621d617485e95d90e0a370';
-const PROFILE_DIR    = process.env.SMG_PROFILE_DIR || '/tmp/smg-profile';
+const SMG_REPORT_URL   = 'https://360.smg.com/#/card/5b621d617485e95d90e0a370?languageiso=en-US&view=comments&id=5b621d617485e95d90e0a370';
+// Navigate here directly — forces login page (or instant redirect if session valid)
+const SMG_LOGIN_URL    = 'https://reporting.smg.com/index.aspx?referrerUri=' + encodeURIComponent(SMG_REPORT_URL);
+const PROFILE_DIR      = process.env.SMG_PROFILE_DIR || '/tmp/smg-profile';
 
 async function screenshot(page, label, full = false) {
   try {
@@ -41,22 +45,25 @@ async function downloadSMGComments(targetDate) {
     const page = await browser.newPage();
     page.on('console', m => { if (m.type() === 'error') console.log('[SMG] JS error:', m.text().slice(0, 200)); });
 
-    // ── Step 1: Navigate to the 360.smg.com report — it will redirect to
-    //           reporting.smg.com login with referrerUri pointing back to the card.
-    console.log('[SMG] Step 1: navigating to 360.smg.com report to trigger SSO redirect...');
-    await page.goto(SMG_REPORT_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    // ── Step 1: Navigate directly to reporting.smg.com with referrerUri ─────────
+    // Going to reporting.smg.com directly guarantees we either see the login
+    // page (unauthenticated) or an instant redirect to 360.smg.com (cached
+    // session).  Avoids relying on 360.smg.com's SPA to redirect us, which it
+    // does lazily after JS initialises (often > 3 s), causing us to
+    // misdetect a blank shell as "already authenticated".
+    console.log('[SMG] Step 1: navigating to reporting.smg.com login with referrerUri...');
+    await page.goto(SMG_LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(3000);
 
     let currentUrl = page.url();
     console.log(`[SMG] After initial nav: ${currentUrl}`);
     await screenshot(page, 'step1-initial');
 
-    // If we're already on 360.smg.com (cached session), skip login
-    if (currentUrl.includes('360.smg.com') && !currentUrl.includes('reporting.smg.com')) {
-      console.log('[SMG] Already authenticated on 360.smg.com — skipping login');
+    // If reporting.smg.com already redirected us to 360.smg.com, session is cached
+    if (currentUrl.includes('360.smg.com')) {
+      console.log('[SMG] Cached session — already on 360.smg.com, skipping login');
     } else {
-      // Should now be on reporting.smg.com/index.aspx?referrerUri=...
-      // Fill credentials
+      // On reporting.smg.com login page — fill credentials
       console.log(`[SMG] On login page: ${currentUrl}`);
       await screenshot(page, 'step1-login');
 
