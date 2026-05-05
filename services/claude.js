@@ -562,9 +562,26 @@ Slide order (when data is available):
 
 SLIDE 1 — TITLE [REQUIRED SOURCE: Velocity WTD IST file]: Region name | Week label | 4 preview stat cards: Sales Growth, Labor Var, WIN, HUT Bot. OMIT if no Velocity file uploaded.
 
-SLIDE 2 — REGION SCORECARD [REQUIRED SOURCE: Velocity WTD IST + HUT Bot file. OPTIONAL: Routines Status file for non-completers]: 5 stat cards — Sales Growth | Labor Var | OTD Avg Time | WIN Score | HUT Bot. HUT Bot Breakdown box only if HUT Bot file uploaded. Routine Non-Completers table only if Routines Status file uploaded. Do NOT show empty tables or "upload X to see Y" text — if the file isn't there, that section simply doesn't appear.
+SLIDE 2 — REGION SCORECARD [REQUIRED SOURCE: Velocity WTD IST + Routines Summary. OPTIONAL: Routines Status Details for non-completers]:
+5 stat cards + HUT Bot breakdown + Bottom 5 stores table + non-completers table.
+COMPUTING BOTTOM 5 STORES for hutBotBreakdown.bottom5Stores:
+  STEP 1: Read Routines Summary.xlsx. Each row = one store with Rest.Number and On Time % (decimal, e.g. 0.577 = 57.7%).
+  STEP 2: Sort ALL stores by On Time % ascending. Take the 5 with the lowest On Time %.
+  STEP 3: For each of these 5 stores, find which AC owns that store number using the Velocity WTD IST file or master alignment.
+  STEP 4: Output: store name (Rest.Name), storeNum (Rest.Number), ac (AC full name), onTime (as percentage string like "57.7%").
+  STEP 5: manager field — use "See alignment" if unknown. Never leave ac blank.
+COMPUTING nonCompleters for hutBotBreakdown.nonCompleters:
+  Read Routines Status Details By User.xlsx. Find rows where Missed % > 0 OR Late % > 0. Sort by Missed % descending. Take up to 6. Output: user (Shift Lead Name), completion rates as percentages, store as "Unknown — cross-reference needed" if not determinable.
+Do NOT show empty sections. If Routines Summary is uploaded, always compute and include bottom5Stores.
 
-SLIDE 3 — AC PERFORMANCE TABLE [REQUIRED SOURCE: Velocity WTD IST file]: One row per AC. Columns: Area Coach | Sales Growth | Labor Var | WIN Score | HUT Bot. OMIT columns for metrics not present in the uploaded files.
+SLIDE 3 — AC PERFORMANCE TABLE [REQUIRED SOURCE: Velocity WTD IST file. ENHANCED by: Routines Summary for HUT Bot column]:
+One row per AC. Columns: Area Coach | Sales Growth | Labor Var | WIN Score | HUT Bot.
+COMPUTING AC-LEVEL HUT BOT for the acTable hutBot column:
+  STEP 1: From Routines Summary.xlsx, get each store's On Time % and store number.
+  STEP 2: Using Velocity WTD IST or master alignment, map each store number to its AC.
+  STEP 3: For each AC, average the On Time % of all their stores. Format as percentage (e.g. "83.3%").
+  STEP 4: Output this as the "hutBot" field in the acTable row. Never output "see below", "N/A", or blank.
+  If Routines Summary is not uploaded, omit the hutBot column from acTable entirely.
 
 SLIDE 4 — WINS THIS WEEK [REQUIRED SOURCE: Any performance file — derive wins from whatever data is present]: 3-5 specific store wins with store name, number, metric, description. Tone: direct, genuine, no corporate fluff. OMIT if no meaningful performance data was uploaded.
 
@@ -607,8 +624,12 @@ Normalize AC names from "Last, First" to "First Last" for display.
 
 HUT BOT FILE (Routines Summary.xlsx OR Organization_Breakdown_Summary.xlsx):
 Routines Summary.xlsx columns: Rest.Champs | Rest.Number | Rest.Name | On Time % | Late % | Missed %
-Sort ascending by On Time % to find worst stores. Match store numbers to ACs.
-'On Time %' = FSCC, Pest Walk, Oven Calibration, Closing audits completed on schedule. Has NOTHING to do with delivery speed.
+On Time % is a decimal in the file (e.g. 0.577 = 57.7%, 0.928 = 92.8%). Always convert to percentage string for output.
+GRAND OVERALL row = region aggregate — use for the scorecard card value.
+All other rows = individual stores — use for bottom5Stores and AC-level averages.
+To compute AC-level HUT Bot: group stores by AC (match Rest.Number to AC via Velocity/alignment), average On Time % within each group.
+To find bottom 5: sort all store rows by On Time % ascending, take first 5.
+'On Time %' = FSCC, Pest Walk, Oven Calibration, Closing audits on schedule. Has NOTHING to do with delivery speed.
 
 ROUTINES STATUS DETAILS FILE (any file named "Routines Status Details By User" or "Learnings" or "Routine Details by User"):
 Columns: Shift Lead Yum ID | Shift Lead Name | On Time % | Late % | Missed %
