@@ -83,7 +83,7 @@ async function login() {
   const cookies1 = parseCookies(r1);
   console.log(`[HutBotAuth] IDP page loaded (${html1.length} bytes), cookies: ${cookies1.length}`);
 
-  const action1  = extractFormAction(html1, SAML_IDP_URL);
+  const action1  = extractFormAction(html1, IDP_INITIATED_URL);
   const hidden1  = extractHiddenFields(html1);
 
   const usernameField = html1.match(/name=["'](pf\.username|username|USER|j_username)["']/i)?.[1] || 'pf.username';
