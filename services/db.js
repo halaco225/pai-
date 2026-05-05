@@ -703,8 +703,55 @@ async function initIntelDB() {
     ON intel_automation_log (created_at DESC)
   `);
 
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS hutbot_auth (
+      id           SERIAL PRIMARY KEY,
+      cookie_value TEXT         NOT NULL,
+      is_valid     BOOLEAN      NOT NULL DEFAULT TRUE,
+      updated_by   VARCHAR(50),
+      updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    )
+  `);
+
   // Seed store assignments from velocity-alignment.js so all parsers have hierarchy
   await seedStoreAssignmentsFromAlignment();
+}
+
+// ── HutBot auth cookie storage ────────────────────────────────────────────────
+async function getHutBotAuth() {
+  const p = getPool();
+  if (!p) return null;
+  try {
+    const r = await p.query('SELECT cookie_value, is_valid FROM hutbot_auth ORDER BY updated_at DESC LIMIT 1');
+    return r.rows[0] || null;
+  } catch (err) {
+    console.error('DB getHutBotAuth error:', err.message);
+    return null;
+  }
+}
+
+async function setHutBotAuth(cookieValue, updatedBy) {
+  const p = getPool();
+  if (!p) return;
+  try {
+    await p.query('DELETE FROM hutbot_auth');
+    await p.query(
+      'INSERT INTO hutbot_auth (cookie_value, is_valid, updated_by) VALUES ($1, TRUE, $2)',
+      [cookieValue, updatedBy || 'system']
+    );
+  } catch (err) {
+    console.error('DB setHutBotAuth error:', err.message);
+  }
+}
+
+async function markHutBotAuthInvalid() {
+  const p = getPool();
+  if (!p) return;
+  try {
+    await p.query('UPDATE hutbot_auth SET is_valid = FALSE');
+  } catch (err) {
+    console.error('DB markHutBotAuthInvalid error:', err.message);
+  }
 }
 
 // ── Intel: upsert raw DBS metrics for a store/day ────────────────────────────
@@ -1205,5 +1252,6 @@ module.exports = {
   resolveRecoveredFlags, getStoreSoftIndicators,
   getConsecutiveDays: getConsecutiveFlagDays,
   archiveOldRecoveringFlags,
-  getAcknowledgments
+  getAcknowledgments,
+  getHutBotAuth, setHutBotAuth, markHutBotAuthInvalid,
 };

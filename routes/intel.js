@@ -997,13 +997,31 @@ router.post('/upload/hutbot', requireRole('rdo', 'vp', 'area_coach'), hutbotUplo
   }
 });
 
+// ── POST /api/intel/hutbot/auth — store session cookie for automation ─────────
+router.post('/hutbot/auth', requireRole('rdo', 'vp', 'area_coach'), async (req, res) => {
+  const { cookie } = req.body;
+  if (!cookie || typeof cookie !== 'string' || cookie.trim().length < 10) {
+    return res.status(400).json({ error: 'Invalid cookie value — paste the full Cookie header string' });
+  }
+  try {
+    await db.setHutBotAuth(cookie.trim(), req.session.user?.username || 'unknown');
+    console.log(`[HutBot Auth] Cookie saved by ${req.session.user?.username}`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[HutBot Auth] Error saving cookie:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/intel/hutbot/status — last scrape status for dashboard tile ──────
 router.get('/hutbot/status', requireAuth, async (req, res) => {
   try {
     const p = db.getPool();
-    if (!p) return res.json({ configured: false });
-    const credentialsSet = !!(process.env.HUTBOT_USER && process.env.HUTBOT_PASSWORD);
-    // Check if we have any HutBot data for yesterday
+    if (!p) return res.json({ configured: false, needsReauth: true });
+
+    const auth = await db.getHutBotAuth();
+    const needsReauth = !auth || !auth.is_valid;
+
     const yesterday = (() => {
       const now = new Date();
       const est = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
@@ -1015,13 +1033,14 @@ router.get('/hutbot/status', requireAuth, async (req, res) => {
       [yesterday]
     );
     res.json({
-      configured: credentialsSet,
+      configured: !!auth,
+      needsReauth,
       hasDataToday: r.rows[0].cnt > 0,
       flagCount: r.rows[0].cnt,
       yesterday,
     });
   } catch (err) {
-    res.json({ configured: false, error: err.message });
+    res.json({ configured: false, needsReauth: true, error: err.message });
   }
 });
 

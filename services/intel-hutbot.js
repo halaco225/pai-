@@ -1,306 +1,128 @@
 'use strict';
 /**
- * Hut Bot Playwright scraper — Yum SuperApp Routines
- * Scrapes https://admin.superapp.yum.com/routines for missed/late routines.
- * Uses SAML SSO via stored credentials.
+ * HutBot — Yum SuperApp Routines via REST API.
  *
- * Env vars required:
- *   HUTBOT_USER      — Yum SuperApp username / email
- *   HUTBOT_PASSWORD  — Yum SuperApp password
- *   HUTBOT_PROFILE_DIR (optional) — persistent browser profile path
+ * Auth: stored Cookie header in hutbot_auth DB table.
+ * When the cookie expires the API returns 401/403; we mark it invalid
+ * and the UI shows a flashing "Authorize HutBot" button so the user can
+ * paste a fresh cookie from Chrome DevTools.
+ *
+ * API endpoint (reachable from Render via CloudFront, no VPN needed):
+ *   POST https://api.superapp.yum.com/admin-proxy/checklists/search?offset=0&pageSize=100
+ *   Body: { statuses: ['late', 'missed'] }
+ *   Auth: Cookie: <stored value>
  */
-const { launchContext } = require('./browser-launch');
 const db = require('./db');
 
-const ROUTINES_URL  = 'https://admin.superapp.yum.com/routines';
-const PROFILE_DIR   = process.env.HUTBOT_PROFILE_DIR || '/tmp/hutbot-profile';
-const LOGIN_TIMEOUT = 20_000;   // fail fast — host is VPN-gated, TCP connects but HTTP hangs
-const NAV_TIMEOUT   = 20_000;   // fail fast — Yum enterprise portal unreachable from Render
+const YUM_API = 'https://api.superapp.yum.com/admin-proxy/checklists/search';
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Helpers
+//  Scrape via REST API
 // ─────────────────────────────────────────────────────────────────────────────
-
-function credentialsPresent() {
-  return !!(process.env.HUTBOT_USER && process.env.HUTBOT_PASSWORD);
-}
-
-async function screenshot(page, label) {
-  try {
-    const fs   = require('fs');
-    const path = require('path');
-    const dir  = '/tmp/hutbot-debug';
-    fs.mkdirSync(dir, { recursive: true });
-    const file = path.join(dir, `${label}-${Date.now()}.png`);
-    await page.screenshot({ path: file, fullPage: false });
-    console.log(`[HutBot] Screenshot saved: ${file}`);
-  } catch (_) {}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Login
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function handleLogin(page) {
-  const user = process.env.HUTBOT_USER;
-  const pass = process.env.HUTBOT_PASSWORD;
-
-  console.log('[HutBot] Handling SSO login...');
-  await screenshot(page, 'login-start');
-
-  // Combined selectors — one waitForSelector call instead of 4 × 15s loops
-  const USER_SEL   = 'input[name="username"], input[type="email"], #username, input[type="text"]';
-  const PASS_SEL   = 'input[name="password"], input[type="password"], #password';
-  const SUBMIT_SEL = 'button[type="submit"], input[type="submit"], button:has-text("Sign In"), button:has-text("Log In"), button:has-text("Next"), button:has-text("Continue")';
-
-  // Wait up to 20s for username field to appear
-  let userEl;
-  try {
-    userEl = await page.waitForSelector(USER_SEL, { state: 'visible', timeout: 20000 });
-  } catch (_) {}
-
-  if (!userEl) {
-    await screenshot(page, 'login-no-username');
-    throw new Error(`HutBot login: username field not found. URL: ${page.url()}`);
-  }
-
-  await userEl.fill(user);
-  console.log('[HutBot] Filled username');
-
-  // If password is not yet on screen, click Next/Continue to advance SSO step
-  let passEl = await page.$(PASS_SEL).catch(() => null);
-  if (!passEl || !(await passEl.isVisible().catch(() => false))) {
-    await page.click(SUBMIT_SEL).catch(() => {});
-    await page.waitForTimeout(3000);
-    passEl = await page.waitForSelector(PASS_SEL, { state: 'visible', timeout: 15000 }).catch(() => null);
-  }
-
-  if (!passEl) {
-    await screenshot(page, 'login-no-password');
-    throw new Error(`HutBot login: password field not found. URL: ${page.url()}`);
-  }
-
-  await passEl.fill(pass);
-  console.log('[HutBot] Filled password');
-  await screenshot(page, 'login-creds-filled');
-
-  await page.click(SUBMIT_SEL).catch(() => {});
-
-  // Wait for redirect back to superapp domain
-  try {
-    await page.waitForURL(/superapp\.yum\.com/, { timeout: LOGIN_TIMEOUT });
-    console.log('[HutBot] Login successful — redirected to SuperApp');
-  } catch (_) {
-    await screenshot(page, 'login-redirect-timeout');
-    const finalUrl = page.url();
-    console.warn(`[HutBot] Login redirect timeout — URL: ${finalUrl}`);
-    if (!finalUrl.includes('superapp')) {
-      throw new Error(`HutBot login failed — stuck at: ${finalUrl}`);
-    }
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Scrape
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function checkReachable(hostname) {
-  return new Promise(resolve => {
-    const net = require('net');
-    const socket = net.createConnection({ host: hostname, port: 443 });
-    socket.setTimeout(8000);
-    socket.on('connect', () => { socket.destroy(); resolve(true); });
-    socket.on('error', () => resolve(false));
-    socket.on('timeout', () => { socket.destroy(); resolve(false); });
-  });
-}
 
 async function scrapeHutBot(targetDate) {
-  if (!credentialsPresent()) {
-    console.error('[HutBot] HUTBOT_USER / HUTBOT_PASSWORD env vars not set — skipping scrape');
-    return { success: false, error: 'HUTBOT_USER / HUTBOT_PASSWORD env vars not set. Set them in Render environment variables.' };
+  const auth = await db.getHutBotAuth();
+
+  if (!auth || !auth.cookie_value) {
+    console.warn('[HutBot] No session cookie stored — authorization required');
+    return { success: false, needsReauth: true, error: 'No HutBot session cookie stored — click Authorize HutBot in the dashboard' };
+  }
+  if (!auth.is_valid) {
+    console.warn('[HutBot] Session cookie marked invalid — re-authorization required');
+    return { success: false, needsReauth: true, error: 'HutBot session expired — click Authorize HutBot in the dashboard' };
   }
 
-  // Quick TCP reachability check — avoids 2×60s browser timeout if host is VPN-gated
-  const host = 'admin.superapp.yum.com';
-  const reachable = await checkReachable(host);
-  if (!reachable) {
-    console.warn(`[HutBot] ${host} is not reachable from this network (VPN/corp-gated?) — skipping`);
-    return { success: false, error: `${host} unreachable — likely requires corporate VPN` };
-  }
+  console.log(`[HutBot] Calling Yum API for ${targetDate}`);
 
-  console.log(`[HutBot] Scraping routines for ${targetDate}`);
-  let browser;
+  let respData;
   try {
-    browser = await launchContext(PROFILE_DIR);
+    const response = await fetch(`${YUM_API}?offset=0&pageSize=100`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Cookie': auth.cookie_value,
+      },
+      body: JSON.stringify({ statuses: ['late', 'missed'] }),
+    });
+
+    console.log(`[HutBot] API response: ${response.status}`);
+
+    if (response.status === 401 || response.status === 403) {
+      await db.markHutBotAuthInvalid();
+      return { success: false, needsReauth: true, error: `HutBot session expired (HTTP ${response.status}) — click Authorize HutBot in the dashboard` };
+    }
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error(`[HutBot] API error ${response.status}: ${text.slice(0, 300)}`);
+      return { success: false, error: `Yum API returned ${response.status}: ${text.slice(0, 200)}` };
+    }
+
+    respData = await response.json();
   } catch (err) {
-    console.error('[HutBot] Failed to launch browser:', err.message);
-    return { success: false, error: `Browser launch failed: ${err.message}` };
+    console.error('[HutBot] API request failed:', err.message);
+    return { success: false, error: `HutBot API request failed: ${err.message}` };
   }
 
+  const allItems = respData.items || [];
+  console.log(`[HutBot] API returned ${allItems.length} items (totalElements=${respData.totalElements})`);
+
+  // Build store name → store_id reverse lookup from store assignments
+  const assignments = await db.getStoreAssignments();
+  const nameToId = new Map();
+  for (const [storeId, asgn] of Object.entries(assignments)) {
+    if (asgn.store_name) {
+      nameToId.set(asgn.store_name.toLowerCase().trim(), storeId);
+    }
+  }
+
+  // Filter to target date and map to records
   const records = [];
-  try {
-    const page = await browser.newPage();
-    page.setDefaultTimeout(NAV_TIMEOUT);
+  for (const item of allItems) {
+    // item: { id, status, dueDate, submitTimestamp, lead, submittedBy, storeName, shiftType }
 
-    // ── Navigate to routines ─────────────────────────────────────────────────
-    // Use 'commit' — fires on first byte received, not after DOM parse.
-    // Yum's enterprise portal is slow; domcontentloaded was timing out at 30s.
-    console.log(`[HutBot] Navigating to ${ROUTINES_URL} (waitUntil: commit, timeout: ${NAV_TIMEOUT}ms)`);
+    // Date filter — API may return more than one day; keep only targetDate
+    const itemDate = (item.dueDate || item.submitTimestamp || '').slice(0, 10);
+    if (itemDate && itemDate !== targetDate) continue;
 
-    let navError = null;
-    for (let attempt = 1; attempt <= 1; attempt++) {
-      try {
-        await page.goto(ROUTINES_URL, { waitUntil: 'commit', timeout: NAV_TIMEOUT });
-        navError = null;
-        console.log(`[HutBot] Navigation commit on attempt ${attempt}`);
-        break;
-      } catch (err) {
-        navError = err;
-        console.warn(`[HutBot] Nav attempt ${attempt} failed: ${err.message}. URL at fail: ${page.url()}`);
-        if (attempt < 2) await page.waitForTimeout(5000);
-      }
-    }
-    if (navError) throw new Error(`Navigation to routines URL failed after 2 attempts: ${navError.message}`);
+    // Resolve store_id by name lookup
+    const normalizedName = (item.storeName || '').toLowerCase().trim();
+    let store_id = nameToId.get(normalizedName);
 
-    // Wait for page to actually start rendering content
-    await page.waitForTimeout(3000);
-    const currentUrl = page.url();
-    console.log(`[HutBot] After goto — URL: ${currentUrl}`);
-    await screenshot(page, 'after-nav');
-
-    // ── Detect login requirement ─────────────────────────────────────────────
-    const needsLogin = currentUrl.includes('portalsso')
-      || currentUrl.includes('login')
-      || currentUrl.includes('sso')
-      || currentUrl.includes('auth')
-      || await page.$('input[type="password"], input[name="username"]').then(el => !!el).catch(() => false);
-
-    if (needsLogin) {
-      console.log(`[HutBot] Login required. URL: ${currentUrl}`);
-      await handleLogin(page);
-      const postLoginUrl = page.url();
-      if (!postLoginUrl.includes('routines')) {
-        console.log('[HutBot] Navigating to routines after login...');
-        await page.goto(ROUTINES_URL, { waitUntil: 'commit', timeout: NAV_TIMEOUT });
-        await page.waitForTimeout(3000);
-      }
-    }
-
-    const routinesUrl = page.url();
-    const routinesTitle = await page.title().catch(() => '?');
-    console.log(`[HutBot] On routines page — URL: ${routinesUrl} | Title: ${routinesTitle}`);
-
-    // Wait for page content to load (after auth redirect settles)
-    try {
-      await page.waitForLoadState('domcontentloaded', { timeout: 20000 });
-    } catch (_) {}
-    await page.waitForTimeout(2000);
-    await screenshot(page, 'routines-page');
-
-    // Dump page body so we can diagnose selector issues
-    try {
-      const pageInfo = await page.evaluate(() => ({
-        url:         location.href,
-        title:       document.title,
-        bodyText:    document.body.innerText.slice(0, 600),
-        inputCount:  document.querySelectorAll('input').length,
-        tableCount:  document.querySelectorAll('table, [role="grid"]').length,
-        buttonCount: document.querySelectorAll('button').length,
-      }));
-      console.log('[HutBot] Page info:', JSON.stringify(pageInfo));
-    } catch (_) {}
-
-    // ── Apply date filter ────────────────────────────────────────────────────
-    try {
-      const dateInputs = await page.$$('input[type="date"]');
-      for (const inp of dateInputs) {
-        await inp.fill(targetDate).catch(() => {});
-      }
-      const dateByPlaceholder = await page.$$('input[placeholder*="date" i], input[placeholder*="mm/dd" i]');
-      for (const inp of dateByPlaceholder) {
-        const [y, m, d] = targetDate.split('-');
-        await inp.fill(`${m}/${d}/${y}`).catch(() => {});
-      }
-    } catch (_) {}
-
-    // ── Apply Late + Missed status filters ───────────────────────────────────
-    try {
-      const filterSelectors = [
-        { sel: 'input[type="checkbox"][value*="late" i]',   label: 'Late' },
-        { sel: 'input[type="checkbox"][value*="missed" i]', label: 'Missed' },
-        { sel: 'label:has-text("Late") input[type="checkbox"]',   label: 'Late label' },
-        { sel: 'label:has-text("Missed") input[type="checkbox"]', label: 'Missed label' },
-      ];
-      for (const { sel, label } of filterSelectors) {
-        const el = await page.$(sel);
-        if (el && !(await el.isChecked().catch(() => true))) {
-          await el.click().catch(() => {});
-          console.log(`[HutBot] Checked filter: ${label}`);
+    // Fuzzy fallback: check if any assignment name contains or is contained by the item name
+    if (!store_id && normalizedName) {
+      for (const [name, id] of nameToId) {
+        if (name.includes(normalizedName) || normalizedName.includes(name)) {
+          store_id = id;
+          break;
         }
       }
-    } catch (_) {}
-
-    // ── Click Search / Apply ─────────────────────────────────────────────────
-    try {
-      const searchBtn = await page.$('button:has-text("Search"), button:has-text("Apply"), button:has-text("Filter"), button[type="submit"]');
-      if (searchBtn) {
-        await searchBtn.click();
-        await page.waitForTimeout(4000);
-      }
-    } catch (_) {}
-
-    // ── Wait for results table ───────────────────────────────────────────────
-    try {
-      await page.waitForSelector(
-        'table tbody tr, [role="grid"] [role="row"], [class*="table"] [class*="row"], [class*="routine-row"]',
-        { timeout: 20_000 }
-      );
-    } catch (err) {
-      await screenshot(page, 'no-results-table');
-      const currentPageUrl = page.url();
-      console.warn('[HutBot] Results table not found:', err.message);
-      // Only treat missing table as "no issues" if we're actually on the routines page.
-      // If we ended up somewhere else (login page, error page) it's a real failure.
-      if (!currentPageUrl.includes('superapp.yum.com')) {
-        throw new Error(`HutBot: results table missing AND not on superapp domain. Likely login failure. URL: ${currentPageUrl}`);
-      }
-      return { success: true, records: [], note: 'No results table found on routines page — likely zero issues today' };
     }
 
-    // ── Parse rows ───────────────────────────────────────────────────────────
-    const rows = await page.$$('tr, [role="row"]');
-    for (const row of rows) {
-      try {
-        const cells = await row.$$('td, [role="cell"]');
-        if (cells.length < 3) continue;
-        const texts  = await Promise.all(cells.map(c => c.innerText().catch(() => '')));
-        const rowText = texts.join(' ').toLowerCase();
-        if (!rowText.includes('late') && !rowText.includes('missed')) continue;
-
-        const storeMatch = texts.join(' ').match(/\b(\d{5,6})\b/);
-        if (!storeMatch) continue;
-
-        const store_id       = storeMatch[1].padStart(6, '0');
-        const status         = rowText.includes('missed') ? 'missed' : 'late';
-        const routine_name   = (texts[1] || texts[0] || 'Unknown Routine').trim();
-        const scheduled_time = texts.find(t => /\d{1,2}:\d{2}/.test(t))?.match(/\d{1,2}:\d{2}/)?.[0] || null;
-        const completion_pct = texts.find(t => /\d+%/.test(t))?.match(/(\d+)%/)?.[1] || null;
-
-        records.push({ store_id, routine_name, status, scheduled_time, completion_pct, report_date: targetDate });
-      } catch (_) {}
+    if (!store_id) {
+      console.warn(`[HutBot] No store_id match for storeName="${item.storeName}" — skipping`);
+      continue;
     }
 
-    console.log(`[HutBot] Scraped ${records.length} late/missed routines`);
-    await screenshot(page, records.length > 0 ? 'results-found' : 'results-empty');
+    const status = item.status === 'missed' ? 'missed' : 'late';
+    const minutesLate = (item.submitTimestamp && item.dueDate)
+      ? Math.round((new Date(item.submitTimestamp) - new Date(item.dueDate)) / 60000)
+      : null;
 
-  } catch (err) {
-    console.error('[HutBot] Scrape error:', err.message);
-    await browser.close().catch(() => {});
-    return { success: false, error: err.message };
+    records.push({
+      store_id,
+      store_name:    item.storeName || null,
+      routine_name:  item.shiftType || item.checklistName || 'Routine',
+      status,
+      scheduled_time: item.dueDate || null,
+      minutes_late:  minutesLate,
+      submitted_by:  item.submittedBy || item.lead || null,
+      report_date:   targetDate,
+    });
   }
 
-  await browser.close().catch(() => {});
+  console.log(`[HutBot] ${records.length} records matched to ${targetDate}`);
   return { success: true, records };
 }
 
@@ -323,23 +145,24 @@ async function writeHutBotFlags(records, targetDate) {
     const prevDays = await db.getConsecutiveDays(rec.store_id, metric_type, targetDate);
 
     await db.insertIntelFlag({
-      store_id:    rec.store_id,
-      store_name:  asgn.store_name,
-      area_coach:  asgn.area_coach,
-      region_coach:asgn.region_coach,
-      territory_vp:asgn.vp,
+      store_id:     rec.store_id,
+      store_name:   rec.store_name || asgn.store_name,
+      area_coach:   asgn.area_coach,
+      region_coach: asgn.region_coach,
+      territory_vp: asgn.vp,
       metric_type,
-      metric_date: targetDate,
-      value:       isMissed ? 1 : 0,
-      target:      0,
-      variance:    1,
-      source:      'HUTBOT',
-      tier:        1,
+      metric_date:  targetDate,
+      value:        isMissed ? 1 : 0,
+      target:       0,
+      variance:     1,
+      source:       'HUTBOT',
+      tier:         1,
       details: {
         routine_name:   rec.routine_name,
         status:         rec.status,
         scheduled_time: rec.scheduled_time || null,
-        completion_pct: rec.completion_pct || null,
+        minutes_late:   rec.minutes_late   || null,
+        submitted_by:   rec.submitted_by   || null,
       },
       consecutive_days_out: prevDays + 1,
       severity,
@@ -363,13 +186,13 @@ async function writeHutBotFlags(records, targetDate) {
       for (const row of res.rows) {
         const asgn = assignments[row.store_id] || {};
         await db.insertIntelFlag({
-          store_id:    row.store_id,
-          store_name:  asgn.store_name,
-          area_coach:  asgn.area_coach,
-          region_coach:asgn.region_coach,
-          territory_vp:asgn.vp,
-          metric_type: 'ROUTINE_MISSED',
-          metric_date: targetDate,
+          store_id:     row.store_id,
+          store_name:   asgn.store_name,
+          area_coach:   asgn.area_coach,
+          region_coach: asgn.region_coach,
+          territory_vp: asgn.vp,
+          metric_type:  'ROUTINE_MISSED',
+          metric_date:  targetDate,
           value: 1, target: 0, variance: 1,
           source: 'HUTBOT', tier: 1,
           details: { note: 'Monday reminder — unacknowledged Sunday routine miss' },
@@ -400,7 +223,6 @@ async function processHutBot(targetDate) {
       success: true,
       recordsProcessed: result.records.length,
       flagsWritten,
-      note: result.note || null,
     };
   } catch (err) {
     console.error('[HutBot] DB write error:', err.message);

@@ -513,6 +513,37 @@
   color: #f59e0b; font-weight: 700; letter-spacing: 0.5px;
   cursor: pointer;
 }
+/* HutBot re-auth flashing button */
+@keyframes hutbot-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); }
+  50%       { box-shadow: 0 0 0 7px rgba(239,68,68,0); }
+}
+.hutbot-reauth-btn {
+  display: none; align-items: center; gap: 6px;
+  padding: 6px 14px;
+  background: rgba(239,68,68,0.12); border: 1px solid #ef4444;
+  border-radius: 6px; color: #ef4444; font-size: 12px;
+  font-weight: 700; cursor: pointer; font-family: inherit;
+  animation: hutbot-pulse 1.5s ease-in-out infinite;
+}
+.hutbot-reauth-btn.visible { display: flex; }
+/* Re-auth modal overlay (reuses .hutbot-modal styles) */
+.hutbot-reauth-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55); z-index: 2000;
+  align-items: center; justify-content: center;
+}
+.hutbot-reauth-overlay.open { display: flex; }
+.hutbot-reauth-overlay .hm-steps {
+  font-size: 12px; color: var(--text-secondary);
+  margin: 12px 0 14px; padding-left: 18px; line-height: 1.9;
+}
+.hutbot-reauth-overlay textarea {
+  width: 100%; height: 80px; box-sizing: border-box;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px; font-size: 11px;
+  color: var(--text-primary); font-family: monospace; resize: vertical;
+}
 </style>
 </head>
 <body>
@@ -571,12 +602,17 @@
         <h1>Daily Intel</h1>
         <div class="intel-sub" id="intelSub">Loading intelligence…</div>
       </div>
-      <div class="date-input-wrap">
-        <div class="date-lbl">Report Date</div>
-        <div class="date-nav">
-          <button class="date-nav-btn" onclick="shiftDate(-1)" title="Previous day">&#8249;</button>
-          <input type="date" class="date-picker-input" id="datePicker" onchange="loadDataForDate(this.value)">
-          <button class="date-nav-btn" onclick="shiftDate(1)" title="Next day">&#8250;</button>
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="hutbot-reauth-btn" id="hutbotReauthBtn" onclick="openHutBotReauth()">
+          🔑 Authorize HutBot
+        </button>
+        <div class="date-input-wrap">
+          <div class="date-lbl">Report Date</div>
+          <div class="date-nav">
+            <button class="date-nav-btn" onclick="shiftDate(-1)" title="Previous day">&#8249;</button>
+            <input type="date" class="date-picker-input" id="datePicker" onchange="loadDataForDate(this.value)">
+            <button class="date-nav-btn" onclick="shiftDate(1)" title="Next day">&#8250;</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1534,6 +1570,25 @@ document.getElementById('trendModal').addEventListener('click', function(e) { if
 init();
 </script>
 
+<!-- ── HutBot Re-Auth Modal ───────────────────────────────── -->
+<div class="hutbot-reauth-overlay" id="hutbotReauthOverlay" onclick="if(event.target===this)closeHutBotReauth()">
+  <div class="hutbot-modal" style="max-width:480px">
+    <button class="hm-close" onclick="closeHutBotReauth()">✕</button>
+    <h3>🔑 Reconnect HutBot</h3>
+    <p class="hm-sub">The HutBot session has expired. Paste a fresh Cookie header to reconnect.</p>
+    <ol class="hm-steps">
+      <li>In Chrome, go to <strong>admin.superapp.yum.com</strong> while logged in</li>
+      <li>Press <strong>F12</strong> → <strong>Network</strong> tab → refresh the page</li>
+      <li>Click any request to <strong>api.superapp.yum.com</strong></li>
+      <li>In <strong>Request Headers</strong>, find <strong>Cookie</strong></li>
+      <li>Right-click the value → <strong>Copy value</strong> → paste below</li>
+    </ol>
+    <textarea id="hutbotCookieInput" placeholder="Paste Cookie header value here…"></textarea>
+    <button class="hm-btn" id="hutbotReauthSubmitBtn" onclick="submitHutBotAuth()">Save &amp; Reconnect</button>
+    <div class="hm-result" id="hutbotReauthResult"></div>
+  </div>
+</div>
+
 <!-- ── HutBot Manual Upload Modal ────────────────────────── -->
 <div class="hutbot-modal-overlay" id="hutbotModalOverlay" onclick="if(event.target===this)closeHutBotModal()">
   <div class="hutbot-modal">
@@ -1636,16 +1691,16 @@ init();
     btn.disabled = false;
   };
 
-  // Check HutBot status on page load to show/hide warning badge
+  // Check HutBot status on page load — show flashing button if reauth needed
   async function checkHutBotStatus() {
     try {
       const r = await fetch('/api/intel/hutbot/status');
       if (!r.ok) return;
       const data = await r.json();
       const badge = document.getElementById('hutbotWarnBadge');
-      if (badge && (!data.configured || !data.hasDataToday)) {
-        badge.style.display = 'block';
-      }
+      const reauthBtn = document.getElementById('hutbotReauthBtn');
+      if (data.needsReauth && reauthBtn) reauthBtn.classList.add('visible');
+      if (badge && (!data.configured || !data.hasDataToday)) badge.style.display = 'block';
     } catch (_) {}
   }
 
@@ -1655,6 +1710,51 @@ init();
   } else {
     checkHutBotStatus();
   }
+})();
+</script>
+
+<script>
+// ── HutBot Re-Auth Modal ──────────────────────────────────────────────────────
+(function() {
+  window.openHutBotReauth = function() {
+    document.getElementById('hutbotCookieInput').value = '';
+    document.getElementById('hutbotReauthResult').style.display = 'none';
+    document.getElementById('hutbotReauthOverlay').classList.add('open');
+  };
+  window.closeHutBotReauth = function() {
+    document.getElementById('hutbotReauthOverlay').classList.remove('open');
+  };
+  window.submitHutBotAuth = async function() {
+    const cookie = document.getElementById('hutbotCookieInput').value.trim();
+    const btn    = document.getElementById('hutbotReauthSubmitBtn');
+    const res    = document.getElementById('hutbotReauthResult');
+    if (!cookie) return;
+    btn.disabled = true; btn.textContent = 'Saving…';
+    res.style.display = 'none';
+    try {
+      const r = await fetch('/api/intel/hutbot/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cookie }),
+      });
+      const data = await r.json();
+      res.style.display = 'block';
+      if (r.ok && data.success) {
+        res.className = 'hm-result success';
+        res.textContent = 'Connected! HutBot will use the new session on the next pipeline run.';
+        document.getElementById('hutbotReauthBtn').classList.remove('visible');
+        setTimeout(closeHutBotReauth, 2000);
+      } else {
+        res.className = 'hm-result error';
+        res.textContent = data.error || 'Failed to save session.';
+      }
+    } catch (err) {
+      res.style.display = 'block';
+      res.className = 'hm-result error';
+      res.textContent = 'Network error: ' + err.message;
+    }
+    btn.disabled = false; btn.textContent = 'Save & Reconnect';
+  };
 })();
 </script>
 
