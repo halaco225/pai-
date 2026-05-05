@@ -37,9 +37,11 @@ function parseCookies(response) {
     || (response.headers.getSetCookie ? response.headers.getSetCookie() : []);
   return (raw || []).map(c => c.split(';')[0]);
 }
-function mergeCookies(...arrays) {
+function mergeCookies(...items) {
+  // Each item may be a string (pre-merged header) or an array of individual cookies
+  const all = items.flatMap(x => (Array.isArray(x) ? x : x ? x.split('; ') : []));
   const map = new Map();
-  arrays.flat().forEach(c => { const eq = c.indexOf('='); if (eq > 0) map.set(c.slice(0, eq), c); });
+  all.forEach(c => { const eq = c.indexOf('='); if (eq > 0) map.set(c.slice(0, eq), c); });
   return Array.from(map.values()).join('; ');
 }
 
@@ -98,11 +100,26 @@ async function login() {
   const action1  = extractFormAction(html1, SAML_IDP_URL);
   const hidden1  = extractHiddenFields(html1);
 
-  // Ping Identity step 1: POST username
-  // Field names vary — try common Ping Identity patterns
   const usernameField = html1.match(/name=["'](pf\.username|username|USER|j_username)["']/i)?.[1] || 'pf.username';
-  const body1 = encodeForm({ ...hidden1, [usernameField]: user });
+  console.log(`[HutBotAuth] Form action: ${action1}, usernameField: ${usernameField}, hiddenKeys: ${Object.keys(hidden1).join(',')}`);
 
+  // Check if password field is already on page 1 (single-step Ping Identity)
+  const passFieldOnPage1 = html1.match(/name=["'](pf\.pass|password|PASS|j_password|currentPassword)["']/i)?.[1];
+  if (passFieldOnPage1) {
+    console.log(`[HutBotAuth] Single-step form detected — submitting username+password together (field: ${passFieldOnPage1})`);
+    const postUrl1 = action1.startsWith('http') ? action1 : `https://portalsso.yum.com${action1}`;
+    const body = encodeForm({ ...hidden1, [usernameField]: user, [passFieldOnPage1]: pass });
+    const r2 = await fetch(postUrl1, {
+      method: 'POST', redirect: 'manual',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: mergeCookies(cookies1), 'User-Agent': UA, Referer: idpUrl },
+      body,
+    });
+    const cookies2 = parseCookies(r2);
+    console.log(`[HutBotAuth] Single-step POST → status ${r2.status}, loc: ${r2.headers.get('location') || 'none'}, cookies: ${cookies2.length}`);
+    return await _finishAfterCredentials(r2, cookies2, mergeCookies(cookies1, cookies2), postUrl1);
+  }
+
+  const body1 = encodeForm({ ...hidden1, [usernameField]: user });
   const postUrl1 = action1.startsWith('http') ? action1 : `https://portalsso.yum.com${action1}`;
   console.log(`[HutBotAuth] Step 2: posting username to ${postUrl1}`);
 
@@ -112,6 +129,7 @@ async function login() {
     body: body1,
   });
   const cookies2 = parseCookies(r2);
+  console.log(`[HutBotAuth] Username POST → status ${r2.status}, loc: ${r2.headers.get('location') || 'none'}, cookies: ${cookies2.length}`);
   const allCookies2 = mergeCookies(cookies1, cookies2);
 
   // Follow redirect if needed
@@ -126,11 +144,11 @@ async function login() {
     });
     const extra = parseCookies(r2b);
     html2 = await r2b.text();
-    Object.assign(cookies2, extra);
+    extra.forEach(c => cookies2.push(c));  // fix: was Object.assign which doesn't merge arrays
   } else {
     html2 = await r2.text();
   }
-  console.log(`[HutBotAuth] Password page loaded (${html2.length} bytes)`);
+  console.log(`[HutBotAuth] Password page loaded (${html2.length} bytes), snippet: ${html2.slice(0, 300).replace(/\s+/g, ' ')}`);
   action2 = extractFormAction(html2, postUrl1);
   hidden2 = extractHiddenFields(html2);
 
@@ -139,13 +157,14 @@ async function login() {
   const body2 = encodeForm({ ...hidden2, [passField]: pass });
   const postUrl2 = action2.startsWith('http') ? action2 : `https://portalsso.yum.com${action2}`;
 
-  console.log(`[HutBotAuth] Step 3: posting password to ${postUrl2}`);
+  console.log(`[HutBotAuth] Step 3: posting password to ${postUrl2} (field: ${passField}, hiddenKeys: ${Object.keys(hidden2).join(',')})`);
   const r3 = await fetch(postUrl2, {
     method: 'POST', redirect: 'manual',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: mergeCookies(cookies1, cookies2), 'User-Agent': UA, Referer: postUrl1 },
     body: body2,
   });
   const cookies3 = parseCookies(r3);
+  console.log(`[HutBotAuth] Password POST → status ${r3.status}, loc: ${r3.headers.get('location') || 'none'}, cookies: ${cookies3.length}`);
 
   let html3 = '';
   if (r3.status === 302 || r3.status === 301) {
@@ -161,12 +180,16 @@ async function login() {
   }
   console.log(`[HutBotAuth] Post-password page (${html3.length} bytes)`);
 
+  return await _extractAndPostSAML(html3, mergeCookies(cookies1, cookies2, cookies3));
+}
+
+// Extract SAMLResponse from html and complete the Cognito auth leg
+async function _extractAndPostSAML(html3, allCookiesSoFar) {
   // ── Step 4: Extract SAMLResponse ──────────────────────────────────────────
   const samlResponseMatch = html3.match(/name=["']SAMLResponse["'][^>]*value=["']([^"']+)["']/i)
     || html3.match(/value=["']([^"']{100,})["'][^>]*name=["']SAMLResponse["']/i);
   if (!samlResponseMatch) {
-    // Log page snippet to help diagnose
-    console.error('[HutBotAuth] SAMLResponse not found. Page snippet:', html3.slice(0, 600));
+    console.error('[HutBotAuth] SAMLResponse not found. Full page (first 3000 chars):', html3.slice(0, 3000));
     throw new Error('SAMLResponse not found in IDP response — login may have failed or MFA required');
   }
   const samlResponse = samlResponseMatch[1];
@@ -175,17 +198,16 @@ async function login() {
   console.log('[HutBotAuth] SAMLResponse captured, posting to Cognito ACS');
 
   // ── Step 5: POST SAMLResponse to Cognito ──────────────────────────────────
-  const allCookies = mergeCookies(cookies1, cookies2, cookies3);
   const r4 = await fetch(acsUrl.startsWith('http') ? acsUrl : `https://auth.superapp.yum.com${acsUrl}`, {
     method: 'POST', redirect: 'manual',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: allCookies, 'User-Agent': UA },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: allCookiesSoFar, 'User-Agent': UA },
     body: encodeForm({ SAMLResponse: samlResponse, RelayState: relayState }),
   });
   const cookies4 = parseCookies(r4);
   console.log(`[HutBotAuth] Cognito ACS response: ${r4.status}, cookies: ${cookies4.length}`);
 
   // ── Step 6: Follow Cognito → app redirects, collecting cookies ────────────
-  let finalCookies = mergeCookies(cookies1, cookies2, cookies3, cookies4);
+  let finalCookies = mergeCookies(allCookiesSoFar, cookies4);
   let nextUrl = r4.headers.get('location');
   let hops = 0;
 
@@ -206,6 +228,24 @@ async function login() {
   if (!finalCookies) throw new Error('No session cookies obtained after login');
   console.log('[HutBotAuth] Login complete — session cookies obtained');
   return finalCookies;
+}
+
+// Used by single-step form path: given the POST response after credentials, follow to SAMLResponse
+async function _finishAfterCredentials(r, cookies, allCookies, referer) {
+  let html = '';
+  if (r.status === 302 || r.status === 301) {
+    const loc = r.headers.get('location');
+    console.log(`[HutBotAuth] Post-creds redirect: ${loc}`);
+    const rb = await fetch(loc.startsWith('http') ? loc : `https://portalsso.yum.com${loc}`, {
+      headers: { 'User-Agent': UA, Cookie: allCookies },
+    });
+    parseCookies(rb).forEach(c => cookies.push(c));
+    html = await rb.text();
+  } else {
+    html = await r.text();
+  }
+  console.log(`[HutBotAuth] Post-creds page (${html.length} bytes), snippet: ${html.slice(0, 300).replace(/\s+/g, ' ')}`);
+  return await _extractAndPostSAML(html, mergeCookies(allCookies, cookies));
 }
 
 // ── Public: get valid cookie (from DB cache or fresh login) ───────────────────
