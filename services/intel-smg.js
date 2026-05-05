@@ -39,10 +39,21 @@ async function downloadSMGComments(targetDate) {
   const pass = process.env.SMG_PASSWORD || '';
   if (!user || !pass) throw new Error('SMG_USER / SMG_PASSWORD env vars not set');
 
+  // Clear stale profile to avoid corrupted cached state from prior failed runs
+  try { fs.rmSync(PROFILE_DIR, { recursive: true, force: true }); } catch (_) {}
+  fs.mkdirSync(PROFILE_DIR, { recursive: true });
+
   const browser = await launchContext(PROFILE_DIR, { acceptDownloads: true });
 
   try {
     const page = await browser.newPage();
+    // Patch navigator.webdriver before any page scripts — most common headless
+    // detection trigger.  Without this, SPAs like 360.smg.com refuse to render.
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      // Some sites also check for chrome runtime object
+      if (!window.chrome) window.chrome = { runtime: {} };
+    });
     page.on('console', m => { if (m.type() === 'error') console.log('[SMG] JS error:', m.text().slice(0, 200)); });
 
     // Track URLs at each auth step — embedded in error for DB log visibility
