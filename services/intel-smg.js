@@ -48,78 +48,112 @@ async function downloadSMGComments(targetDate) {
     // Track URLs at each auth step — embedded in error for DB log visibility
     const urlLog = [];
 
-    // ── Step 1: Navigate to 360.smg.com and wait for the SPA to redirect ────────
-    // 360.smg.com sets auth state *before* redirecting to reporting.smg.com.
-    // We must let it do that redirect naturally — navigating directly to
-    // reporting.smg.com skips the state and breaks the session handoff.
-    console.log('[SMG] Step 1: navigating to 360.smg.com, waiting for SSO redirect...');
+    // ── Step 1: Navigate to 360.smg.com — detect login mechanism ─────────────
+    // The 360.smg.com SPA internally navigates to #/ when unauthenticated
+    // (hash navigation, not a top-level redirect).  The login widget at #/ is
+    // likely an iframe loading reporting.smg.com — invisible to waitForURL and
+    // querySelectorAll on the main frame.  We must detect frames explicitly.
+    console.log('[SMG] Step 1: navigating to 360.smg.com...');
     await page.goto(SMG_REPORT_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // Wait up to 20 s for the SPA to redirect to reporting.smg.com for auth
-    let currentUrl;
+    // Give SPA time to initialise and load the #/ login route + any iframes
     try {
-      await page.waitForURL('**/reporting.smg.com/**', { timeout: 20000 });
-      currentUrl = page.url();
-      urlLog.push(`after-360-nav:${currentUrl}`);
-      console.log(`[SMG] Redirected to login: ${currentUrl}`);
-    } catch (_) {
-      currentUrl = page.url();
-      urlLog.push(`after-360-nav-timeout:${currentUrl}`);
-      console.log(`[SMG] No redirect after 20 s — URL: ${currentUrl}`);
+      await page.waitForLoadState('networkidle', { timeout: 20000 });
+    } catch (_) {}
+    await page.waitForTimeout(5000);
+
+    let currentUrl = page.url();
+    urlLog.push(`after-initial-nav:${currentUrl}`);
+    console.log(`[SMG] After initial nav: ${currentUrl}`);
+    await screenshot(page, 'step1-initial', true);
+
+    // Log ALL frames so we can see if an iframe loaded reporting.smg.com
+    const allFrameUrls = page.frames().map(f => f.url());
+    urlLog.push(`frames:${JSON.stringify(allFrameUrls)}`);
+    console.log('[SMG] Page frames:', JSON.stringify(allFrameUrls));
+
+    // Determine which frame (or top-level) has the login form
+    async function findLoginFrame() {
+      // Check for a top-level reporting.smg.com URL
+      if (page.url().includes('reporting.smg.com')) return page.mainFrame();
+      // Check all frames for reporting.smg.com or a login form
+      for (const frame of page.frames()) {
+        const fUrl = frame.url();
+        if (fUrl.includes('reporting.smg.com') || fUrl.includes('/login') || fUrl.includes('/Login')) {
+          console.log('[SMG] Login frame found:', fUrl);
+          return frame;
+        }
+      }
+      // Last resort: scan every frame for an input[type="password"]
+      for (const frame of page.frames()) {
+        try {
+          const pw = await frame.$('input[type="password"]');
+          if (pw) { console.log('[SMG] Found password field in frame:', frame.url()); return frame; }
+        } catch (_) {}
+      }
+      return null;
     }
-    await screenshot(page, 'step1-initial');
 
-    // If still on 360.smg.com after 20 s → cached session
-    if (!currentUrl.includes('reporting.smg.com')) {
-      console.log('[SMG] Cached session — already on 360.smg.com, skipping login');
+    let loginFrame = await findLoginFrame();
+
+    // If no login frame yet, wait up to 15 more seconds for it to appear
+    if (!loginFrame) {
+      console.log('[SMG] No login frame yet — waiting 15 s more...');
+      await page.waitForTimeout(15000);
+      urlLog.push(`after-extra-wait:${page.url()}`);
+      const allFrameUrls2 = page.frames().map(f => f.url());
+      urlLog.push(`frames2:${JSON.stringify(allFrameUrls2)}`);
+      console.log('[SMG] Frames after extra wait:', JSON.stringify(allFrameUrls2));
+      loginFrame = await findLoginFrame();
+    }
+
+    currentUrl = page.url();
+    const isAlreadyOnCard = currentUrl.includes('5b621d617485e95d90e0a370') &&
+                            !loginFrame;
+
+    if (isAlreadyOnCard) {
+      console.log('[SMG] Already authenticated on report card — skipping login');
+    } else if (!loginFrame) {
+      urlLog.push(`no-login-frame:${currentUrl}`);
+      throw new Error(`SMG: Could not find login form. urls=${JSON.stringify(urlLog)}`);
     } else {
-      // On reporting.smg.com login page — fill credentials
-      console.log(`[SMG] On login page: ${currentUrl}`);
-      await screenshot(page, 'step1-login');
+      // Fill credentials in whichever frame has the login form
+      console.log(`[SMG] Filling login form in frame: ${loginFrame.url()}`);
+      await screenshot(page, 'step1-login', true);
 
-      const userField = await page.$('#UserName, input[name="UserName"], input[name="Username"], input[type="email"], input[type="text"]');
-      if (!userField) throw new Error(`SMG login form not found at: ${currentUrl}`);
+      const inputSel = '#UserName, input[name="UserName"], input[name="Username"], input[type="email"], input[type="text"]';
+      const userField = await loginFrame.$(inputSel);
+      if (!userField) throw new Error(`SMG: username field not found in frame ${loginFrame.url()}`);
 
-      console.log('[SMG] Filling credentials...');
       await userField.fill(user);
-      const passField = await page.$('#Password, input[name="Password"], input[type="password"]');
-      if (!passField) throw new Error('SMG password field not found');
+      const passField = await loginFrame.$('#Password, input[name="Password"], input[type="password"]');
+      if (!passField) throw new Error('SMG: password field not found');
       await passField.fill(pass);
       await passField.dispatchEvent('input');
       await passField.dispatchEvent('change');
       await page.waitForTimeout(1500);
 
-      // Enable and click submit
+      // Click submit
+      const submitSel = 'input[type="submit"]:not([disabled]), button[type="submit"]:not([disabled]), #LoginButton:not([disabled]), .btn-primary:not([disabled])';
       try {
-        await page.waitForSelector(
-          'input[type="submit"]:not([disabled]), button[type="submit"]:not([disabled]), #LoginButton:not([disabled]), .btn-primary:not([disabled])',
-          { state: 'visible', timeout: 8000 }
-        );
+        await loginFrame.waitForSelector(submitSel, { state: 'visible', timeout: 8000 });
       } catch (_) { console.log('[SMG] Submit not enabled — pressing Enter'); }
-      const clicked = await page.click(
-        'input[type="submit"]:not([disabled]), button[type="submit"]:not([disabled]), #LoginButton:not([disabled]), .btn-primary:not([disabled])',
-        { timeout: 3000 }
-      ).then(() => true).catch(() => false);
+      const clicked = await loginFrame.click(submitSel, { timeout: 3000 }).then(() => true).catch(() => false);
       if (!clicked) await passField.press('Enter');
+      console.log('[SMG] Submitted login form, clicked:', clicked);
 
-      // Wait for redirect back to 360.smg.com via referrerUri
-      console.log('[SMG] Waiting for redirect back to 360.smg.com...');
+      // Wait for redirect to 360.smg.com card (top-level or frame navigation)
+      console.log('[SMG] Waiting for authenticated card to appear...');
       try {
-        await page.waitForURL('**/360.smg.com/**', { timeout: 20000 });
+        await page.waitForURL('**/360.smg.com/**', { timeout: 25000 });
       } catch (_) {
-        // May land on MultiLanguage.aspx first — wait for it and follow
         const midUrl = page.url();
-        console.log(`[SMG] Intermediate URL: ${midUrl}`);
+        urlLog.push(`post-login-mid:${midUrl}`);
+        console.log(`[SMG] Post-submit URL: ${midUrl}`);
         await screenshot(page, 'step1-mid', true);
         if (midUrl.includes('MultiLanguage')) {
-          // Click the first non-js link to proceed past language selection
           const firstLink = await page.$('a[href]:not([href="#"]):not([href^="javascript"])');
-          if (firstLink) {
-            const href = await firstLink.getAttribute('href');
-            console.log(`[SMG] Clicking past MultiLanguage: ${href}`);
-            await firstLink.click();
-            await page.waitForTimeout(5000);
-          }
+          if (firstLink) { await firstLink.click(); await page.waitForTimeout(5000); }
         }
       }
 
