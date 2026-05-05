@@ -17,14 +17,14 @@
  *   HUTBOT_USER     — Yum network username (e.g. Hgl2743)
  *   HUTBOT_PASSWORD — Yum network password
  */
-const zlib      = require('zlib');
-const crypto    = require('crypto');
 const db        = require('./db');
 const nodeFetch = require('node-fetch');
 
-const SAML_IDP_URL    = 'https://portalsso.yum.com/idp/SSO.saml2';
-const SAML_SP_ENTITY  = 'urn:amazon:cognito:sp:eu-west-1_5wpN4DCgk';
-const COGNITO_ACS_URL = 'https://auth.superapp.yum.com/saml2/idpresponse';
+// IDP-initiated SSO: Ping Identity generates the SAMLResponse without InResponseTo,
+// so Cognito accepts it (SP-initiated with our constructed AuthnRequest was rejected
+// because Cognito had no record of originating that request).
+const IDP_INITIATED_URL = 'https://portalsso.yum.com/idp/startSSO.ping?PartnerSpId=urn:amazon:cognito:sp:eu-west-1_5wpN4DCgk';
+const COGNITO_ACS_URL   = 'https://auth.superapp.yum.com/saml2/idpresponse';
 const API_BASE        = 'https://api.superapp.yum.com';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
@@ -65,29 +65,15 @@ function encodeForm(fields) {
   return Object.entries(fields).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
 }
 
-// ── Build SAML AuthnRequest ────────────────────────────────────────────────────
-async function buildSAMLRequest() {
-  const id  = '_' + crypto.randomUUID().replace(/-/g, '');
-  const now = new Date().toISOString();
-  const xml = `<?xml version="1.0" encoding="UTF-8"?><saml2p:AuthnRequest AssertionConsumerServiceURL="${COGNITO_ACS_URL}" Destination="${SAML_IDP_URL}" ID="${id}" IssueInstant="${now}" Version="2.0" xmlns:saml2p="urn:oasis:names:tc:SAML:2.0:protocol"><saml2:Issuer Format="urn:oasis:names:tc:SAML:2.0:nameid-format:entity" xmlns:saml2="urn:oasis:names:tc:SAML:2.0:assertion">${SAML_SP_ENTITY}</saml2:Issuer></saml2p:AuthnRequest>`;
-  return new Promise((resolve, reject) => {
-    zlib.deflateRaw(Buffer.from(xml, 'utf8'), (err, buf) => {
-      if (err) reject(err);
-      else resolve(encodeURIComponent(buf.toString('base64')));
-    });
-  });
-}
-
-// ── Full login flow ────────────────────────────────────────────────────────────
+// ── Full login flow (IDP-initiated SSO) ───────────────────────────────────────
 async function login() {
   const user = process.env.HUTBOT_USER     || '';
   const pass = process.env.HUTBOT_PASSWORD || '';
   if (!user || !pass) throw new Error('HUTBOT_USER / HUTBOT_PASSWORD env vars not set');
 
-  console.log('[HutBotAuth] Starting SSO login for', user);
+  console.log('[HutBotAuth] Starting IDP-initiated SSO login for', user);
 
-  const samlReq = await buildSAMLRequest();
-  const idpUrl  = `${SAML_IDP_URL}?SAMLRequest=${samlReq}`;
+  const idpUrl = IDP_INITIATED_URL;
 
   // ── Step 1: Load Ping Identity login page ─────────────────────────────────
   console.log('[HutBotAuth] Step 1: loading IDP login page');
