@@ -70,7 +70,7 @@ async function login() {
   console.log('[HutBotAuth] Starting SP-initiated OAuth2/SAML login for', user);
 
   // ── Step 1: Cognito OAuth2 authorize → redirect to Ping Identity ──────────
-  const oauth2Url = `${COGNITO_OAUTH2_BASE}?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code`;
+  const oauth2Url = `${COGNITO_OAUTH2_BASE}?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=openid`;
   console.log('[HutBotAuth] Step 1: Cognito OAuth2 authorize');
   const r0 = await fetch(oauth2Url, { redirect: 'manual', headers: { 'User-Agent': UA } });
   const cognitoCookies = parseCookies(r0);
