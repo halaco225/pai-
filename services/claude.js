@@ -9,9 +9,9 @@ const MODEL = 'claude-sonnet-4-6';
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 // Total budget ~150k tokens across all files — leaves headroom for system prompt + response
-const MAX_FILE_CHARS = 80_000;   // per file
-const MAX_ROWS_PER_SHEET = 500;  // per sheet (most recap files are <200 rows)
-const MAX_ROWS_COMMENTS = 250;   // SMG comments files — comments are long, cap tighter
+const MAX_FILE_CHARS = 14_000;   // per file — keeps 8-file recap under 30k token/min limit
+const MAX_ROWS_PER_SHEET = 120;  // per sheet — enough for FRS region+AC rows, Velocity WTD
+const MAX_ROWS_COMMENTS = 45;    // SMG comments — enough for 10 verbatim quotes
 
 // ─── File text extraction ───────────────────────────────────────────────────
 
@@ -901,7 +901,7 @@ async function analyzeRecap(files, weekLabel, recapDay, lastAcOfWeek, alignmentT
   // Persistent alignment text passed in from DB — never requires re-upload
   const alignBlock = alignmentText
     ? ('\n\n=== MASTER ALIGNMENT FILE (authoritative — use for all store/AC/RGM lookups) ===\n'
-        + alignmentText.slice(0, 60000)
+        + alignmentText.slice(0, 6000)
         + '\n=== END MASTER ALIGNMENT ===')
     : '';
   const alignNote = alignmentText
@@ -949,7 +949,7 @@ Return a structured JSON object with content only for the slides you have real d
   const message = await client.messages.create({
     model: MODEL,
     max_tokens: 16000,
-    system: RECAP_SYSTEM_PROMPT,
+    system: [{ type: 'text', text: RECAP_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: userMessage }]
   });
 
