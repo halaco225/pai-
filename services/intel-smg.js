@@ -109,29 +109,56 @@ async function downloadSMGComments(targetDate) {
         console.log(`[SMG] Post-login URL: ${page.url()}`);
         await screenshot(page, 'step1-post-login');
 
-        // Log ALL links and buttons on the post-login page to find 360.smg.com entry point
+        // Log ALL links on post-login page, look for 360.smg.com SSO or a nav link
         try {
           const allLinks = await page.evaluate(() =>
             Array.from(document.querySelectorAll('a[href]'))
               .map(a => ({ text: (a.innerText||'').trim().slice(0,60), href: a.href }))
-              .filter(x => x.href && x.href !== '#')
+              .filter(x => x.href && x.href !== '#' && !x.href.startsWith('javascript'))
               .slice(0, 40)
           );
           console.log('[SMG] All links on post-login page:', JSON.stringify(allLinks));
-          const allBtns = await page.evaluate(() =>
-            Array.from(document.querySelectorAll('button, input[type="submit"], [role="button"]'))
-              .map(b => ({ text: (b.innerText||b.value||'').trim().slice(0,60), id: b.id, cls: (b.className||'').slice(0,60) }))
-              .slice(0, 20)
-          );
-          console.log('[SMG] All buttons on post-login page:', JSON.stringify(allBtns));
 
           const links360 = allLinks.filter(l => l.href.includes('360.smg.com') || l.href.includes('smg360'));
-          console.log('[SMG] 360.smg.com links on post-login page:', JSON.stringify(links360));
           if (links360.length > 0) {
             console.log(`[SMG] Following SSO link to 360.smg.com: ${links360[0].href}`);
             await page.goto(links360[0].href, { waitUntil: 'domcontentloaded', timeout: 30000 });
-            await page.waitForTimeout(6000);
-            console.log(`[SMG] After SSO link — URL: ${page.url()} | Title: ${await page.title().catch(()=>'?')}`);
+            await page.waitForTimeout(8000);
+            console.log(`[SMG] After SSO link — URL: ${page.url()}`);
+          } else {
+            // MultiLanguage.aspx — click through to main portal and look for 360.smg.com link there
+            console.log('[SMG] No 360 link on landing page — trying to navigate past MultiLanguage.aspx');
+            const firstLink = allLinks[0];
+            if (firstLink) {
+              console.log(`[SMG] Clicking first nav link: ${firstLink.href}`);
+              await page.goto(firstLink.href, { waitUntil: 'domcontentloaded', timeout: 30000 });
+              await page.waitForTimeout(5000);
+              console.log(`[SMG] Main portal URL: ${page.url()}`);
+              await screenshot(page, 'step1-main-portal', true);
+
+              // Now scan main portal for 360.smg.com links
+              const portalLinks360 = await page.evaluate(() =>
+                Array.from(document.querySelectorAll('a[href]'))
+                  .map(a => ({ text: (a.innerText||'').trim().slice(0,60), href: a.href }))
+                  .filter(x => x.href.includes('360.smg.com') || x.href.includes('smg360'))
+              );
+              console.log('[SMG] 360 links on main portal:', JSON.stringify(portalLinks360));
+              if (portalLinks360.length > 0) {
+                console.log(`[SMG] Following portal SSO link: ${portalLinks360[0].href}`);
+                await page.goto(portalLinks360[0].href, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                await page.waitForTimeout(8000);
+                console.log(`[SMG] After portal SSO — URL: ${page.url()}`);
+              } else {
+                // Log all links from main portal for manual inspection
+                const allPortalLinks = await page.evaluate(() =>
+                  Array.from(document.querySelectorAll('a[href]'))
+                    .map(a => ({ text: (a.innerText||'').trim().slice(0,60), href: a.href }))
+                    .filter(x => x.href && x.href !== '#')
+                    .slice(0, 30)
+                );
+                console.log('[SMG] All main portal links:', JSON.stringify(allPortalLinks));
+              }
+            }
           }
         } catch (_) {}
       }
