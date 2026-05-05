@@ -93,8 +93,14 @@ async function login() {
 
     const absLoc = loc.startsWith('http') ? loc : `${ADMIN_BASE}${loc}`;
 
-    // Once we leave the admin domain we've hit Cognito
-    if (!absLoc.includes('admin.superapp.yum.com')) {
+    // Stop when we leave the admin domain — check hostname only, not query params
+    try {
+      const hostname = new URL(absLoc).hostname;
+      if (hostname !== 'admin.superapp.yum.com') {
+        cognitoUrl = absLoc;
+        break;
+      }
+    } catch (_) {
       cognitoUrl = absLoc;
       break;
     }
