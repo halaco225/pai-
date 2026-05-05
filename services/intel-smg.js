@@ -130,43 +130,69 @@ async function downloadSMGComments(targetDate) {
       console.log('[SMG] No login form — session may already be valid');
     }
 
-    // ── Step 1b: Establish auth on 360.smg.com (separate auth from reporting.smg.com) ──
-    // reporting.smg.com and 360.smg.com use different auth systems.
-    // Navigate to 360.smg.com base first so it can redirect or show its own login form.
-    console.log('[SMG] Navigating to 360.smg.com base to establish auth...');
+    // ── Step 1b: Authenticate on 360.smg.com (separate SPA with its own auth) ───
+    // 360.smg.com is a React SPA. We navigate directly to it and let the app
+    // initialize fully (networkidle). The SPA will then either show a login form
+    // or redirect to an external identity provider.
+    console.log('[SMG] Navigating to 360.smg.com — waiting for SPA auth check...');
     await page.goto('https://360.smg.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(6000);
-    const smg360Base = page.url();
-    const smg360Title = await page.title().catch(() => '?');
-    console.log(`[SMG] 360.smg.com base URL: ${smg360Base} | Title: ${smg360Title}`);
-    await screenshot(page, 'step1b-360-base', true);
 
-    // Dump body to diagnose auth state
+    // Give the SPA up to 25s to run auth check and show login form / redirect
+    try {
+      await page.waitForLoadState('networkidle', { timeout: 25000 });
+    } catch (_) {}
+    await page.waitForTimeout(4000);
+
+    let smg360Url = page.url();
+    console.log(`[SMG] 360.smg.com URL after SPA init: ${smg360Url}`);
+    await screenshot(page, 'step1b-360-after-init', true);
+
+    // Dump body so we can see what the SPA rendered
     try {
       const info = await page.evaluate(() => ({
         url: location.href, title: document.title,
-        bodyText: document.body.innerText.slice(0, 400),
+        bodyText: document.body.innerText.slice(0, 600),
         inputCount: document.querySelectorAll('input').length,
         buttonCount: document.querySelectorAll('button').length,
+        allInputTypes: Array.from(document.querySelectorAll('input')).map(i => i.type + ':' + i.name).join(', '),
       }));
-      console.log('[SMG] 360 base info:', JSON.stringify(info));
+      console.log('[SMG] 360 SPA info:', JSON.stringify(info));
     } catch (_) {}
 
-    // If 360.smg.com has its own login form, fill it
-    const smg360UserField = await page.$('#UserName, input[name="Username"], input[name="email"], input[type="email"], input[type="text"]');
+    // If the SPA redirected us to an external auth page, fill credentials there
+    if (!smg360Url.includes('360.smg.com')) {
+      console.log(`[SMG] SPA redirected to external auth: ${smg360Url} — filling credentials`);
+      const extUser = await page.$('input[type="email"], input[type="text"], input[name="username"], input[name="email"], #UserName');
+      if (extUser) {
+        await extUser.fill(user);
+        const extPass = await page.$('input[type="password"]');
+        if (extPass) {
+          await extPass.fill(pass);
+          await page.click('input[type="submit"], button[type="submit"], .btn-primary').catch(() => {});
+          await page.waitForTimeout(6000);
+          console.log(`[SMG] External auth post-login URL: ${page.url()}`);
+        }
+      }
+      await screenshot(page, 'step1b-ext-auth', true);
+    }
+
+    // Look for a login form rendered by the SPA itself
+    const smg360UserField = await page.$('input[type="email"], input[type="text"], input[name="username"], input[name="email"], #UserName, input[placeholder*="email" i], input[placeholder*="user" i]');
     if (smg360UserField) {
       console.log('[SMG] Login form found at 360.smg.com — filling credentials');
       await smg360UserField.fill(user);
-      const smg360PassField = await page.$('#Password, input[name="Password"], input[type="password"]');
+      const smg360PassField = await page.$('input[type="password"]');
       if (smg360PassField) {
         await smg360PassField.fill(pass);
-        await page.click('input[type="submit"], button[type="submit"], #LoginButton, .btn-primary').catch(() => {});
-        await page.waitForTimeout(5000);
+        await smg360PassField.dispatchEvent('input');
+        await page.waitForTimeout(1000);
+        await page.click('input[type="submit"], button[type="submit"], .btn-primary, button:has-text("Sign in"), button:has-text("Login"), button:has-text("Log in")').catch(() => smg360PassField.press('Enter'));
+        await page.waitForTimeout(6000);
         console.log(`[SMG] 360.smg.com post-login URL: ${page.url()}`);
         await screenshot(page, 'step1b-360-post-login', true);
       }
     } else {
-      console.log('[SMG] No login form at 360.smg.com base — may need SSO redirect or already authed');
+      console.log('[SMG] No login form found at 360.smg.com — may already be authenticated or needs different flow');
     }
 
     // ── Step 2: Navigate to report ────────────────────────────────────────────
