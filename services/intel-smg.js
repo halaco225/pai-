@@ -4,22 +4,22 @@
  * the previous-day "Comments By Comment" Excel export from SMG360.
  *
  * Auth flow:
- *   1. Navigate directly to reporting.smg.com/index.aspx?referrerUri=<card_url>
- *      — this always shows the login page (or redirects straight to 360.smg.com
- *        if a valid session cookie already exists on reporting.smg.com)
- *   2. If redirected to 360.smg.com already → session cached, skip login
- *   3. Otherwise fill credentials + submit → reporting.smg.com redirects to
- *      360.smg.com via referrerUri, establishing the SPA session
- *   4. Navigate to card URL, find export button, download Excel
+ *   1. Navigate to 360.smg.com report card URL
+ *   2. Wait up to 20 s for 360.smg.com SPA to redirect to
+ *      reporting.smg.com/index.aspx?referrerUri=<card_url>
+ *      (360.smg.com sets auth state before redirecting — going there directly
+ *       would skip that state and break the session handoff)
+ *   3. If still on 360.smg.com after 20 s → cached session, skip login
+ *   4. Otherwise fill credentials + submit on reporting.smg.com
+ *   5. Wait for redirect back to 360.smg.com — SPA session now established
+ *   6. Navigate to card URL, find export button, download Excel
  */
 const { launchContext } = require('./browser-launch');
 const fs   = require('fs');
 const path = require('path');
 
-const SMG_REPORT_URL   = 'https://360.smg.com/#/card/5b621d617485e95d90e0a370?languageiso=en-US&view=comments&id=5b621d617485e95d90e0a370';
-// Navigate here directly — forces login page (or instant redirect if session valid)
-const SMG_LOGIN_URL    = 'https://reporting.smg.com/index.aspx?referrerUri=' + encodeURIComponent(SMG_REPORT_URL);
-const PROFILE_DIR      = process.env.SMG_PROFILE_DIR || '/tmp/smg-profile';
+const SMG_REPORT_URL = 'https://360.smg.com/#/card/5b621d617485e95d90e0a370?languageiso=en-US&view=comments&id=5b621d617485e95d90e0a370';
+const PROFILE_DIR    = process.env.SMG_PROFILE_DIR || '/tmp/smg-profile';
 
 async function screenshot(page, label, full = false) {
   try {
@@ -45,22 +45,32 @@ async function downloadSMGComments(targetDate) {
     const page = await browser.newPage();
     page.on('console', m => { if (m.type() === 'error') console.log('[SMG] JS error:', m.text().slice(0, 200)); });
 
-    // ── Step 1: Navigate directly to reporting.smg.com with referrerUri ─────────
-    // Going to reporting.smg.com directly guarantees we either see the login
-    // page (unauthenticated) or an instant redirect to 360.smg.com (cached
-    // session).  Avoids relying on 360.smg.com's SPA to redirect us, which it
-    // does lazily after JS initialises (often > 3 s), causing us to
-    // misdetect a blank shell as "already authenticated".
-    console.log('[SMG] Step 1: navigating to reporting.smg.com login with referrerUri...');
-    await page.goto(SMG_LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(3000);
+    // Track URLs at each auth step — embedded in error for DB log visibility
+    const urlLog = [];
 
-    let currentUrl = page.url();
-    console.log(`[SMG] After initial nav: ${currentUrl}`);
+    // ── Step 1: Navigate to 360.smg.com and wait for the SPA to redirect ────────
+    // 360.smg.com sets auth state *before* redirecting to reporting.smg.com.
+    // We must let it do that redirect naturally — navigating directly to
+    // reporting.smg.com skips the state and breaks the session handoff.
+    console.log('[SMG] Step 1: navigating to 360.smg.com, waiting for SSO redirect...');
+    await page.goto(SMG_REPORT_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+    // Wait up to 20 s for the SPA to redirect to reporting.smg.com for auth
+    let currentUrl;
+    try {
+      await page.waitForURL('**/reporting.smg.com/**', { timeout: 20000 });
+      currentUrl = page.url();
+      urlLog.push(`after-360-nav:${currentUrl}`);
+      console.log(`[SMG] Redirected to login: ${currentUrl}`);
+    } catch (_) {
+      currentUrl = page.url();
+      urlLog.push(`after-360-nav-timeout:${currentUrl}`);
+      console.log(`[SMG] No redirect after 20 s — URL: ${currentUrl}`);
+    }
     await screenshot(page, 'step1-initial');
 
-    // If reporting.smg.com already redirected us to 360.smg.com, session is cached
-    if (currentUrl.includes('360.smg.com')) {
+    // If still on 360.smg.com after 20 s → cached session
+    if (!currentUrl.includes('reporting.smg.com')) {
       console.log('[SMG] Cached session — already on 360.smg.com, skipping login');
     } else {
       // On reporting.smg.com login page — fill credentials
@@ -114,6 +124,7 @@ async function downloadSMGComments(targetDate) {
       }
 
       currentUrl = page.url();
+      urlLog.push(`post-login:${currentUrl}`);
       console.log(`[SMG] Post-login URL: ${currentUrl}`);
       await screenshot(page, 'step1-post-login');
     }
@@ -122,6 +133,7 @@ async function downloadSMGComments(targetDate) {
     if (!currentUrl.includes('5b621d617485e95d90e0a370')) {
       console.log('[SMG] Navigating to report card...');
       await page.goto(SMG_REPORT_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      urlLog.push(`after-step2-nav:${page.url()}`);
     }
 
     // Intercept XHR/fetch so we can see what export API the SPA calls
@@ -292,10 +304,11 @@ async function downloadSMGComments(targetDate) {
       console.log('[SMG] Full element dump:', JSON.stringify(els));
       console.log('[SMG] Captured export-related requests:', JSON.stringify(capturedRequests));
       await screenshot(page, 'step3-no-export', true);
-      // Embed truncated diagnostics in the error so they appear in DB job logs
-      const diagSnippet = JSON.stringify(els.slice(0, 20)).slice(0, 800);
+      // Embed diagnostics in error so they appear in DB job logs
+      urlLog.push(`at-step3:${page.url()}`);
+      const diagSnippet = JSON.stringify(els.slice(0, 20)).slice(0, 600);
       const reqSnippet  = JSON.stringify(capturedRequests).slice(0, 200);
-      throw new Error(`SMG: No export button found. els=${diagSnippet} reqs=${reqSnippet}`);
+      throw new Error(`SMG: No export button. urls=${JSON.stringify(urlLog)} els=${diagSnippet} reqs=${reqSnippet}`);
     }
 
     // ── Step 4: Click and download ─────────────────────────────────────────────
