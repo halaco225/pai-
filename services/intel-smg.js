@@ -109,14 +109,23 @@ async function downloadSMGComments(targetDate) {
         console.log(`[SMG] Post-login URL: ${page.url()}`);
         await screenshot(page, 'step1-post-login');
 
-        // Scan all links on the post-login page for any 360.smg.com SSO link
-        // reporting.smg.com often generates a token-bearing redirect link to 360.smg.com
+        // Log ALL links and buttons on the post-login page to find 360.smg.com entry point
         try {
-          const links360 = await page.evaluate(() =>
-            Array.from(document.querySelectorAll('a[href*="360.smg.com"], a[href*="smg360"]'))
+          const allLinks = await page.evaluate(() =>
+            Array.from(document.querySelectorAll('a[href]'))
               .map(a => ({ text: (a.innerText||'').trim().slice(0,60), href: a.href }))
-              .slice(0, 10)
+              .filter(x => x.href && x.href !== '#')
+              .slice(0, 40)
           );
+          console.log('[SMG] All links on post-login page:', JSON.stringify(allLinks));
+          const allBtns = await page.evaluate(() =>
+            Array.from(document.querySelectorAll('button, input[type="submit"], [role="button"]'))
+              .map(b => ({ text: (b.innerText||b.value||'').trim().slice(0,60), id: b.id, cls: (b.className||'').slice(0,60) }))
+              .slice(0, 20)
+          );
+          console.log('[SMG] All buttons on post-login page:', JSON.stringify(allBtns));
+
+          const links360 = allLinks.filter(l => l.href.includes('360.smg.com') || l.href.includes('smg360'));
           console.log('[SMG] 360.smg.com links on post-login page:', JSON.stringify(links360));
           if (links360.length > 0) {
             console.log(`[SMG] Following SSO link to 360.smg.com: ${links360[0].href}`);
@@ -134,6 +143,7 @@ async function downloadSMGComments(targetDate) {
     // 360.smg.com is a React SPA. We navigate directly to it and let the app
     // initialize fully (networkidle). The SPA will then either show a login form
     // or redirect to an external identity provider.
+    page.on('console', m => { if (m.type() === 'error') console.log('[SMG] JS error:', m.text().slice(0, 200)); });
     console.log('[SMG] Navigating to 360.smg.com — waiting for SPA auth check...');
     await page.goto('https://360.smg.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
 
