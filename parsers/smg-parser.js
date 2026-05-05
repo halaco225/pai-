@@ -132,19 +132,19 @@ async function processSMG(filePath, targetDate) {
     const tally = surveyTotals.get(storeId);
     tally.total++;
 
-    if (satisfaction >= 4) {
-      // Shoutout
+    if (satisfaction === 5) {
+      // Shoutout — only a 5 counts as positive
       tally.positive++;
       await db.insertShoutout({
         store_id:     storeId,
         shoutout_date: targetDate,
-        summary:      `Overall Satisfaction: ${satisfaction}/5`,
+        summary:      `Overall Satisfaction: 5/5`,
         full_comment: comment,
         source:       'SMG',
       });
       shoutouts++;
-    } else {
-      // Follow-up flag
+    } else if (satisfaction <= 3) {
+      // Follow-up flag — 3, 2, or 1 are negative; 4 is neutral and skipped
       tally.negative++;
       const prevDays = await db.getConsecutiveDays(storeId, 'SURVEY_FOLLOWUP', targetDate);
       await db.insertIntelFlag({
