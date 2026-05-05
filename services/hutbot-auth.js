@@ -181,16 +181,22 @@ async function _extractAndPostSAML(html3, allCookiesSoFar) {
   const samlResponse = samlResponseMatch[1];
   const relayState   = (html3.match(/name=["']RelayState["'][^>]*value=["']([^"']+)["']/i) || [])[1] || '';
   const acsUrl       = extractFormAction(html3, COGNITO_ACS_URL);
-  console.log('[HutBotAuth] SAMLResponse captured, posting to Cognito ACS');
+  // Derive base for relative redirect URLs from the ACS domain
+  const acsBase = acsUrl.startsWith('http') ? new URL(acsUrl).origin : 'https://auth.hutbot.pizzahut.io';
+  console.log(`[HutBotAuth] SAMLResponse captured, posting to Cognito ACS: ${acsUrl}`);
 
   // ── Step 5: POST SAMLResponse to Cognito ──────────────────────────────────
-  const r4 = await fetch(acsUrl.startsWith('http') ? acsUrl : `https://auth.superapp.yum.com${acsUrl}`, {
+  const r4 = await fetch(acsUrl.startsWith('http') ? acsUrl : `${acsBase}${acsUrl}`, {
     method: 'POST', redirect: 'manual',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: allCookiesSoFar, 'User-Agent': UA },
     body: encodeForm({ SAMLResponse: samlResponse, RelayState: relayState }),
   });
   const cookies4 = parseCookies(r4);
-  console.log(`[HutBotAuth] Cognito ACS response: ${r4.status}, cookies: ${cookies4.length}`);
+  console.log(`[HutBotAuth] Cognito ACS response: ${r4.status}, loc: ${r4.headers.get('location') || 'none'}, cookies: ${cookies4.length}`);
+  if (r4.status >= 400) {
+    const body4 = await r4.text();
+    console.error(`[HutBotAuth] Cognito ACS error body: ${body4.slice(0, 500)}`);
+  }
 
   // ── Step 6: Follow Cognito → app redirects, collecting cookies ────────────
   let finalCookies = mergeCookies(allCookiesSoFar, cookies4);
@@ -199,7 +205,7 @@ async function _extractAndPostSAML(html3, allCookiesSoFar) {
 
   while (nextUrl && hops < 8) {
     hops++;
-    const absUrl = nextUrl.startsWith('http') ? nextUrl : `https://auth.superapp.yum.com${nextUrl}`;
+    const absUrl = nextUrl.startsWith('http') ? nextUrl : `${acsBase}${nextUrl}`;
     console.log(`[HutBotAuth] Redirect hop ${hops}: ${absUrl.slice(0, 80)}`);
     const rN = await fetch(absUrl, {
       redirect: 'manual',
