@@ -1,18 +1,17 @@
 'use strict';
 /**
- * HutBot — Yum SuperApp Routines via REST API.
+ * HutBot — Byte Coach Admin routines via Yum API.
  *
- * Auth: stored Cookie header in hutbot_auth DB table.
- * When the cookie expires the API returns 401/403; we mark it invalid
- * and the UI shows a flashing "Authorize HutBot" button so the user can
- * paste a fresh cookie from Chrome DevTools.
+ * Auth: fully automated via hutbot-auth.js (Ping Identity SSO → Cognito).
+ * On 401/403 the session is marked invalid and automatically re-acquired
+ * on the next run — no manual steps required.
  *
- * API endpoint (reachable from Render via CloudFront, no VPN needed):
+ * API endpoint:
  *   POST https://api.superapp.yum.com/admin-proxy/checklists/search?offset=0&pageSize=100
  *   Body: { statuses: ['late', 'missed'] }
- *   Auth: Cookie: <stored value>
  */
-const db = require('./db');
+const db          = require('./db');
+const { getOrRefreshCookie, login } = require('./hutbot-auth');
 
 const YUM_API = 'https://api.superapp.yum.com/admin-proxy/checklists/search';
 
@@ -20,49 +19,69 @@ const YUM_API = 'https://api.superapp.yum.com/admin-proxy/checklists/search';
 //  Scrape via REST API
 // ─────────────────────────────────────────────────────────────────────────────
 
+async function callApi(cookieStr) {
+  const response = await fetch(`${YUM_API}?offset=0&pageSize=100`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Cookie: cookieStr,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    },
+    body: JSON.stringify({ statuses: ['late', 'missed'] }),
+  });
+  return response;
+}
+
 async function scrapeHutBot(targetDate) {
-  const auth = await db.getHutBotAuth();
-
-  if (!auth || !auth.cookie_value) {
-    console.warn('[HutBot] No session cookie stored — authorization required');
-    return { success: false, needsReauth: true, error: 'No HutBot session cookie stored — click Authorize HutBot in the dashboard' };
-  }
-  if (!auth.is_valid) {
-    console.warn('[HutBot] Session cookie marked invalid — re-authorization required');
-    return { success: false, needsReauth: true, error: 'HutBot session expired — click Authorize HutBot in the dashboard' };
+  const user = process.env.HUTBOT_USER || '';
+  const pass = process.env.HUTBOT_PASSWORD || '';
+  if (!user || !pass) {
+    return { success: false, error: 'HUTBOT_USER / HUTBOT_PASSWORD env vars not set' };
   }
 
-  console.log(`[HutBot] Calling Yum API for ${targetDate}`);
+  console.log(`[HutBot] Fetching routines for ${targetDate}`);
+
+  let cookie;
+  try {
+    cookie = await getOrRefreshCookie();
+  } catch (err) {
+    console.error('[HutBot] Login failed:', err.message);
+    return { success: false, error: `HutBot login failed: ${err.message}` };
+  }
+
+  let response = await callApi(cookie);
+  console.log(`[HutBot] API response: ${response.status}`);
+
+  // If session expired, log in fresh and retry once
+  if (response.status === 401 || response.status === 403) {
+    console.warn('[HutBot] Session expired — re-logging in');
+    await db.markHutBotAuthInvalid();
+    try {
+      cookie = await login();
+      await db.setHutBotAuth(cookie, 'auto-retry');
+      response = await callApi(cookie);
+      console.log(`[HutBot] Retry response: ${response.status}`);
+    } catch (err) {
+      return { success: false, error: `HutBot re-login failed: ${err.message}` };
+    }
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    return { success: false, error: `HutBot auth failed after re-login (HTTP ${response.status})` };
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    console.error(`[HutBot] API error ${response.status}: ${text.slice(0, 300)}`);
+    return { success: false, error: `Yum API returned ${response.status}: ${text.slice(0, 200)}` };
+  }
 
   let respData;
   try {
-    const response = await fetch(`${YUM_API}?offset=0&pageSize=100`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Cookie': auth.cookie_value,
-      },
-      body: JSON.stringify({ statuses: ['late', 'missed'] }),
-    });
-
-    console.log(`[HutBot] API response: ${response.status}`);
-
-    if (response.status === 401 || response.status === 403) {
-      await db.markHutBotAuthInvalid();
-      return { success: false, needsReauth: true, error: `HutBot session expired (HTTP ${response.status}) — click Authorize HutBot in the dashboard` };
-    }
-
-    if (!response.ok) {
-      const text = await response.text();
-      console.error(`[HutBot] API error ${response.status}: ${text.slice(0, 300)}`);
-      return { success: false, error: `Yum API returned ${response.status}: ${text.slice(0, 200)}` };
-    }
-
     respData = await response.json();
   } catch (err) {
-    console.error('[HutBot] API request failed:', err.message);
-    return { success: false, error: `HutBot API request failed: ${err.message}` };
+    return { success: false, error: `HutBot API response parse failed: ${err.message}` };
   }
 
   const allItems = respData.items || [];
