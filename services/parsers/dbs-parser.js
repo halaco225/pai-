@@ -87,9 +87,12 @@ function isSubtotal(colA) {
  * Returns { storeFlags: [], softIndicators: [], assignments: [] }
  */
 function parseDBS(filePath, targetDate) {
-  const wb   = XLSX.readFile(filePath, { cellDates: false, raw: true });
-  const ws   = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+  const wb = XLSX.readFile(filePath, { cellDates: false, raw: true });
+  // Concatenate all sheets — some DBS reports split area coaches across multiple tabs
+  const rows = wb.SheetNames.flatMap(name =>
+    XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null })
+  );
+  console.log(`[DBS] Sheets: ${wb.SheetNames.join(', ')}, total rows: ${rows.length}`);
 
   const storeFlags     = [];  // Tier 1 flag records
   const softIndicators = [];  // Tier 2 soft indicator records
