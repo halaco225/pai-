@@ -117,67 +117,98 @@ async function downloadSMGComments(targetDate) {
       await page.goto(SMG_REPORT_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     }
 
+    // Intercept XHR/fetch so we can see what export API the SPA calls
+    const capturedRequests = [];
+    page.on('request', req => {
+      const u = req.url();
+      if (/export|download|report|excel|xlsx|csv/i.test(u)) capturedRequests.push({ method: req.method(), url: u });
+    });
+
     // Wait for SPA to fully render the card
     console.log('[SMG] Waiting for report card to render...');
     try {
       await page.waitForLoadState('networkidle', { timeout: 30000 });
     } catch (_) { console.log('[SMG] networkidle timeout — continuing'); }
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(10000); // extra time for Angular digest
 
     const reportUrl = page.url();
     console.log(`[SMG] Report URL after wait: ${reportUrl}`);
     await screenshot(page, 'step2-report', true);
 
-    // Verify we're on 360.smg.com and not still on login
     if (!reportUrl.includes('360.smg.com')) {
       throw new Error(`SMG auth failed — stuck at: ${reportUrl}`);
     }
 
-    // Dump page state
+    // Dump page diagnostics (full HTML prefix + button inventory)
     try {
       const info = await page.evaluate(() => ({
         title: document.title,
-        bodyText: document.body.innerText.slice(0, 400),
+        bodyText: document.body.innerText.slice(0, 600),
         buttonCount: document.querySelectorAll('button').length,
+        html: document.body.innerHTML.slice(0, 4000),
       }));
-      console.log('[SMG] Report page info:', JSON.stringify(info));
+      console.log('[SMG] Page info title:', info.title, '| buttons:', info.buttonCount);
+      console.log('[SMG] Body text:', info.bodyText);
+      console.log('[SMG] HTML prefix:', info.html);
+    } catch (_) {}
+
+    // Try to click the "Comments" tab if we're not already on it
+    try {
+      const commentTab = await page.$('[role="tab"]:has-text("Comment"), button:has-text("Comments"), a:has-text("Comments")');
+      if (commentTab) {
+        console.log('[SMG] Clicking Comments tab');
+        await commentTab.click();
+        await page.waitForTimeout(4000);
+        await screenshot(page, 'step2b-comments-tab', true);
+      }
     } catch (_) {}
 
     // ── Step 3: Find and click the export/download button ─────────────────────
     const downloadSelectors = [
+      // Text / aria
       'button[aria-label*="Download" i]', 'button[aria-label*="Export" i]',
       '[aria-label*="Download" i]',        '[aria-label*="Export" i]',
       'button[title*="Download" i]',       'button[title*="Export" i]',
+      '[title*="Download" i]',             '[title*="Export" i]',
       '[data-testid*="export" i]',         '[data-testid*="download" i]',
       'button:has-text("Download")',       'button:has-text("Export")',
       'button:has-text("CSV")',            'button:has-text("Excel")',
       'a:has-text("Export")',              'a:has-text("Download")',
-      '[class*="download-btn"]',           '[class*="export-btn"]',
-      '[class*="downloadButton"]',         '[class*="exportButton"]',
-      'a[href*="export"]',                 'a[href*="download"]',
+      // Class patterns
+      '[class*="download"]',              '[class*="export"]',
+      '[class*="Download"]',              '[class*="Export"]',
+      // href patterns
+      'a[href*="export"]',                'a[href*="download"]',
+      // ng-click / Angular patterns
+      '[ng-click*="download" i]',         '[ng-click*="export" i]',
+      '[(click)*="download" i]',
     ];
 
     let exportEl = null;
     for (const sel of downloadSelectors) {
       try {
-        exportEl = await page.waitForSelector(sel, { state: 'visible', timeout: 2000 });
+        exportEl = await page.waitForSelector(sel, { state: 'visible', timeout: 1500 });
         if (exportEl) { console.log(`[SMG] Found export element: ${sel}`); break; }
       } catch (_) {}
     }
 
-    // Hover-to-reveal
+    // Hover-to-reveal on card header areas
     if (!exportEl) {
       console.log('[SMG] Trying hover-to-reveal...');
-      const hoverTargets = ['[class*="card-header"]','[class*="cardHeader"]','[class*="widget-header"]','h1','h2','h3'];
+      const hoverTargets = [
+        '[class*="card-header"]', '[class*="cardHeader"]', '[class*="card__header"]',
+        '[class*="widget-header"]', '[class*="report-header"]',
+        'h1', 'h2', 'h3', '[class*="title"]',
+      ];
       for (const hSel of hoverTargets) {
         try {
           const hoverEl = await page.$(hSel);
           if (!hoverEl) continue;
           await hoverEl.hover();
-          await page.waitForTimeout(1200);
+          await page.waitForTimeout(1500);
           for (const sel of downloadSelectors) {
             try {
-              exportEl = await page.waitForSelector(sel, { state: 'visible', timeout: 1500 });
+              exportEl = await page.waitForSelector(sel, { state: 'visible', timeout: 1000 });
               if (exportEl) { console.log(`[SMG] Found export after hovering ${hSel}`); break; }
             } catch (_) {}
           }
@@ -186,28 +217,73 @@ async function downloadSMGComments(targetDate) {
       }
     }
 
-    // Evaluate fallback
+    // Try expanding kebab / "..." menus
+    if (!exportEl) {
+      console.log('[SMG] Trying kebab/ellipsis menus...');
+      const menuSelectors = [
+        'button[aria-label*="more" i]', 'button[aria-label*="action" i]',
+        'button[aria-label*="option" i]', 'button[aria-label*="menu" i]',
+        '[class*="kebab"]', '[class*="ellipsis"]', '[class*="more-options"]',
+        '[class*="moreOptions"]', '[class*="dropdown-toggle"]',
+        'button:has-text("...")', 'button:has-text("⋮")', 'button:has-text("•••")',
+      ];
+      for (const mSel of menuSelectors) {
+        try {
+          const menu = await page.$(mSel);
+          if (!menu) continue;
+          await menu.click();
+          await page.waitForTimeout(1500);
+          await screenshot(page, 'step3-menu-open', true);
+          for (const sel of downloadSelectors) {
+            try {
+              exportEl = await page.waitForSelector(sel, { state: 'visible', timeout: 1500 });
+              if (exportEl) { console.log(`[SMG] Found export in menu opened via ${mSel}`); break; }
+            } catch (_) {}
+          }
+          if (exportEl) break;
+          // Close menu with Escape before trying next
+          await page.keyboard.press('Escape');
+          await page.waitForTimeout(500);
+        } catch (_) {}
+      }
+    }
+
+    // Broad evaluate fallback — scan all elements for download/export hints
     if (!exportEl) {
       await page.evaluate(() => {
-        for (const el of document.querySelectorAll('button, [role="button"], a')) {
-          const cls = (el.className||'').toString().toLowerCase();
+        for (const el of document.querySelectorAll('*')) {
+          const cls  = (el.className||'').toString().toLowerCase();
           const aria = (el.getAttribute('aria-label')||'').toLowerCase();
           const text = (el.innerText||'').toLowerCase().trim();
-          if (cls.includes('download')||cls.includes('export')||aria.includes('download')||aria.includes('export')||text==='download'||text==='export')
-            el.setAttribute('data-smg-export-target','true');
+          const title= (el.getAttribute('title')||'').toLowerCase();
+          const ngc  = (el.getAttribute('ng-click')||'').toLowerCase();
+          if (
+            cls.includes('download') || cls.includes('export') ||
+            aria.includes('download') || aria.includes('export') ||
+            title.includes('download') || title.includes('export') ||
+            ngc.includes('download') || ngc.includes('export') ||
+            text === 'download' || text === 'export'
+          ) el.setAttribute('data-smg-export-target', 'true');
         }
       });
       exportEl = await page.$('[data-smg-export-target="true"]');
-      if (exportEl) console.log('[SMG] Found export via evaluate fallback');
+      if (exportEl) console.log('[SMG] Found export via broad evaluate fallback');
     }
 
     if (!exportEl) {
-      // Log all buttons/links for diagnosis
+      // Full element dump for diagnosis
       const els = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('button, [role="button"], a')).slice(0, 40)
-          .map(e => ({ tag: e.tagName, text: (e.innerText||'').trim().slice(0,40), aria: e.getAttribute('aria-label')||'', cls: (e.className||'').toString().slice(0,50) }))
+        Array.from(document.querySelectorAll('button, [role="button"], [role="menuitem"], a, [class*="btn"], [class*="icon"]'))
+          .slice(0, 80)
+          .map(e => ({
+            tag: e.tagName, text: (e.innerText||'').trim().slice(0, 50),
+            aria: e.getAttribute('aria-label')||'', title: e.getAttribute('title')||'',
+            cls: (e.className||'').toString().slice(0, 80),
+            ngClick: e.getAttribute('ng-click')||'',
+          }))
       );
-      console.log('[SMG] Interactive elements:', JSON.stringify(els));
+      console.log('[SMG] Full element dump:', JSON.stringify(els));
+      console.log('[SMG] Captured export-related requests:', JSON.stringify(capturedRequests));
       await screenshot(page, 'step3-no-export', true);
       throw new Error(`SMG: No export button found on report page`);
     }
