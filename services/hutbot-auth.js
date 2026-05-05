@@ -17,9 +17,10 @@
  *   HUTBOT_USER     — Yum network username (e.g. Hgl2743)
  *   HUTBOT_PASSWORD — Yum network password
  */
-const zlib   = require('zlib');
-const crypto = require('crypto');
-const db     = require('./db');
+const zlib      = require('zlib');
+const crypto    = require('crypto');
+const db        = require('./db');
+const nodeFetch = require('node-fetch');
 
 const SAML_IDP_URL    = 'https://portalsso.yum.com/idp/SSO.saml2';
 const SAML_SP_ENTITY  = 'urn:amazon:cognito:sp:eu-west-1_5wpN4DCgk';
@@ -27,9 +28,13 @@ const COGNITO_ACS_URL = 'https://auth.superapp.yum.com/saml2/idpresponse';
 const API_BASE        = 'https://api.superapp.yum.com';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
+// Use node-fetch for all requests (gives us .headers.raw() for multi-value Set-Cookie)
+function fetch(...args) { return nodeFetch(...args); }
+
 // ── Cookie helpers (same pattern as intel-ods.js) ─────────────────────────────
 function parseCookies(response) {
-  const raw = response.headers.raw ? response.headers.raw()['set-cookie'] : [];
+  const raw = (response.headers.raw ? response.headers.raw()['set-cookie'] : null)
+    || (response.headers.getSetCookie ? response.headers.getSetCookie() : []);
   return (raw || []).map(c => c.split(';')[0]);
 }
 function mergeCookies(...arrays) {
