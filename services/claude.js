@@ -34,6 +34,26 @@ async function extractTextFromFile(file) {
     const rowLimit = isComments ? MAX_ROWS_COMMENTS : MAX_ROWS_PER_SHEET;
     workbook.SheetNames.forEach(sheetName => {
       const sheet = workbook.Sheets[sheetName];
+      // Fix incorrect dimension ref — some FRS/POS exports declare ref="A1"
+      // even though they contain thousands of cells. Recalculate the true range.
+      if (!sheet['!ref'] || sheet['!ref'] === 'A1') {
+        const cellKeys = Object.keys(sheet).filter(k => !k.startsWith('!'));
+        if (cellKeys.length > 1) {
+          let minR = Infinity, minC = Infinity, maxR = -Infinity, maxC = -Infinity;
+          cellKeys.forEach(k => {
+            try {
+              const addr = XLSX.utils.decode_cell(k);
+              if (addr.r < minR) minR = addr.r;
+              if (addr.c < minC) minC = addr.c;
+              if (addr.r > maxR) maxR = addr.r;
+              if (addr.c > maxC) maxC = addr.c;
+            } catch (e) {}
+          });
+          if (maxR >= 0) {
+            sheet['!ref'] = XLSX.utils.encode_range({ s: { r: minR, c: minC }, e: { r: maxR, c: maxC } });
+          }
+        }
+      }
       const rows = XLSX.utils.sheet_to_csv(sheet).split('\n');
       const cappedRows = rows.slice(0, rowLimit);
       const wasCapped = rows.length > rowLimit;
@@ -571,6 +591,7 @@ UNEXPECTED FILES: If an uploaded file does not match the standard report types a
 DATA FILE MAPPINGS (permanent — do not change these):
 
 FRS FILE (PH_DGIFRS.xlsx) — Sheet: PH_FRSReport:
+NOTE: This file often has a broken dimension ref (declares "A1" even though it contains 100+ rows). The file parser fixes this automatically — you will receive full CSV data. If data looks incomplete, trust the later rows.
 Region total: row 4 | AC rows: rows 13 onward
 Sales Growth = column G (index 7)
 Labor Var % = column V (index 22) — use THIS, not column N
@@ -579,45 +600,56 @@ HAM OT $ = column Y (index 25)
 PCA % = column AA (index 27)
 COS Var % = column AB (index 28)
 
-HUT BOT FILE (Organization_Breakdown_Summary.xlsx):
+RESTAURANT SCORECARD FILE (any file named "Restaurant Scorecard" or "Scorecard - Month" or "Fiscal Period"):
+Columns: Rest. Champs | Rest. Number | Rest. Name | FZ Name | Area (AC name) | Region | Date | Model | Overall Score | OTD < 18 | [additional metric columns]
+One row per store per period. Multiple rows for the same store = multiple months of history.
+Use this file to:
+- Populate brand scores (Overall Score) and OTD% by store and AC in the AC Performance Table (slide 3)
+- Identify 3-month trends: stores improving vs declining
+- Identify wins (high/improving scores) and focus areas (low/declining scores)
+- Include OTD < 18 % alongside IST for speed context
+The Area column contains AC names in format "Last, First" — normalize to "First Last".
+
+HUT BOT FILE (Organization_Breakdown_Summary.xlsx OR Routines Summary.xlsx):
 'On Time %' = whether FSCC, Pest Walk, Oven Calibration, and Closing audits were completed on schedule. Has NOTHING to do with delivery speed.
-Area-level rows have a backtick (\`) appended to the name.
+Routines Summary.xlsx format: Rest.Champs | Rest.Number | Rest.Name | On Time % | Late % | Missed %
+Use the store number (Rest.Number) to match to AC. Worst stores = lowest On Time %.
 
-ROUTINES STATUS FILE (any file named "Learnings" or "Routines Status" or "Routine Details by User"):
-This file shows individual users (employees/managers) and whether they completed HUT Bot routines.
+ROUTINES STATUS FILE (any file named "Routines Status Details By User" or "Learnings" or "Routine Details by User"):
+Columns: Shift Lead Yum ID | Shift Lead Name | On Time % | Late % | Missed %
+This file shows individual shift leads and their routine completion rates. No store number is directly in this file.
+Cross-reference shift lead names against other files to find their store when possible.
+Extract worst offenders: people with Missed % > 0 first, then Late % > 0. Up to 6 rows. Include their name, completion rates, and store if determinable.
 
-CRITICAL CROSS-REFERENCE — follow these steps:
-STEP 1: Read the Routines Status file. Find each row's: employee/user name, store number or store name, routine type, and completion status.
-STEP 2: Normalize the store number (strip any prefix, use 6-digit format). Match it to the Velocity roster to get the store's full name and AC assignment.
-STEP 3: If the Routines file shows a store NAME instead of a number, match it to the closest store name in the Velocity roster.
-STEP 4: Never output "[Store not mapped]" or "[Unknown]" — if you cannot match the store, use the store name/number exactly as it appears in the file. For AC, search all available files for that store number before giving up.
-
-Extract the worst offenders: up to 6 rows, prioritize "Not Started" over "Late". Include only employees who missed or were late — skip "Completed" entries.
+COMPLETION BY ROUTINE FILE (any file named "Completion by Routine"):
+Shows routine-level breakdown by store. Columns include routine names across the top.
+Use to identify which specific routines are being missed most often — call these out in the scorecard non-completers section.
 
 SMG COMMENTS FILE:
-Header row 7, data starts row 8
-Comment text = column G (index 6)
+This file may have several rows of metadata at the top before the actual data begins. Scan all rows to find the header row containing "Response ID" — data starts immediately after.
+Comment text = column G (or the column labeled with comment/verbatim/feedback text)
 Overall Satisfaction = column S (index 18)
 Score is 1-5 scale from Pizza Hut GES via SMG portal
 Store info in column D, format: 1P039380 - 039380,250 WINDY HILL RD,...
 
 WIN SCORE FILE (ComparisonReport.xls or ComparisonReport.xlsx):
-CRITICAL — follow these steps exactly. Use your built roster (from master alignment file or Velocity) as the store-to-AC lookup.
+IMPORTANT: This file often contains ONLY area-coach-level aggregates (one row per AC), NOT individual store scores. Do not assume store-level data exists — check the actual rows.
 
-STEP 1 — YOU HAVE THE AC ROSTER. From whichever alignment source you used (master alignment file preferred, Velocity as fallback), you know every store number and which AC it belongs to.
+Row format: Area code | Area description | Measure | Current period score | Prior period score | Difference | Count
+WIN scores are decimals — convert to percentage: 0.500587 → 50%
+The "Combined" row = region total.
+AC rows start with area codes like "A-DGI0401-GANNON, MARC"
 
-STEP 2 — READ ALL STORE WIN SCORES from ComparisonReport. Go row by row. For each row that is not the "Combined" header/total row: extract whatever store identifier is present (number, name, or code) and the WIN score decimal. Convert every decimal to a percentage: 0.48 → 48%.
+If the file has ONLY AC-level rows (no store rows):
+- Slide 8 (WIN by AC): populate with AC-level scores only. For top/bottom store columns, use "N/A — store-level data not in this report"
+- Slide 9 (WIN Store Spotlight): OMIT this slide entirely — no store-level WIN data available
 
-STEP 3 — MATCH STORES TO ACS:
-  - Strip any prefix ("1P", region codes) — match on the 6-digit number
-  - If no number is present, match on store name (partial match is fine)
-  - If a match is found, assign that WIN score to that store's AC
+If the file DOES have store-level rows:
+- Match stores to ACs and compute AC averages
+- Populate slides 8 and 9 with store-level detail
 
-STEP 4 — COMPUTE AC-LEVEL WIN. For each AC: average the WIN scores of all their matched stores. Even if only 2 of 5 stores matched, use those 2 — label as "61% (4/5 stores)".
-
-STEP 5 — REGION TOTAL. Use the "Combined" row value if present. Otherwise average all matched stores.
-
-FALLBACK — if ComparisonReport is missing or completely unreadable: check if the Velocity WTD IST file has a WIN column. Never output "[Data mapping needed]" — always provide a number or explain specifically what file is missing.
+ALWAYS compare current period vs prior period and note the direction (up/down) for each AC.
+FALLBACK — if ComparisonReport is missing: check if the Velocity WTD IST file has a WIN column.
 WIN SCORE METHODOLOGY — critical for coaching and analysis:
 - Score of 5 = PASSING (counts toward WIN%)
 - Score of 4 = NOT COUNTED (excluded from scoring) — coaching goal is to upgrade every 4 to a 5
@@ -1318,63 +1350,4 @@ async function analyzePLForAC(file, acName) {
 
 // ─── Analyze Additional Content (append to existing deck) ────────────────────
 
-async function analyzeAdditionalContent(files, rawText, topic) {
-  const parts = [];
-
-  if (files && files.length) {
-    for (const f of files) {
-      const text = await extractTextFromFile(f);
-      parts.push(`=== FILE: ${f.originalname} ===\n${text}`);
-    }
-  }
-  if (rawText && rawText.trim()) {
-    parts.push(`=== PASTED CONTENT ===\n${rawText.trim()}`);
-  }
-
-  const content = parts.join('\n\n');
-  if (!content) throw new Error('No content provided to analyze.');
-
-  const prompt = `You are analyzing additional information to be added as slides to an existing weekly region recap presentation for a pizza franchise operator (Ayvaz Pizza LLC / Pizza Hut).
-
-TOPIC: ${topic || 'Additional Information'}
-
-CONTENT TO ANALYZE:
-${content}
-
-Analyze this content and return a JSON object with this exact structure:
-{
-  "title": "Short slide title (max 6 words, all caps)",
-  "source": "Brief source description (e.g. 'Crispy Pan Training Rollout')",
-  "bullets": [
-    { "text": "Key point or finding", "bold": false },
-    { "text": "Important metric or action item", "bold": true }
-  ],
-  "narrative": "Optional 2-3 sentence summary if bullets alone are insufficient"
-}
-
-Rules:
-- Extract the most operationally relevant points (max 10 bullets)
-- Mark bullets as bold: true if they are action items, goals, or critical metrics
-- Keep each bullet under 120 characters
-- If the content is training-related, focus on what managers need to DO
-- If data/metrics, highlight the most important numbers
-- Return ONLY valid JSON, no markdown fences`;
-
-  const msg = await client.messages.create({
-    model: MODEL,
-    max_tokens: 1024,
-    messages: [{ role: 'user', content: prompt }]
-  });
-
-  const raw = msg.content[0]?.text || '';
-  try {
-    const m = raw.match(/\{[\s\S]*\}/);
-    return m ? JSON.parse(m[0]) : { title: topic || 'ADDITIONAL INFO', bullets: [], narrative: raw };
-  } catch {
-    return { title: topic || 'ADDITIONAL INFO', bullets: [], narrative: raw };
-  }
-}
-
-// ─── Exports ──────────────────────────────────────────────────────────────────────
-
-module.exports = { analyzePL, analyzePLForAC, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail, generateDailyIntelEmail, analyzeAdditionalContent };
+async function analyzeAddi
