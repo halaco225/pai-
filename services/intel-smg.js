@@ -285,7 +285,10 @@ async function downloadSMGComments(targetDate) {
       console.log('[SMG] Full element dump:', JSON.stringify(els));
       console.log('[SMG] Captured export-related requests:', JSON.stringify(capturedRequests));
       await screenshot(page, 'step3-no-export', true);
-      throw new Error(`SMG: No export button found on report page`);
+      // Embed truncated diagnostics in the error so they appear in DB job logs
+      const diagSnippet = JSON.stringify(els.slice(0, 20)).slice(0, 800);
+      const reqSnippet  = JSON.stringify(capturedRequests).slice(0, 200);
+      throw new Error(`SMG: No export button found. els=${diagSnippet} reqs=${reqSnippet}`);
     }
 
     // ── Step 4: Click and download ─────────────────────────────────────────────
