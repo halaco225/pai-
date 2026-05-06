@@ -1,25 +1,164 @@
 'use strict';
 /**
- * SMG download helper — logs in via the referrerUri SSO flow and downloads
- * the previous-day "Comments By Comment" Excel export from SMG360.
+ * SMG download helper — hybrid HTTP auth + Playwright SPA interaction.
  *
  * Auth flow:
- *   1. Navigate to 360.smg.com report card URL
- *   2. Wait up to 20 s for 360.smg.com SPA to redirect to
- *      reporting.smg.com/index.aspx?referrerUri=<card_url>
- *      (360.smg.com sets auth state before redirecting — going there directly
- *       would skip that state and break the session handoff)
- *   3. If still on 360.smg.com after 20 s → cached session, skip login
- *   4. Otherwise fill credentials + submit on reporting.smg.com
- *   5. Wait for redirect back to 360.smg.com — SPA session now established
- *   6. Navigate to card URL, find export button, download Excel
+ *   1. HTTP GET reporting.smg.com/index.aspx?referrerUri=<card_url>
+ *      → extract __VIEWSTATE / __VIEWSTATEGENERATOR / __EVENTVALIDATION
+ *   2. HTTP POST with credentials → reporting.smg.com sets .ASPXAUTH cookie
+ *      and redirects to 360.smg.com (the referrerUri)
+ *   3. Inject reporting.smg.com cookies into Playwright context so the
+ *      360.smg.com SPA's CORS requests to reporting.smg.com are authenticated
+ *   4. Navigate Playwright to the 360.smg.com redirect URL — SPA loads with
+ *      an authenticated session
+ *   5. Find the export button, click, download Excel
  */
 const { launchContext } = require('./browser-launch');
-const fs   = require('fs');
-const path = require('path');
+const https = require('https');
+const fs    = require('fs');
+const path  = require('path');
 
 const SMG_REPORT_URL = 'https://360.smg.com/#/card/5b621d617485e95d90e0a370?languageiso=en-US&view=comments&id=5b621d617485e95d90e0a370';
 const PROFILE_DIR    = process.env.SMG_PROFILE_DIR || '/tmp/smg-profile';
+
+// ── HTTP helpers ────────────────────────────────────────────────────────────
+
+function httpRequest(method, url, { headers = {}, body } = {}) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const opts = {
+      hostname: u.hostname,
+      path:     u.pathname + u.search,
+      method,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept':     'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        ...headers,
+      },
+    };
+    if (body) opts.headers['Content-Length'] = Buffer.byteLength(body);
+    const req = https.request(opts, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: data }));
+    });
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
+function extractHiddenField(html, name) {
+  const re = new RegExp(`name=["']${name}["'][^>]*value=["']([^"']*)["']`, 'i');
+  const re2 = new RegExp(`value=["']([^"']*)["'][^>]*name=["']${name}["']`, 'i');
+  const m = html.match(re) || html.match(re2);
+  return m ? m[1] : '';
+}
+
+function parseCookies(setCookieHeader) {
+  if (!setCookieHeader) return {};
+  const arr = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
+  const out = {};
+  for (const h of arr) {
+    const [nameVal] = h.split(';');
+    const eq = nameVal.indexOf('=');
+    if (eq < 0) continue;
+    const name = nameVal.slice(0, eq).trim();
+    const val  = nameVal.slice(eq + 1).trim();
+    if (name) out[name] = val;
+  }
+  return out;
+}
+
+function cookieStr(obj) {
+  return Object.entries(obj).map(([k, v]) => `${k}=${v}`).join('; ');
+}
+
+// ── HTTP auth against reporting.smg.com ────────────────────────────────────
+
+async function httpSmgLogin(user, pass) {
+  const loginUrl = `https://reporting.smg.com/index.aspx?referrerUri=${encodeURIComponent(SMG_REPORT_URL)}`;
+
+  // Step 1: GET login page to extract ASP.NET form tokens
+  console.log('[SMG] HTTP GET login page...');
+  const getResp = await httpRequest('GET', loginUrl);
+  console.log(`[SMG] GET → ${getResp.status}`);
+  if (getResp.status !== 200) throw new Error(`SMG login page unreachable: HTTP ${getResp.status}`);
+
+  const html    = getResp.body;
+  const cookies = parseCookies(getResp.headers['set-cookie']);
+
+  const viewstate    = extractHiddenField(html, '__VIEWSTATE');
+  const viewstateGen = extractHiddenField(html, '__VIEWSTATEGENERATOR');
+  const eventVal     = extractHiddenField(html, '__EVENTVALIDATION');
+
+  if (!viewstate) throw new Error('SMG: __VIEWSTATE not found — login page structure changed');
+  console.log('[SMG] Got VIEWSTATE, posting credentials...');
+
+  // Step 2: POST credentials (same URL — ASP.NET posts back to itself)
+  const formBody = new URLSearchParams({
+    '__LASTFOCUS':                          '',
+    'ctl00_TheScriptManager_HiddenField':   '',
+    '__EVENTTARGET':                        '',
+    '__EVENTARGUMENT':                      '',
+    '__VIEWSTATE':                          viewstate,
+    '__VIEWSTATEGENERATOR':                 viewstateGen,
+    '__EVENTVALIDATION':                    eventVal,
+    'ctl00$cphMain$txtUserName':            user,
+    'ctl00$cphMain$txtPassword':            pass,
+  }).toString();
+
+  const postResp = await httpRequest('POST', loginUrl, {
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Referer':      loginUrl,
+      'Cookie':       cookieStr(cookies),
+    },
+    body: formBody,
+  });
+
+  const postCookies = parseCookies(postResp.headers['set-cookie']);
+  const allCookies  = { ...cookies, ...postCookies };
+  const location    = postResp.headers['location'] || '';
+
+  console.log(`[SMG] POST → ${postResp.status}, Location: ${location}`);
+
+  if (postResp.status === 302 && location) {
+    return { success: true, cookies: allCookies, location };
+  }
+
+  // 200 with body = stayed on login page → wrong credentials or CSRF failure
+  if (postResp.status === 200) {
+    const errMatch = postResp.body.match(/class=["'][^"']*error[^"']*["'][^>]*>([^<]{1,200})/i);
+    const errMsg   = errMatch ? errMatch[1].trim() : '(no error text found)';
+    // Log first 500 chars of response so we can diagnose
+    console.log('[SMG] Login POST 200 body snippet:', postResp.body.slice(0, 500));
+    throw new Error(`SMG login failed (credentials rejected?): ${errMsg}`);
+  }
+
+  throw new Error(`SMG login POST returned HTTP ${postResp.status}`);
+}
+
+// Follow a chain of HTTP redirects (up to maxHops) and collect cookies
+async function followRedirects(startUrl, startCookies, maxHops = 5) {
+  let url     = startUrl;
+  let cookies = { ...startCookies };
+  for (let i = 0; i < maxHops; i++) {
+    const resp   = await httpRequest('GET', url, { headers: { 'Cookie': cookieStr(cookies) } });
+    const more   = parseCookies(resp.headers['set-cookie']);
+    cookies      = { ...cookies, ...more };
+    const loc    = resp.headers['location'];
+    console.log(`[SMG] Redirect hop ${i + 1}: ${resp.status} → ${loc || '(done)'}`);
+    if (resp.status < 300 || resp.status >= 400 || !loc) {
+      return { finalUrl: url, cookies, status: resp.status };
+    }
+    url = loc.startsWith('http') ? loc : new URL(loc, url).href;
+  }
+  return { finalUrl: url, cookies };
+}
+
+// ── Screenshot helper ───────────────────────────────────────────────────────
 
 async function screenshot(page, label, full = false) {
   try {
@@ -30,6 +169,8 @@ async function screenshot(page, label, full = false) {
   } catch (_) {}
 }
 
+// ── Main download function ──────────────────────────────────────────────────
+
 async function downloadSMGComments(targetDate) {
   const tmpDir  = '/tmp/uploads';
   fs.mkdirSync(tmpDir, { recursive: true });
@@ -39,241 +180,129 @@ async function downloadSMGComments(targetDate) {
   const pass = process.env.SMG_PASSWORD || '';
   if (!user || !pass) throw new Error('SMG_USER / SMG_PASSWORD env vars not set');
 
-  // Clear stale profile to avoid corrupted cached state from prior failed runs
+  // ── Phase 1: Authenticate via HTTP ────────────────────────────────────────
+  let authResult;
+  try {
+    authResult = await httpSmgLogin(user, pass);
+  } catch (err) {
+    console.error('[SMG] HTTP auth failed:', err.message);
+    return { success: false, error: err.message };
+  }
+
+  console.log(`[SMG] Auth OK, redirect: ${authResult.location}`);
+  console.log(`[SMG] Cookies obtained: ${Object.keys(authResult.cookies).join(', ')}`);
+
+  // Follow any intermediate redirects (MultiLanguage.aspx etc.) to get final 360.smg.com URL
+  let spaUrl    = authResult.location;
+  let spaCookies = authResult.cookies;
+  if (!spaUrl.includes('360.smg.com')) {
+    console.log('[SMG] Following intermediate redirects...');
+    const hops = await followRedirects(spaUrl, spaCookies);
+    spaUrl    = hops.finalUrl;
+    spaCookies = hops.cookies;
+    console.log(`[SMG] Final URL after redirects: ${spaUrl}`);
+  }
+
+  // ── Phase 2: Load the 360.smg.com SPA with pre-loaded auth cookies ────────
+  // Clear stale profile then inject cookies before the SPA loads
   try { fs.rmSync(PROFILE_DIR, { recursive: true, force: true }); } catch (_) {}
   fs.mkdirSync(PROFILE_DIR, { recursive: true });
 
   const browser = await launchContext(PROFILE_DIR, { acceptDownloads: true });
 
   try {
+    // Inject reporting.smg.com auth cookies so SPA's CORS calls succeed
+    const cookiesToInject = Object.entries(spaCookies).map(([name, value]) => ({
+      name, value,
+      domain: 'reporting.smg.com',
+      path:   '/',
+      secure: true,
+    }));
+    if (cookiesToInject.length) {
+      await browser.addCookies(cookiesToInject);
+      console.log(`[SMG] Injected ${cookiesToInject.length} cookies into browser context`);
+    }
+
     const page = await browser.newPage();
-    // Patch navigator.webdriver before any page scripts — most common headless
-    // detection trigger.  Without this, SPAs like 360.smg.com refuse to render.
     await page.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-      // Some sites also check for chrome runtime object
       if (!window.chrome) window.chrome = { runtime: {} };
     });
-    page.on('console', m => { if (m.type() === 'error') console.log('[SMG] JS error:', m.text().slice(0, 200)); });
+    page.on('console', m => { if (m.type() === 'error') console.log('[SMG] JS:', m.text().slice(0, 150)); });
 
-    // Track URLs at each auth step — embedded in error for DB log visibility
-    const urlLog = [];
-
-    // ── Step 1: Navigate to 360.smg.com — detect login mechanism ─────────────
-    // The 360.smg.com SPA internally navigates to #/ when unauthenticated
-    // (hash navigation, not a top-level redirect).  The login widget at #/ is
-    // likely an iframe loading reporting.smg.com — invisible to waitForURL and
-    // querySelectorAll on the main frame.  We must detect frames explicitly.
-    console.log('[SMG] Step 1: navigating to 360.smg.com...');
-    await page.goto(SMG_REPORT_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-
-    // Give SPA time to initialise and load the #/ login route + any iframes
-    try {
-      await page.waitForLoadState('networkidle', { timeout: 20000 });
-    } catch (_) {}
-    await page.waitForTimeout(5000);
-
-    let currentUrl = page.url();
-    urlLog.push(`after-initial-nav:${currentUrl}`);
-    console.log(`[SMG] After initial nav: ${currentUrl}`);
-    await screenshot(page, 'step1-initial', true);
-
-    // Log ALL frames so we can see if an iframe loaded reporting.smg.com
-    const allFrameUrls = page.frames().map(f => f.url());
-    urlLog.push(`frames:${JSON.stringify(allFrameUrls)}`);
-    console.log('[SMG] Page frames:', JSON.stringify(allFrameUrls));
-
-    // Determine which frame (or top-level) has the login form
-    async function findLoginFrame() {
-      // Check for a top-level reporting.smg.com URL
-      if (page.url().includes('reporting.smg.com')) return page.mainFrame();
-      // Check all frames for reporting.smg.com or a login form
-      for (const frame of page.frames()) {
-        const fUrl = frame.url();
-        if (fUrl.includes('reporting.smg.com') || fUrl.includes('/login') || fUrl.includes('/Login')) {
-          console.log('[SMG] Login frame found:', fUrl);
-          return frame;
-        }
-      }
-      // Last resort: scan every frame for an input[type="password"]
-      for (const frame of page.frames()) {
-        try {
-          const pw = await frame.$('input[type="password"]');
-          if (pw) { console.log('[SMG] Found password field in frame:', frame.url()); return frame; }
-        } catch (_) {}
-      }
-      return null;
-    }
-
-    let loginFrame = await findLoginFrame();
-
-    // If no login frame yet, wait up to 15 more seconds for it to appear
-    if (!loginFrame) {
-      console.log('[SMG] No login frame yet — waiting 15 s more...');
-      await page.waitForTimeout(15000);
-      urlLog.push(`after-extra-wait:${page.url()}`);
-      const allFrameUrls2 = page.frames().map(f => f.url());
-      urlLog.push(`frames2:${JSON.stringify(allFrameUrls2)}`);
-      console.log('[SMG] Frames after extra wait:', JSON.stringify(allFrameUrls2));
-      loginFrame = await findLoginFrame();
-    }
-
-    currentUrl = page.url();
-    const isAlreadyOnCard = currentUrl.includes('5b621d617485e95d90e0a370') &&
-                            !loginFrame;
-
-    if (isAlreadyOnCard) {
-      console.log('[SMG] Already authenticated on report card — skipping login');
-    } else if (!loginFrame) {
-      urlLog.push(`no-login-frame:${currentUrl}`);
-      throw new Error(`SMG: Could not find login form. urls=${JSON.stringify(urlLog)}`);
-    } else {
-      // Fill credentials in whichever frame has the login form
-      console.log(`[SMG] Filling login form in frame: ${loginFrame.url()}`);
-      await screenshot(page, 'step1-login', true);
-
-      const inputSel = '#UserName, input[name="UserName"], input[name="Username"], input[type="email"], input[type="text"]';
-      const userField = await loginFrame.$(inputSel);
-      if (!userField) throw new Error(`SMG: username field not found in frame ${loginFrame.url()}`);
-
-      await userField.fill(user);
-      const passField = await loginFrame.$('#Password, input[name="Password"], input[type="password"]');
-      if (!passField) throw new Error('SMG: password field not found');
-      await passField.fill(pass);
-      await passField.dispatchEvent('input');
-      await passField.dispatchEvent('change');
-      await page.waitForTimeout(1500);
-
-      // Click submit
-      const submitSel = 'input[type="submit"]:not([disabled]), button[type="submit"]:not([disabled]), #LoginButton:not([disabled]), .btn-primary:not([disabled])';
-      try {
-        await loginFrame.waitForSelector(submitSel, { state: 'visible', timeout: 8000 });
-      } catch (_) { console.log('[SMG] Submit not enabled — pressing Enter'); }
-      const clicked = await loginFrame.click(submitSel, { timeout: 3000 }).then(() => true).catch(() => false);
-      if (!clicked) await passField.press('Enter');
-      console.log('[SMG] Submitted login form, clicked:', clicked);
-
-      // Wait for redirect to 360.smg.com card (top-level or frame navigation)
-      console.log('[SMG] Waiting for authenticated card to appear...');
-      try {
-        await page.waitForURL('**/360.smg.com/**', { timeout: 25000 });
-      } catch (_) {
-        const midUrl = page.url();
-        urlLog.push(`post-login-mid:${midUrl}`);
-        console.log(`[SMG] Post-submit URL: ${midUrl}`);
-        await screenshot(page, 'step1-mid', true);
-        if (midUrl.includes('MultiLanguage')) {
-          const firstLink = await page.$('a[href]:not([href="#"]):not([href^="javascript"])');
-          if (firstLink) { await firstLink.click(); await page.waitForTimeout(5000); }
-        }
-      }
-
-      currentUrl = page.url();
-      urlLog.push(`post-login:${currentUrl}`);
-      console.log(`[SMG] Post-login URL: ${currentUrl}`);
-      await screenshot(page, 'step1-post-login');
-    }
-
-    // ── Step 2: Navigate to the report card (in case we're at a different 360 URL) ─
-    if (!currentUrl.includes('5b621d617485e95d90e0a370')) {
-      console.log('[SMG] Navigating to report card...');
-      await page.goto(SMG_REPORT_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      urlLog.push(`after-step2-nav:${page.url()}`);
-    }
-
-    // Intercept XHR/fetch so we can see what export API the SPA calls
-    const capturedRequests = [];
+    // Intercept export-related requests for diagnosis
+    const capturedReqs = [];
     page.on('request', req => {
-      const u = req.url();
-      if (/export|download|report|excel|xlsx|csv/i.test(u)) capturedRequests.push({ method: req.method(), url: u });
+      if (/export|download|excel|xlsx|csv|report/i.test(req.url())) {
+        capturedReqs.push({ method: req.method(), url: req.url() });
+      }
     });
 
-    // Wait for SPA to fully render the card
-    console.log('[SMG] Waiting for report card to render...');
+    // Navigate to the 360.smg.com SPA URL (with auth token if present in redirect)
+    const navUrl = spaUrl.includes('360.smg.com') ? spaUrl : SMG_REPORT_URL;
+    console.log(`[SMG] Navigating SPA to: ${navUrl}`);
+    await page.goto(navUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
     try {
-      await page.waitForLoadState('networkidle', { timeout: 30000 });
+      await page.waitForLoadState('networkidle', { timeout: 25000 });
     } catch (_) { console.log('[SMG] networkidle timeout — continuing'); }
-    await page.waitForTimeout(10000); // extra time for Angular digest
+    await page.waitForTimeout(8000);
 
-    const reportUrl = page.url();
-    console.log(`[SMG] Report URL after wait: ${reportUrl}`);
-    await screenshot(page, 'step2-report', true);
+    const pageUrl = page.url();
+    console.log(`[SMG] SPA URL after load: ${pageUrl}`);
+    await screenshot(page, 'step2-spa', true);
 
-    if (!reportUrl.includes('360.smg.com')) {
-      throw new Error(`SMG auth failed — stuck at: ${reportUrl}`);
-    }
-
-    // Dump page diagnostics (full HTML prefix + button inventory)
+    // Dump diagnostics
     try {
       const info = await page.evaluate(() => ({
-        title: document.title,
-        bodyText: document.body.innerText.slice(0, 600),
-        buttonCount: document.querySelectorAll('button').length,
-        html: document.body.innerHTML.slice(0, 4000),
+        title:   document.title,
+        buttons: document.querySelectorAll('button').length,
+        links:   document.querySelectorAll('a').length,
+        inputs:  document.querySelectorAll('input').length,
+        body100: document.body.innerHTML.slice(0, 800),
       }));
-      console.log('[SMG] Page info title:', info.title, '| buttons:', info.buttonCount);
-      console.log('[SMG] Body text:', info.bodyText);
-      console.log('[SMG] HTML prefix:', info.html);
+      console.log('[SMG] Page:', JSON.stringify({ title: info.title, buttons: info.buttons, links: info.links, inputs: info.inputs }));
+      console.log('[SMG] Body snippet:', info.body100);
     } catch (_) {}
 
-    // Try to click the "Comments" tab if we're not already on it
-    try {
-      const commentTab = await page.$('[role="tab"]:has-text("Comment"), button:has-text("Comments"), a:has-text("Comments")');
-      if (commentTab) {
-        console.log('[SMG] Clicking Comments tab');
-        await commentTab.click();
-        await page.waitForTimeout(4000);
-        await screenshot(page, 'step2b-comments-tab', true);
-      }
-    } catch (_) {}
-
-    // ── Step 3: Find and click the export/download button ─────────────────────
-    const downloadSelectors = [
-      // Text / aria
+    // ── Phase 3: Find and click the export button ──────────────────────────
+    const exportSelectors = [
       'button[aria-label*="Download" i]', 'button[aria-label*="Export" i]',
       '[aria-label*="Download" i]',        '[aria-label*="Export" i]',
       'button[title*="Download" i]',       'button[title*="Export" i]',
       '[title*="Download" i]',             '[title*="Export" i]',
       '[data-testid*="export" i]',         '[data-testid*="download" i]',
-      'button:has-text("Download")',       'button:has-text("Export")',
-      'button:has-text("CSV")',            'button:has-text("Excel")',
+      'button:has-text("Download")',        'button:has-text("Export")',
+      'button:has-text("CSV")',             'button:has-text("Excel")',
       'a:has-text("Export")',              'a:has-text("Download")',
-      // Class patterns
-      '[class*="download"]',              '[class*="export"]',
-      '[class*="Download"]',              '[class*="Export"]',
-      // href patterns
-      'a[href*="export"]',                'a[href*="download"]',
-      // ng-click / Angular patterns
-      '[ng-click*="download" i]',         '[ng-click*="export" i]',
-      '[(click)*="download" i]',
+      '[class*="download"]',               '[class*="export"]',
+      '[class*="Download"]',               '[class*="Export"]',
+      '[ng-click*="download" i]',          '[ng-click*="export" i]',
+      'a[href*="export"]',                 'a[href*="download"]',
     ];
 
     let exportEl = null;
-    for (const sel of downloadSelectors) {
+
+    // Direct selector search
+    for (const sel of exportSelectors) {
       try {
         exportEl = await page.waitForSelector(sel, { state: 'visible', timeout: 1500 });
-        if (exportEl) { console.log(`[SMG] Found export element: ${sel}`); break; }
+        if (exportEl) { console.log(`[SMG] Found export: ${sel}`); break; }
       } catch (_) {}
     }
 
-    // Hover-to-reveal on card header areas
+    // Hover-to-reveal
     if (!exportEl) {
-      console.log('[SMG] Trying hover-to-reveal...');
-      const hoverTargets = [
-        '[class*="card-header"]', '[class*="cardHeader"]', '[class*="card__header"]',
-        '[class*="widget-header"]', '[class*="report-header"]',
-        'h1', 'h2', 'h3', '[class*="title"]',
-      ];
-      for (const hSel of hoverTargets) {
+      for (const hSel of ['[class*="card-header"]','[class*="cardHeader"]','[class*="widget"]','h1','h2','h3','[class*="title"]']) {
         try {
-          const hoverEl = await page.$(hSel);
-          if (!hoverEl) continue;
-          await hoverEl.hover();
-          await page.waitForTimeout(1500);
-          for (const sel of downloadSelectors) {
+          const el = await page.$(hSel);
+          if (!el) continue;
+          await el.hover();
+          await page.waitForTimeout(1200);
+          for (const sel of exportSelectors) {
             try {
               exportEl = await page.waitForSelector(sel, { state: 'visible', timeout: 1000 });
-              if (exportEl) { console.log(`[SMG] Found export after hovering ${hSel}`); break; }
+              if (exportEl) { console.log(`[SMG] Found export after hover on ${hSel}`); break; }
             } catch (_) {}
           }
           if (exportEl) break;
@@ -281,91 +310,74 @@ async function downloadSMGComments(targetDate) {
       }
     }
 
-    // Try expanding kebab / "..." menus
+    // Kebab / "..." menu expansion
     if (!exportEl) {
-      console.log('[SMG] Trying kebab/ellipsis menus...');
-      const menuSelectors = [
-        'button[aria-label*="more" i]', 'button[aria-label*="action" i]',
-        'button[aria-label*="option" i]', 'button[aria-label*="menu" i]',
-        '[class*="kebab"]', '[class*="ellipsis"]', '[class*="more-options"]',
-        '[class*="moreOptions"]', '[class*="dropdown-toggle"]',
-        'button:has-text("...")', 'button:has-text("⋮")', 'button:has-text("•••")',
-      ];
-      for (const mSel of menuSelectors) {
+      for (const mSel of [
+        'button[aria-label*="more" i]', 'button[aria-label*="action" i]', 'button[aria-label*="menu" i]',
+        '[class*="kebab"]', '[class*="ellipsis"]', '[class*="more-options"]', '[class*="dropdown-toggle"]',
+        'button:has-text("...")', 'button:has-text("⋮")',
+      ]) {
         try {
           const menu = await page.$(mSel);
           if (!menu) continue;
           await menu.click();
           await page.waitForTimeout(1500);
-          await screenshot(page, 'step3-menu-open', true);
-          for (const sel of downloadSelectors) {
+          for (const sel of exportSelectors) {
             try {
-              exportEl = await page.waitForSelector(sel, { state: 'visible', timeout: 1500 });
-              if (exportEl) { console.log(`[SMG] Found export in menu opened via ${mSel}`); break; }
+              exportEl = await page.waitForSelector(sel, { state: 'visible', timeout: 1000 });
+              if (exportEl) { console.log(`[SMG] Found export in menu ${mSel}`); break; }
             } catch (_) {}
           }
           if (exportEl) break;
-          // Close menu with Escape before trying next
           await page.keyboard.press('Escape');
-          await page.waitForTimeout(500);
         } catch (_) {}
       }
     }
 
-    // Broad evaluate fallback — scan all elements for download/export hints
+    // Broad DOM scan
     if (!exportEl) {
       await page.evaluate(() => {
         for (const el of document.querySelectorAll('*')) {
-          const cls  = (el.className||'').toString().toLowerCase();
-          const aria = (el.getAttribute('aria-label')||'').toLowerCase();
-          const text = (el.innerText||'').toLowerCase().trim();
-          const title= (el.getAttribute('title')||'').toLowerCase();
-          const ngc  = (el.getAttribute('ng-click')||'').toLowerCase();
-          if (
-            cls.includes('download') || cls.includes('export') ||
-            aria.includes('download') || aria.includes('export') ||
-            title.includes('download') || title.includes('export') ||
-            ngc.includes('download') || ngc.includes('export') ||
-            text === 'download' || text === 'export'
-          ) el.setAttribute('data-smg-export-target', 'true');
+          const cls  = (el.className || '').toString().toLowerCase();
+          const aria = (el.getAttribute('aria-label') || '').toLowerCase();
+          const txt  = (el.innerText || '').toLowerCase().trim();
+          const ttl  = (el.getAttribute('title') || '').toLowerCase();
+          if (cls.includes('download') || cls.includes('export') ||
+              aria.includes('download') || aria.includes('export') ||
+              ttl.includes('download') || ttl.includes('export') ||
+              txt === 'download' || txt === 'export') {
+            el.setAttribute('data-smg-export', 'true');
+          }
         }
       });
-      exportEl = await page.$('[data-smg-export-target="true"]');
-      if (exportEl) console.log('[SMG] Found export via broad evaluate fallback');
+      exportEl = await page.$('[data-smg-export="true"]');
+      if (exportEl) console.log('[SMG] Found export via broad DOM scan');
     }
 
     if (!exportEl) {
       // Full element dump for diagnosis
       const els = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('button, [role="button"], [role="menuitem"], a, [class*="btn"], [class*="icon"]'))
-          .slice(0, 80)
-          .map(e => ({
-            tag: e.tagName, text: (e.innerText||'').trim().slice(0, 50),
-            aria: e.getAttribute('aria-label')||'', title: e.getAttribute('title')||'',
-            cls: (e.className||'').toString().slice(0, 80),
-            ngClick: e.getAttribute('ng-click')||'',
-          }))
+        Array.from(document.querySelectorAll('button,[role="button"],[role="menuitem"],a,[class*="btn"],[class*="icon"]'))
+          .slice(0, 60)
+          .map(e => ({ tag: e.tagName, text: (e.innerText||'').trim().slice(0,50), aria: e.getAttribute('aria-label')||'', title: e.getAttribute('title')||'', cls: (e.className||'').toString().slice(0,80) }))
       );
-      console.log('[SMG] Full element dump:', JSON.stringify(els));
-      console.log('[SMG] Captured export-related requests:', JSON.stringify(capturedRequests));
+      console.log('[SMG] Element dump:', JSON.stringify(els));
+      console.log('[SMG] Captured requests:', JSON.stringify(capturedReqs));
       await screenshot(page, 'step3-no-export', true);
-      // Embed diagnostics in error so they appear in DB job logs
-      urlLog.push(`at-step3:${page.url()}`);
-      const diagSnippet = JSON.stringify(els.slice(0, 20)).slice(0, 600);
-      const reqSnippet  = JSON.stringify(capturedRequests).slice(0, 200);
-      throw new Error(`SMG: No export button. urls=${JSON.stringify(urlLog)} els=${diagSnippet} reqs=${reqSnippet}`);
+      const diagSnippet = JSON.stringify(els.slice(0, 15)).slice(0, 500);
+      throw new Error(`SMG: No export button found. pageUrl=${pageUrl} els=${diagSnippet} reqs=${JSON.stringify(capturedReqs).slice(0,200)}`);
     }
 
-    // ── Step 4: Click and download ─────────────────────────────────────────────
+    // ── Phase 4: Click export and download ────────────────────────────────
     const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
     await exportEl.click();
-    console.log('[SMG] Clicked export');
+    console.log('[SMG] Clicked export button');
     await page.waitForTimeout(800);
 
-    // Handle format picker submenu
+    // Handle Excel format picker submenu if it appears
     try {
       await page.click(
-        'li:has-text("Excel"), li:has-text("XLSX"), button:has-text("XLSX"), [role="menuitem"]:has-text("Excel"), [role="menuitem"]:has-text("XLSX")',
+        'li:has-text("Excel"), li:has-text("XLSX"), [role="menuitem"]:has-text("Excel"), [role="menuitem"]:has-text("XLSX")',
         { timeout: 4000 }
       );
       console.log('[SMG] Clicked Excel format option');
