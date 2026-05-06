@@ -773,7 +773,7 @@ router.post('/acknowledge', async (req, res) => {
     const user       = req.session.user;
     const { flag_id, action_taken } = req.body;
     if (!flag_id || !action_taken) return res.status(400).json({ error: 'flag_id and action_taken required' });
-    if (action_taken.trim().length < 20) return res.status(400).json({ error: 'action_taken must be at least 20 characters — explain what you actually did.' });
+    if (action_taken.trim().length < 5) return res.status(400).json({ error: 'action_taken must be at least 5 characters — explain what you actually did.' });
 
     const p = db.getPool();
     if (!p) return res.status(503).json({ error: 'Database unavailable' });

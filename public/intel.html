@@ -468,7 +468,7 @@ function renderPerfTable(data){
       +'<td class="n">'+(i+1)+'</td>'
       +'<td><div class="ac-cell" data-ac="'+escH(ac.area_coach||'')+'" onclick="toggleDrill(this.dataset.ac)">'
       +'<div class="ac-av">'+ini+'</div>'
-      +'<div><div class="ac-nm">'+escH(ac.area_coach||'Unknown')+'</div><div class="ac-sc">'+((ac.stores||[]).length)+' stores</div></div>'
+      +'<div><div class="ac-nm">'+escH(ac.area_coach||'Unknown')+'</div><div class="ac-sc">'+(ac.store_count||0)+' stores</div></div>'
       +'<span class="arrow '+(isOpen?'open':'')+'">▶</span></div></td>'
       +'<td>'+mCell(ac.net_sales,'money','g')+'</td>'
       +'<td>'+mCell(ac.growth_pct,'pct_s','growth')+'</td>'
@@ -630,7 +630,13 @@ function renderBriefItems(tab){
     c.innerHTML=items.map(s=>'<div class="shoutout-card"><div class="sh-store">★ '+escH(s.store_name||s.store_id||'')+'</div><div class="sh-body">'+escH(s.summary||s.comment_text||'')+'</div><div class="sh-meta">'+escH(s.area_coach||'')+'</div></div>').join('');
   }else{
     const tc=tab==='urgent'?'tag-u':'tag-w';
-    c.innerHTML=items.map(f=>'<div class="brief-card"><div class="bc-store">'+escH(f.store_name||f.store_id||'Unknown')+' <span class="bc-time">· '+fmtDate(f.flag_date||f.created_at)+'</span></div><div class="bc-desc">'+escH(f.description||f.flag_reason||'')+'</div><div class="bc-tags"><span class="bc-tag '+tc+'">'+(tab==='urgent'?'Urgent':'Watch')+'</span><span class="bc-tag tag-w">'+fmtMetric(f.metric_type)+'</span></div></div>').join('');
+    c.innerHTML=items.map(f=>{
+      const detail=[];
+      if(f.value!=null)detail.push('Value: '+Number(f.value).toFixed(2));
+      if(f.target!=null)detail.push('Target: '+Number(f.target).toFixed(2));
+      if(f.consecutive_days_out>1)detail.push(f.consecutive_days_out+' days out');
+      return'<div class="brief-card"><div class="bc-store">'+escH(f.store_name||f.store_id||'Unknown')+' <span class="bc-time">· '+fmtDate(f.flag_date||f.created_at)+'</span></div>'+(detail.length?'<div class="bc-desc">'+escH(detail.join(' · '))+'</div>':'')+'<div class="bc-desc" style="color:#64748b;font-size:11px">'+escH(f.area_coach||'')+'</div><div class="bc-tags"><span class="bc-tag '+tc+'">'+(tab==='urgent'?'Urgent':'Watch')+'</span><span class="bc-tag tag-w">'+fmtMetric(f.metric_type)+'</span></div></div>';
+    }).join('');
   }
 }
 
@@ -705,7 +711,7 @@ function fmtRole(r){return{rdo:'RDO / Region Coach',area_coach:'Area Coach',vp:'
 function sevOrd(s){return s==='high'?3:s==='medium'?2:1;}
 function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function safeId(s){return String(s||'').replace(/[^a-z0-9]/gi,'_');}
-function fmtDate(d){if(!d)return'—';return new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
+function fmtDate(d){if(!d)return'—';const s=String(d);const dt=s.includes('T')||s.includes(' ')?new Date(s):new Date(s+'T12:00:00');return isNaN(dt)?'—':dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
 function fmtMoney(v){if(v==null)return'—';const n=Number(v);return n>=1000?'$'+(n/1000).toFixed(1)+'k':'$'+n.toFixed(0);}
 function fmtPct(v){return v==null?'—':(Number(v)>0?'+':'')+Number(v).toFixed(1)+'%';}
 function fmtHrs(v){return v==null?'—':Number(v).toFixed(1)+' hrs';}
