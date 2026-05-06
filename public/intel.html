@@ -161,6 +161,9 @@ button{font-family:inherit;cursor:pointer}
 .days-badge.d4{background:#7f1d1d;color:#fca5a5}.days-badge.d2{background:#78350f;color:#fcd34d}.days-badge.d1{background:#1a2f50;color:#93c5fd}
 .flag-inds{font-size:13px;color:#e2e8f0;font-weight:600;margin:6px 0 3px;line-height:1.4}
 .flag-val-ctx{font-size:11px;color:#475569;margin-top:2px}
+.flag-emp-list{font-size:12px;color:#94a3b8;margin-top:5px;line-height:1.6}
+.emp-job{color:#475569;font-size:11px}
+.emp-sep{color:#1e2d4d}
 .flag-bottom{display:flex;align-items:center;justify-content:space-between}
 .flag-time{font-size:11px;color:#3b4d6b}
 .ack-btn{padding:6px 14px;background:#1a2f50;border:1px solid #2d4a6d;border-radius:6px;color:#60a5fa;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
@@ -731,10 +734,16 @@ function buildFlagDetail(f){
   }
   const vStr=fmtFlagVal(f.metric_type,f.value);
   const tStr=fmtFlagVal(f.metric_type,f.target);
+  let extra='';
+  if(f.metric_type==='FORGOT_CLOCKOUT'&&det.employees&&det.employees.length){
+    extra='<div class="flag-emp-list">'+det.employees.map(e=>escH(e.name||'')+(e.job_code?'<span class="emp-job"> '+escH(e.job_code)+'</span>':'')).join('<span class="emp-sep"> · </span>')+'</div>';
+  }else if(f.metric_type==='GUEST_COMPLAINT'&&det.negative_count!=null){
+    extra='<div class="flag-val-ctx">'+det.negative_count+' negative review'+(det.negative_count!==1?'s':'')+' · '+det.total_comments+' total</div>';
+  }
   return'<div class="flag-val-row">'
     +'<span class="flag-val-big '+sc+'">'+(vStr!=null?escH(vStr):'—')+'</span>'
-    +(tStr!=null?'<span class="flag-val-lim">limit '+escH(tStr)+'</span>':'')
-    +daysBadge+'</div>';
+    +(tStr!=null&&tStr!=='0'?'<span class="flag-val-lim">limit '+escH(tStr)+'</span>':'')
+    +daysBadge+'</div>'+extra;
 }
 async function quickAck(cb,flagId){
   cb.disabled=true;
