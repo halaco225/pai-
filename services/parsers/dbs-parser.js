@@ -74,8 +74,10 @@ function isSectionHeader(colA, colE) {
     (String(colE).trim() === 'Net Sales $' || String(colE).trim() === 'Change Down $');
 }
 function isGroupLabel(colA, colE) {
-  return colA && String(colA).trim() !== '' && !isStoreRow(colA) &&
-    (colE == null || String(colE).trim() === '');
+  if (!colA || String(colA).trim() === '') return false;
+  if (isStoreRow(colA)) return false;
+  if (!isNaN(Number(String(colA).trim()))) return false; // skip numeric cells (Excel date serials, totals)
+  return colE == null || String(colE).trim() === '';
 }
 function isSubtotal(colA) {
   const s = String(colA || '').trim();
