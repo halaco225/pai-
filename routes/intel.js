@@ -466,16 +466,13 @@ router.get('/kpis', async (req, res) => {
       };
     }
 
-    // Scope metrics by store_id (from store_assignments) — avoids null area_coach in intel_dbs_metrics
-    // causing missing sales for some ACs even though their stores are in the region.
-    const storeIdList = assignRes.rows.map(r => r.store_id);
-    const storeIdParam = storeIdList.length ? storeIdList : ['__none__'];
-
+    // Fetch all metrics for the date — storeMap (seeded from store_assignments) scopes in JS.
+    // Avoids type-mismatch issues with store_id = ANY() across different DB column types.
     const [metricsRes, flagCountRes, fcOtRes, surveyRes, routinesRes, laborRes] = await Promise.all([
       p.query(`SELECT area_coach, store_id, store_name,
         net_sales_day, growth_pct_day, cancel_unmade_day, paidouts_day, cash_variance_day
-        FROM intel_dbs_metrics WHERE metric_date=$1 AND store_id = ANY($2::text[])
-        ORDER BY area_coach, store_id`, [date, storeIdParam]),
+        FROM intel_dbs_metrics WHERE metric_date=$1
+        ORDER BY area_coach, store_id`, [date]),
       p.query(`SELECT area_coach, store_id, severity, COUNT(*) as cnt
         FROM intel_flags WHERE ${flagWhere} GROUP BY area_coach, store_id, severity`, fp),
       p.query(`SELECT area_coach, store_id,
@@ -495,14 +492,9 @@ router.get('/kpis', async (req, res) => {
       p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='labor_pct'`, [date])
     ]);
 
-    // Overlay DBS metrics onto storeMap
+    // Overlay DBS metrics — only update stores already in storeMap (in scope)
     for (const r of metricsRes.rows) {
-      if (!storeMap[r.store_id]) storeMap[r.store_id] = {
-        area_coach: r.area_coach, store_id: r.store_id, store_name: r.store_name,
-        net_sales: null, growth_pct: null, cancels: null,
-        labor_pct: null, ot_hours: 0, comments_pos: 0, comments_neg: 0,
-        forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0
-      };
+      if (!storeMap[r.store_id]) continue;  // store not in user's scope, skip
       Object.assign(storeMap[r.store_id], {
         net_sales: r.net_sales_day ? +r.net_sales_day : null,
         growth_pct: r.growth_pct_day != null ? +r.growth_pct_day : null,
