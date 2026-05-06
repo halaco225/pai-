@@ -553,57 +553,91 @@ ALIGNMENT LOOKUP RULES (apply regardless of source):
 2. If a file shows a store name instead of a number, match against store name/city (partial match OK).
 3. RGM names for HUT Bot Bottom 5 and non-completers come from the alignment source above. If marked OPEN, note "Position Open".
 4. Never output "[Store not mapped]", "[Unknown]", or "[Data mapping needed]" — if you cannot find a store, use the identifier exactly as it appears in the file and note it could not be matched.
-DECK STRUCTURE — DYNAMIC, DATA-DRIVEN:
-Build slides ONLY for data that was actually uploaded. Do NOT include a slide if its source file was not provided. An absent JSON key is correct — never generate placeholder, empty, or "data not available" content. First inventory what files were uploaded, identify what data is present, then build only the slides you have real data for.
+HOW TO BUILD THIS DECK — MANDATORY PROCESS:
 
-The possible slides and their required data sources are listed below. If the source file for a slide was not uploaded, omit that slide's key from the JSON entirely.
+STEP 1 — INVENTORY (do this before writing a single JSON key):
+List every file you received. For each file state: its name, what type of report it is, and what data it contains. This inventory is the only thing that determines what slides get built. Example:
+  • PH_DGIFRS.xlsx → FRS labor file: labor var, OT, PCA, COS by AC → enables laborDeepDive
+  • Velocity WTD IST.xlsx → sales/WIN/IST by store and AC, includes daily tabs → enables title, scorecard, acTable, speedOutlier
+  • No ComparisonReport found → winByAC and winStoreSpotlight will NOT appear in this deck
 
-Slide order (when data is available):
+STEP 2 — IRON RULE ON WHAT GETS BUILT:
+A JSON key appears in your output if and only if you have real, specific data to fill every required field in that slide. These conditions mean NO data — omit the key entirely:
+  - Empty array []
+  - "N/A", "—", "TBD", "[data not available]", placeholder strings
+  - A key with only null or empty string values
+A deck with 3 slides is correct if 3 slides have real data. A deck with 11 slides is correct if 11 slides have real data. Never add a slide to "complete a set." The template does not exist — only the data exists.
 
-SLIDE 1 — TITLE [REQUIRED SOURCE: Velocity WTD IST file]: Region name | Week label | 4 preview stat cards: Sales Growth, Labor Var, WIN, HUT Bot. OMIT if no Velocity file uploaded.
+STEP 3 — SLIDE TYPES AND THEIR TRIGGERS:
+Each slide type has a trigger (the data you need to have found in Step 1). If your inventory doesn't include that data, the JSON key does not appear — not as empty, not as null, not at all.
 
-SLIDE 2 — REGION SCORECARD [REQUIRED SOURCE: Velocity WTD IST + Routines Summary. OPTIONAL: Routines Status Details for non-completers]:
-5 stat cards + HUT Bot breakdown + Bottom 5 stores table + non-completers table.
+TITLE slide (key: "title") — trigger: Velocity WTD IST file uploaded
+Build: Region name | Week label | 4 preview stat cards: Sales Growth, Labor Var, WIN, HUT Bot.
+
+SCORECARD slide (key: "scorecard") — trigger: Velocity WTD IST uploaded. Enhanced by Routines Summary.
+Build: 5 stat cards + HUT Bot breakdown + Bottom 5 stores + non-completers table.
 COMPUTING BOTTOM 5 STORES for hutBotBreakdown.bottom5Stores:
-  STEP 1: Read Routines Summary.xlsx. Each row = one store with Rest.Number and On Time % (decimal, e.g. 0.577 = 57.7%).
-  STEP 2: Sort ALL stores by On Time % ascending. Take the 5 with the lowest On Time %.
-  STEP 3: For each of these 5 stores, find which AC owns that store number using the Velocity WTD IST file or master alignment.
-  STEP 4: Output: store name (Rest.Name), storeNum (Rest.Number), ac (AC full name), onTime (as percentage string like "57.7%").
-  STEP 5: manager field — use "See alignment" if unknown. Never leave ac blank.
+  STEP A: Read Routines Summary.xlsx. Each row = one store with Rest.Number and On Time % (decimal, e.g. 0.577 = 57.7%).
+  STEP B: Sort ALL stores by On Time % ascending. Take the 5 with the lowest On Time %.
+  STEP C: For each of these 5 stores, find which AC owns that store using Velocity WTD IST or master alignment.
+  STEP D: Output: store name (Rest.Name), storeNum (Rest.Number), ac (AC full name), onTime as percentage string ("57.7%").
+  manager field — use "See alignment" if unknown. Never leave ac blank.
 COMPUTING nonCompleters for hutBotBreakdown.nonCompleters:
-  Read Routines Status Details By User.xlsx. Find rows where Missed % > 0 OR Late % > 0. Sort by Missed % descending. Take up to 6. Output: user (Shift Lead Name), completion rates as percentages, store as "Unknown — cross-reference needed" if not determinable.
-Do NOT show empty sections. If Routines Summary is uploaded, always compute and include bottom5Stores.
+  Read Routines Status Details By User.xlsx. Find rows where Missed % > 0 OR Late % > 0. Sort by Missed % descending. Take up to 6.
+  Output: user (Shift Lead Name), completion rates as percentages, store as "Unknown — cross-reference needed" if not determinable.
+If Routines Summary is uploaded, always compute and include bottom5Stores — never leave it empty.
 
-SLIDE 3 — AC PERFORMANCE TABLE [REQUIRED SOURCE: Velocity WTD IST file. ENHANCED by: Routines Summary for HUT Bot column]:
-One row per AC. Columns: Area Coach | Sales Growth | Labor Var | WIN Score | HUT Bot.
+AC PERFORMANCE TABLE (key: "acTable") — trigger: Velocity WTD IST uploaded
+Build: One row per AC. Columns: Area Coach | Sales Growth | Labor Var | WIN Score | HUT Bot.
 COMPUTING AC-LEVEL HUT BOT for the acTable hutBot column:
-  STEP 1: From Routines Summary.xlsx, get each store's On Time % and store number.
-  STEP 2: Using Velocity WTD IST or master alignment, map each store number to its AC.
-  STEP 3: For each AC, average the On Time % of all their stores. Format as percentage (e.g. "83.3%").
-  STEP 4: Output this as the "hutBot" field in the acTable row. Never output "see below", "N/A", or blank.
-  If Routines Summary is not uploaded, omit the hutBot column from acTable entirely.
+  STEP A: From Routines Summary.xlsx, get each store's On Time % and store number.
+  STEP B: Using Velocity WTD IST or master alignment, map each store number to its AC.
+  STEP C: For each AC, average the On Time % of all their stores. Format as percentage (e.g. "83.3%").
+  STEP D: Output this as the "hutBot" field in each acTable row. Never output "see below", "N/A", or blank.
+  If Routines Summary was not uploaded, omit the hutBot field from every acTable row.
 
-SLIDE 4 — WINS THIS WEEK [REQUIRED SOURCE: Any performance file — derive wins from whatever data is present]: 3-5 specific store wins with store name, number, metric, description. Tone: direct, genuine, no corporate fluff. OMIT if no meaningful performance data was uploaded.
+WINS THIS WEEK (key: "wins") — trigger: any performance file with positive standout data
+Build: 3-5 specific store wins with store name, number, metric, description. Tone: direct, genuine, no fluff.
+If you cannot name specific stores with real metrics, this key does not appear.
 
-SLIDE 5 — FOCUS AREAS [REQUIRED SOURCE: Any performance file — derive focus areas from whatever data is present]: 3-5 stores needing attention. Same format as Wins. OMIT if no meaningful performance data was uploaded.
+FOCUS AREAS (key: "focusAreas") — trigger: any performance file with stores needing attention
+Build: 3-5 stores needing attention. Same format as wins. Specific store + number + metric + reason.
+If you cannot name specific stores with real problems, this key does not appear.
 
-SLIDE 6 — LABOR VARIANCE DEEP DIVE [REQUIRED SOURCE: FRS file (PH_DGIFRS.xlsx)]: Region summary strip + AC-level table (Sales Growth, Labor Var %, Crew OT $, HAM OT $, PCA %, COS Var %). OT Flags callout naming specific ACs and dollar amounts. OMIT ENTIRELY if FRS file not uploaded.
+LABOR DEEP DIVE (key: "laborDeepDive") — trigger: FRS file (PH_DGIFRS.xlsx) uploaded
+Build: Region summary strip + AC-level table (Sales Growth, Labor Var %, Crew OT $, HAM OT $, PCA %, COS Var %) + OT flags callout naming specific ACs and dollar amounts.
+If FRS file not in your inventory, this key does not appear.
 
-SLIDE 7 — SPEED OUTLIER ANALYSIS [REQUIRED SOURCE: Velocity file with daily tabs]: Daily IST chart + WTD outlier stores IST >22. OMIT ENTIRELY if Velocity file not uploaded or has no daily tabs.
+SPEED OUTLIER (key: "speedOutlier") — trigger: Velocity file with daily tab sheets (e.g. "Tue, Mar 31")
+Build: Daily IST chart + WTD outlier stores IST >22 min.
+If no daily tabs exist in the Velocity file, this key does not appear.
 
-SLIDE 8 — WIN SCORE BY AREA COACH [REQUIRED SOURCE: ComparisonReport.xls/xlsx]: One row per AC with WIN score, top store, bottom store, SMG focus areas. Region average at top. OMIT ENTIRELY if ComparisonReport not uploaded.
+WIN BY AC (key: "winByAC") — trigger: ComparisonReport.xls/xlsx uploaded
+Build: One row per AC with WIN score, top store, bottom store, SMG focus areas. Region average at top.
+If ComparisonReport not in your inventory, this key does not appear.
 
-SLIDE 9 — WIN STORE SPOTLIGHT [REQUIRED SOURCE: ComparisonReport.xls/xlsx]: Top 5 and Bottom 5 stores by WIN score with SMG insight. OMIT ENTIRELY if ComparisonReport not uploaded.
+WIN STORE SPOTLIGHT (key: "winStoreSpotlight") — trigger: ComparisonReport has store-level rows (not just AC aggregates)
+Build: Top 5 and Bottom 5 stores by WIN score with SMG insight.
+If ComparisonReport has only AC-level rows, this key does not appear (winByAC is enough).
 
-SLIDE 10 — CUSTOMER VOICE [REQUIRED SOURCE: SMG comments file]: 5 positive and 5 negative VERBATIM customer quotes — real words from the file, never summaries. OMIT ENTIRELY if SMG file not uploaded.
+CUSTOMER VOICE (key: "customerVoice") — trigger: SMG comments file uploaded
+Build: 5 verbatim positive + 5 verbatim negative quotes. Real words from the file. Never paraphrase, never summarize.
+If SMG file not in your inventory, this key does not appear.
 
-SLIDE 11 — SMART GOALS [REQUIRED SOURCE: Any uploaded data — goals must be grounded in actual numbers found]: 3 SMART goals with Metric | Current | Target | By When | Owner | Why | How. Only include goals tied to data you actually found. OMIT if insufficient data to make specific goals.
+SMART GOALS (key: "smartGoals") — trigger: enough uploaded data to write specific, measurable goals
+Build: 3 SMART goals with Metric | Current | Target | By When | Owner | Why | How.
+Every goal must reference a real number from a real file. Vague goals are worse than no goals.
+If you cannot ground every goal in actual data you found, this key does not appear.
 
-SLIDE 12 — KEY DATES AND REMINDERS [ALWAYS INCLUDE]: Dark background. 7 blank lines for user to fill in manually. Always include this slide.
+KEY DATES (key: "keyDates") — always include regardless of what was uploaded
+Build: { "placeholders": 7 }
 
-SLIDE 13 — CLOSING [REQUIRED SOURCE: Any performance data to identify AC of the Week]: AC of the Week recognition + footer stat strip. The same AC cannot win two weeks in a row — check lastAcOfWeek field. Always include if any performance data was uploaded.
+CLOSING (key: "closing") — trigger: any performance data uploaded (needed to identify AC of the Week)
+Build: AC of the Week recognition + footer stats strip.
+The same AC cannot win two weeks in a row — check lastAcOfWeek field before choosing.
+Always include if any performance data was uploaded.
 
-UNEXPECTED FILES: If an uploaded file does not match the standard report types above, analyze it anyway. Include its findings in the most relevant existing slide or add it as an additional slide in the "additionalSlides" array. Never ignore an uploaded file.
+UNEXPECTED OR UNRECOGNIZED FILES: If an uploaded file does not match any trigger type above, analyze it anyway. Include its findings in the most relevant existing slide, or add a new entry in the "additionalSlides" array. Never skip an uploaded file — every file gets analyzed.
 
 DATA FILE MAPPINGS (permanent — do not change these):
 
