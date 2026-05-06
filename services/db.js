@@ -583,6 +583,12 @@ async function initIntelDB() {
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   `);
 
+  // Migration: add details JSONB column if created before it was added to schema
+  await p.query(`
+    ALTER TABLE intel_flags
+    ADD COLUMN IF NOT EXISTS details JSONB
+  `);
+
   // Migration: dedup then add UNIQUE constraint (needed for ON CONFLICT in upsertIntelFlag)
   await p.query(`
     DELETE FROM intel_flags a

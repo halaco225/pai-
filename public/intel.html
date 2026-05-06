@@ -402,7 +402,7 @@ async function loadKPIs(){
 }
 
 function renderKPIs(data){
-  const acs=data.area_coaches||[];
+  const acs=data.by_ac||[];
   let tSales=0,nS=0,gSum=0,nG=0,lSum=0,nL=0;
   acs.forEach(ac=>{
     if(ac.net_sales!=null){tSales+=+ac.net_sales;nS++;}
@@ -448,7 +448,7 @@ function renderUrgentBanner(){
 }
 
 function renderPerfTable(data){
-  const acs=data.area_coaches||[];
+  const acs=data.by_ac||[];
   const isAC=currentUser?.role==='area_coach';
   if(isAC&&acs.length===1){
     document.getElementById('perfTitle').textContent='Store Performance';
@@ -532,7 +532,7 @@ function renderDrill(ac){
 function toggleDrill(acName){
   openDrillAC=(openDrillAC===acName)?null:acName;
   if(openDrillAC){
-    const ac=(kpiData?.area_coaches||[]).find(a=>a.area_coach===acName);
+    const ac=(kpiData?.by_ac||[]).find(a=>a.area_coach===acName);
     if(ac){const el=document.getElementById('dc-'+safeId(acName));if(el)el.innerHTML=renderDrill(ac);}
   }
   renderPerfTable(kpiData);
