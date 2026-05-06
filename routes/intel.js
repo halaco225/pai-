@@ -441,12 +441,19 @@ router.get('/dashboard', async (req, res) => {
 router.get('/kpis', async (req, res) => {
   try {
     const user = req.session.user;
-    const date = req.query.date || (() => {
+    const requestedDate = req.query.date || (() => {
       const d = new Date(); d.setDate(d.getDate() - 1);
       return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
     })();
     const p = db.getPool();
-    if (!p) return res.json({ region: null, by_ac: [], by_store: [], date });
+    if (!p) return res.json({ region: null, by_ac: [], by_store: [], date: requestedDate });
+
+    // Fall back to most recent date with data if requested date has none
+    const dateCheckRes = await p.query(
+      `SELECT TO_CHAR(MAX(metric_date), 'YYYY-MM-DD') AS latest FROM intel_dbs_metrics WHERE metric_date <= $1`,
+      [requestedDate]
+    );
+    const date = dateCheckRes.rows[0]?.latest || requestedDate;
 
     // Flag scope filter
     const fp = [date]; let flagWhere = "metric_date = $1 AND status != 'archived'";
