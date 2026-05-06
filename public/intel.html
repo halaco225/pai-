@@ -1034,4 +1034,95 @@ function closeAckModal() {
 }
 
 function updateAckBtn() {
-  const val = document.getElementById('ackActionInput').value.tr
+  const val = document.getElementById('ackActionInput').value.trim();
+  document.getElementById('ackCharHint').textContent = `${val.length} / 20 min characters`;
+  document.getElementById('ackSubmitBtn').disabled   = val.length < 20;
+}
+
+async function submitAck() {
+  const action = document.getElementById('ackActionInput').value.trim();
+  if (action.length < 20 || !currentFlagId) return;
+  const btn = document.getElementById('ackSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Submitting…';
+  try {
+    const res  = await fetch('/api/intel/acknowledge', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ flag_id: currentFlagId, action_taken: action })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed');
+    const f = allFlags.find(f => f.id === currentFlagId);
+    if (f) f.status = 'addressed';
+    closeAckModal();
+    applyFlagFilter(currentFilter);
+    const open  = allFlags.filter(f => f.status !== 'addressed' && f.status !== 'archived').length;
+    const badge = document.getElementById('flagCountBadge');
+    if (open > 0) badge.textContent = open; else badge.style.display = 'none';
+  } catch(err) { alert('Error: ' + err.message); btn.disabled = false; btn.textContent = 'Submit'; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TAB SWITCHING
+   ═══════════════════════════════════════════════════════════ */
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.intel-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-' + tab).classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   HELPERS
+   ═══════════════════════════════════════════════════════════ */
+function formatRole(role) {
+  return { rdo: 'RDO / Region Coach', area_coach: 'Area Coach', vp: 'VP' }[role] || role;
+}
+function severityOrder(s) { return s === 'high' ? 3 : s === 'medium' ? 2 : 1; }
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function formatDate(d) {
+  if (!d) return '—';
+  return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function formatDateTime(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-US',{ month:'short', day:'numeric' }) + ' ' +
+    dt.toLocaleTimeString('en-US',{ hour:'numeric', minute:'2-digit' });
+}
+function fmtMoney(v) {
+  if (v == null) return '—';
+  const n = Number(v);
+  return n >= 1000 ? '$' + (n/1000).toFixed(1) + 'k' : '$' + n.toFixed(0);
+}
+function fmtPct(v)   { return v == null ? '—' : (Number(v) > 0 ? '+' : '') + Number(v).toFixed(1) + '%'; }
+function fmtHours(v) { return v == null ? '—' : Number(v).toFixed(1) + ' hrs'; }
+function formatMetricType(t) {
+  return { CHANGE_DOWN:'Change Down', CHANGED_MILES:'Changed Miles', PAIDOUT:'Paid Out',
+    CASH_VARIANCE:'Cash Variance', REFUNDS:'Refunds', CANCEL_UNMADE:'Cancel/Unmade',
+    PRODUCTION_TIME:'Production Time', LABOR_NOT_ADJUSTED:'Labor Not Adjusted',
+    LABOR_OVER_BUDGET:'Labor Over Budget', LABOR_UNDER_BUDGET:'Labor Under Budget',
+    OT_OVER_SCHEDULED:'OT Over Scheduled', OT_OVER_RUN:'OT Over Run',
+    DOUBLE_TIME:'Double Time', FORGOT_CLOCKOUT:'Forgot Clock Out',
+    CLOCKOUT_REMINDER:'Clock Out Reminder', GUEST_COMPLAINT:'Guest Complaint',
+    PUSH_SURVEYS:'Push Surveys Needed', ROUTINE_MISSED:'Routine Missed',
+    ROUTINE_LATE:'Routine Late', PERFORMANCE_TREND:'Performance Trend' }[t] || t;
+}
+function formatValue(metric, val) {
+  if (val == null) return '';
+  if (['CHANGE_DOWN','PAIDOUT','CASH_VARIANCE','REFUNDS','CANCEL_UNMADE','LABOR_OVER_BUDGET','LABOR_UNDER_BUDGET'].includes(metric))
+    return '$' + Math.abs(Number(val)).toFixed(2);
+  if (['OT_OVER_SCHEDULED','OT_OVER_RUN','LABOR_NOT_ADJUSTED'].includes(metric))
+    return Number(val).toFixed(1) + ' hrs';
+  if (metric === 'PRODUCTION_TIME') return Number(val).toFixed(1) + ' min';
+  return val;
+}
+function logout() { fetch('/api/auth/logout',{method:'POST'}).then(()=>window.location.href='/'); }
+
+document.getElementById('ackModal').addEventListener('click', function(e) { if (e.target === this) closeAckModal(); });
+
+init();
+</script>
+</body>
+</html>
