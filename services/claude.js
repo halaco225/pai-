@@ -9,9 +9,9 @@ const MODEL = 'claude-sonnet-4-6';
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 // Total budget ~150k tokens across all files — leaves headroom for system prompt + response
-const MAX_FILE_CHARS = 14_000;   // per file — keeps 8-file recap under 30k token/min limit
-const MAX_ROWS_PER_SHEET = 120;  // per sheet — enough for FRS region+AC rows, Velocity WTD
-const MAX_ROWS_COMMENTS = 45;    // SMG comments — enough for 10 verbatim quotes
+const MAX_FILE_CHARS = 38_000;   // per file — with prompt caching keeps total under 30k token/min
+const MAX_ROWS_PER_SHEET = 220;  // per sheet — enough for FRS region+AC rows, Velocity WTD
+const MAX_ROWS_COMMENTS = 80;    // SMG comments — enough for 10+ verbatim quotes
 
 // ─── File text extraction ───────────────────────────────────────────────────
 
@@ -901,7 +901,7 @@ async function analyzeRecap(files, weekLabel, recapDay, lastAcOfWeek, alignmentT
   // Persistent alignment text passed in from DB — never requires re-upload
   const alignBlock = alignmentText
     ? ('\n\n=== MASTER ALIGNMENT FILE (authoritative — use for all store/AC/RGM lookups) ===\n'
-        + alignmentText.slice(0, 6000)
+        + alignmentText.slice(0, 10000)
         + '\n=== END MASTER ALIGNMENT ===')
     : '';
   const alignNote = alignmentText
