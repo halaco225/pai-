@@ -58,6 +58,7 @@ function httpRequest(method, url, { headers = {}, body, binary = false } = {}) {
       const chunks = [];
       res.on('data', c => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
       res.on('end', () => {
+        clearTimeout(timer);
         const buf = Buffer.concat(chunks);
         resolve({
           status:  res.statusCode,
@@ -67,7 +68,10 @@ function httpRequest(method, url, { headers = {}, body, binary = false } = {}) {
         });
       });
     });
-    req.on('error', reject);
+    const timer = setTimeout(() => {
+      req.destroy(new Error(`SMG request timeout after 60s: ${method} ${url.slice(0, 80)}`));
+    }, 60000);
+    req.on('error', (e) => { clearTimeout(timer); reject(e); });
     if (body) req.write(body);
     req.end();
   });
