@@ -387,6 +387,26 @@ router.get('/debug/playwright', async (req, res) => {
 
 router.use(requireAuth);
 
+// ── POST /api/intel/automation/run-now — manual batch trigger (session auth, rdo/vp only) ──
+router.post('/automation/run-now', requireRole('rdo', 'vp'), async (req, res) => {
+  const user = req.session.user;
+  const targetDate = req.body.date || null;
+  console.log(`[Intel] Manual batch triggered by ${user.username} (${user.role}) for ${targetDate || 'yesterday'}`);
+  res.json({ status: 'started', targetDate, triggeredBy: user.username });
+  await db.logIntelJob({ jobType: 'manual:triggered', targetDate, status: 'running', message: `Triggered manually by ${user.username}` });
+  try {
+    const { runIntelPipeline } = require('../services/intel-pipeline');
+    const result = await runIntelPipeline(targetDate);
+    lastPipelineResult = { ...result, completedAt: new Date().toISOString() };
+    console.log('[Intel] Manual pipeline complete:', JSON.stringify(result.steps, null, 2));
+    if (result.errors.length) console.warn('[Intel] Manual pipeline errors:', result.errors);
+  } catch (err) {
+    await db.logIntelJob({ jobType: 'manual:fatal', targetDate, status: 'error', message: err.message });
+    console.error('[Intel] Manual pipeline error:', err.message);
+  }
+});
+
+
 // ── GET /api/intel/dashboard — serve cached intel for logged-in user ──────────
 router.get('/dashboard', async (req, res) => {
   try {
