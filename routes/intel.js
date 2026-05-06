@@ -428,23 +428,19 @@ router.get('/kpis', async (req, res) => {
     const p = db.getPool();
     if (!p) return res.json({ region: null, by_ac: [], by_store: [], date });
 
-    // Scope filter — RDO sees all their ACs; null-hierarchy flags included
-    const mp = [date]; let metricWhere = 'metric_date = $1';
-    const fp = [date]; let flagWhere   = "metric_date = $1 AND status != 'archived'";
+    // Flag scope filter
+    const fp = [date]; let flagWhere = "metric_date = $1 AND status != 'archived'";
 
     if (user.scope?.type === 'rdo') {
       const acs = user.scope.area_coaches || [];
       if (acs.length) {
-        mp.push(acs); metricWhere += ` AND area_coach = ANY($${mp.length}::text[])`;
-        fp.push(acs); flagWhere   += ` AND (area_coach = ANY($${fp.length}::text[]) OR area_coach IS NULL)`;
+        fp.push(acs); flagWhere += ` AND (area_coach = ANY($${fp.length}::text[]) OR area_coach IS NULL)`;
       } else {
-        mp.push(user.scope.rc_name || user.name); metricWhere += ` AND region_coach = $${mp.length}`;
-        fp.push(user.scope.rc_name || user.name); flagWhere   += ` AND (region_coach = $${fp.length} OR region_coach IS NULL)`;
+        fp.push(user.scope.rc_name || user.name); flagWhere += ` AND (region_coach = $${fp.length} OR region_coach IS NULL)`;
       }
     } else if (user.scope?.type === 'area_coach') {
       const ac = user.scope.ac_name || user.name;
-      mp.push(ac); metricWhere += ` AND area_coach = $${mp.length}`;
-      fp.push(ac); flagWhere   += ` AND area_coach = $${fp.length}`;
+      fp.push(ac); flagWhere += ` AND area_coach = $${fp.length}`;
     }
 
     // Build scope filter for store_assignments
@@ -457,10 +453,29 @@ router.get('/kpis', async (req, res) => {
       sp.push(user.scope.ac_name || user.name); assignWhere += ` AND area_coach = $${sp.length}`;
     }
 
-    const [metricsRes, flagCountRes, fcOtRes, surveyRes, routinesRes, assignRes, laborRes] = await Promise.all([
+    // Fetch store_assignments first — seed storeMap so all ACs appear even with no DBS data
+    const assignRes = await p.query(
+      `SELECT store_id, store_name, area_coach, region_coach FROM store_assignments WHERE ${assignWhere}`, sp);
+    const storeMap = {};
+    for (const r of assignRes.rows) {
+      storeMap[r.store_id] = {
+        area_coach: r.area_coach, store_id: r.store_id, store_name: r.store_name,
+        net_sales: null, growth_pct: null, cancels: null,
+        labor_pct: null, ot_hours: 0, comments_pos: 0, comments_neg: 0,
+        forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0
+      };
+    }
+
+    // Scope metrics by store_id (from store_assignments) — avoids null area_coach in intel_dbs_metrics
+    // causing missing sales for some ACs even though their stores are in the region.
+    const storeIdList = assignRes.rows.map(r => r.store_id);
+    const storeIdParam = storeIdList.length ? storeIdList : ['__none__'];
+
+    const [metricsRes, flagCountRes, fcOtRes, surveyRes, routinesRes, laborRes] = await Promise.all([
       p.query(`SELECT area_coach, store_id, store_name,
         net_sales_day, growth_pct_day, cancel_unmade_day, paidouts_day, cash_variance_day
-        FROM intel_dbs_metrics WHERE ${metricWhere} ORDER BY area_coach, store_id`, mp),
+        FROM intel_dbs_metrics WHERE metric_date=$1 AND store_id = ANY($2::text[])
+        ORDER BY area_coach, store_id`, [date, storeIdParam]),
       p.query(`SELECT area_coach, store_id, severity, COUNT(*) as cnt
         FROM intel_flags WHERE ${flagWhere} GROUP BY area_coach, store_id, severity`, fp),
       p.query(`SELECT area_coach, store_id,
@@ -477,21 +492,10 @@ router.get('/kpis', async (req, res) => {
         COUNT(CASE WHEN metric_type='ROUTINE_MISSED' THEN 1 END)::int as routines_missed,
         COUNT(CASE WHEN metric_type='ROUTINE_LATE'   THEN 1 END)::int as routines_late
         FROM intel_flags WHERE ${flagWhere} GROUP BY store_id, area_coach`, fp),
-      p.query(`SELECT store_id, store_name, area_coach, region_coach FROM store_assignments WHERE ${assignWhere}`, sp),
       p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='labor_pct'`, [date])
     ]);
 
-    // Seed storeMap from store_assignments so all ACs appear even with no sales data
-    const storeMap = {};
-    for (const r of assignRes.rows) {
-      storeMap[r.store_id] = {
-        area_coach: r.area_coach, store_id: r.store_id, store_name: r.store_name,
-        net_sales: null, growth_pct: null, cancels: null,
-        labor_pct: null, ot_hours: 0, comments_pos: 0, comments_neg: 0,
-        forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0
-      };
-    }
-    // Overlay DBS metrics
+    // Overlay DBS metrics onto storeMap
     for (const r of metricsRes.rows) {
       if (!storeMap[r.store_id]) storeMap[r.store_id] = {
         area_coach: r.area_coach, store_id: r.store_id, store_name: r.store_name,
