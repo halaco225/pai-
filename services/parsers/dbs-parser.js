@@ -109,7 +109,10 @@ function parseDBS(filePath, targetDate) {
     const colE = row[4];
 
     // Stop at footer
-    if (colA && String(colA).trim().startsWith('Report By:')) break;
+    if (colA && String(colA).trim().startsWith('Report By:')) {
+      console.log(`[DBS] Stopping at footer row: "${String(colA).trim()}" (section: ${currentSection}, lastAC: ${currentArea})`);
+      break;
+    }
 
     // Section header detection
     if (isSectionHeader(colA, colE)) {
@@ -126,12 +129,19 @@ function parseDBS(filePath, targetDate) {
       const label = String(colA).trim();
       if (VP_NAMES.has(label)) {
         currentVP = label; currentRegion = null; currentArea = null;
+        console.log(`[DBS] VP: ${label}`);
       } else if (RDO_NAMES.has(label)) {
         currentRegion = label; currentArea = null;
+        console.log(`[DBS] RC: ${label}`);
       } else {
         currentArea = label;
         const hier = AC_TO_HIERARCHY[label];
-        if (hier) { currentRegion = hier.rc; currentVP = hier.vp; }
+        if (hier) {
+          currentRegion = hier.rc; currentVP = hier.vp;
+          console.log(`[DBS] AC: ${label} → RC: ${hier.rc}`);
+        } else {
+          console.warn(`[DBS] UNRECOGNIZED label (not in roster): "${label}" — stores will still be captured under this name`);
+        }
       }
       continue;
     }
