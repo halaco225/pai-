@@ -492,9 +492,32 @@ router.get('/kpis', async (req, res) => {
       p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='labor_pct'`, [date])
     ]);
 
-    // Overlay DBS metrics — only update stores already in storeMap (in scope)
+    // Build user AC set for fallback scoping when store not in store_assignments
+    const userACSet = new Set(user.scope?.area_coaches || []);
+
+    // Overlay DBS metrics:
+    // - If store is in storeMap (from store_assignments): use its area_coach, apply sales
+    // - If NOT in storeMap: fall back to metrics area_coach, scope by user's AC list
     for (const r of metricsRes.rows) {
-      if (!storeMap[r.store_id]) continue;  // store not in user's scope, skip
+      if (!storeMap[r.store_id]) {
+        // store_assignments is empty or store missing — scope via metrics area_coach
+        const acName = r.area_coach;
+        let inScope = false;
+        if (user.scope?.type === 'rdo') {
+          inScope = userACSet.size === 0 || userACSet.has(acName);
+        } else if (user.scope?.type === 'area_coach') {
+          inScope = acName === (user.scope.ac_name || user.name);
+        } else {
+          inScope = true; // vp sees all
+        }
+        if (!inScope) continue;
+        storeMap[r.store_id] = {
+          area_coach: acName, store_id: r.store_id, store_name: r.store_name,
+          net_sales: null, growth_pct: null, cancels: null,
+          labor_pct: null, ot_hours: 0, comments_pos: 0, comments_neg: 0,
+          forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0
+        };
+      }
       Object.assign(storeMap[r.store_id], {
         net_sales: r.net_sales_day ? +r.net_sales_day : null,
         growth_pct: r.growth_pct_day != null ? +r.growth_pct_day : null,
