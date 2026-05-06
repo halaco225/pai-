@@ -415,14 +415,15 @@ async function loadKPIs(){
 
 function renderKPIs(data){
   const acs=data.by_ac||[];
-  let tSales=0,nS=0,gSum=0,nG=0,lSum=0,nL=0;
+  let tSales=0,nS=0,gSum=0,nG=0;
   acs.forEach(ac=>{
     if(ac.net_sales!=null){tSales+=+ac.net_sales;nS++;}
     if(ac.growth_pct!=null){gSum+=+ac.growth_pct;nG++;}
-    if(ac.labor_pct!=null){lSum+=+ac.labor_pct;nL++;}
   });
-  const avgG=nG?gSum/nG:null,avgL=nL?lSum/nL:null;
+  const avgG=nG?gSum/nG:null;
   const openF=allFlags.filter(f=>f.status!=='addressed'&&f.status!=='archived').length;
+  const laborFlags=allFlags.filter(f=>['LABOR_OVER_BUDGET','LABOR_NOT_ADJUSTED','LABOR_UNDER_BUDGET'].includes(f.metric_type)&&f.status!=='addressed'&&f.status!=='archived');
+  const laborStores=new Set(laborFlags.map(f=>f.store_id)).size;
   document.getElementById('kpiGrid').innerHTML=`
     <div class="kpi-card">
       <div class="kpi-label">Net Sales</div>
@@ -443,10 +444,10 @@ function renderKPIs(data){
       <div class="kpi-bench">Threshold: <span class="${openF<=2?'ok':'ng'}">${openF<=2?'Within Range':'Over Limit'}</span></div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-label">Labor %</div>
-      <div class="kpi-val ${avgL==null?'':avgL>28?'red':avgL>25?'amber':'green'}">${avgL!=null?fmtPct(avgL):'—'}</div>
-      <div class="kpi-delta">Budget: ~25%</div>
-      <div class="kpi-bench">Target: <span class="${avgL==null?'':avgL<=25?'ok':'ng'}">${avgL==null?'—':avgL<=25?'On Target':'Needs Attention'}</span></div>
+      <div class="kpi-label">Labor Over Budget</div>
+      <div class="kpi-val ${laborStores===0?'green':laborStores>5?'red':'amber'}">${laborStores}</div>
+      <div class="kpi-delta ${laborStores===0?'up':'dn'}">${laborStores===0?'✓ All within budget':laborStores+' store'+(laborStores!==1?'s':'')+' over scheduled'}</div>
+      <div class="kpi-bench">${laborFlags.length} active labor flag${laborFlags.length!==1?'s':''}</div>
     </div>`;
 }
 
@@ -471,11 +472,16 @@ function renderPerfTable(data){
   document.getElementById('perfTitle').textContent='Area Coach Scorecard';
   document.getElementById('perfMeta').textContent=acs.length+' area coaches';
   const sorted=[...acs].sort((a,b)=>(b.net_sales||0)-(a.net_sales||0));
-  const thead='<thead><tr><th>#</th><th>Area Coach</th><th>Net Sales</th><th>Growth</th><th>Labor %</th><th>OT Hrs</th><th>Cancels</th><th>Clock-Outs</th><th>Flags</th></tr></thead>';
+  const laborByAC={};
+  allFlags.filter(f=>['LABOR_OVER_BUDGET','LABOR_NOT_ADJUSTED','LABOR_UNDER_BUDGET'].includes(f.metric_type)&&f.status!=='addressed'&&f.status!=='archived')
+    .forEach(f=>{if(f.area_coach)laborByAC[f.area_coach]=(laborByAC[f.area_coach]||0)+1;});
+  const thead='<thead><tr><th>#</th><th>Area Coach</th><th>Net Sales</th><th>Growth</th><th>Labor</th><th>OT Hrs</th><th>Cancels</th><th>Clock-Outs</th><th>Flags</th></tr></thead>';
   const rows=sorted.map((ac,i)=>{
     const ini=(ac.area_coach||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
     const isOpen=openDrillAC===ac.area_coach;
     const sid=safeId(ac.area_coach);
+    const lc=laborByAC[ac.area_coach]||0;
+    const laborCell=lc>0?'<span class="'+(lc>3?'r':'a')+'">'+lc+' over</span>':'<span class="g">OK</span>';
     return '<tr class="'+(isOpen?'drill-active':'')+'" id="acrow-'+sid+'">'
       +'<td class="n">'+(i+1)+'</td>'
       +'<td><div class="ac-cell" data-ac="'+escH(ac.area_coach||'')+'" onclick="toggleDrill(this.dataset.ac)">'
@@ -484,7 +490,7 @@ function renderPerfTable(data){
       +'<span class="arrow '+(isOpen?'open':'')+'">▶</span></div></td>'
       +'<td>'+mCell(ac.net_sales,'money','g')+'</td>'
       +'<td>'+mCell(ac.growth_pct,'pct_s','growth')+'</td>'
-      +'<td>'+mCell(ac.labor_pct,'pct','labor')+'</td>'
+      +'<td>'+laborCell+'</td>'
       +'<td>'+mCell(ac.ot_hours,'hrs','ot')+'</td>'
       +'<td>'+mCell(ac.cancels,'int','cancel')+'</td>'
       +'<td>'+mCell(ac.forgot_clockout,'int','co')+'</td>'

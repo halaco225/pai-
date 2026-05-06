@@ -52,12 +52,36 @@ async function logStep(step, result, targetDate) {
   } catch (_) {}
 }
 
+// Archive all open flags from before the current business week (week starts Tuesday).
+// Runs only when the batch processes a Tuesday (i.e. Wednesday morning run).
+async function clearWeeklyFlags(targetDate) {
+  const d = new Date(targetDate + 'T12:00:00');
+  const dow = d.getDay(); // 0=Sun 1=Mon 2=Tue 3=Wed 4=Thu 5=Fri 6=Sat
+  if (dow !== 2) return { skipped: true, reason: `Not Tuesday (dow=${dow})` };
+  // targetDate IS the Tuesday — archive everything before it
+  const pool = db.getPool();
+  if (!pool) return { skipped: true, reason: 'No pool' };
+  const r = await pool.query(
+    `UPDATE intel_flags SET status='archived'
+     WHERE metric_date < $1 AND status NOT IN ('addressed','archived')`,
+    [targetDate]
+  );
+  console.log(`[Intel] Weekly clear: archived ${r.rowCount} flags older than ${targetDate}`);
+  return { success: true, archived: r.rowCount, weekStart: targetDate };
+}
+
 async function runIntelPipeline(targetDate) {
   if (!targetDate) targetDate = getYesterdayEST();
   console.log(`\n[Intel Pipeline] Starting for ${targetDate}`);
   const results = { targetDate, steps: {}, errors: [] };
 
   await db.logIntelJob({ jobType: 'pipeline:start', targetDate, status: 'running', message: 'Pipeline started' });
+
+  // ── Weekly flag clear (archives prior-week flags when processing a Tuesday) ─
+  results.steps.weeklyClean = await clearWeeklyFlags(targetDate);
+  if (!results.steps.weeklyClean.skipped) {
+    console.log(`[Intel Pipeline] Weekly clear: ${results.steps.weeklyClean.archived} flags archived`);
+  }
 
   // ── Step 1: DBS ────────────────────────────────────────────────────────────
   console.log('[Intel Pipeline] Step 1: DBS');
