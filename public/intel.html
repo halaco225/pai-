@@ -151,8 +151,16 @@ button{font-family:inherit;cursor:pointer}
 .sev-h{background:#7f1d1d;color:#fca5a5}
 .sev-m{background:#78350f;color:#fcd34d}
 .sev-l{background:#1e3a5f;color:#93c5fd}
-.metric-lbl{font-size:11px;font-weight:600;color:#64748b}
+.metric-lbl{font-size:12px;font-weight:700;color:#94a3b8}
 .flag-body{font-size:13px;color:#64748b;line-height:1.55;margin-bottom:10px}
+.flag-val-row{display:flex;align-items:center;gap:10px;margin:6px 0 4px;flex-wrap:wrap}
+.flag-val-big{font-size:26px;font-weight:800;line-height:1;letter-spacing:-.5px}
+.fv-high{color:#ef4444}.fv-med{color:#f59e0b}.fv-low{color:#60a5fa}
+.flag-val-lim{font-size:12px;color:#64748b;border:1px solid #1e2d4d;padding:3px 9px;border-radius:10px;white-space:nowrap}
+.days-badge{padding:3px 9px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap}
+.days-badge.d4{background:#7f1d1d;color:#fca5a5}.days-badge.d2{background:#78350f;color:#fcd34d}.days-badge.d1{background:#1a2f50;color:#93c5fd}
+.flag-inds{font-size:13px;color:#e2e8f0;font-weight:600;margin:6px 0 3px;line-height:1.4}
+.flag-val-ctx{font-size:11px;color:#475569;margin-top:2px}
 .flag-bottom{display:flex;align-items:center;justify-content:space-between}
 .flag-time{font-size:11px;color:#3b4d6b}
 .ack-btn{padding:6px 14px;background:#1a2f50;border:1px solid #2d4a6d;border-radius:6px;color:#60a5fa;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
@@ -704,27 +712,29 @@ async function submitAck(){
 function fmtFlagVal(type,v){
   if(v==null)return null;
   const n=Number(v);
-  if(['CHANGE_DOWN','CASH_VARIANCE','REFUNDS','PAIDOUT'].includes(type))return'$'+n.toFixed(2);
+  if(['CHANGE_DOWN','CASH_VARIANCE','REFUNDS','PAIDOUT'].includes(type))return(n<0?'-$'+Math.abs(n).toFixed(2):'$'+n.toFixed(2));
   if(['CANCEL_UNMADE','CHANGED_MILES','FORGOT_CLOCKOUT','ROUTINE_MISSED','ROUTINE_LATE','GUEST_COMPLAINT'].includes(type))return String(Math.round(n));
   if(['LABOR_OVER_BUDGET','LABOR_UNDER_BUDGET','OT_OVER_SCHEDULED','OT_OVER_RUN','DOUBLE_TIME'].includes(type))return n.toFixed(1)+'%';
   return n.toFixed(1);
 }
 function buildFlagDetail(f){
-  const parts=[];
   const det=(typeof f.details==='object'&&f.details)||{};
+  const days=f.consecutive_days_out||0;
+  const dc=days>=4?'d4':days>=2?'d2':'d1';
+  const daysBadge=days>0?'<span class="days-badge '+dc+'">'+days+(days===1?' day':' days')+'</span>':'';
+  const sc=f.severity==='high'?'fv-high':f.severity==='medium'?'fv-med':'fv-low';
   if(f.metric_type==='PERFORMANCE_TREND'){
-    const inds=det.indicators_negative;
     const nm={growth_pct_day:'Sales Growth',production_lt15:'Production Score',discount_pct:'Discount %',allowance_pct:'Allowance %'};
-    if(inds&&inds.length)parts.push('Trending out: '+inds.map(i=>nm[i]||i).join(', '));
-    else if(f.value!=null)parts.push(f.value+' soft indicators below threshold');
-  }else{
-    const vStr=fmtFlagVal(f.metric_type,f.value);
-    const tStr=fmtFlagVal(f.metric_type,f.target);
-    if(vStr!=null)parts.push('Value: '+vStr);
-    if(tStr!=null)parts.push('Target: '+tStr);
+    const inds=det.indicators_negative;
+    const list=inds&&inds.length?inds.map(i=>escH(nm[i]||i)).join(', '):(f.value!=null?escH(String(f.value))+' indicators':'—');
+    return'<div class="flag-inds">'+list+'</div><div class="flag-val-ctx">Multiple metrics below threshold 3+ days '+daysBadge+'</div>';
   }
-  if((f.consecutive_days_out||0)>1)parts.push(f.consecutive_days_out+' days out');
-  return parts.length?escH(parts.join(' · ')):'';
+  const vStr=fmtFlagVal(f.metric_type,f.value);
+  const tStr=fmtFlagVal(f.metric_type,f.target);
+  return'<div class="flag-val-row">'
+    +'<span class="flag-val-big '+sc+'">'+(vStr!=null?escH(vStr):'—')+'</span>'
+    +(tStr!=null?'<span class="flag-val-lim">limit '+escH(tStr)+'</span>':'')
+    +daysBadge+'</div>';
 }
 async function quickAck(cb,flagId){
   cb.disabled=true;
