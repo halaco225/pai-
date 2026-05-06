@@ -108,10 +108,10 @@ function parseDBS(filePath, targetDate) {
     const colA = row[0];
     const colE = row[4];
 
-    // Stop at footer
+    // Skip "Report By:" subtotal rows — do NOT break, as these appear between sections mid-file
     if (colA && String(colA).trim().startsWith('Report By:')) {
-      console.log(`[DBS] Stopping at footer row: "${String(colA).trim()}" (section: ${currentSection}, lastAC: ${currentArea})`);
-      break;
+      console.log(`[DBS] Skipping subtotal row: "${String(colA).trim()}" (section: ${currentSection}, lastAC: ${currentArea})`);
+      continue;
     }
 
     // Section header detection
