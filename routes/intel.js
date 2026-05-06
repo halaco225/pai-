@@ -469,10 +469,23 @@ router.get('/kpis', async (req, res) => {
     // Fetch all metrics for the date — storeMap (seeded from store_assignments) scopes in JS.
     // Avoids type-mismatch issues with store_id = ANY() across different DB column types.
     const [metricsRes, flagCountRes, fcOtRes, surveyRes, routinesRes, laborRes] = await Promise.all([
-      p.query(`SELECT area_coach, store_id, store_name,
-        net_sales_day, growth_pct_day, cancel_unmade_day, paidouts_day, cash_variance_day
-        FROM intel_dbs_metrics WHERE metric_date=$1
-        ORDER BY area_coach, store_id`, [date]),
+      p.query(`SELECT t.area_coach, t.store_id, t.store_name,
+        t.net_sales_day,
+        COALESCE(
+          t.growth_pct_day,
+          CASE
+            WHEN p.net_sales_day IS NOT NULL AND p.net_sales_day <> 0
+              THEN ROUND(((t.net_sales_day - p.net_sales_day) / p.net_sales_day * 100)::numeric, 2)
+            ELSE NULL
+          END
+        ) AS growth_pct_day,
+        t.cancel_unmade_day, t.paidouts_day, t.cash_variance_day
+        FROM intel_dbs_metrics t
+        LEFT JOIN intel_dbs_metrics p
+          ON p.store_id = t.store_id
+          AND p.metric_date = t.metric_date - INTERVAL '1 day'
+        WHERE t.metric_date=$1
+        ORDER BY t.area_coach, t.store_id`, [date]),
       p.query(`SELECT area_coach, store_id, severity, COUNT(*) as cnt
         FROM intel_flags WHERE ${flagWhere} GROUP BY area_coach, store_id, severity`, fp),
       p.query(`SELECT area_coach, store_id,
