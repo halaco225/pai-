@@ -194,6 +194,11 @@ async function downloadSMGComments(targetDate) {
 
   // Follow any intermediate redirects (MultiLanguage.aspx etc.) to get final 360.smg.com URL
   let spaUrl    = authResult.location;
+  // Resolve relative Location headers against reporting.smg.com
+  if (spaUrl && !spaUrl.startsWith('http')) {
+    spaUrl = new URL(spaUrl, 'https://reporting.smg.com/').href;
+    console.log(`[SMG] Resolved relative redirect → ${spaUrl}`);
+  }
   let spaCookies = authResult.cookies;
   if (!spaUrl.includes('360.smg.com')) {
     console.log('[SMG] Following intermediate redirects...');
