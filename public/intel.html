@@ -158,6 +158,7 @@ button{font-family:inherit;cursor:pointer}
 .ack-btn{padding:6px 14px;background:#1a2f50;border:1px solid #2d4a6d;border-radius:6px;color:#60a5fa;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
 .ack-btn:hover{background:#2d4a6d}
 .ack-btn.done{background:#0f2d1a;border-color:#166534;color:#86efac;cursor:default}
+.ack-check{display:flex;align-items:center;gap:6px;cursor:pointer;padding:5px 12px;border:1px solid #1e3a5f;border-radius:6px;font-size:12px;color:#60a5fa;white-space:nowrap;background:transparent}.ack-check input[type=checkbox]{cursor:pointer;width:14px;height:14px;accent-color:#3b82f6}
 .digest-area{background:#131d35;border:1px solid #1e2d4d;border-radius:12px;padding:20px;white-space:pre-wrap;font-size:13px;color:#94a3b8;line-height:1.75;min-height:200px}
 .copy-btn{padding:7px 16px;background:#1e2d4d;border:none;border-radius:6px;color:#64748b;font-size:12px;font-weight:600;cursor:pointer}
 .ack-tbl-wrap{background:#131d35;border:1px solid #1e2d4d;border-radius:12px;overflow:hidden}
@@ -581,15 +582,18 @@ function applyFlagFilter(filter,btn){
     const isAck=f.status==='addressed'||f.status==='archived';
     const sc=f.severity==='high'?'sev-h':f.severity==='medium'?'sev-m':'sev-l';
     const cc=f.severity==='high'?'sev-high':f.severity==='medium'?'sev-medium':'sev-low';
+    const fid=escH(String(f.id||''));
+    const ackBtn=isAck?'<span class="ack-btn done">✓ Addressed</span>'
+      :f.severity==='high'?'<button class="ack-btn" data-id="'+fid+'" data-store="'+escH(f.store_name||f.store_id||'')+'" data-metric="'+escH(f.metric_type||'')+'" onclick="openAckModal(this.dataset.id,this.dataset.store,this.dataset.metric)">Acknowledge</button>'
+      :'<label class="ack-check"><input type="checkbox" onchange="quickAck(this,\''+fid+'\')"> Mark reviewed</label>';
     return'<div class="flag-card '+cc+'">'
       +'<div class="flag-top"><div><div class="flag-sname">'+escH(f.store_name||f.store_id||'Unknown Store')+'</div>'
       +'<div class="flag-ac">'+escH(f.area_coach||'')+'</div></div>'
       +'<div class="flag-right"><span class="sev-pill '+sc+'">'+(f.severity||'low').toUpperCase()+'</span>'
       +'<span class="metric-lbl">'+fmtMetric(f.metric_type)+'</span></div></div>'
-      +'<div class="flag-body">'+escH(f.description||f.flag_reason||'')+'</div>'
+      +'<div class="flag-body">'+buildFlagDetail(f)+'</div>'
       +'<div class="flag-bottom"><span class="flag-time">'+fmtDate(f.flag_date||f.created_at)+'</span>'
-      +(!isAck?'<button class="ack-btn" data-id="'+escH(String(f.id||''))+'" data-store="'+escH(f.store_name||f.store_id||'')+'" data-metric="'+escH(f.metric_type||'')+'" onclick="openAckModal(this.dataset.id,this.dataset.store,this.dataset.metric)">Acknowledge</button>':'<span class="ack-btn done">✓ Addressed</span>')
-      +'</div></div>';
+      +ackBtn+'</div></div>';
   }).join('');
   renderUrgentBanner();
 }
@@ -697,6 +701,44 @@ async function submitAck(){
   }catch(err){alert('Error: '+err.message);btn.disabled=false;btn.textContent='Submit';}
 }
 
+function fmtFlagVal(type,v){
+  if(v==null)return null;
+  const n=Number(v);
+  if(['CHANGE_DOWN','CASH_VARIANCE','REFUNDS','PAIDOUT'].includes(type))return'$'+n.toFixed(2);
+  if(['CANCEL_UNMADE','CHANGED_MILES','FORGOT_CLOCKOUT','ROUTINE_MISSED','ROUTINE_LATE','GUEST_COMPLAINT'].includes(type))return String(Math.round(n));
+  if(['LABOR_OVER_BUDGET','LABOR_UNDER_BUDGET','OT_OVER_SCHEDULED','OT_OVER_RUN','DOUBLE_TIME'].includes(type))return n.toFixed(1)+'%';
+  return n.toFixed(1);
+}
+function buildFlagDetail(f){
+  const parts=[];
+  const det=(typeof f.details==='object'&&f.details)||{};
+  if(f.metric_type==='PERFORMANCE_TREND'){
+    const inds=det.indicators_negative;
+    const nm={growth_pct_day:'Sales Growth',production_lt15:'Production Score',discount_pct:'Discount %',allowance_pct:'Allowance %'};
+    if(inds&&inds.length)parts.push('Trending out: '+inds.map(i=>nm[i]||i).join(', '));
+    else if(f.value!=null)parts.push(f.value+' soft indicators below threshold');
+  }else{
+    const vStr=fmtFlagVal(f.metric_type,f.value);
+    const tStr=fmtFlagVal(f.metric_type,f.target);
+    if(vStr!=null)parts.push('Value: '+vStr);
+    if(tStr!=null)parts.push('Target: '+tStr);
+  }
+  if((f.consecutive_days_out||0)>1)parts.push(f.consecutive_days_out+' days out');
+  return parts.length?escH(parts.join(' · ')):'';
+}
+async function quickAck(cb,flagId){
+  cb.disabled=true;
+  try{
+    const res=await fetch('/api/intel/acknowledge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({flag_id:flagId,action_taken:'Reviewed'})});
+    const d=await res.json();
+    if(!res.ok)throw new Error(d.error||'Failed');
+    const f=allFlags.find(f=>f.id==flagId);
+    if(f)f.status='addressed';
+    applyFlagFilter(curFilter);
+    const open=allFlags.filter(f=>f.status!=='addressed'&&f.status!=='archived').length;
+    ['navBadge1','navBadge2','flagCnt'].forEach(id=>{const el=document.getElementById(id);if(!el)return;if(open===0)el.classList.add('hidden');else el.textContent=open;});
+  }catch(err){alert('Error: '+err.message);cb.disabled=false;cb.checked=false;}
+}
 function switchTab(tab,btn){
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab-btn,.nav-item').forEach(b=>b.classList.remove('active'));
