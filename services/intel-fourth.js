@@ -82,75 +82,47 @@ async function downloadFourthReport(reportKey, targetDate) {
       throw new Error(`Auth check failed: profile returned ${profileCheck.status}`);
     }
 
-    // ── Navigate to dashboard and capture any XHR containing dashboard JSON ──
-    // Direct /gdc/md/.../objects/{id} fetch returns 403. Instead we listen to
-    // ALL responses from the GoodData host during SPA navigation and grab the
-    // first one whose body contains "projectDashboard".
-    const dashUrl = `${FOURTH_API}/#s=/gdc/workspaces/${PROJECT_ID}|workspaceDashboardPage|/gdc/md/${PROJECT_ID}/obj/${dashInfo.obj}|${dashInfo.tab}`;
-
-    let dashBody = '';
-    const onResponse = async (resp) => {
-      if (dashBody) return; // already found it
-      if (!resp.url().includes(FOURTH_API)) return;
-      if (resp.status() !== 200) return;
+    // ── Fetch report list via GoodData query API ──────────────────────────
+    // /gdc/md/{project}/query/reports lists all reports accessible to this
+    // session — no dashboard navigation needed, no 403 on object fetch.
+    console.log('[Fourth] Querying report list...');
+    const reportsResult = await page.evaluate(async ({ api, projId }) => {
       try {
-        const text = await resp.text();
-        if (text.includes('projectDashboard')) {
-          dashBody = text;
-          console.log(`[Fourth] Captured dashboard JSON from: ${resp.url().slice(0, 100)} (${text.length} bytes)`);
-        }
-      } catch (_) {}
-    };
-    page.on('response', onResponse);
-    try {
-      await page.goto(dashUrl, { waitUntil: 'networkidle', timeout: 30000 });
-    } catch (e) {
-      console.log(`[Fourth] Dashboard nav warning: ${e.message}`);
-    }
-    // Hash-based SPA navigation fires networkidle immediately; wait for deferred XHR
-    if (!dashBody) {
-      console.log('[Fourth] Waiting 8s for SPA deferred requests...');
-      await sleep(8000);
-    }
-    page.off('response', onResponse);
+        const res = await fetch(`${api}/gdc/md/${projId}/query/reports`, {
+          headers: { Accept: 'application/json' },
+          credentials: 'include',
+        });
+        return { status: res.status, body: await res.text() };
+      } catch (e) { return { status: -1, body: '', error: e.message }; }
+    }, { api: FOURTH_API, projId: PROJECT_ID });
 
-    // Fallback: direct fetch now that project context is established in browser
-    if (!dashBody) {
-      console.log('[Fourth] No dashboard JSON from listener — trying direct fetch post-nav');
-      const r = await page.evaluate(async ({ api, projId, dashId }) => {
-        try {
-          const res = await fetch(`${api}/gdc/md/${projId}/objects/${dashId}`, {
-            headers: { Accept: 'application/json' }, credentials: 'include',
-          });
-          return { status: res.status, body: await res.text() };
-        } catch (e) { return { status: -1, body: '' }; }
-      }, { api: FOURTH_API, projId: PROJECT_ID, dashId: dashInfo.obj });
-      console.log(`[Fourth] Post-nav direct fetch: ${r.status} (${r.body.length} bytes)`);
-      if (r.status === 200) dashBody = r.body;
-      else console.log(`[Fourth] Post-nav body: ${r.body.slice(0, 300)}`);
+    console.log(`[Fourth] Reports query: HTTP ${reportsResult.status} (${reportsResult.body.length} bytes)`);
+    if (reportsResult.status !== 200) {
+      throw new Error(`Failed to list reports: HTTP ${reportsResult.status} — ${reportsResult.body.slice(0, 200)}`);
     }
 
-    if (!dashBody) console.log('[Fourth] No projectDashboard JSON found in network responses');
+    const reportsData = JSON.parse(reportsResult.body);
+    const allEntries = reportsData.query?.entries || [];
+    console.log(`[Fourth] Total reports in project: ${allEntries.length}`);
+    if (allEntries.length > 0) {
+      console.log('[Fourth] Sample titles:', allEntries.slice(0, 5).map(e => e.title).join(', '));
+    }
 
-    // ── Parse report URIs from intercepted dashboard JSON ─────────────────
-    let reportUris = [];
-    if (dashBody) {
-      try {
-        const data = JSON.parse(dashBody);
-        const tabs = data.projectDashboard?.content?.tabs || [];
-        console.log('[Fourth] Tabs:', tabs.map(t => `${t.title || '?'}(${t.identifier})`).join(', '));
-        const tab = tabs.find(t => t.identifier === dashInfo.tab) || tabs[0];
-        if (tab) {
-          const tabRaw = JSON.stringify(tab);
-          reportUris = [...new Set((tabRaw.match(/\/gdc\/md\/[^"]+\/obj\/\d+/g) || []))];
-          console.log(`[Fourth] Report URIs from tab:`, JSON.stringify(reportUris));
-        }
-      } catch (_) {}
+    // Filter by keyword relevant to this report type
+    const keywords = reportKey === 'LABOR'
+      ? ['labor', 'labour']
+      : ['overtime', 'over time', ' ot '];
 
-      if (reportUris.length === 0) {
-        reportUris = [...new Set((dashBody.match(/\/gdc\/md\/[^"]+\/obj\/\d+/g) || []))];
-        console.log('[Fourth] Fallback URIs from body scan:', JSON.stringify(reportUris));
-      }
+    let reportUris = allEntries
+      .filter(e => keywords.some(kw => (e.title || '').toLowerCase().includes(kw)))
+      .map(e => e.link);
+
+    console.log(`[Fourth] Keyword-matched URIs (${reportKey}):`, JSON.stringify(reportUris));
+
+    // If no keyword match, try all reports (titles may differ from expectation)
+    if (reportUris.length === 0) {
+      console.log('[Fourth] No keyword matches — will try all reports');
+      reportUris = allEntries.map(e => e.link);
     }
 
     if (reportUris.length === 0) throw new Error('No report URIs found');
