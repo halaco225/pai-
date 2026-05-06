@@ -831,7 +831,11 @@ router.get('/shoutouts', async (req, res) => {
     const p    = db.getPool();
     if (!p) return res.json({ shoutouts: [] });
 
-    let q = 'SELECT s.*, a.area_coach, a.region_coach FROM store_shoutouts s LEFT JOIN store_assignments a ON s.store_id=a.store_id WHERE 1=1';
+    let q = `SELECT s.id, s.store_id, a.store_name, s.shoutout_date, s.summary,
+                   s.full_comment AS comment_text, s.source, a.area_coach, a.region_coach
+             FROM intel_shoutouts s
+             LEFT JOIN store_assignments a ON s.store_id = a.store_id
+             WHERE 1=1`;
     const params = [];
     if (date) { params.push(date); q += ` AND s.shoutout_date=$${params.length}`; }
     if (user.role === 'area_coach') { params.push(user.scope?.ac_name||user.name); q += ` AND a.area_coach=$${params.length}`; }
@@ -1163,9 +1167,9 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
     );
 
     // Fetch shoutouts
-    let shoutoutQ = `SELECT s.id, s.store_id, s.store_name, s.summary, s.comment_text,
-                            s.shoutout_date, a.area_coach
-                     FROM store_shoutouts s
+    let shoutoutQ = `SELECT s.id, s.store_id, a.store_name, s.summary,
+                            s.full_comment AS comment_text, s.shoutout_date, a.area_coach
+                     FROM intel_shoutouts s
                      LEFT JOIN store_assignments a ON s.store_id = a.store_id
                      WHERE 1=1`;
     const sp = [];
