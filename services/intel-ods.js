@@ -18,8 +18,8 @@ const REPORTS = {
   PAYROLL: '/Reports/Pizza_Hut/Payroll/PH_ForgotToClockOut',
 };
 
-const POLL_INTERVAL_MS  = 3000;
-const POLL_MAX_ATTEMPTS = 30;
+const POLL_INTERVAL_MS  = 5000;
+const POLL_MAX_ATTEMPTS = 60;
 
 function fetch(...args) { return require('node-fetch')(...args); }
 function parseCookies(r) { return (r.headers.raw()['set-cookie'] || []).map(c => c.split(';')[0]); }
@@ -91,14 +91,16 @@ async function downloadReport(session, reportKey, targetDate, outPath) {
   if (!requestId || !expId) throw new Error(`No requestId/exportId: ${JSON.stringify(exec)}`);
   console.log(`[IntelODS] ${reportKey} queued: ${requestId}`);
 
+  let ready = false;
   for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
     await sleep(POLL_INTERVAL_MS);
     const st = await (await fetch(`${ODS_URL}/asp/rest_v2/reportExecutions/${requestId}`, { headers: hdrs })).json();
     const es = st.status, xs = st.exports?.[0]?.status;
-    console.log(`[IntelODS] Poll ${i+1}: exec=${es} export=${xs}`);
-    if (es === 'ready' && xs === 'ready') break;
+    console.log(`[IntelODS] Poll ${i+1}/${POLL_MAX_ATTEMPTS}: exec=${es} export=${xs}`);
+    if (es === 'ready' && xs === 'ready') { ready = true; break; }
     if (es === 'failed' || es === 'cancelled') throw new Error(`Execution ${es}`);
   }
+  if (!ready) throw new Error(`ODS report did not complete after ${POLL_MAX_ATTEMPTS * POLL_INTERVAL_MS / 1000}s — report may be too large or ODS is slow`);
 
   const dlRes = await fetch(`${ODS_URL}/asp/rest_v2/reportExecutions/${requestId}/exports/${expId}/outputResource`, { headers: hdrs });
   if (!dlRes.ok) throw new Error(`Download failed: ${dlRes.status}`);
