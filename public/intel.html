@@ -41,9 +41,93 @@
   padding: 1px 7px; font-size: 10px; font-weight: 700;
 }
 .intel-tab .tab-badge.medium { background: var(--warning); color: #000; }
-.intel-tab .tab-badge.low { background: var(--surface-3); color: var(--text-secondary); }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
+
+/* ── KPI Tiles ───────────────────────────────────────────── */
+.kpi-section { margin-bottom: 24px; }
+.kpi-section-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+}
+.kpi-section-label {
+  font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--text-muted); font-weight: 600;
+}
+.kpi-section-hint { font-size: 11px; color: var(--text-muted); }
+.kpi-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-bottom: 0;
+}
+@media (max-width: 1200px) { .kpi-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 768px)  { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+.kpi-tile {
+  background: var(--surface); border: 2px solid var(--border); border-radius: 10px;
+  padding: 16px 12px 12px; cursor: pointer; transition: all 0.15s;
+  text-align: center; position: relative; user-select: none;
+}
+.kpi-tile:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.kpi-tile.active { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.15), 0 4px 12px rgba(0,0,0,0.15); }
+.kpi-tile .kpi-val { font-size: 20px; font-weight: 900; letter-spacing: -0.5px; color: var(--text-primary); margin-bottom: 5px; line-height: 1; }
+.kpi-tile .kpi-val.good  { color: var(--success); }
+.kpi-tile .kpi-val.warn  { color: var(--warning); }
+.kpi-tile .kpi-val.bad   { color: var(--danger); }
+.kpi-tile .kpi-val.muted { color: var(--text-muted); }
+.kpi-tile .kpi-lbl { font-size: 9px; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; line-height: 1.4; }
+.kpi-tile .kpi-sub { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+.kpi-tile .kpi-sort-hint { font-size: 9px; color: var(--accent); margin-top: 6px; letter-spacing: 0.5px; opacity: 0; transition: opacity 0.15s; }
+.kpi-tile:hover .kpi-sort-hint, .kpi-tile.active .kpi-sort-hint { opacity: 1; }
+
+/* ── Performance Table ───────────────────────────────────── */
+.perf-section { margin-bottom: 28px; }
+.perf-section-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+}
+.perf-table-wrap { overflow-x: auto; }
+.perf-table {
+  width: 100%; border-collapse: collapse; font-size: 13px; min-width: 780px;
+}
+.perf-table th {
+  background: var(--surface-2); color: var(--text-muted);
+  padding: 9px 12px; text-align: right; border-bottom: 1px solid var(--border);
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+  white-space: nowrap; cursor: pointer; user-select: none; transition: color 0.15s;
+}
+.perf-table th:first-child { text-align: left; cursor: default; }
+.perf-table th:not(:first-child):hover { color: var(--text-primary); }
+.perf-table th.sorted { color: var(--accent); }
+.perf-table td {
+  padding: 12px 12px; border-bottom: 1px solid var(--border);
+  color: var(--text-secondary); text-align: right; vertical-align: middle;
+}
+.perf-table td:first-child { text-align: left; }
+.perf-table tr:last-child td { border-bottom: none; }
+.perf-table tr.ac-row { cursor: pointer; }
+.perf-table tr.ac-row:hover td { background: var(--surface-2); }
+.perf-table tr.ac-row.expanded td { background: rgba(99,102,241,0.06); }
+.perf-table tr.ac-row.expanded td:first-child { border-left: 3px solid var(--accent); }
+.perf-table tr.store-row td { background: rgba(99,102,241,0.03); font-size: 12px; padding: 9px 12px; }
+.perf-table tr.store-row:hover td { background: rgba(99,102,241,0.07); }
+.perf-table td.sorted-col { background: rgba(99,102,241,0.04); }
+.perf-table tr.ac-row.expanded td.sorted-col { background: rgba(99,102,241,0.1); }
+.col-name { color: var(--text-primary); font-weight: 600; }
+.col-sub  { color: var(--text-muted); font-size: 11px; font-weight: 400; }
+.col-good { color: var(--success); font-weight: 700; }
+.col-warn { color: var(--warning); font-weight: 700; }
+.col-bad  { color: var(--danger);  font-weight: 700; }
+.col-muted { color: var(--text-muted); }
+.store-drill-header {
+  background: rgba(99,102,241,0.06); border-left: 3px solid var(--accent);
+  padding: 10px 16px; margin-top: 16px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-radius: 0 8px 8px 0;
+}
+.store-drill-label { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); }
+.store-drill-name  { font-weight: 700; color: var(--text-primary); margin-left: 6px; }
+.store-drill-close {
+  background: none; border: none; color: var(--text-muted);
+  cursor: pointer; font-size: 13px; padding: 2px 8px; font-family: inherit;
+  transition: color 0.15s;
+}
+.store-drill-close:hover { color: var(--text-primary); }
 
 /* ── Morning Briefing ────────────────────────────────────── */
 .narrative-card {
@@ -55,177 +139,36 @@
   content: '★ MORNING BRIEF'; position: absolute; top: 12px; right: 16px;
   font-size: 9px; letter-spacing: 2px; color: var(--accent); font-weight: 700;
 }
-.narrative-text {
-  font-size: 16px; line-height: 1.8; color: var(--text-primary);
-  font-weight: 400;
-}
-.narrative-footer {
-  margin-top: 14px; font-size: 11px; color: var(--text-muted);
-  display: flex; align-items: center; gap: 6px;
-}
+.narrative-text { font-size: 16px; line-height: 1.8; color: var(--text-primary); font-weight: 400; }
+.narrative-footer { margin-top: 14px; font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
 
-.stat-grid {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px;
-}
-.stat-card {
-  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-  padding: 20px; position: relative; overflow: hidden;
-}
-.stat-card::after {
-  content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
-}
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; position: relative; overflow: hidden; }
+.stat-card::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; }
 .stat-card.high::after { background: var(--danger); }
 .stat-card.medium::after { background: var(--warning); }
 .stat-card.info::after { background: #3B82F6; }
 .stat-card.success::after { background: var(--success); }
-.stat-card .stat-val {
-  font-size: 36px; font-weight: 900; letter-spacing: -1px; line-height: 1;
-  margin-bottom: 6px;
-}
-.stat-card.high .stat-val { color: var(--danger); }
+.stat-card .stat-val { font-size: 36px; font-weight: 900; letter-spacing: -1px; line-height: 1; margin-bottom: 6px; }
+.stat-card.high .stat-val   { color: var(--danger); }
 .stat-card.medium .stat-val { color: var(--warning); }
-.stat-card.info .stat-val { color: #3B82F6; }
+.stat-card.info .stat-val   { color: #3B82F6; }
 .stat-card.success .stat-val { color: var(--success); }
-.stat-card .stat-lbl {
-  font-size: 11px; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase;
-}
-
-/* ── KPI Dashboard ───────────────────────────────────────── */
-.kpi-section {
-  margin-bottom: 28px;
-}
-.kpi-section-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 12px;
-}
-.kpi-section-label {
-  font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
-  color: var(--text-muted); font-weight: 600;
-}
-.kpi-section-hint {
-  font-size: 11px; color: var(--text-muted);
-}
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 10px;
-  margin-bottom: 0;
-}
-@media (max-width: 1200px) { .kpi-grid { grid-template-columns: repeat(4, 1fr); } }
-@media (max-width: 768px)  { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
-.kpi-tile {
-  background: var(--surface); border: 2px solid var(--border); border-radius: 10px;
-  padding: 16px 12px 12px; cursor: pointer; transition: all 0.15s;
-  text-align: center; position: relative; user-select: none;
-}
-.kpi-tile:hover {
-  border-color: var(--accent); transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-.kpi-tile.active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(99,102,241,0.15), 0 4px 12px rgba(0,0,0,0.15);
-}
-.kpi-tile .kpi-val {
-  font-size: 20px; font-weight: 900; letter-spacing: -0.5px;
-  color: var(--text-primary); margin-bottom: 5px; line-height: 1;
-}
-.kpi-tile .kpi-val.good  { color: var(--success); }
-.kpi-tile .kpi-val.warn  { color: var(--warning); }
-.kpi-tile .kpi-val.bad   { color: var(--danger); }
-.kpi-tile .kpi-val.muted { color: var(--text-muted); }
-.kpi-tile .kpi-lbl {
-  font-size: 9px; color: var(--text-muted); letter-spacing: 1px;
-  text-transform: uppercase; line-height: 1.4;
-}
-.kpi-tile .kpi-sub {
-  font-size: 10px; color: var(--text-muted); margin-top: 4px;
-}
-.kpi-tile .kpi-drill-hint {
-  font-size: 9px; color: var(--accent); margin-top: 6px; letter-spacing: 0.5px;
-  opacity: 0; transition: opacity 0.15s;
-}
-.kpi-tile:hover .kpi-drill-hint,
-.kpi-tile.active .kpi-drill-hint { opacity: 1; }
-
-/* ── Drill-down Panel ────────────────────────────────────── */
-.drill-panel {
-  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-  padding: 20px 22px; margin-top: 12px;
-  animation: fadeSlideIn 0.2s ease;
-}
-@keyframes fadeSlideIn {
-  from { opacity: 0; transform: translateY(-6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.drill-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 16px;
-}
-.drill-breadcrumb {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 12px; color: var(--text-muted);
-}
-.crumb-link {
-  color: var(--accent); cursor: pointer; font-weight: 600;
-  background: none; border: none; padding: 0; font-size: 12px; font-family: inherit;
-}
-.crumb-link:hover { text-decoration: underline; }
-.crumb-sep { color: var(--text-muted); opacity: 0.5; }
-.crumb-current { color: var(--text-primary); font-weight: 700; }
-.drill-close {
-  background: var(--surface-3); border: 1px solid var(--border);
-  color: var(--text-muted); border-radius: 6px; padding: 4px 12px;
-  font-size: 12px; cursor: pointer; transition: all 0.15s; font-family: inherit;
-}
-.drill-close:hover { color: var(--text-primary); border-color: var(--border-light); }
-.drill-table-wrap { overflow-x: auto; }
-.drill-table {
-  width: 100%; border-collapse: collapse; font-size: 13px;
-}
-.drill-table th {
-  background: var(--surface-2); color: var(--text-muted);
-  padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--border);
-  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; white-space: nowrap;
-}
-.drill-table th:first-child { text-align: left; }
-.drill-table td {
-  padding: 11px 12px; border-bottom: 1px solid var(--border);
-  color: var(--text-secondary); text-align: right;
-}
-.drill-table td:first-child { text-align: left; }
-.drill-table tr:last-child td { border-bottom: none; }
-.drill-table tr.clickable { cursor: pointer; }
-.drill-table tr.clickable:hover td { background: var(--surface-2); }
-.drill-table .cell-name { color: var(--text-primary); font-weight: 600; }
-.drill-table .cell-good { color: var(--success); font-weight: 700; }
-.drill-table .cell-warn { color: var(--warning); font-weight: 700; }
-.drill-table .cell-bad  { color: var(--danger); font-weight: 700; }
-.drill-table .cell-muted { color: var(--text-muted); }
-.drill-empty {
-  text-align: center; padding: 40px 20px;
-  color: var(--text-muted); font-size: 13px;
-}
+.stat-card .stat-lbl { font-size: 11px; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
 
 /* ── Section headers ─────────────────────────────────────── */
-.section-header {
-  font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
-  color: var(--text-muted); margin-bottom: 12px; font-weight: 600;
-}
+.section-header { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; font-weight: 600; }
 
 /* ── Flag Cards ──────────────────────────────────────────── */
-.flag-filters {
-  display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; align-items: center;
-}
+.flag-filters { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; align-items: center; }
 .filter-btn {
   background: var(--surface); border: 1px solid var(--border); color: var(--text-secondary);
   border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600;
   cursor: pointer; transition: all 0.15s; letter-spacing: 0.3px;
 }
 .filter-btn:hover, .filter-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
-.filter-btn.active-high { border-color: var(--danger); color: var(--danger); background: rgba(239,68,68,0.1); }
+.filter-btn.active-high   { border-color: var(--danger);  color: var(--danger);  background: rgba(239,68,68,0.1); }
 .filter-btn.active-medium { border-color: var(--warning); color: var(--warning); background: rgba(245,158,11,0.1); }
-
 .flags-list { display: flex; flex-direction: column; gap: 10px; }
 .flag-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
@@ -241,18 +184,10 @@
 .sev-high   { background: rgba(239,68,68,0.15);  color: #F87171; border: 1px solid rgba(239,68,68,0.3); }
 .sev-medium { background: rgba(245,158,11,0.15); color: #FCD34D; border: 1px solid rgba(245,158,11,0.3); }
 .sev-low    { background: rgba(59,130,246,0.1);  color: #60A5FA; border: 1px solid rgba(59,130,246,0.2); }
-.flag-body .flag-store {
-  font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;
-}
-.flag-body .flag-metric {
-  font-size: 13px; color: var(--text-secondary); margin-bottom: 6px;
-}
-.flag-employees {
-  font-size: 12px; color: var(--warning); margin-bottom: 6px; font-weight: 500;
-}
-.flag-meta {
-  display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted);
-}
+.flag-body .flag-store  { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
+.flag-body .flag-metric { font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; }
+.flag-employees { font-size: 12px; color: var(--warning); margin-bottom: 6px; font-weight: 500; }
+.flag-meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); }
 .flag-meta span { display: flex; align-items: center; gap: 4px; }
 .flag-actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 .btn-ack {
@@ -267,122 +202,71 @@
   border: 1px solid rgba(16,185,129,0.2); border-radius: 6px;
   padding: 5px 10px; font-size: 11px; font-weight: 600;
 }
-.days-out-badge {
-  background: var(--surface-3); border: 1px solid var(--border); border-radius: 4px;
-  padding: 2px 8px; font-size: 11px; font-weight: 600; color: var(--warning);
-}
+.days-out-badge { background: var(--surface-3); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 600; color: var(--warning); }
 .days-out-badge.days-1  { color: var(--text-secondary); }
 .days-out-badge.days-hi { color: var(--danger); }
-
-/* ── Priority flags section ─────────────────────────────── */
 .priority-flags-section { margin-bottom: 28px; }
 
-/* ── Shoutouts (in Morning Brief) ────────────────────────── */
+/* ── Shoutouts ───────────────────────────────────────────── */
 .shoutouts-section { margin-top: 4px; margin-bottom: 8px; }
-.shoutouts-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;
-}
-.shoutout-card {
-  background: var(--surface); border: 1px solid var(--border); border-top: 2px solid var(--success);
-  border-radius: 10px; padding: 16px;
-}
-.shoutout-store  { font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
+.shoutouts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.shoutout-card { background: var(--surface); border: 1px solid var(--border); border-top: 2px solid var(--success); border-radius: 10px; padding: 16px; }
+.shoutout-store   { font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
 .shoutout-summary { font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 8px; }
-.shoutout-meta   { font-size: 11px; color: var(--text-muted); }
+.shoutout-meta    { font-size: 11px; color: var(--text-muted); }
 
-/* ── Empty / Loading states ──────────────────────────────── */
-.empty-state {
-  text-align: center; padding: 60px 20px;
-  color: var(--text-muted); font-size: 14px;
-}
+/* ── Empty / Loading ─────────────────────────────────────── */
+.empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); font-size: 14px; }
 .empty-state .empty-icon { font-size: 40px; margin-bottom: 14px; opacity: 0.4; }
 .empty-state h3 { font-size: 16px; color: var(--text-secondary); margin-bottom: 6px; }
+.drill-empty { text-align: center; padding: 30px 20px; color: var(--text-muted); font-size: 13px; }
 .loading-shimmer {
   background: linear-gradient(90deg, var(--surface) 25%, var(--surface-2) 50%, var(--surface) 75%);
-  background-size: 200% 100%; animation: shimmer 1.4s infinite;
-  border-radius: 8px; height: 16px;
+  background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 8px; height: 16px;
 }
 @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
 
 /* ── Acknowledge Modal ───────────────────────────────────── */
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.7);
-  display: none; align-items: center; justify-content: center; z-index: 1000;
-  backdrop-filter: blur(4px);
+  display: none; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px);
 }
 .modal-overlay.open { display: flex; }
-.modal {
-  background: var(--surface); border: 1px solid var(--border-light);
-  border-radius: 14px; padding: 32px; width: 100%; max-width: 520px;
-  position: relative;
-}
+.modal { background: var(--surface); border: 1px solid var(--border-light); border-radius: 14px; padding: 32px; width: 100%; max-width: 520px; position: relative; }
 .modal h3 { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
 .modal .modal-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
 .modal label { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 6px; }
 .modal textarea {
   width: 100%; background: var(--surface-2); border: 1px solid var(--border);
   border-radius: 8px; color: var(--text-primary); font-family: var(--font);
-  font-size: 13px; padding: 12px; resize: vertical; min-height: 100px;
-  transition: border-color 0.15s;
+  font-size: 13px; padding: 12px; resize: vertical; min-height: 100px; transition: border-color 0.15s;
 }
 .modal textarea:focus { outline: none; border-color: var(--accent); }
 .modal-char-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; margin-bottom: 20px; }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
-.btn-cancel {
-  background: var(--surface-3); border: 1px solid var(--border); color: var(--text-secondary);
-  border-radius: 6px; padding: 9px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
-}
+.btn-cancel { background: var(--surface-3); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 6px; padding: 9px 18px; font-size: 13px; font-weight: 600; cursor: pointer; }
 .btn-cancel:hover { border-color: var(--border-light); color: var(--text-primary); }
-.btn-submit {
-  background: var(--accent); color: #fff; border: none; border-radius: 6px;
-  padding: 9px 20px; font-size: 13px; font-weight: 700; cursor: pointer;
-}
+.btn-submit { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 9px 20px; font-size: 13px; font-weight: 700; cursor: pointer; }
 .btn-submit:hover { background: var(--accent-hover); }
 .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── Accountability ──────────────────────────────────────── */
 .acct-table-wrap { overflow-x: auto; }
-.acct-table {
-  width: 100%; border-collapse: collapse; font-size: 13px;
-}
-.acct-table th {
-  background: var(--surface-2); color: var(--text-muted);
-  padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border);
-  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; white-space: nowrap;
-}
-.acct-table td {
-  padding: 12px 14px; border-bottom: 1px solid var(--border);
-  color: var(--text-secondary); vertical-align: top;
-}
+.acct-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.acct-table th { background: var(--surface-2); color: var(--text-muted); padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; white-space: nowrap; }
+.acct-table td { padding: 12px 14px; border-bottom: 1px solid var(--border); color: var(--text-secondary); vertical-align: top; }
 .acct-table tr:last-child td { border-bottom: none; }
 .acct-table tr:hover td { background: var(--surface-2); }
-.acct-table .action-text {
-  color: var(--text-primary); font-size: 12px; max-width: 280px; line-height: 1.5;
-}
+.acct-table .action-text { color: var(--text-primary); font-size: 12px; max-width: 280px; line-height: 1.5; }
 
 /* ── Weekly Digest ───────────────────────────────────────── */
-.digest-wrap {
-  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-  padding: 24px; position: relative;
-}
-.digest-copy-btn {
-  position: absolute; top: 16px; right: 16px;
-  background: var(--surface-3); border: 1px solid var(--border);
-  color: var(--text-secondary); border-radius: 6px; padding: 6px 12px;
-  font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s;
-}
+.digest-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 24px; position: relative; }
+.digest-copy-btn { position: absolute; top: 16px; right: 16px; background: var(--surface-3); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
 .digest-copy-btn:hover { border-color: var(--accent); color: var(--accent); }
-.digest-text {
-  font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.8;
-  color: var(--text-secondary); white-space: pre-wrap; word-break: break-word;
-}
+.digest-text { font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.8; color: var(--text-secondary); white-space: pre-wrap; word-break: break-word; }
 
-/* ── Unaddressed alert ───────────────────────────────────── */
-.alert-banner {
-  background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25);
-  border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;
-  font-size: 13px; color: #F87171; display: flex; align-items: center; gap: 8px;
-}
+/* ── Alert banner ────────────────────────────────────────── */
+.alert-banner { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; color: #F87171; display: flex; align-items: center; gap: 8px; }
 </style>
 </head>
 <body>
@@ -449,7 +333,10 @@
 
     <!-- Tabs -->
     <div class="intel-tabs">
-      <button class="intel-tab active" id="tabBriefing" onclick="switchTab('briefing', this)">
+      <button class="intel-tab active" id="tabDashboard" onclick="switchTab('dashboard', this)">
+        ▦ Dashboard
+      </button>
+      <button class="intel-tab" id="tabBriefing" onclick="switchTab('briefing', this)">
         ☀ Morning Brief
       </button>
       <button class="intel-tab" onclick="switchTab('flags', this)" id="tabFlags">
@@ -465,9 +352,125 @@
     </div>
 
     <!-- ══════════════════════════════════════════════════════
-         PANEL: Morning Briefing
+         PANEL: Dashboard (PRIMARY)
          ══════════════════════════════════════════════════ -->
-    <div class="tab-panel active" id="panel-briefing">
+    <div class="tab-panel active" id="panel-dashboard">
+
+      <!-- Region KPI tiles -->
+      <div class="kpi-section" id="kpiSection">
+        <div class="kpi-section-header">
+          <div class="kpi-section-label">Performance Dashboard</div>
+          <div class="kpi-section-hint" id="kpiHint" style="display:none">Click any metric to sort the table below</div>
+        </div>
+        <div class="kpi-grid" id="kpiGrid">
+          <div class="kpi-tile active" onclick="setActiveMetric('net_sales')" id="tile-net_sales">
+            <div class="kpi-val muted" id="kpi-net_sales">—</div>
+            <div class="kpi-lbl">Net Sales</div>
+            <div class="kpi-sub" id="kpisub-net_sales"></div>
+            <div class="kpi-sort-hint">↑↓ sort</div>
+          </div>
+          <div class="kpi-tile" onclick="setActiveMetric('growth_pct')" id="tile-growth_pct">
+            <div class="kpi-val muted" id="kpi-growth_pct">—</div>
+            <div class="kpi-lbl">Sales Growth</div>
+            <div class="kpi-sub" id="kpisub-growth_pct"></div>
+            <div class="kpi-sort-hint">↑↓ sort</div>
+          </div>
+          <div class="kpi-tile" onclick="setActiveMetric('cancels')" id="tile-cancels">
+            <div class="kpi-val muted" id="kpi-cancels">—</div>
+            <div class="kpi-lbl">Cancel/Unmade</div>
+            <div class="kpi-sub" id="kpisub-cancels"></div>
+            <div class="kpi-sort-hint">↑↓ sort</div>
+          </div>
+          <div class="kpi-tile" onclick="setActiveMetric('labor_pct')" id="tile-labor_pct">
+            <div class="kpi-val muted" id="kpi-labor_pct">—</div>
+            <div class="kpi-lbl">Labor %</div>
+            <div class="kpi-sub" id="kpisub-labor_pct"></div>
+            <div class="kpi-sort-hint">↑↓ sort</div>
+          </div>
+          <div class="kpi-tile" onclick="setActiveMetric('ot_hours')" id="tile-ot_hours">
+            <div class="kpi-val muted" id="kpi-ot_hours">—</div>
+            <div class="kpi-lbl">OT Hours</div>
+            <div class="kpi-sub" id="kpisub-ot_hours"></div>
+            <div class="kpi-sort-hint">↑↓ sort</div>
+          </div>
+          <div class="kpi-tile" onclick="setActiveMetric('comments')" id="tile-comments">
+            <div class="kpi-val muted" id="kpi-comments">—</div>
+            <div class="kpi-lbl">Guest Comments</div>
+            <div class="kpi-sub" id="kpisub-comments"></div>
+            <div class="kpi-sort-hint">↑↓ sort</div>
+          </div>
+          <div class="kpi-tile" onclick="setActiveMetric('forgot_clockout')" id="tile-forgot_clockout">
+            <div class="kpi-val muted" id="kpi-forgot_clockout">—</div>
+            <div class="kpi-lbl">Forgot Clock Out</div>
+            <div class="kpi-sub" id="kpisub-forgot_clockout"></div>
+            <div class="kpi-sort-hint">↑↓ sort</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Area Coach breakdown table -->
+      <div class="perf-section">
+        <div class="perf-section-header">
+          <div class="kpi-section-label">Area Coach Breakdown</div>
+          <div style="font-size:11px;color:var(--text-muted)">Click a row to drill into stores</div>
+        </div>
+        <div class="perf-table-wrap">
+          <table class="perf-table" id="acPerfTable">
+            <thead>
+              <tr>
+                <th style="cursor:default">Area Coach</th>
+                <th id="th-net_sales"       onclick="setActiveMetric('net_sales')"       class="sorted">Net Sales</th>
+                <th id="th-growth_pct"      onclick="setActiveMetric('growth_pct')">Growth</th>
+                <th id="th-cancels"         onclick="setActiveMetric('cancels')">Cancels</th>
+                <th id="th-labor_pct"       onclick="setActiveMetric('labor_pct')">Labor %</th>
+                <th id="th-ot_hours"        onclick="setActiveMetric('ot_hours')">OT Hrs</th>
+                <th id="th-comments"        onclick="setActiveMetric('comments')">Comments</th>
+                <th id="th-forgot_clockout" onclick="setActiveMetric('forgot_clockout')">Clock Outs</th>
+                <th style="cursor:default">Flags</th>
+              </tr>
+            </thead>
+            <tbody id="acPerfBody">
+              <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-muted)">Loading performance data…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Store drill-in -->
+        <div id="storeDrillWrap" style="display:none">
+          <div class="store-drill-header">
+            <div>
+              <span class="store-drill-label">Stores —</span>
+              <span class="store-drill-name" id="storeDrillACName"></span>
+            </div>
+            <button class="store-drill-close" onclick="closeStoreDrill()">✕ Close</button>
+          </div>
+          <div class="perf-table-wrap" style="margin-top:0">
+            <table class="perf-table" id="storePerfTable">
+              <thead>
+                <tr>
+                  <th style="cursor:default">Store</th>
+                  <th>Net Sales</th>
+                  <th>Growth</th>
+                  <th>Cancels</th>
+                  <th>Labor %</th>
+                  <th>OT Hrs</th>
+                  <th>Comments</th>
+                  <th>Clock Outs</th>
+                  <th style="cursor:default">Flags</th>
+                </tr>
+              </thead>
+              <tbody id="storePerfBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /panel-dashboard -->
+
+    <!-- ══════════════════════════════════════════════════════
+         PANEL: Morning Brief (secondary)
+         ══════════════════════════════════════════════════ -->
+    <div class="tab-panel" id="panel-briefing">
 
       <!-- Narrative -->
       <div class="narrative-card" id="narrativeCard">
@@ -481,75 +484,7 @@
         </div>
       </div>
 
-      <!-- KPI Dashboard ─────────────────────────────────── -->
-      <div class="kpi-section" id="kpiSection">
-        <div class="kpi-section-header">
-          <div class="kpi-section-label">Performance Dashboard</div>
-          <div class="kpi-section-hint" id="kpiHint" style="display:none">Click any metric to drill down</div>
-        </div>
-
-        <!-- 7 KPI tiles -->
-        <div class="kpi-grid" id="kpiGrid">
-          <div class="kpi-tile" onclick="drillMetric('net_sales')" id="tile-net_sales">
-            <div class="kpi-val muted" id="kpi-net_sales">—</div>
-            <div class="kpi-lbl">Net Sales</div>
-            <div class="kpi-sub" id="kpisub-net_sales"></div>
-            <div class="kpi-drill-hint">▾ drill down</div>
-          </div>
-          <div class="kpi-tile" onclick="drillMetric('growth_pct')" id="tile-growth_pct">
-            <div class="kpi-val muted" id="kpi-growth_pct">—</div>
-            <div class="kpi-lbl">Sales Growth</div>
-            <div class="kpi-sub" id="kpisub-growth_pct"></div>
-            <div class="kpi-drill-hint">▾ drill down</div>
-          </div>
-          <div class="kpi-tile" onclick="drillMetric('cancels')" id="tile-cancels">
-            <div class="kpi-val muted" id="kpi-cancels">—</div>
-            <div class="kpi-lbl">Cancel/Unmade</div>
-            <div class="kpi-sub" id="kpisub-cancels"></div>
-            <div class="kpi-drill-hint">▾ drill down</div>
-          </div>
-          <div class="kpi-tile" onclick="drillMetric('labor_pct')" id="tile-labor_pct">
-            <div class="kpi-val muted" id="kpi-labor_pct">—</div>
-            <div class="kpi-lbl">Labor %</div>
-            <div class="kpi-sub" id="kpisub-labor_pct"></div>
-            <div class="kpi-drill-hint">▾ drill down</div>
-          </div>
-          <div class="kpi-tile" onclick="drillMetric('ot_hours')" id="tile-ot_hours">
-            <div class="kpi-val muted" id="kpi-ot_hours">—</div>
-            <div class="kpi-lbl">OT Hours</div>
-            <div class="kpi-sub" id="kpisub-ot_hours"></div>
-            <div class="kpi-drill-hint">▾ drill down</div>
-          </div>
-          <div class="kpi-tile" onclick="drillMetric('comments')" id="tile-comments">
-            <div class="kpi-val muted" id="kpi-comments">—</div>
-            <div class="kpi-lbl">Guest Comments</div>
-            <div class="kpi-sub" id="kpisub-comments"></div>
-            <div class="kpi-drill-hint">▾ drill down</div>
-          </div>
-          <div class="kpi-tile" onclick="drillMetric('forgot_clockout')" id="tile-forgot_clockout">
-            <div class="kpi-val muted" id="kpi-forgot_clockout">—</div>
-            <div class="kpi-lbl">Forgot Clock Out</div>
-            <div class="kpi-sub" id="kpisub-forgot_clockout"></div>
-            <div class="kpi-drill-hint">▾ drill down</div>
-          </div>
-        </div>
-
-        <!-- Drill-down panel (hidden until tile clicked) -->
-        <div class="drill-panel" id="drillPanel" style="display:none">
-          <div class="drill-header">
-            <div class="drill-breadcrumb" id="drillBreadcrumb"></div>
-            <button class="drill-close" onclick="closeDrill()">✕ Close</button>
-          </div>
-          <div class="drill-table-wrap">
-            <table class="drill-table" id="drillTable">
-              <thead id="drillThead"></thead>
-              <tbody id="drillTbody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- Summary stat cards ─────────────────────────────── -->
+      <!-- Summary stat cards -->
       <div class="stat-grid" id="statGrid">
         <div class="stat-card high">
           <div class="stat-val" id="statHigh">—</div>
@@ -569,7 +504,7 @@
         </div>
       </div>
 
-      <!-- Priority Flags ─────────────────────────────────── -->
+      <!-- Priority Flags -->
       <div class="priority-flags-section">
         <h3 class="section-header">Priority Flags</h3>
         <div class="flags-list" id="quickFlagsList">
@@ -582,7 +517,7 @@
         </div>
       </div>
 
-      <!-- Shoutouts ────────────────────────────────────────── -->
+      <!-- Shoutouts -->
       <div class="shoutouts-section">
         <h3 class="section-header">★ Guest Shoutouts</h3>
         <div class="shoutouts-grid" id="shoutoutsGrid">
@@ -620,12 +555,8 @@
         <table class="acct-table">
           <thead>
             <tr>
-              <th>Store</th>
-              <th>Flag</th>
-              <th>Severity</th>
-              <th>Acknowledged By</th>
-              <th>Action Taken</th>
-              <th>When</th>
+              <th>Store</th><th>Flag</th><th>Severity</th>
+              <th>Acknowledged By</th><th>Action Taken</th><th>When</th>
             </tr>
           </thead>
           <tbody id="acctTableBody">
@@ -671,12 +602,11 @@ let currentUser   = null;
 let allFlags      = [];
 let currentFlagId = null;
 let currentFilter = 'all';
+let kpiData       = null;
 
-// KPI drill-down state
-let kpiData       = null;   // full response from /api/intel/kpis
-let activeDrill   = null;   // metric key currently drilled ('net_sales', etc.)
-let drillLevel    = 'ac';   // 'ac' | 'store'
-let drillAC       = null;   // selected area coach name when drillLevel='store'
+// Dashboard drill state
+let activeMetric = 'net_sales';   // which column is sorted / tile is active
+let selectedAC   = null;          // AC whose stores are expanded
 
 /* ═══════════════════════════════════════════════════════════
    INIT
@@ -691,17 +621,24 @@ async function init() {
     document.getElementById('userName').textContent    = currentUser.name || currentUser.username;
     document.getElementById('userRole').textContent    = formatRole(currentUser.role);
 
-    // Show Accountability tab for RDO/VP
     if (currentUser.role === 'rdo' || currentUser.role === 'vp') {
       document.getElementById('tabAcct').style.display = '';
     }
 
-    // Load everything in parallel
     const [dashboard, flags, shoutouts] = await Promise.all([
       fetch('/api/intel/dashboard').then(r => r.json()),
       fetch('/api/intel/flags').then(r => r.json()),
       fetch('/api/intel/shoutouts').then(r => r.json())
     ]);
+
+    // Set report date in header from dashboard
+    const metricDate = dashboard.metric_date || dashboard.date;
+    if (metricDate) {
+      document.getElementById('headerDate').textContent = formatDate(metricDate);
+      document.getElementById('intelSub').textContent   = `${currentUser.name || currentUser.username}'s intel for ${formatDate(metricDate)}`;
+    } else {
+      document.getElementById('intelSub').textContent = 'Automated batch runs daily at 5:00 AM EST';
+    }
 
     renderBriefing(dashboard, flags, shoutouts);
     renderFlags(flags.flags || []);
@@ -713,8 +650,8 @@ async function init() {
       renderAccountability(accts, flags.flags || []);
     }
 
-    // Load KPI dashboard (non-blocking — fills in after flag data)
-    loadKPIs(dashboard.metric_date || dashboard.date);
+    // Load KPI data — populates tiles AND the AC table
+    loadKPIs(metricDate);
 
   } catch (err) {
     document.getElementById('narrativeText').textContent = 'Error loading intel: ' + err.message;
@@ -722,82 +659,21 @@ async function init() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   MORNING BRIEF
+   KPI TILES + AC DASHBOARD
    ═══════════════════════════════════════════════════════════ */
-function renderBriefing(dashboard, flagsData, shoutoutsData) {
-  const flags    = flagsData.flags    || [];
-  const shoutouts = shoutoutsData.shoutouts || [];
-
-  if (dashboard.status === 'no_data' || !dashboard.narrative) {
-    document.getElementById('narrativeText').innerHTML =
-      `<span style="color:var(--text-muted)">${dashboard.message || 'Intel not yet generated. Check back after 5 AM.'}</span>`;
-    document.getElementById('intelSub').textContent = 'Automated batch runs daily at 5:00 AM EST';
-  } else {
-    document.getElementById('narrativeText').textContent = dashboard.narrative;
-    document.getElementById('narrativeFooter').style.display = 'flex';
-    document.getElementById('narrativeDate').textContent = formatDate(dashboard.metric_date || dashboard.date);
-    document.getElementById('headerDate').textContent    = formatDate(dashboard.metric_date || dashboard.date);
-    document.getElementById('intelSub').textContent      = `${currentUser.name || currentUser.username}'s intel for ${formatDate(dashboard.metric_date || dashboard.date)}`;
-  }
-
-  const high   = flags.filter(f => f.severity === 'high'   && f.status !== 'archived').length;
-  const medium = flags.filter(f => f.severity === 'medium' && f.status !== 'archived').length;
-  const stores = new Set(flags.filter(f => f.status !== 'archived').map(f => f.store_id)).size;
-
-  document.getElementById('statHigh').textContent      = high;
-  document.getElementById('statMedium').textContent    = medium;
-  document.getElementById('statStores').textContent    = stores;
-  document.getElementById('statShoutouts').textContent = shoutouts.length;
-
-  // Flag tab badge
-  const openCount = flags.filter(f => f.status !== 'addressed' && f.status !== 'archived').length;
-  if (openCount > 0) {
-    const badge = document.getElementById('flagCountBadge');
-    badge.textContent  = openCount;
-    badge.style.display = '';
-    badge.className = high > 0 ? 'tab-badge' : 'tab-badge medium';
-  }
-
-  // Priority flags preview (top 5 open, by severity)
-  const topFlags = flags
-    .filter(f => f.status !== 'archived' && f.status !== 'addressed')
-    .sort((a, b) => severityOrder(b.severity) - severityOrder(a.severity))
-    .slice(0, 5);
-
-  if (topFlags.length === 0) {
-    document.getElementById('quickFlagsList').innerHTML =
-      '<div class="empty-state"><div class="empty-icon">✓</div><h3>All clear</h3><p>No open flags for your scope today.</p></div>';
-  } else {
-    document.getElementById('quickFlagsList').innerHTML = topFlags.map(f => buildFlagCard(f, true)).join('');
-    if (flags.length > 5) {
-      document.getElementById('viewAllFlagsBtn').style.display = '';
-    }
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════
-   KPI DASHBOARD
-   ═══════════════════════════════════════════════════════════ */
-const KPI_META = {
-  net_sales:       { label: 'Net Sales',        fmt: 'money',   higherBetter: true  },
-  growth_pct:      { label: 'Sales Growth',     fmt: 'pct',     higherBetter: true  },
-  cancels:         { label: 'Cancel/Unmade',    fmt: 'money',   higherBetter: false },
-  labor_pct:       { label: 'Labor %',          fmt: 'pct',     higherBetter: null  },
-  ot_hours:        { label: 'OT Hours',         fmt: 'hours',   higherBetter: false },
-  comments:        { label: 'Guest Comments',   fmt: 'comments',higherBetter: null  },
-  forgot_clockout: { label: 'Forgot Clock Out', fmt: 'count',   higherBetter: false },
-};
-
 async function loadKPIs(metricDate) {
   try {
     const url = metricDate ? `/api/intel/kpis?date=${metricDate}` : '/api/intel/kpis';
     const data = await fetch(url).then(r => r.json());
     kpiData = data;
     renderKPITiles(data);
+    renderACTable();
     if (data && data.region) {
       document.getElementById('kpiHint').style.display = '';
     }
   } catch (e) {
+    document.getElementById('acPerfBody').innerHTML =
+      '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted)">KPI data loads after the 5 AM batch runs.</td></tr>';
     console.warn('KPI load failed:', e.message);
   }
 }
@@ -805,14 +681,12 @@ async function loadKPIs(metricDate) {
 function renderKPITiles(data) {
   if (!data || !data.region) return;
   const r = data.region;
-
   const gv = r.growth_pct;
   setTile('net_sales', r.net_sales != null ? fmtMoney(r.net_sales) : '—',
-    r.net_sales != null ? 'good' : 'muted',
-    r.store_count ? `${r.store_count} stores` : '');
+    r.net_sales != null ? 'good' : 'muted', r.store_count ? `${r.store_count} stores` : '');
   setTile('growth_pct', gv != null ? fmtPct(gv) : '—',
     gv != null ? (gv > 0 ? 'good' : gv < 0 ? 'bad' : 'muted') : 'muted',
-    gv != null ? (gv > 0 ? '\u25b2 vs prior week' : '\u25bc vs prior week') : '');
+    gv != null ? (gv > 0 ? '▲ vs prior week' : '▼ vs prior week') : '');
   const cv = r.cancels;
   setTile('cancels', cv != null ? fmtMoney(cv) : '—',
     cv != null ? (cv > 500 ? 'bad' : cv > 200 ? 'warn' : 'good') : 'muted', '');
@@ -822,9 +696,7 @@ function renderKPITiles(data) {
   const ov = r.ot_hours;
   setTile('ot_hours', ov != null ? fmtHours(ov) : '—',
     ov != null ? (ov > 20 ? 'bad' : ov > 10 ? 'warn' : 'good') : 'muted', '');
-  const pos = r.comments_pos || 0;
-  const neg = r.comments_neg || 0;
-  const tot = pos + neg;
+  const pos = r.comments_pos || 0, neg = r.comments_neg || 0, tot = pos + neg;
   setTile('comments', tot > 0 ? String(pos) : '—',
     tot > 0 ? (neg === 0 ? 'good' : neg > pos ? 'bad' : 'warn') : 'muted',
     tot > 0 ? `${neg} negative` : '');
@@ -841,162 +713,183 @@ function setTile(key, val, cls, sub) {
   if (subEl) { subEl.textContent = sub || ''; }
 }
 
-function drillMetric(metric) {
-  if (activeDrill === metric && document.getElementById('drillPanel').style.display !== 'none') {
-    closeDrill(); return;
-  }
-  if (activeDrill) {
-    const prev = document.getElementById(`tile-${activeDrill}`);
-    if (prev) prev.classList.remove('active');
-  }
-  activeDrill = metric;
-  drillLevel  = 'ac';
-  drillAC     = null;
+/* ── Active metric / sort ─────────────────────────────── */
+function setActiveMetric(metric) {
+  activeMetric = metric;
+  // Tile active state
+  document.querySelectorAll('.kpi-tile').forEach(t => t.classList.remove('active'));
   const tile = document.getElementById(`tile-${metric}`);
   if (tile) tile.classList.add('active');
-  renderDrillPanel();
-  document.getElementById('drillPanel').style.display = '';
-  setTimeout(() => document.getElementById('drillPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+  // Column header sorted state
+  document.querySelectorAll('.perf-table th[id^="th-"]').forEach(th => th.classList.remove('sorted'));
+  const th = document.getElementById(`th-${metric}`);
+  if (th) th.classList.add('sorted');
+  // Re-render tables
+  renderACTable();
+  if (selectedAC) renderStoreTable(selectedAC);
 }
 
-function drillIntoAC(acName) {
-  drillLevel = 'store';
-  drillAC    = acName;
-  renderDrillPanel();
-}
+/* ── AC performance table ─────────────────────────────── */
+function renderACTable() {
+  if (!kpiData || !kpiData.by_ac) return;
 
-function closeDrill() {
-  document.getElementById('drillPanel').style.display = 'none';
-  if (activeDrill) {
-    const tile = document.getElementById(`tile-${activeDrill}`);
-    if (tile) tile.classList.remove('active');
-  }
-  activeDrill = null; drillLevel = 'ac'; drillAC = null;
-}
+  // Sort: higher-is-better metrics descending; bad metrics ascending (worst first so issues surface)
+  const higherBetter = ['net_sales', 'growth_pct', 'comments'].includes(activeMetric);
+  const rows = kpiData.by_ac.slice().sort((a, b) => {
+    const av = getMetricVal(a, activeMetric) ?? (higherBetter ? -Infinity : Infinity);
+    const bv = getMetricVal(b, activeMetric) ?? (higherBetter ? -Infinity : Infinity);
+    return higherBetter ? bv - av : av - bv;
+  });
 
-function renderDrillPanel() {
-  if (!activeDrill) return;
-  const meta = KPI_META[activeDrill];
-  const bc = document.getElementById('drillBreadcrumb');
-  if (drillLevel === 'ac') {
-    const hint = kpiData && kpiData.by_ac && kpiData.by_ac.length
-      ? '<span style="font-size:11px;color:var(--text-muted);margin-left:6px">\u2014 click a row to see stores</span>' : '';
-    bc.innerHTML = `<span class="crumb-current">Region</span>
-      <span class="crumb-sep">\u203a</span>
-      <span class="crumb-current">${meta.label}</span>${hint}`;
-  } else {
-    bc.innerHTML = `<button class="crumb-link" onclick="drillLevel='ac';drillAC=null;renderDrillPanel()">Region</button>
-      <span class="crumb-sep">\u203a</span>
-      <button class="crumb-link" onclick="drillLevel='ac';drillAC=null;renderDrillPanel()">${meta.label}</button>
-      <span class="crumb-sep">\u203a</span>
-      <span class="crumb-current">${drillAC ? escHtml(drillAC) : ''}</span>`;
-  }
-  if (!kpiData) {
-    document.getElementById('drillThead').innerHTML = '';
-    document.getElementById('drillTbody').innerHTML = '<tr><td class="drill-empty" colspan="5">KPI data loads after the 5 AM batch runs.</td></tr>';
-    return;
-  }
-  if (drillLevel === 'ac') renderDrillAC();
-  else renderDrillStore();
-}
-
-function renderDrillAC() {
-  const rows = (kpiData.by_ac || []).slice().sort((a, b) => compareMetric(b, a, activeDrill));
-  const meta = KPI_META[activeDrill];
-  document.getElementById('drillThead').innerHTML =
-    `<tr><th>Area Coach</th><th>${meta.label}</th><th>Stores</th><th>Flags</th><th></th></tr>`;
+  const tbody = document.getElementById('acPerfBody');
   if (!rows.length) {
-    document.getElementById('drillTbody').innerHTML = '<tr><td class="drill-empty" colspan="5">No area data yet. Check back after 5 AM.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="drill-empty">No area data yet. Check back after 5 AM.</td></tr>';
     return;
   }
-  document.getElementById('drillTbody').innerHTML = rows.map(r => {
-    const val  = getMetricVal(r, activeDrill);
-    const cls  = getMetricClass(val, activeDrill);
-    const fmtV = formatMetricVal(val, activeDrill, r);
-    const flg  = r.flag_count || 0;
-    const fCls = flg > 5 ? 'cell-bad' : flg > 2 ? 'cell-warn' : 'cell-muted';
-    return `<tr class="clickable" data-ac="${escHtml(r.area_coach || '')}" onclick="drillIntoAC(this.dataset.ac)">
-      <td class="cell-name">${escHtml(r.area_coach || '\u2014')}</td>
-      <td class="${cls}">${fmtV}</td>
-      <td class="cell-muted">${r.store_count || '\u2014'}</td>
-      <td class="${fCls}">${flg > 0 ? flg : '\u2014'}</td>
-      <td style="color:var(--accent);font-size:11px">\u2192</td>
+
+  tbody.innerHTML = rows.map(r => {
+    const isSel = selectedAC === r.area_coach;
+    const sc = r => `${activeMetric === r ? 'sorted-col ' : ''}`;
+    return `<tr class="ac-row${isSel ? ' expanded' : ''}" data-ac="${escHtml(r.area_coach || '')}" onclick="toggleStoreDrill(this.dataset.ac)">
+      <td>
+        <div class="col-name">${escHtml(r.area_coach || '—')}</div>
+        <div class="col-sub">${r.store_count || 0} stores${isSel ? ' ▴' : ' ▾'}</div>
+      </td>
+      <td class="${sc('net_sales')}${salesCls(r.net_sales)}">${r.net_sales != null ? fmtMoney(r.net_sales) : '<span class="col-muted">—</span>'}</td>
+      <td class="${sc('growth_pct')}${growthCls(r.growth_pct)}">${r.growth_pct != null ? fmtPct(r.growth_pct) : '<span class="col-muted">—</span>'}</td>
+      <td class="${sc('cancels')}${cancelCls(r.cancels)}">${r.cancels != null ? fmtMoney(r.cancels) : '<span class="col-muted">—</span>'}</td>
+      <td class="${sc('labor_pct')}${laborCls(r.labor_pct)}">${r.labor_pct != null ? fmtPct(r.labor_pct) : '<span class="col-muted">—</span>'}</td>
+      <td class="${sc('ot_hours')}${otCls(r.ot_hours)}">${r.ot_hours > 0 ? fmtHours(r.ot_hours) : '<span class="col-muted">—</span>'}</td>
+      <td class="${sc('comments')}">${commentCell(r)}</td>
+      <td class="${sc('forgot_clockout')}${fCoCls(r.forgot_clockout)}">${r.forgot_clockout > 0 ? r.forgot_clockout : '<span class="col-muted">—</span>'}</td>
+      <td class="${flagCls(r.flag_count)}">${r.flag_count > 0 ? r.flag_count : '<span class="col-muted">—</span>'}</td>
     </tr>`;
   }).join('');
 }
 
-function renderDrillStore() {
-  const rows = (kpiData.by_store || []).filter(r => r.area_coach === drillAC)
-    .sort((a, b) => compareMetric(b, a, activeDrill));
-  const meta = KPI_META[activeDrill];
-  document.getElementById('drillThead').innerHTML =
-    `<tr><th>Store</th><th>${meta.label}</th><th>Flags</th></tr>`;
-  if (!rows.length) {
-    document.getElementById('drillTbody').innerHTML = `<tr><td class="drill-empty" colspan="3">No store data for ${escHtml(drillAC || '')}.</td></tr>`;
-    return;
-  }
-  document.getElementById('drillTbody').innerHTML = rows.map(r => {
-    const val  = getMetricVal(r, activeDrill);
-    const cls  = getMetricClass(val, activeDrill);
-    const fmtV = formatMetricVal(val, activeDrill, r);
-    const flg  = r.flag_count || 0;
-    const fCls = flg > 3 ? 'cell-bad' : flg > 1 ? 'cell-warn' : 'cell-muted';
-    return `<tr>
-      <td class="cell-name">${escHtml(r.store_name || r.store_id || '\u2014')} <span style="color:var(--text-muted);font-weight:400;font-size:11px">#${r.store_id || ''}</span></td>
-      <td class="${cls}">${fmtV}</td>
-      <td class="${fCls}">${flg > 0 ? flg : '\u2014'}</td>
-    </tr>`;
-  }).join('');
+/* ── Store drill-in ───────────────────────────────────── */
+function toggleStoreDrill(acName) {
+  if (selectedAC === acName) { closeStoreDrill(); return; }
+  selectedAC = acName;
+  document.getElementById('storeDrillACName').textContent = acName;
+  document.getElementById('storeDrillWrap').style.display = '';
+  renderACTable();      // refresh to show expanded state
+  renderStoreTable(acName);
+  setTimeout(() => document.getElementById('storeDrillWrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
 }
 
+function closeStoreDrill() {
+  selectedAC = null;
+  document.getElementById('storeDrillWrap').style.display = 'none';
+  renderACTable();
+}
+
+function renderStoreTable(acName) {
+  if (!kpiData || !kpiData.by_store) return;
+  const higherBetter = ['net_sales', 'growth_pct', 'comments'].includes(activeMetric);
+  const rows = kpiData.by_store
+    .filter(r => r.area_coach === acName)
+    .sort((a, b) => {
+      const av = getMetricVal(a, activeMetric) ?? (higherBetter ? -Infinity : Infinity);
+      const bv = getMetricVal(b, activeMetric) ?? (higherBetter ? -Infinity : Infinity);
+      return higherBetter ? bv - av : av - bv;
+    });
+
+  const tbody = document.getElementById('storePerfBody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="9" class="drill-empty">No store data for ${escHtml(acName)}.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `<tr class="store-row">
+    <td>
+      <span class="col-name">${escHtml(r.store_name || r.store_id || '—')}</span>
+      <span class="col-sub"> #${r.store_id || ''}</span>
+    </td>
+    <td class="${salesCls(r.net_sales)}">${r.net_sales != null ? fmtMoney(r.net_sales) : '<span class="col-muted">—</span>'}</td>
+    <td class="${growthCls(r.growth_pct)}">${r.growth_pct != null ? fmtPct(r.growth_pct) : '<span class="col-muted">—</span>'}</td>
+    <td class="${cancelCls(r.cancels)}">${r.cancels != null ? fmtMoney(r.cancels) : '<span class="col-muted">—</span>'}</td>
+    <td class="${laborCls(r.labor_pct)}">${r.labor_pct != null ? fmtPct(r.labor_pct) : '<span class="col-muted">—</span>'}</td>
+    <td class="${otCls(r.ot_hours)}">${r.ot_hours > 0 ? fmtHours(r.ot_hours) : '<span class="col-muted">—</span>'}</td>
+    <td>${commentCell(r)}</td>
+    <td class="${fCoCls(r.forgot_clockout)}">${r.forgot_clockout > 0 ? r.forgot_clockout : '<span class="col-muted">—</span>'}</td>
+    <td class="${flagCls(r.flag_count)}">${r.flag_count > 0 ? r.flag_count : '<span class="col-muted">—</span>'}</td>
+  </tr>`).join('');
+}
+
+/* ── Color helpers ────────────────────────────────────── */
+function salesCls(v)  { return v == null ? '' : 'col-good'; }
+function growthCls(v) { return v == null ? '' : v > 0 ? 'col-good' : v < -2 ? 'col-bad' : 'col-warn'; }
+function cancelCls(v) { return v == null ? '' : v > 500 ? 'col-bad' : v > 200 ? 'col-warn' : 'col-good'; }
+function laborCls(v)  { return v == null ? '' : v > 30 ? 'col-bad' : v > 26 ? 'col-warn' : 'col-good'; }
+function otCls(v)     { return !v || v === 0 ? '' : v > 10 ? 'col-bad' : v > 5 ? 'col-warn' : 'col-good'; }
+function fCoCls(v)    { return !v || v === 0 ? '' : v > 5 ? 'col-bad' : 'col-warn'; }
+function flagCls(v)   { return !v || v === 0 ? '' : v > 10 ? 'col-bad' : 'col-warn'; }
+function commentCell(r) {
+  const pos = r.comments_pos || 0, neg = r.comments_neg || 0;
+  if (!pos && !neg) return '<span class="col-muted">—</span>';
+  return `<span class="col-good">${pos}+</span>${neg ? ` <span class="col-bad">${neg}−</span>` : ''}`;
+}
+
+/* ── Metric value accessor (used for sorting & tiles) ── */
 function getMetricVal(row, metric) {
-  const map = { net_sales: row.net_sales, growth_pct: row.growth_pct,
+  const map = {
+    net_sales: row.net_sales, growth_pct: row.growth_pct,
     cancels: row.cancels, labor_pct: row.labor_pct, ot_hours: row.ot_hours,
-    comments: row.comments_pos, forgot_clockout: row.forgot_clockout };
+    comments: row.comments_pos, forgot_clockout: row.forgot_clockout
+  };
   return map[metric] != null ? map[metric] : null;
 }
 
-function getMetricClass(val, metric) {
-  if (val == null) return 'cell-muted';
-  switch (metric) {
-    case 'net_sales':       return val > 0 ? 'cell-good' : 'cell-muted';
-    case 'growth_pct':      return val > 0 ? 'cell-good' : val < -2 ? 'cell-bad' : 'cell-warn';
-    case 'cancels':         return val > 500 ? 'cell-bad' : val > 200 ? 'cell-warn' : 'cell-good';
-    case 'labor_pct':       return val > 30 ? 'cell-bad' : val > 26 ? 'cell-warn' : 'cell-good';
-    case 'ot_hours':        return val > 10 ? 'cell-bad' : val > 5 ? 'cell-warn' : 'cell-good';
-    case 'comments':        return val > 0 ? 'cell-good' : 'cell-muted';
-    case 'forgot_clockout': return val > 5 ? 'cell-bad' : val > 0 ? 'cell-warn' : 'cell-good';
-    default: return 'cell-muted';
+/* ═══════════════════════════════════════════════════════════
+   MORNING BRIEF
+   ═══════════════════════════════════════════════════════════ */
+function renderBriefing(dashboard, flagsData, shoutoutsData) {
+  const flags     = flagsData.flags    || [];
+  const shoutouts = shoutoutsData.shoutouts || [];
+
+  if (dashboard.status === 'no_data' || !dashboard.narrative) {
+    document.getElementById('narrativeText').innerHTML =
+      `<span style="color:var(--text-muted)">${dashboard.message || 'Intel not yet generated. Check back after 5 AM.'}</span>`;
+  } else {
+    document.getElementById('narrativeText').textContent = dashboard.narrative;
+    document.getElementById('narrativeFooter').style.display = 'flex';
+    document.getElementById('narrativeDate').textContent = formatDate(dashboard.metric_date || dashboard.date);
+  }
+
+  const high   = flags.filter(f => f.severity === 'high'   && f.status !== 'archived').length;
+  const medium = flags.filter(f => f.severity === 'medium' && f.status !== 'archived').length;
+  const stores = new Set(flags.filter(f => f.status !== 'archived').map(f => f.store_id)).size;
+
+  document.getElementById('statHigh').textContent      = high;
+  document.getElementById('statMedium').textContent    = medium;
+  document.getElementById('statStores').textContent    = stores;
+  document.getElementById('statShoutouts').textContent = shoutouts.length;
+
+  const openCount = flags.filter(f => f.status !== 'addressed' && f.status !== 'archived').length;
+  if (openCount > 0) {
+    const badge = document.getElementById('flagCountBadge');
+    badge.textContent   = openCount;
+    badge.style.display = '';
+    badge.className     = high > 0 ? 'tab-badge' : 'tab-badge medium';
+  }
+
+  const topFlags = flags
+    .filter(f => f.status !== 'archived' && f.status !== 'addressed')
+    .sort((a, b) => severityOrder(b.severity) - severityOrder(a.severity))
+    .slice(0, 5);
+
+  if (topFlags.length === 0) {
+    document.getElementById('quickFlagsList').innerHTML =
+      '<div class="empty-state"><div class="empty-icon">✓</div><h3>All clear</h3><p>No open flags for your scope today.</p></div>';
+  } else {
+    document.getElementById('quickFlagsList').innerHTML = topFlags.map(f => buildFlagCard(f, true)).join('');
+    if (flags.length > 5) document.getElementById('viewAllFlagsBtn').style.display = '';
   }
 }
 
-function formatMetricVal(val, metric, row) {
-  if (val == null) return '\u2014';
-  switch (metric) {
-    case 'net_sales': case 'cancels': return fmtMoney(val);
-    case 'growth_pct': case 'labor_pct': return fmtPct(val);
-    case 'ot_hours': return fmtHours(val);
-    case 'comments': { const n = row.comments_neg || 0; return `${val} pos${n > 0 ? ` / ${n} neg` : ''}`; }
-    case 'forgot_clockout': return String(val);
-    default: return String(val);
-  }
-}
-
-function compareMetric(a, b, metric) {
-  const av = getMetricVal(a, metric) ?? -Infinity;
-  const bv = getMetricVal(b, metric) ?? -Infinity;
-  return av - bv;
-}
-
-function fmtMoney(v) {
-  if (v == null) return '\u2014';
-  const n = Number(v);
-  return n >= 1000 ? '$' + (n/1000).toFixed(1) + 'k' : '$' + n.toFixed(0);
-}
-function fmtPct(v)   { return v == null ? '\u2014' : (Number(v) > 0 ? '+' : '') + Number(v).toFixed(1) + '%'; }
-function fmtHours(v) { return v == null ? '\u2014' : Number(v).toFixed(1) + ' hrs'; }
-
-/* FLAGS */
+/* ═══════════════════════════════════════════════════════════
+   FLAGS
+   ═══════════════════════════════════════════════════════════ */
 function renderFlags(flags) { allFlags = flags; applyFlagFilter(currentFilter); }
 
 function filterFlags(filter, btn) {
@@ -1015,7 +908,7 @@ function applyFlagFilter(filter) {
   else if (filter === 'addressed') filtered = allFlags.filter(f => f.status === 'addressed');
   const container = document.getElementById('fullFlagsList');
   if (!filtered.length) {
-    container.innerHTML = '<div class="empty-state"><div class="empty-icon">\u2713</div><h3>No flags match this filter</h3></div>';
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">✓</div><h3>No flags match this filter</h3></div>';
     return;
   }
   filtered.sort((a, b) => severityOrder(b.severity) - severityOrder(a.severity));
@@ -1037,7 +930,7 @@ function buildFlagCard(f, compact) {
     } catch(e) {}
   }
 
-  const metricLine = formatMetricType(f.metric_type) + (f.value != null ? ` \u2014 ${formatValue(f.metric_type, f.value)}` : '');
+  const metricLine = formatMetricType(f.metric_type) + (f.value != null ? ` — ${formatValue(f.metric_type, f.value)}` : '');
 
   return `<div class="flag-card ${isAddressed ? 'addressed' : ''}">
     <div><span class="severity-pill sev-${f.severity}">${f.severity}</span></div>
@@ -1054,7 +947,7 @@ function buildFlagCard(f, compact) {
     </div>
     <div class="flag-actions">
       ${isAddressed
-        ? '<span class="addressed-badge">\u2713 Addressed</span>'
+        ? '<span class="addressed-badge">✓ Addressed</span>'
         : canAck
           ? `<button class="btn-ack" onclick="openAckModal(${f.id}, '${escHtml(f.store_name || f.store_id)}', '${escHtml(f.metric_type)}')">Acknowledge</button>`
           : ''}
@@ -1062,7 +955,9 @@ function buildFlagCard(f, compact) {
   </div>`;
 }
 
-/* ACCOUNTABILITY */
+/* ═══════════════════════════════════════════════════════════
+   ACCOUNTABILITY
+   ═══════════════════════════════════════════════════════════ */
 function renderAccountability(accts, flags) {
   const acks = accts.acknowledgments || [];
   const open = flags.filter(f => f.status !== 'addressed' && f.status !== 'archived');
@@ -1077,30 +972,34 @@ function renderAccountability(accts, flags) {
     return;
   }
   tbody.innerHTML = acks.map(a => `<tr>
-    <td style="font-weight:600;color:var(--text-primary)">${escHtml(a.store_name || a.store_id || '\u2014')}</td>
-    <td>${formatMetricType(a.metric_type || '\u2014')}</td>
-    <td><span class="severity-pill sev-${a.severity || 'medium'}">${a.severity || '\u2014'}</span></td>
-    <td style="color:var(--text-primary)">${escHtml(a.acknowledged_by || '\u2014')}</td>
+    <td style="font-weight:600;color:var(--text-primary)">${escHtml(a.store_name || a.store_id || '—')}</td>
+    <td>${formatMetricType(a.metric_type || '—')}</td>
+    <td><span class="severity-pill sev-${a.severity || 'medium'}">${a.severity || '—'}</span></td>
+    <td style="color:var(--text-primary)">${escHtml(a.acknowledged_by || '—')}</td>
     <td class="action-text">${escHtml(a.action_taken || '')}</td>
     <td style="color:var(--text-muted);white-space:nowrap">${formatDateTime(a.acknowledged_at)}</td>
   </tr>`).join('');
 }
 
-/* SHOUTOUTS */
+/* ═══════════════════════════════════════════════════════════
+   SHOUTOUTS
+   ═══════════════════════════════════════════════════════════ */
 function renderShoutouts(shoutouts) {
   const c = document.getElementById('shoutoutsGrid');
   if (!shoutouts || !shoutouts.length) {
-    c.innerHTML = '<div class="empty-state"><div class="empty-icon">\u2605</div><h3>No shoutouts yet today</h3><p>Positive guest comments will appear here after the 5 AM batch runs.</p></div>';
+    c.innerHTML = '<div class="empty-state"><div class="empty-icon">★</div><h3>No shoutouts yet today</h3><p>Positive guest comments will appear here after the 5 AM batch runs.</p></div>';
     return;
   }
   c.innerHTML = shoutouts.map(s => `<div class="shoutout-card">
-    <div class="shoutout-store">\u2605 ${escHtml(s.store_name || s.store_id || '')}</div>
+    <div class="shoutout-store">★ ${escHtml(s.store_name || s.store_id || '')}</div>
     <div class="shoutout-summary">${escHtml(s.summary || s.comment_text || '')}</div>
-    <div class="shoutout-meta">${s.area_coach ? escHtml(s.area_coach) + ' \u00b7 ' : ''}${formatDate(s.shoutout_date || s.report_date)}</div>
+    <div class="shoutout-meta">${s.area_coach ? escHtml(s.area_coach) + ' · ' : ''}${formatDate(s.shoutout_date || s.report_date)}</div>
   </div>`).join('');
 }
 
-/* DIGEST */
+/* ═══════════════════════════════════════════════════════════
+   DIGEST
+   ═══════════════════════════════════════════════════════════ */
 async function loadDigest() {
   try {
     const data = await fetch('/api/intel/weekly-digest').then(r => r.json());
@@ -1116,10 +1015,12 @@ function copyDigest() {
   });
 }
 
-/* ACKNOWLEDGE MODAL */
+/* ═══════════════════════════════════════════════════════════
+   ACKNOWLEDGE MODAL
+   ═══════════════════════════════════════════════════════════ */
 function openAckModal(flagId, storeName, metricType) {
   currentFlagId = flagId;
-  document.getElementById('ackModalSub').textContent  = `${storeName} \u2014 ${formatMetricType(metricType)}`;
+  document.getElementById('ackModalSub').textContent  = `${storeName} — ${formatMetricType(metricType)}`;
   document.getElementById('ackActionInput').value     = '';
   document.getElementById('ackCharHint').textContent  = '0 / 20 min characters';
   document.getElementById('ackSubmitBtn').disabled    = true;
@@ -1133,81 +1034,4 @@ function closeAckModal() {
 }
 
 function updateAckBtn() {
-  const val = document.getElementById('ackActionInput').value.trim();
-  document.getElementById('ackCharHint').textContent = `${val.length} / 20 min characters`;
-  document.getElementById('ackSubmitBtn').disabled   = val.length < 20;
-}
-
-async function submitAck() {
-  const action = document.getElementById('ackActionInput').value.trim();
-  if (action.length < 20 || !currentFlagId) return;
-  const btn = document.getElementById('ackSubmitBtn');
-  btn.disabled = true; btn.textContent = 'Submitting\u2026';
-  try {
-    const res  = await fetch('/api/intel/acknowledge', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ flag_id: currentFlagId, action_taken: action })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed');
-    const f = allFlags.find(f => f.id === currentFlagId);
-    if (f) f.status = 'addressed';
-    closeAckModal();
-    applyFlagFilter(currentFilter);
-    const open  = allFlags.filter(f => f.status !== 'addressed' && f.status !== 'archived').length;
-    const badge = document.getElementById('flagCountBadge');
-    if (open > 0) badge.textContent = open; else badge.style.display = 'none';
-  } catch(err) { alert('Error: ' + err.message); btn.disabled = false; btn.textContent = 'Submit'; }
-}
-
-/* TAB SWITCHING */
-function switchTab(tab, btn) {
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.intel-tab').forEach(b => b.classList.remove('active'));
-  document.getElementById('panel-' + tab).classList.add('active');
-  if (btn) btn.classList.add('active');
-}
-
-/* HELPERS */
-function formatRole(role) {
-  return { rdo: 'RDO / Region Coach', area_coach: 'Area Coach', vp: 'VP' }[role] || role;
-}
-function severityOrder(s) { return s === 'high' ? 3 : s === 'medium' ? 2 : 1; }
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-function formatDate(d) {
-  if (!d) return '\u2014';
-  return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-function formatDateTime(d) {
-  if (!d) return '\u2014';
-  const dt = new Date(d);
-  return dt.toLocaleDateString('en-US',{ month:'short', day:'numeric' }) + ' ' +
-    dt.toLocaleTimeString('en-US',{ hour:'numeric', minute:'2-digit' });
-}
-function formatMetricType(t) {
-  return { CHANGE_DOWN:'Change Down', CHANGED_MILES:'Changed Miles', PAIDOUT:'Paid Out',
-    CASH_VARIANCE:'Cash Variance', REFUNDS:'Refunds', CANCEL_UNMADE:'Cancel/Unmade',
-    PRODUCTION_TIME:'Production Time', LABOR_NOT_ADJUSTED:'Labor Not Adjusted',
-    LABOR_OVER_BUDGET:'Labor Over Budget', LABOR_UNDER_BUDGET:'Labor Under Budget',
-    OT_OVER_SCHEDULED:'OT Over Scheduled', OT_OVER_RUN:'OT Over Run',
-    DOUBLE_TIME:'Double Time', FORGOT_CLOCKOUT:'Forgot Clock Out',
-    CLOCKOUT_REMINDER:'Clock Out Reminder', GUEST_COMPLAINT:'Guest Complaint',
-    PUSH_SURVEYS:'Push Surveys Needed', ROUTINE_MISSED:'Routine Missed',
-    ROUTINE_LATE:'Routine Late', PERFORMANCE_TREND:'Performance Trend' }[t] || t;
-}
-function formatValue(metric, val) {
-  if (val == null) return '';
-  if (['CHANGE_DOWN','PAIDOUT','CASH_VARIANCE','REFUNDS','CANCEL_UNMADE','LABOR_OVER_BUDGET','LABOR_UNDER_BUDGET'].includes(metric))
-    return '$' + Math.abs(Number(val)).toFixed(2);
-  if (['OT_OVER_SCHEDULED','OT_OVER_RUN','LABOR_NOT_ADJUSTED'].includes(metric))
-    return Number(val).toFixed(1) + ' hrs';
-  if (metric === 'PRODUCTION_TIME') return Number(val).toFixed(1) + ' min';
-  return val;
-}
-function logout() { fetch('/api/auth/logout',{method:'POST'}).then(()=>window.location.href='/'); }
-
-document.getElementById('ackModal').addEventListener('click', function(e) { if (e.target === this) closeAckModal(); });
-
-init();
+  const val = document.getElementById('ackActionInput').value.tr
