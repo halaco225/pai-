@@ -77,14 +77,39 @@ function httpRequest(method, url, { headers = {}, body, binary = false } = {}) {
   });
 }
 
-// ── Step 1: Refresh Bearer token via 360.smg.com proxy ──────────────────────
-// 360.smg.com acts as a server-side proxy to auth.smg.com, handling the
-// client_secret internally. We just pass the refresh_token.
+// ── Step 1: Get Bearer token — login with username/password, fall back to refresh token ──
+const SMG_LOGIN_URL = 'https://360.smg.com/api/authentication/token';
 
-async function getAccessToken(refreshToken) {
-  console.log('[SMG] Refreshing access token...');
+async function getAccessToken() {
+  const user = process.env.SMG_USER || '';
+  const pass = process.env.SMG_PASSWORD || '';
+  const refreshToken = process.env.SMG_REFRESH_TOKEN || '';
+
+  // Prefer fresh login with credentials (never expires)
+  if (user && pass) {
+    console.log('[SMG] Logging in with SMG_USER/SMG_PASSWORD...');
+    const body = JSON.stringify({ username: user, password: pass });
+    const resp = await httpRequest('POST', SMG_LOGIN_URL, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Origin':       'https://360.smg.com',
+        'Referer':      'https://360.smg.com/',
+      },
+      body,
+    });
+    console.log(`[SMG] Login response: HTTP ${resp.status}`);
+    if (resp.status === 200) {
+      const data = JSON.parse(resp.body);
+      const token = data.accessToken || data.access_token;
+      if (token) { console.log('[SMG] Got access token via login'); return token; }
+    }
+    console.warn('[SMG] Login failed, trying refresh token fallback...');
+  }
+
+  // Fallback: refresh token
+  if (!refreshToken) throw new Error('SMG auth failed: no valid credentials. Set SMG_USER + SMG_PASSWORD or SMG_REFRESH_TOKEN.');
+  console.log('[SMG] Trying SMG_REFRESH_TOKEN...');
   const body = JSON.stringify({ refreshToken });
-
   const resp = await httpRequest('POST', SMG_REFRESH_URL, {
     headers: {
       'Content-Type': 'application/json',
@@ -93,16 +118,14 @@ async function getAccessToken(refreshToken) {
     },
     body,
   });
-
   console.log(`[SMG] Refresh response: HTTP ${resp.status}`);
   if (resp.status !== 200) {
     console.log('[SMG] Refresh error body:', resp.body.slice(0, 300));
     throw new Error(`SMG token refresh failed: HTTP ${resp.status} — ${resp.body.slice(0, 200)}`);
   }
-
   const data = JSON.parse(resp.body);
   if (!data.accessToken) throw new Error('SMG refresh response missing accessToken');
-  console.log('[SMG] Got fresh access token');
+  console.log('[SMG] Got access token via refresh');
   return data.accessToken;
 }
 
@@ -200,11 +223,8 @@ async function downloadSMGComments(targetDate) {
   fs.mkdirSync(tmpDir, { recursive: true });
   const outPath = path.join(tmpDir, `intel-smg-${targetDate}.xlsx`);
 
-  const refreshToken = process.env.SMG_REFRESH_TOKEN || '';
-  if (!refreshToken) throw new Error('SMG_REFRESH_TOKEN env var not set');
-
   try {
-    const accessToken = await getAccessToken(refreshToken);
+    const accessToken = await getAccessToken();
     const xlsxBuffer  = await exportComments(accessToken, targetDate);
     fs.writeFileSync(outPath, xlsxBuffer);
     console.log(`[SMG] Saved → ${outPath} (${xlsxBuffer.length} bytes)`);
