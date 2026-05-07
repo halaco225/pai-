@@ -184,6 +184,8 @@ function analyzeDOWPatterns(dowRows) {
     dow: parseInt(r.dow),
     day_name: r.day_name.trim(),
     avg_ist: Math.round(parseFloat(r.avg_ist) * 10) / 10,
+    avg_make:       r.avg_make       != null ? Math.round(r.avg_make * 100) / 100       : null,
+    avg_production: r.avg_production != null ? Math.round(r.avg_production * 100) / 100 : null,
     sample_count: parseInt(r.sample_count),
     vs_avg: Math.round((parseFloat(r.avg_ist) - avg) * 10) / 10,
     insight: getInsight(r.avg_ist, avg)
