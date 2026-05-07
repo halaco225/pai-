@@ -204,6 +204,7 @@
         <option value="region_area">Region + Area</option>
         <option value="region">Region Only</option>
         <option value="area">Area Only</option>
+        <option value="store">Store Only</option>
       </select>
     </div>
     <div>
@@ -237,6 +238,11 @@
     <div class="scorecard"><div class="val ist-none">—</div><div class="lbl">Stores Reporting</div></div>
     <div class="scorecard"><div class="val ist-none">—</div><div class="lbl">Total Deliveries</div></div>
     <div class="scorecard"><div class="val ist-none">—</div><div class="lbl">Stores ≥19 min</div></div>
+  </div>
+
+  <!-- Store-only prompt (shown when View By = Store Only) -->
+  <div id="storePrompt" class="hidden" style="padding:10px 16px;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;font-size:13px;color:var(--muted)">
+    📍 <strong style="color:var(--text)">Store Only mode</strong> — type a store number in the <strong>Store</strong> field above, then toggle WTD · Trend · Day Pattern · PTD freely for that store.
   </div>
 
   <!-- Day pills (shown in WTD + Daily view) -->
@@ -858,6 +864,15 @@ function renderPTDWeekByWeek(weeklyStores, weeks, priorStores) {
 
 function setViewBy(val) {
   state.viewBy = val;
+  const storePrompt = document.getElementById('storePrompt');
+  if (val === 'store') {
+    storePrompt?.classList.remove('hidden');
+    const el = document.getElementById('storeSearch');
+    el.focus();
+    el.select();
+  } else {
+    storePrompt?.classList.add('hidden');
+  }
   if (state.view === 'wtd' && state.wtdData) renderTable(state.wtdData.stores || []);
   else if (state.view === 'day' && state.dayData) renderTableDay(state.dayData.stores || []);
   else if (state.view === 'ptd' && state.ptdData) {
@@ -1442,6 +1457,16 @@ function renderTable(stores) {
 
   const tbody = document.getElementById('tableBody');
   if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--muted)">No stores match current filters</td></tr>'; return; }
+
+  // Store-only: flat list, no grouping headers
+  if (viewBy === 'store') {
+    if (!search) {
+      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--muted)">Enter a store number in the <strong>Store</strong> field above</td></tr>';
+      return;
+    }
+    tbody.innerHTML = filtered.map(s => storeRow(s, 'row-store')).join('');
+    return;
+  }
 
   // Build hierarchy rows respecting viewBy
   const rows = [];
