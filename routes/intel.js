@@ -437,6 +437,22 @@ router.get('/dashboard', async (req, res) => {
 });
 
 
+// ── GET /api/intel/vp-scope-options — regions + area coaches for VP filter ────
+router.get('/vp-scope-options', async (req, res) => {
+  try {
+    const user = req.session.user;
+    if (user.role !== 'vp') return res.json({ regions: [] });
+    const rcNames = user.scope?.region_coaches || [];
+    const regions = rcNames.map(rcName => {
+      const rdo = USER_ROSTER.find(u => u.role === 'rdo' && u.scope?.rc_name === rcName);
+      return { rc_name: rcName, area_coaches: rdo?.scope?.area_coaches || [] };
+    });
+    res.json({ regions });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/intel/kpis — aggregated KPI dashboard (sales, growth, flags) ────
 router.get('/kpis', async (req, res) => {
   try {
@@ -455,6 +471,15 @@ router.get('/kpis', async (req, res) => {
     );
     const date = dateCheckRes.rows[0]?.latest || requestedDate;
 
+    // VP scope filter from query params
+    const vpRcFilter = user.role === 'vp' ? (req.query.rc_name || null) : null;
+    const vpAcFilter = user.role === 'vp' ? (req.query.ac_name || null) : null;
+    let vpAcSet = null;
+    if (vpRcFilter) {
+      const rdo = USER_ROSTER.find(u => u.role === 'rdo' && u.scope?.rc_name === vpRcFilter);
+      vpAcSet = new Set(rdo?.scope?.area_coaches || []);
+    }
+
     // Flag scope filter
     const fp = [date]; let flagWhere = "metric_date = $1 AND status != 'archived'";
 
@@ -468,6 +493,10 @@ router.get('/kpis', async (req, res) => {
     } else if (user.scope?.type === 'area_coach') {
       const ac = user.scope.ac_name || user.name;
       fp.push(ac); flagWhere += ` AND area_coach = $${fp.length}`;
+    } else if (user.role === 'vp' && vpRcFilter) {
+      fp.push(vpRcFilter); flagWhere += ` AND region_coach = $${fp.length}`;
+    } else if (user.role === 'vp' && vpAcFilter) {
+      fp.push(vpAcFilter); flagWhere += ` AND area_coach = $${fp.length}`;
     }
 
     // Build scope filter for store_assignments
@@ -478,6 +507,10 @@ router.get('/kpis', async (req, res) => {
       else if (user.scope.rc_name || user.name) { sp.push(user.scope.rc_name || user.name); assignWhere += ` AND region_coach = $${sp.length}`; }
     } else if (user.scope?.type === 'area_coach') {
       sp.push(user.scope.ac_name || user.name); assignWhere += ` AND area_coach = $${sp.length}`;
+    } else if (user.role === 'vp' && vpRcFilter) {
+      sp.push(vpRcFilter); assignWhere += ` AND region_coach = $${sp.length}`;
+    } else if (user.role === 'vp' && vpAcFilter) {
+      sp.push(vpAcFilter); assignWhere += ` AND area_coach = $${sp.length}`;
     }
 
     // Fetch store_assignments first — seed storeMap so all ACs appear even with no DBS data
@@ -549,8 +582,10 @@ router.get('/kpis', async (req, res) => {
           inScope = userACSet.size === 0 || userACSet.has(acName);
         } else if (user.scope?.type === 'area_coach') {
           inScope = acName === (user.scope.ac_name || user.name);
-        } else {
-          inScope = true; // vp sees all
+        } else { // vp
+          if (vpAcSet !== null) inScope = vpAcSet.has(acName);
+          else if (vpAcFilter) inScope = (acName === vpAcFilter);
+          else inScope = true;
         }
         if (!inScope) continue;
         storeMap[r.store_id] = {
@@ -762,10 +797,14 @@ router.get('/flags', async (req, res) => {
     } else if (user.role === 'vp') {
       const p = db.getPool();
       if (!p) return res.json({ flags: [] });
+      const vpRcFilter = req.query.rc_name || null;
+      const vpAcFilter = req.query.ac_name || null;
       let q = 'SELECT * FROM intel_flags WHERE territory_vp=$1';
       const params = [user.scope?.vp_name || user.name];
       if (date) { params.push(date); q += ` AND metric_date=$${params.length}`; }
       if (statusFilter) { params.push(statusFilter); q += ` AND status=$${params.length}`; }
+      if (vpRcFilter) { params.push(vpRcFilter); q += ` AND region_coach=$${params.length}`; }
+      else if (vpAcFilter) { params.push(vpAcFilter); q += ` AND area_coach=$${params.length}`; }
       q += ' ORDER BY severity DESC, consecutive_days_out DESC';
       const r = await p.query(q, params);
       flags = r.rows;
@@ -882,6 +921,10 @@ router.get('/smg-comments', async (req, res) => {
     const p = db.getPool();
     if (!p) return res.json({ date, positive: [], negative: [] });
 
+    // VP scope filter from query params
+    const vpRcFilter2 = user.role === 'vp' ? (req.query.rc_name || null) : null;
+    const vpAcFilter2 = user.role === 'vp' ? (req.query.ac_name || null) : null;
+
     // Scope params
     let scopeWhere = '1=1'; const sp = [];
     if (user.role === 'area_coach') { sp.push(user.scope?.ac_name||user.name); scopeWhere = `a.area_coach=$${sp.length}`; }
@@ -889,6 +932,10 @@ router.get('/smg-comments', async (req, res) => {
       const acs = user.scope?.area_coaches || [];
       if (acs.length) { sp.push(acs); scopeWhere = `a.area_coach = ANY($${sp.length}::text[])`; }
       else { sp.push(user.scope?.rc_name||user.name); scopeWhere = `a.region_coach=$${sp.length}`; }
+    } else if (user.role === 'vp' && vpRcFilter2) {
+      sp.push(vpRcFilter2); scopeWhere = `a.region_coach=$${sp.length}`;
+    } else if (user.role === 'vp' && vpAcFilter2) {
+      sp.push(vpAcFilter2); scopeWhere = `a.area_coach=$${sp.length}`;
     }
 
     // Positive: shoutouts
@@ -909,6 +956,10 @@ router.get('/smg-comments', async (req, res) => {
       const acs = user.scope?.area_coaches || [];
       if (acs.length) { negSp.push(acs); negWhere += ` AND area_coach = ANY($${negSp.length}::text[])`; }
       else { negSp.push(user.scope?.rc_name||user.name); negWhere += ` AND region_coach=$${negSp.length}`; }
+    } else if (user.role === 'vp' && vpRcFilter2) {
+      negSp.push(vpRcFilter2); negWhere += ` AND region_coach=$${negSp.length}`;
+    } else if (user.role === 'vp' && vpAcFilter2) {
+      negSp.push(vpAcFilter2); negWhere += ` AND area_coach=$${negSp.length}`;
     }
     const negRes = await p.query(
       `SELECT store_id, store_name, area_coach, details FROM intel_flags WHERE ${negWhere} ORDER BY area_coach, store_name`,

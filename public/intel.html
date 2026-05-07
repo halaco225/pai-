@@ -43,6 +43,13 @@ button{font-family:inherit;cursor:pointer}
 .run-batch-btn:hover{background:#1e3a5f}
 .run-batch-btn:disabled{opacity:.5;cursor:default}
 .run-batch-btn.running{border-color:#f59e0b;color:#f59e0b}
+.vp-filter-bar{padding:10px 24px;background:#070d1c;border-bottom:1px solid #1e2d4d;display:none;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.vp-filter-bar.visible{display:flex}
+.vp-filter-label{font-size:10px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.12em;margin-right:4px;white-space:nowrap}
+.vp-filter-btn{padding:5px 14px;background:transparent;border:1px solid #1e2d4d;border-radius:20px;color:#64748b;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s}
+.vp-filter-btn:hover{border-color:#3b82f6;color:#60a5fa}
+.vp-filter-btn.active{background:#1e3a5f;border-color:#3b82f6;color:#60a5fa;font-weight:600}
+.vp-filter-sep{width:1px;height:18px;background:#1e2d4d;margin:0 4px}
 .status-bar{display:flex;align-items:center;gap:20px;padding:8px 24px;background:#0a1120;border-bottom:1px solid #1e2d4d;font-size:11px;flex-shrink:0}
 .sb-dot{display:inline-flex;align-items:center;gap:5px;color:#64748b}
 .dot{width:7px;height:7px;border-radius:50%;background:#475569}
@@ -265,6 +272,14 @@ button{font-family:inherit;cursor:pointer}
     <span class="sb-dot"><span class="dot" id="flagDot"></span> Open Flags: <span id="flagStatus">—</span></span>
   </div>
 
+  <div class="vp-filter-bar" id="vpFilterBar">
+    <span class="vp-filter-label">View:</span>
+    <button class="vp-filter-btn active" id="vpBtnAll" onclick="setVpFilter(null,null)">All Regions</button>
+    <span class="vp-filter-sep"></span>
+    <div id="vpRegionBtns" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    <div id="vpAcBtns" style="display:flex;gap:6px;flex-wrap:wrap;margin-left:4px"></div>
+  </div>
+
   <div class="urgent-banner" id="urgentBanner">
     <div class="ub-icon">🚨</div>
     <div>
@@ -387,6 +402,64 @@ button{font-family:inherit;cursor:pointer}
 let currentUser=null,kpiData=null,allFlags=[],briefData={urgent:[],watch:[],wins:[]};
 let curFilter='all',curBriefTab='urgent',openDrillAC=null,currentFlagId=null;
 let selectedDate='';
+let vpScopeFilter={rc_name:null,ac_name:null};
+let vpScopeOptions=[];
+
+function vpFilterParam(){
+  if(vpScopeFilter.ac_name) return '&ac_name='+encodeURIComponent(vpScopeFilter.ac_name);
+  if(vpScopeFilter.rc_name) return '&rc_name='+encodeURIComponent(vpScopeFilter.rc_name);
+  return '';
+}
+
+async function setVpFilter(rcName,acName){
+  vpScopeFilter={rc_name:rcName,ac_name:acName};
+  // Update button states
+  document.getElementById('vpBtnAll').classList.toggle('active',!rcName&&!acName);
+  document.querySelectorAll('.vp-rc-btn').forEach(b=>{
+    b.classList.toggle('active',b.dataset.rc===rcName&&!acName);
+  });
+  document.querySelectorAll('.vp-ac-btn').forEach(b=>{
+    b.classList.toggle('active',b.dataset.ac===acName);
+  });
+  // Show/hide AC buttons for selected region
+  renderVpAcBtns(rcName);
+  // Update page title
+  const titleSuffix=acName?acName:rcName?(rcName+' Region'):'All Regions';
+  document.getElementById('pageTitle').textContent='Daily Intel — '+titleSuffix;
+  // Reload all data
+  let smgWasLoaded=smgLoaded;
+  smgLoaded=false;
+  await Promise.all([loadKPIs(),loadFlags(),loadBrief()]);
+  if(smgWasLoaded) await loadSMGComments();
+}
+
+function renderVpAcBtns(rcName){
+  const container=document.getElementById('vpAcBtns');
+  if(!rcName){container.innerHTML='';return;}
+  const region=vpScopeOptions.find(r=>r.rc_name===rcName);
+  if(!region||!region.area_coaches.length){container.innerHTML='';return;}
+  container.innerHTML=region.area_coaches.map(ac=>
+    `<button class="vp-filter-btn vp-ac-btn" data-ac="${escH(ac)}" onclick="setVpFilter('${escH(rcName).replace(/'/g,"\\'")}','${escH(ac).replace(/'/g,"\\'")}')">
+      ${escH(ac.split(' ')[0])}
+    </button>`
+  ).join('');
+}
+
+async function setupVpFilter(u){
+  if(u.role!=='vp') return;
+  try{
+    const data=await fetch('/api/intel/vp-scope-options').then(r=>r.json());
+    vpScopeOptions=data.regions||[];
+    const bar=document.getElementById('vpFilterBar');
+    bar.classList.add('visible');
+    const rcContainer=document.getElementById('vpRegionBtns');
+    rcContainer.innerHTML=vpScopeOptions.map(r=>
+      `<button class="vp-filter-btn vp-rc-btn" data-rc="${escH(r.rc_name)}" onclick="setVpFilter('${escH(r.rc_name).replace(/'/g,"\\'")}',null)">
+        ${escH(r.rc_name.split(' ')[0])}
+      </button>`
+    ).join('');
+  }catch(e){console.error('vpFilter:',e);}
+}
 
 async function init(){
   try{
@@ -394,6 +467,7 @@ async function init(){
     if(!auth.user){window.location.href='/';return;}
     currentUser=auth.user;
     setupUser(auth.user);
+    await setupVpFilter(auth.user);
     await Promise.all([loadKPIs(),loadFlags(),loadBrief()]);
     loadDigest();
     if(['rdo','vp'].includes(auth.user.role))loadAccountability();
@@ -422,7 +496,7 @@ function setupUser(u){
 
 async function loadKPIs(){
   try{
-    const data=await fetch('/api/intel/kpis?date='+selectedDate).then(r=>r.json());
+    const data=await fetch('/api/intel/kpis?date='+selectedDate+vpFilterParam()).then(r=>r.json());
     if(data.error)throw new Error(data.error);
     kpiData=data;
     document.getElementById('lastSync').textContent=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
@@ -611,7 +685,7 @@ function fPill(cnt){const c=cnt||0;if(!c)return'<span class="n">0</span>';const 
 
 async function loadFlags(){
   try{
-    const data=await fetch('/api/intel/flags?date='+selectedDate).then(r=>r.json());
+    const data=await fetch('/api/intel/flags?date='+selectedDate+vpFilterParam()).then(r=>r.json());
     allFlags=Array.isArray(data)?data:(data.flags||[]);
     const open=allFlags.filter(f=>f.status!=='addressed'&&f.status!=='archived').length;
     if(open>0){
@@ -981,7 +1055,7 @@ async function loadSMGComments(){
   const c=document.getElementById('smgContainer');
   c.innerHTML='<div class="loading"><span class="spin">⟳</span></div>';
   try{
-    const data=await fetch('/api/intel/smg-comments?date='+selectedDate).then(r=>r.json());
+    const data=await fetch('/api/intel/smg-comments?date='+selectedDate+vpFilterParam()).then(r=>r.json());
     if(data.error)throw new Error(data.error);
     smgData=data;
     smgLoaded=true;
