@@ -554,11 +554,13 @@ function setMetric(m) {
 
 async function loadTrend() {
   const weeks       = document.getElementById('trendWeeks').value;
-  const region      = state.filters.region;
-  const area        = state.filters.area;
   const store       = resolveStoreForApi();
   const viewBy      = state.viewBy;
   const granularity = state.trendGranularity || 'weekly';
+  // In Store Only mode with a resolved store, ignore area/region filters —
+  // the store may belong to a different coach than the one selected
+  const region = store ? null : state.filters.region;
+  const area   = store ? null : state.filters.area;
 
   let groupBy = null;
   if (!store && !area) {
@@ -587,10 +589,10 @@ async function loadTrend() {
 }
 
 async function loadDOW() {
-  const region = state.filters.region;
-  const area   = state.filters.area;
   const store  = resolveStoreForApi();
   const viewBy = state.viewBy;
+  const region = store ? null : state.filters.region;
+  const area   = store ? null : state.filters.area;
 
   // Use group_by when no area/store filter already scopes to one series
   let groupBy = null;
@@ -886,9 +888,9 @@ function setViewBy(val) {
 
 async function loadDOWDrill(dow, dayName) {
   const weeks  = document.getElementById('dowWeeks').value;
-  const region = state.filters.region;
-  const area   = state.filters.area;
   const store  = resolveStoreForApi();
+  const region = store ? null : state.filters.region;
+  const area   = store ? null : state.filters.area;
   let url = `/api/velocity/dow-drill?dow=${dow}&weeks=${weeks}`;
   if (region) url += `&region=${encodeURIComponent(region)}`;
   if (area)   url += `&area_coach=${encodeURIComponent(area)}`;
