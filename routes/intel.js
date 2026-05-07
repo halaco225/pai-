@@ -918,20 +918,41 @@ router.get('/smg-comments', async (req, res) => {
     // Flatten complaint details into individual comment rows
     const negative = [];
     for (const row of negRes.rows) {
-      const complaints = row.details?.complaints || [];
-      for (const c of complaints) {
+      const det = row.details || {};
+      const complaints = det.complaints || [];
+      if (complaints.length > 0) {
+        for (const c of complaints) {
+          negative.push({
+            store_id:   row.store_id,
+            store_name: row.store_name,
+            area_coach: row.area_coach,
+            comment_date: c.event_date || date,
+            source:     c.source,
+            summary:    c.summary,
+            comment_text: c.comment,
+            categories: c.categories || [],
+            name_mentioned: c.name_mentioned || null,
+            severity:   c.severity || 'medium',
+            overall_satisfaction: c.overall_satisfaction,
+          });
+        }
+      } else {
+        // Fallback for flags without full complaint detail (pre-update)
+        const count = det.negative_count || 1;
         negative.push({
           store_id:   row.store_id,
           store_name: row.store_name,
           area_coach: row.area_coach,
-          comment_date: c.event_date || date,
-          source:     c.source,
-          summary:    c.summary,
-          comment_text: c.comment,
-          categories: c.categories || [],
-          name_mentioned: c.name_mentioned || null,
-          severity:   c.severity || 'medium',
-          overall_satisfaction: c.overall_satisfaction,
+          comment_date: date,
+          source:     'SMG',
+          summary:    count + ' negative review' + (count !== 1 ? 's' : '') + ' — run batch to load full details',
+          comment_text: det.names_mentioned?.length
+            ? 'Employee(s) mentioned: ' + det.names_mentioned.join(', ')
+            : 'Categories: ' + (det.top_categories || []).join(', ') || 'No details available',
+          categories: det.top_categories || [],
+          name_mentioned: det.names_mentioned?.[0] || null,
+          severity:   'medium',
+          overall_satisfaction: null,
         });
       }
     }
