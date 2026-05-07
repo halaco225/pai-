@@ -629,7 +629,7 @@ function renderDrill(ac){
   const cards=stores.map((s,i)=>{
     const pct=Math.round((s.net_sales||0)/maxS*100);
     const bc=i===0?'#22c55e':i===stores.length-1&&stores.length>1?'#ef4444':'#3b82f6';
-    return '<div class="sc-card '+(i===0?'best':i===stores.length-1&&stores.length>1?'worst':'')+'">'
+    return '<div class="sc-card '+(i===0?'best':i===stores.length-1&&stores.length>1?'worst':'')+'" style="cursor:pointer" onclick="openStoreDetail(\''+escH(s.store_id||'')+'\',\''+escH(s.store_name||s.store_id||'')+'\',\''+escH(ac.area_coach||'')+'\')">'
       +'<div class="sc-rank">#'+(i+1)+' '+(i===0?'🥇':i===1?'🥈':i===2?'🥉':'')+'</div>'
       +'<div class="sc-name">'+escH(s.store_name||s.store_id||'')+'</div>'
       +'<div class="sc-bar-bg"><div class="sc-bar-fill" style="width:'+pct+'%;background:'+bc+'"></div></div>'
@@ -638,14 +638,15 @@ function renderDrill(ac){
       +'<div class="sc-m"><span class="lbl">Growth </span><span class="val">'+(s.growth_pct!=null?fmtPct(s.growth_pct):'—')+'</span></div>'
       +'<div class="sc-m"><span class="lbl">Routines </span><span class="val '+((s.routines_missed||0)>0?'r':'')+'">'+(s.routines_missed||0)+'M '+(s.routines_late||0)+'L</span></div>'
       +'<div class="sc-m"><span class="lbl">Flags </span><span class="val '+((s.flag_count||0)>0?'r':'')+'">'+(s.flag_count||0)+'</span></div>'
-      +'</div></div>';
+      +'</div><div style="font-size:10px;color:#3b4d6b;margin-top:6px;text-align:right">Tap for detail →</div>'
+      +'</div>';
   }).join('');
   const trows=stores.map((s,i)=>{
     const rm=s.routines_missed||0,rl=s.routines_late||0;
     const rc=(rm+rl)>0?'<span class="'+(rm>0?'r':'a')+'">'+rm+'M '+rl+'L</span>':'<span class="n">—</span>';
-    return'<tr>'
+    return'<tr style="cursor:pointer" onclick="openStoreDetail(\''+escH(s.store_id||'')+'\',\''+escH(s.store_name||s.store_id||'')+'\',\''+escH(ac.area_coach||'')+'\')">'
       +'<td class="n">#'+(i+1)+'</td>'
-      +'<td style="color:#e2e8f0;font-weight:600">'+escH(s.store_name||s.store_id||'')+'</td>'
+      +'<td style="color:#60a5fa;font-weight:600;text-decoration:underline dotted">'+escH(s.store_name||s.store_id||'')+'</td>'
       +'<td>'+mCell(s.net_sales,'money','g')+'</td><td>'+mCell(s.growth_pct,'pct_s','growth')+'</td>'
       +'<td>'+(s.ot_hours!=null?fmtHrs(s.ot_hours):'<span class="n">—</span>')+'</td>'
       +'<td>'+(s.cancels!=null?Math.round(s.cancels):'<span class="n">—</span>')+'</td>'
@@ -787,12 +788,8 @@ function renderBriefItems(tab){
   }
 }
 
-function openBriefDetail(tab,idx){
-  const items=briefData[tab]||[];
-  const item=items[idx];
-  if(!item)return;
-  const modal=document.getElementById('briefDetailModal');
-  const isWin=tab==='wins';
+// ── Universal detail opener — works for any flag object or shoutout ────────────
+function openItemDetail(item, isWin){
   if(isWin){
     document.getElementById('briefDetailTitle').textContent='★ '+(item.store_name||item.store_id||'Shoutout');
     document.getElementById('briefDetailSub').textContent=(item.area_coach||'')+(item.shoutout_date?' · '+fmtDate(item.shoutout_date):'');
@@ -803,16 +800,81 @@ function openBriefDetail(tab,idx){
     const f=item;
     const isAck=f.status==='addressed'||f.status==='archived';
     const fid=escH(String(f.id||''));
-    document.getElementById('briefDetailTitle').textContent=f.store_name||f.store_id||'Unknown Store';
-    document.getElementById('briefDetailSub').textContent=(f.area_coach?f.area_coach+' · ':'')+fmtMetric(f.metric_type);
+    const sc=f.severity==='high'?'sev-h':f.severity==='medium'?'sev-m':'sev-l';
+    document.getElementById('briefDetailTitle').innerHTML=escH(f.store_name||f.store_id||'Unknown Store')
+      +' <span class="sev-pill '+sc+'" style="font-size:11px;margin-left:8px">'+(f.severity||'low').toUpperCase()+'</span>';
+    document.getElementById('briefDetailSub').textContent=(f.area_coach?f.area_coach+' · ':'')+fmtMetric(f.metric_type)+(f.metric_date?' · '+fmtDate(f.metric_date):'');
     document.getElementById('briefDetailBody').innerHTML=buildFlagDetail(f);
     const ackHtml=isAck?'<span class="ack-btn done">✓ Addressed</span>'
       :f.severity==='high'?'<button class="ack-btn" onclick="openAckModal(\''+fid+'\',\''+escH(f.store_name||f.store_id||'')+'\',\''+escH(f.metric_type||'')+'\');closeBriefDetail()">Acknowledge</button>'
       :'<label class="ack-check"><input type="checkbox" onchange="quickAck(this,\''+fid+'\');closeBriefDetail()"> Mark reviewed</label>';
     document.getElementById('briefDetailAck').innerHTML=ackHtml;
   }
-  modal.style.display='flex';
+  document.getElementById('briefDetailModal').style.display='flex';
 }
+
+function openBriefDetail(tab,idx){
+  const items=briefData[tab]||[];
+  const item=items[idx];
+  if(item)openItemDetail(item,tab==='wins');
+}
+
+// Open any flag by its ID (used from Flags tab cards)
+function openFlagById(flagId){
+  const f=allFlags.find(x=>String(x.id)===String(flagId));
+  if(f)openItemDetail(f,false);
+}
+
+// Open a store detail: metrics summary + all flags for that store
+function openStoreDetail(storeId, storeName, acName){
+  const ac=(kpiData?.by_ac||[]).find(a=>a.area_coach===acName);
+  const s=(ac?.stores||[]).find(x=>x.store_id===storeId)||{};
+  const storeFlags=allFlags.filter(f=>f.store_id===storeId&&f.status!=='addressed'&&f.status!=='archived')
+    .sort((a,b)=>sevOrd(b.severity)-sevOrd(a.severity));
+
+  const metricsHtml='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px">'
+    +metTile('Net Sales',s.net_sales!=null?fmtMoney(s.net_sales):'—',s.growth_pct!=null?fmtPct(s.growth_pct):'',s.growth_pct>=0?'#22c55e':'#ef4444')
+    +metTile('OT Hours',s.ot_hours!=null?fmtHrs(s.ot_hours):'—','','#f59e0b')
+    +metTile('Cancels',s.cancels!=null?Math.round(s.cancels)+'':'—','','#ef4444')
+    +metTile('Clock-Outs',s.forgot_clockout!=null?Math.round(s.forgot_clockout)+'':'—','','#f59e0b')
+    +metTile('Routines',(s.routines_missed||0)+'M '+(s.routines_late||0)+'L','',s.routines_missed>0?'#ef4444':'#64748b')
+    +metTile('Win Score',s.win_score!=null?s.win_score+'%':'—','',s.win_score>=75?'#22c55e':s.win_score>=65?'#f59e0b':'#ef4444')
+    +'</div>';
+
+  let flagsHtml='';
+  if(!storeFlags.length){
+    flagsHtml='<div style="color:#22c55e;font-size:13px;padding:12px 0">✓ No open flags for this store</div>';
+  }else{
+    flagsHtml='<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">Open Flags ('+storeFlags.length+')</div>'
+      +storeFlags.map(f=>{
+        const sc=f.severity==='high'?'sev-h':f.severity==='medium'?'sev-m':'sev-l';
+        const fid=escH(String(f.id||''));
+        const isAck=f.status==='addressed'||f.status==='archived';
+        const ackBtn=isAck?'<span class="ack-btn done" style="font-size:11px">✓</span>'
+          :f.severity==='high'?'<button class="ack-btn" style="font-size:11px;padding:4px 10px" onclick="openAckModal(\''+fid+'\',\''+escH(f.store_name||f.store_id||'')+'\',\''+escH(f.metric_type||'')+'\')">Acknowledge</button>'
+          :'<label class="ack-check" style="font-size:11px"><input type="checkbox" onchange="quickAck(this,\''+fid+'\')"> Done</label>';
+        return'<div style="padding:12px;background:#0c1425;border-radius:8px;border-left:3px solid '+(f.severity==='high'?'#ef4444':f.severity==='medium'?'#f59e0b':'#3b82f6')+';margin-bottom:8px">'
+          +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+          +'<span class="sev-pill '+sc+'" style="font-size:10px">'+fmtMetric(f.metric_type)+'</span>'+ackBtn+'</div>'
+          +buildFlagDetail(f)+'</div>';
+      }).join('');
+  }
+
+  document.getElementById('briefDetailTitle').textContent=storeName||storeId;
+  document.getElementById('briefDetailSub').textContent=(acName?acName+' · ':'')+(storeFlags.length+' open flag'+(storeFlags.length!==1?'s':''));
+  document.getElementById('briefDetailBody').innerHTML=metricsHtml+flagsHtml;
+  document.getElementById('briefDetailAck').innerHTML='';
+  document.getElementById('briefDetailModal').style.display='flex';
+}
+
+function metTile(lbl,val,sub,col){
+  return'<div style="background:#0c1425;border:1px solid #1e2d4d;border-radius:8px;padding:10px">'
+    +'<div style="font-size:10px;color:#475569;font-weight:700;text-transform:uppercase;margin-bottom:4px">'+escH(lbl)+'</div>'
+    +'<div style="font-size:18px;font-weight:800;color:'+(col||'#f1f5f9')+'">'+escH(String(val))+'</div>'
+    +(sub?'<div style="font-size:11px;color:#64748b;margin-top:2px">'+escH(sub)+'</div>':'')
+    +'</div>';
+}
+
 function closeBriefDetail(){document.getElementById('briefDetailModal').style.display='none';}
 
 function renderShoutouts(list){
@@ -1108,9 +1170,9 @@ function renderFlagList(sorted,c){
     const cc=f.severity==='high'?'sev-high':f.severity==='medium'?'sev-medium':'sev-low';
     const fid=escH(String(f.id||''));
     const ackBtn=isAck?'<span class="ack-btn done">✓ Addressed</span>'
-      :f.severity==='high'?'<button class="ack-btn" data-id="'+fid+'" data-store="'+escH(f.store_name||f.store_id||'')+'" data-metric="'+escH(f.metric_type||'')+'" onclick="openAckModal(this.dataset.id,this.dataset.store,this.dataset.metric)">Acknowledge</button>'
-      :'<label class="ack-check"><input type="checkbox" onchange="quickAck(this,\''+fid+'\')"> Mark reviewed</label>';
-    return'<div class="flag-card '+cc+'">'
+      :f.severity==='high'?'<button class="ack-btn" data-id="'+fid+'" data-store="'+escH(f.store_name||f.store_id||'')+'" data-metric="'+escH(f.metric_type||'')+'" onclick="event.stopPropagation();openAckModal(this.dataset.id,this.dataset.store,this.dataset.metric)">Acknowledge</button>'
+      :'<label class="ack-check" onclick="event.stopPropagation()"><input type="checkbox" onchange="quickAck(this,\''+fid+'\')"> Mark reviewed</label>';
+    return'<div class="flag-card '+cc+'" style="cursor:pointer" onclick="openFlagById(\''+fid+'\')">'
       +'<div class="flag-top"><div><div class="flag-sname">'+escH(f.store_name||f.store_id||'Unknown Store')+'</div>'
       +'<div class="flag-ac">'+escH(f.area_coach||'')+'</div></div>'
       +'<div class="flag-right"><span class="sev-pill '+sc+'">'+(f.severity||'low').toUpperCase()+'</span>'
