@@ -6,6 +6,7 @@
 const express = require('express');
 const router  = express.Router();
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { USER_ROSTER } = require('./auth');
 const db = require('../services/db');
 const multer = require('multer');
 const path   = require('path');
