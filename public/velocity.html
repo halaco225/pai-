@@ -1302,44 +1302,79 @@ function renderScorecards(stores, isDay = false) {
 
   function fmt(v) { return v != null ? v.toFixed(1) + ' min' : '—'; }
 
+  // Stores Reporting and Total Deliveries reflect the visible (filtered) list
+  const totalOrd   = stores.reduce((a, s) => a + (s[ordField] || 0), 0);
+  const storeCount = stores.filter(s => s[istField] != null).length;
+
+  // Company-wide stats always computed from all stores (for comparison subtitles)
+  const compIST  = avgMetric(allStores, istField);
+  const compMake = avgMetric(allStores, makeField);
+  const compProd = avgMetric(allStores, prodField);
+  const slowStores = allStores.filter(s => (s[istField] || 0) >= 19).length;
+
+  // Determine primary scope from active filters, then fall back to user role
+  const selArea   = document.getElementById('areaFilter')?.value   || '';
+  const selRegion = document.getElementById('regionFilter')?.value || '';
   const meta = state.meta || {};
   const userRole   = meta.userRole   || 'company';
   const userRegion = meta.userRegion || null;
   const userArea   = meta.userArea   || null;
 
-  const compIST  = avgMetric(allStores, istField);
-  const compMake = avgMetric(allStores, makeField);
-  const compProd = avgMetric(allStores, prodField);
-  const totalOrd = allStores.reduce((a, s) => a + (s[ordField] || 0), 0);
-  const storeCount = allStores.filter(s => s[istField] != null).length;
-  const slowStores = allStores.filter(s => (s[istField] || 0) >= 19).length;
+  let scope = 'company', scopeLabel = '', regForScope = null;
 
+  if (selArea) {
+    scope = 'area';
+    scopeLabel = selArea;
+    regForScope = allStores.find(s => s.area_coach === selArea)?.region_coach || null;
+  } else if (selRegion) {
+    scope = 'region';
+    scopeLabel = selRegion;
+  } else if (userRole === 'area') {
+    scope = 'area';
+    scopeLabel = userArea || '';
+    regForScope = userRegion;
+  } else if (userRole === 'region') {
+    scope = 'region';
+    scopeLabel = userRegion || '';
+  }
+
+  // Compute primary scope averages
+  let primIST = null, primMake = null, primProd = null;
+  if (scope === 'area' && scopeLabel) {
+    const as = allStores.filter(s => s.area_coach === scopeLabel);
+    primIST  = avgMetric(as, istField);
+    primMake = avgMetric(as, makeField);
+    primProd = avgMetric(as, prodField);
+  } else if (scope === 'region' && scopeLabel) {
+    const rs = allStores.filter(s => s.region_coach === scopeLabel);
+    primIST  = avgMetric(rs, istField);
+    primMake = avgMetric(rs, makeField);
+    primProd = avgMetric(rs, prodField);
+  }
+
+  // Compute region subtotal for area-scope
   let regIST = null, regMake = null, regProd = null;
-  if (userRegion) {
-    const rs = allStores.filter(s => s.region_coach === userRegion);
+  const regionKey = regForScope || (scope === 'region' ? scopeLabel : userRegion);
+  if (regionKey) {
+    const rs = allStores.filter(s => s.region_coach === regionKey);
     regIST  = avgMetric(rs, istField);
     regMake = avgMetric(rs, makeField);
     regProd = avgMetric(rs, prodField);
   }
 
-  let areaIST = null, areaMake = null, areaProd = null;
-  if (userArea) {
-    const as = allStores.filter(s => s.area_coach === userArea);
-    areaIST  = avgMetric(as, istField);
-    areaMake = avgMetric(as, makeField);
-    areaProd = avgMetric(as, prodField);
-  }
+  // Short display name for scope label (first name only)
+  const shortLabel = scopeLabel ? scopeLabel.split(' ')[0] : '';
 
   let istCard, makeCard, prodCard;
 
-  if (userRole === 'area') {
-    istCard  = `<div class="scorecard"><div class="val ${istColorClass(areaIST)}">${fmt(areaIST)}</div><div class="lbl">IST (My Area)</div><div class="lbl" style="font-size:10px;color:var(--muted)">Rgn: ${fmt(regIST)} · Co: ${fmt(compIST)}</div></div>`;
-    makeCard = `<div class="scorecard"><div class="val">${fmt(areaMake)}</div><div class="lbl">Make Time (My Area)</div><div class="lbl" style="font-size:10px;color:var(--muted)">Rgn: ${fmt(regMake)} · Co: ${fmt(compMake)}</div></div>`;
-    prodCard = `<div class="scorecard"><div class="val">${fmt(areaProd)}</div><div class="lbl">Prod Time (My Area)</div><div class="lbl" style="font-size:10px;color:var(--muted)">Rgn: ${fmt(regProd)} · Co: ${fmt(compProd)}</div></div>`;
-  } else if (userRole === 'region') {
-    istCard  = `<div class="scorecard"><div class="val ${istColorClass(regIST)}">${fmt(regIST)}</div><div class="lbl">IST (My Region)</div><div class="lbl" style="font-size:10px;color:var(--muted)">Company: ${fmt(compIST)}</div></div>`;
-    makeCard = `<div class="scorecard"><div class="val">${fmt(regMake)}</div><div class="lbl">Make Time (My Region)</div><div class="lbl" style="font-size:10px;color:var(--muted)">Company: ${fmt(compMake)}</div></div>`;
-    prodCard = `<div class="scorecard"><div class="val">${fmt(regProd)}</div><div class="lbl">Prod Time (My Region)</div><div class="lbl" style="font-size:10px;color:var(--muted)">Company: ${fmt(compProd)}</div></div>`;
+  if (scope === 'area') {
+    istCard  = `<div class="scorecard"><div class="val ${istColorClass(primIST)}">${fmt(primIST)}</div><div class="lbl">IST (${shortLabel})</div><div class="lbl" style="font-size:10px;color:var(--muted)">Rgn: ${fmt(regIST)} · Co: ${fmt(compIST)}</div></div>`;
+    makeCard = `<div class="scorecard"><div class="val">${fmt(primMake)}</div><div class="lbl">Make Time (${shortLabel})</div><div class="lbl" style="font-size:10px;color:var(--muted)">Rgn: ${fmt(regMake)} · Co: ${fmt(compMake)}</div></div>`;
+    prodCard = `<div class="scorecard"><div class="val">${fmt(primProd)}</div><div class="lbl">Prod Time (${shortLabel})</div><div class="lbl" style="font-size:10px;color:var(--muted)">Rgn: ${fmt(regProd)} · Co: ${fmt(compProd)}</div></div>`;
+  } else if (scope === 'region') {
+    istCard  = `<div class="scorecard"><div class="val ${istColorClass(primIST)}">${fmt(primIST)}</div><div class="lbl">IST (${shortLabel})</div><div class="lbl" style="font-size:10px;color:var(--muted)">Company: ${fmt(compIST)}</div></div>`;
+    makeCard = `<div class="scorecard"><div class="val">${fmt(primMake)}</div><div class="lbl">Make Time (${shortLabel})</div><div class="lbl" style="font-size:10px;color:var(--muted)">Company: ${fmt(compMake)}</div></div>`;
+    prodCard = `<div class="scorecard"><div class="val">${fmt(primProd)}</div><div class="lbl">Prod Time (${shortLabel})</div><div class="lbl" style="font-size:10px;color:var(--muted)">Company: ${fmt(compProd)}</div></div>`;
   } else {
     istCard  = `<div class="scorecard"><div class="val ${istColorClass(compIST)}">${fmt(compIST)}</div><div class="lbl">Avg IST</div><div class="lbl" style="font-size:10px;color:var(--muted)">${slowStores} stores ≥19 min</div></div>`;
     makeCard = `<div class="scorecard"><div class="val">${fmt(compMake)}</div><div class="lbl">Avg Make Time</div></div>`;
