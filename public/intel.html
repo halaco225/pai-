@@ -423,6 +423,9 @@ function renderKPIs(data){
   const avgG=nG?gSum/nG:null;
   const laborFlags=allFlags.filter(f=>['LABOR_OVER_BUDGET','LABOR_NOT_ADJUSTED','LABOR_UNDER_BUDGET'].includes(f.metric_type)&&f.status!=='addressed'&&f.status!=='archived');
   const laborStores=new Set(laborFlags.map(f=>f.store_id)).size;
+  const lateAudits=allFlags.filter(f=>f.metric_type==='ROUTINE_LATE'&&f.status!=='addressed'&&f.status!=='archived');
+  const missedAudits=allFlags.filter(f=>f.metric_type==='ROUTINE_MISSED'&&f.status!=='addressed'&&f.status!=='archived');
+  const lateCount=lateAudits.length, missedCount=missedAudits.length;
   document.getElementById('kpiGrid').innerHTML=`
     <div class="kpi-card">
       <div class="kpi-label">Net Sales</div>
@@ -441,6 +444,14 @@ function renderKPIs(data){
       <div class="kpi-val ${laborStores===0?'green':laborStores>5?'red':'amber'}">${laborStores}</div>
       <div class="kpi-delta ${laborStores===0?'up':'dn'}">${laborStores===0?'✓ All within budget':laborStores+' store'+(laborStores!==1?'s':'')+' over scheduled'}</div>
       <div class="kpi-bench">${laborFlags.length} active labor flag${laborFlags.length!==1?'s':''}</div>
+    </div>
+    <div class="kpi-card" style="cursor:pointer" onclick="openAuditDrill()">
+      <div class="kpi-label">HutBot Audits</div>
+      <div class="kpi-val" style="font-size:28px;letter-spacing:2px">
+        <span style="color:#f59e0b">${lateCount}</span><span style="color:#475569;font-size:18px"> / </span><span style="color:#ef4444">${missedCount}</span>
+      </div>
+      <div class="kpi-delta ${lateCount===0&&missedCount===0?'up':'dn'}">${lateCount===0&&missedCount===0?'✓ All audits on time':lateCount+' late · '+missedCount+' missed'}</div>
+      <div class="kpi-bench" style="color:#3b82f6;font-size:11px">Click to view details</div>
     </div>`;
 }
 
@@ -468,7 +479,7 @@ function renderPerfTable(data){
   const laborByAC={};
   allFlags.filter(f=>['LABOR_OVER_BUDGET','LABOR_NOT_ADJUSTED','LABOR_UNDER_BUDGET'].includes(f.metric_type)&&f.status!=='addressed'&&f.status!=='archived')
     .forEach(f=>{if(f.area_coach)laborByAC[f.area_coach]=(laborByAC[f.area_coach]||0)+1;});
-  const thead='<thead><tr><th>#</th><th>Area Coach</th><th>Net Sales</th><th>Growth</th><th>Labor</th><th>OT Hrs</th><th>Cancels</th><th>Clock-Outs</th><th>Routines</th><th>Flags</th></tr></thead>';
+  const thead='<thead><tr><th>#</th><th>Area Coach</th><th>Net Sales</th><th>Growth</th><th>Labor</th><th>OT Hrs</th><th>Cancels</th><th>Clock-Outs</th><th>Routines</th><th>Win Score</th><th>Flags</th></tr></thead>';
   const rows=sorted.map((ac,i)=>{
     const ini=(ac.area_coach||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
     const isOpen=openDrillAC===ac.area_coach;
@@ -490,16 +501,17 @@ function renderPerfTable(data){
       +'<td>'+mCell(ac.cancels,'int','cancel')+'</td>'
       +'<td>'+mCell(ac.forgot_clockout,'int','co')+'</td>'
       +'<td>'+routinesCell+'</td>'
+      +'<td>'+(ac.avg_win_score!=null?'<span class="'+(ac.avg_win_score>=75?'g':ac.avg_win_score>=65?'a':'r')+'">'+ac.avg_win_score+'%</span>':'<span class="n">—</span>')+'</td>'
       +'<td>'+fPill(ac.flag_count)+'</td></tr>'
       +'<tr class="drill-row '+(isOpen?'open':'')+'" id="drill-'+sid+'">'
-      +'<td class="drill-cell" colspan="10"><div class="drill-inner" id="dc-'+sid+'">'+(isOpen?renderDrill(ac):'')+'</div></td></tr>';
+      +'<td class="drill-cell" colspan="11"><div class="drill-inner" id="dc-'+sid+'">'+(isOpen?renderDrill(ac):'')+'</div></td></tr>';
   }).join('');
   document.getElementById('perfTable').innerHTML=thead+'<tbody>'+rows+'</tbody>';
 }
 
 function renderStoreDirect(stores){
   const sorted=[...stores].sort((a,b)=>(b.net_sales||0)-(a.net_sales||0));
-  const thead='<thead><tr><th>#</th><th>Store</th><th>Net Sales</th><th>Growth</th><th>OT Hrs</th><th>Cancels</th><th>Clock-Outs</th><th>Routines</th><th>Flags</th></tr></thead>';
+  const thead='<thead><tr><th>#</th><th>Store</th><th>Net Sales</th><th>Growth</th><th>OT Hrs</th><th>Cancels</th><th>Clock-Outs</th><th>Routines</th><th>Win Score</th><th>Flags</th></tr></thead>';
   const rows=sorted.map((s,i)=>{
     const rm=s.routines_missed||0,rl=s.routines_late||0;
     const rc=(rm+rl)>0?'<span class="'+(rm>0?'r':'a')+'">'+rm+'M '+rl+'L</span>':'<span class="n">—</span>';
@@ -509,6 +521,7 @@ function renderStoreDirect(stores){
       +'<td>'+mCell(s.ot_hours,'hrs','ot')+'</td>'
       +'<td>'+mCell(s.cancels,'int','cancel')+'</td><td>'+mCell(s.forgot_clockout,'int','co')+'</td>'
       +'<td>'+rc+'</td>'
+      +'<td>'+(s.win_score!=null?'<span class="'+(s.win_score>=75?'g':s.win_score>=65?'a':'r')+'">'+s.win_score+'%</span>':'<span class="n">—</span>')+'</td>'
       +'<td>'+fPill(s.flag_count)+'</td></tr>';
   }).join('');
   document.getElementById('perfTable').innerHTML=thead+'<tbody>'+rows+'</tbody>';
@@ -543,6 +556,7 @@ function renderDrill(ac){
       +'<td>'+(s.cancels!=null?Math.round(s.cancels):'<span class="n">—</span>')+'</td>'
       +'<td>'+mCell(s.forgot_clockout,'int','co')+'</td>'
       +'<td>'+rc+'</td>'
+      +'<td>'+(s.win_score!=null?'<span class="'+(s.win_score>=75?'g':s.win_score>=65?'a':'r')+'">'+s.win_score+'%</span>':'<span class="n">—</span>')+'</td>'
       +'<td>'+fPill(s.flag_count)+'</td></tr>';
   }).join('');
   return '<div class="drill-hdr">↳ '+escH(ac.area_coach||'')+' — Store Breakdown</div>'
@@ -827,6 +841,30 @@ function logout(){fetch('/api/auth/logout',{method:'POST'}).then(()=>window.loca
 
 document.getElementById('ackModal').addEventListener('click',function(e){if(e.target===this)closeAckModal();});
 
+function openAuditDrill(){
+  const late=(allFlags||[]).filter(f=>f.metric_type==='ROUTINE_LATE'&&f.status!=='addressed'&&f.status!=='archived');
+  const missed=(allFlags||[]).filter(f=>f.metric_type==='ROUTINE_MISSED'&&f.status!=='addressed'&&f.status!=='archived');
+  const all=[...missed,...late];
+  const rows=all.map(f=>{
+    const det=f.details||{};
+    const typeCell=f.metric_type==='ROUTINE_MISSED'
+      ?'<span style="color:#ef4444;font-weight:700">Missed</span>'
+      :'<span style="color:#f59e0b;font-weight:700">Late</span>';
+    const minsStr=det.minutes_late!=null?'+'+det.minutes_late+' min':'—';
+    const trendStr=det.trend_days&&det.trend_days>=2?'<span style="color:#f59e0b;font-size:10px"> ('+det.trend_days+'-day trend)</span>':'';
+    return '<tr>'
+      +'<td>'+escH(f.store_name||f.store_id)+'</td>'
+      +'<td>'+escH(det.routine_name||'Routine')+trendStr+'</td>'
+      +'<td>'+typeCell+'</td>'
+      +'<td>'+escH(det.responsible||'—')+'</td>'
+      +'<td>'+escH(det.minutes_late!=null?minsStr:'—')+'</td>'
+      +'</tr>';
+  }).join('');
+  document.getElementById('auditDrillBody').innerHTML=rows||'<tr><td colspan="5" style="color:#64748b;text-align:center;padding:16px">No open audit flags</td></tr>';
+  document.getElementById('auditDrillModal').style.display='flex';
+}
+function closeAuditDrill(){document.getElementById('auditDrillModal').style.display='none';}
+
 function openLaborDrill(acName){
   const types=['LABOR_OVER_BUDGET','LABOR_NOT_ADJUSTED','LABOR_UNDER_BUDGET'];
   const flags=(allFlags||[]).filter(f=>types.includes(f.metric_type)&&f.area_coach===acName&&f.status!=='addressed'&&f.status!=='archived');
@@ -856,6 +894,20 @@ function closeLaborDrill(){document.getElementById('laborDrillModal').style.disp
 
 init();
 </script>
+
+<div id="auditDrillModal" class="modal-bg" style="display:none" onclick="if(event.target===this)closeAuditDrill()">
+  <div class="modal-box" style="max-width:720px;width:95%">
+    <div class="modal-hdr">
+      <span>HutBot Audits — <span style="color:#f59e0b">Late</span> &amp; <span style="color:#ef4444">Missed</span></span>
+      <button class="modal-close" onclick="closeAuditDrill()">✕</button>
+    </div>
+    <p style="color:#94a3b8;font-size:13px;margin:0 0 12px">Missed audits must be addressed. Late audits cannot be submitted after the fact.</p>
+    <div style="overflow-x:auto"><table class="ack-tbl" style="width:100%">
+      <thead><tr><th>Store</th><th>Routine</th><th>Status</th><th>Responsible</th><th>Minutes Late</th></tr></thead>
+      <tbody id="auditDrillBody"></tbody>
+    </table></div>
+  </div>
+</div>
 
 <div id="laborDrillModal" class="modal-bg" style="display:none" onclick="if(event.target===this)closeLaborDrill()">
   <div class="modal-box" style="max-width:700px;width:95%">

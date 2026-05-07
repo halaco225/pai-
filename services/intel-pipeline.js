@@ -25,6 +25,7 @@ const { processSMG }           = require('./parsers/smg-parser');
 const { processHutBot }        = require('./intel-hutbot');
 const { downloadFourthReport } = require('./intel-fourth');
 const { downloadSMGComments }  = require('./intel-smg');
+const { processWinScore }      = require('./intel-smg-winscore');
 const db   = require('./db');
 const { USER_ROSTER } = require('../routes/auth');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -177,6 +178,18 @@ async function runIntelPipeline(targetDate) {
     console.error('[Intel Pipeline] SMG failed:', err.message);
   }
   await logStep('smg', results.steps.smg, targetDate);
+
+  // ── Step 6b: SMG Win Score (Current Fiscal Period PTD) ────────────────────
+  console.log('[Intel Pipeline] Step 6b: SMG Win Score');
+  try {
+    const r = await processWinScore(targetDate);
+    results.steps.winScore = r;
+  } catch (err) {
+    results.errors.push(`WinScore: ${err.message}`);
+    results.steps.winScore = { success: false, error: err.message };
+    console.error('[Intel Pipeline] Win Score failed:', err.message);
+  }
+  await logStep('winScore', results.steps.winScore, targetDate);
 
   // ── Step 7: Hut Bot ────────────────────────────────────────────────────────
   console.log('[Intel Pipeline] Step 7: Hut Bot');

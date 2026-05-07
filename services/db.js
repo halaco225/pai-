@@ -681,6 +681,18 @@ async function initIntelDB() {
   `);
 
   await p.query(`
+    CREATE TABLE IF NOT EXISTS smg_win_scores (
+      id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+      store_id         VARCHAR(10) NOT NULL,
+      period_end_date  DATE        NOT NULL,
+      win_score        DECIMAL(5,2),
+      survey_count     INTEGER     DEFAULT 0,
+      updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(store_id, period_end_date)
+    )
+  `);
+
+  await p.query(`
     CREATE TABLE IF NOT EXISTS intel_cache (
       id           SERIAL      PRIMARY KEY,
       user_id      VARCHAR(50) NOT NULL,
@@ -1236,6 +1248,18 @@ async function seedStoreAssignmentsFromAlignment() {
   }
 }
 
+async function getWinScores(storeIds, periodEndDate) {
+  const p = getPool();
+  if (!p) return [];
+  const r = await p.query(
+    `SELECT store_id, win_score, survey_count, period_end_date
+     FROM smg_win_scores
+     WHERE store_id = ANY($1::text[]) AND period_end_date = $2`,
+    [storeIds, periodEndDate]
+  );
+  return r.rows;
+}
+
 module.exports = {
   getPool,
   initDB, saveAnalysis, getHistory, getRecentDaily, getAnalysisById,
@@ -1260,4 +1284,5 @@ module.exports = {
   archiveOldRecoveringFlags,
   getAcknowledgments,
   getHutBotAuth, setHutBotAuth, markHutBotAuthInvalid,
+  getWinScores,
 };

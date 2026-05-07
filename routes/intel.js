@@ -489,13 +489,14 @@ router.get('/kpis', async (req, res) => {
         area_coach: r.area_coach, store_id: r.store_id, store_name: r.store_name,
         net_sales: null, growth_pct: null, cancels: null,
         labor_pct: null, ot_hours: 0, comments_pos: 0, comments_neg: 0,
-        forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0
+        forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0,
+        win_score: null
       };
     }
 
     // Fetch all metrics for the date — storeMap (seeded from store_assignments) scopes in JS.
     // Avoids type-mismatch issues with store_id = ANY() across different DB column types.
-    const [metricsRes, flagCountRes, fcOtRes, surveyRes, routinesRes, laborRes] = await Promise.all([
+    const [metricsRes, flagCountRes, fcOtRes, surveyRes, routinesRes, laborRes, winScoreRes] = await Promise.all([
       p.query(`SELECT t.area_coach, t.store_id, t.store_name,
         t.net_sales_day,
         COALESCE(
@@ -529,7 +530,8 @@ router.get('/kpis', async (req, res) => {
         COUNT(CASE WHEN metric_type='ROUTINE_MISSED' THEN 1 END)::int as routines_missed,
         COUNT(CASE WHEN metric_type='ROUTINE_LATE'   THEN 1 END)::int as routines_late
         FROM intel_flags WHERE ${flagWhere} GROUP BY store_id, area_coach`, fp),
-      p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='labor_pct'`, [date])
+      p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='labor_pct'`, [date]),
+      p.query(`SELECT store_id, win_score, survey_count FROM smg_win_scores WHERE period_end_date <= $1 ORDER BY period_end_date DESC`, [date])
     ]);
 
     // Build user AC set for fallback scoping when store not in store_assignments
@@ -555,7 +557,8 @@ router.get('/kpis', async (req, res) => {
           area_coach: acName, store_id: r.store_id, store_name: r.store_name,
           net_sales: null, growth_pct: null, cancels: null,
           labor_pct: null, ot_hours: 0, comments_pos: 0, comments_neg: 0,
-          forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0
+          forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0,
+          win_score: null
         };
       }
       Object.assign(storeMap[r.store_id], {
@@ -597,6 +600,14 @@ router.get('/kpis', async (req, res) => {
     for (const r of laborRes.rows) {
       if (storeMap[r.store_id]) storeMap[r.store_id].labor_pct = r.value != null ? +r.value : null;
     }
+    // Win score: use most recent row per store (query ordered DESC so first seen = most recent)
+    const winScoreSeen = new Set();
+    for (const r of winScoreRes.rows) {
+      if (!winScoreSeen.has(r.store_id) && storeMap[r.store_id]) {
+        storeMap[r.store_id].win_score = r.win_score != null ? +r.win_score : null;
+        winScoreSeen.add(r.store_id);
+      }
+    }
 
     const by_store = Object.values(storeMap);
 
@@ -606,7 +617,8 @@ router.get('/kpis', async (req, res) => {
       const ac = s.area_coach || 'Unknown';
       if (!acMap[ac]) acMap[ac] = { area_coach: ac, store_count: 0, net_sales: 0,
         gsum: 0, gcnt: 0, cancels: 0, lpsum: 0, lpcnt: 0, ot_hours: 0, comments_pos: 0,
-        comments_neg: 0, forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0 };
+        comments_neg: 0, forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0,
+        wssum: 0, wscnt: 0 };
       const a = acMap[ac];
       a.store_count++;
       if (s.net_sales  != null) a.net_sales  += s.net_sales;
@@ -617,9 +629,18 @@ router.get('/kpis', async (req, res) => {
       a.comments_pos   += s.comments_pos   || 0;
       a.comments_neg   += s.comments_neg   || 0;
       a.forgot_clockout  += s.forgot_clockout   || 0;
+      if (s.win_score != null) { a.wssum += s.win_score; a.wscnt++; }
       a.routines_missed  += s.routines_missed  || 0;
       a.routines_late    += s.routines_late    || 0;
       a.flag_count       += s.flag_count       || 0;
+    }
+
+    // Group stores by AC for drill-down
+    const storesByAC = {};
+    for (const s of by_store) {
+      const ac = s.area_coach || 'Unknown';
+      if (!storesByAC[ac]) storesByAC[ac] = [];
+      storesByAC[ac].push(s);
     }
 
     const by_ac = Object.values(acMap).map(a => ({
@@ -634,7 +655,9 @@ router.get('/kpis', async (req, res) => {
       forgot_clockout:  a.forgot_clockout,
       routines_missed:  a.routines_missed,
       routines_late:    a.routines_late,
-      flag_count:       a.flag_count
+      flag_count:       a.flag_count,
+      avg_win_score:    a.wscnt > 0 ? Math.round(a.wssum / a.wscnt * 10) / 10 : null,
+      stores:          storesByAC[a.area_coach] || [],
     }));
 
     const validGrowth = by_store.filter(s => s.growth_pct != null);
