@@ -871,6 +871,78 @@ router.get('/shoutouts', async (req, res) => {
   }
 });
 
+// ── GET /api/intel/smg-comments — all SMG comments (pos + neg) for user scope ──
+router.get('/smg-comments', async (req, res) => {
+  try {
+    const user = req.session.user;
+    const date = req.query.date || (() => {
+      const d = new Date(); d.setDate(d.getDate() - 1);
+      return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    })();
+    const p = db.getPool();
+    if (!p) return res.json({ date, positive: [], negative: [] });
+
+    // Scope params
+    let scopeWhere = '1=1'; const sp = [];
+    if (user.role === 'area_coach') { sp.push(user.scope?.ac_name||user.name); scopeWhere = `a.area_coach=$${sp.length}`; }
+    else if (user.role === 'rdo') {
+      const acs = user.scope?.area_coaches || [];
+      if (acs.length) { sp.push(acs); scopeWhere = `a.area_coach = ANY($${sp.length}::text[])`; }
+      else { sp.push(user.scope?.rc_name||user.name); scopeWhere = `a.region_coach=$${sp.length}`; }
+    }
+
+    // Positive: shoutouts
+    const posQ = `SELECT s.store_id, a.store_name, a.area_coach, s.summary,
+                         s.full_comment AS comment_text, s.source, s.shoutout_date AS comment_date
+                  FROM intel_shoutouts s
+                  LEFT JOIN store_assignments a ON s.store_id = a.store_id
+                  WHERE ${scopeWhere} AND s.shoutout_date = $${sp.length+1}
+                  ORDER BY a.area_coach, a.store_name`;
+    sp.push(date);
+    const posRes = await p.query(posQ, sp);
+
+    // Negative: pull from GUEST_COMPLAINT flag details
+    const negSp = [date];
+    let negWhere = `metric_date=$1 AND metric_type='GUEST_COMPLAINT' AND status != 'archived'`;
+    if (user.role === 'area_coach') { negSp.push(user.scope?.ac_name||user.name); negWhere += ` AND area_coach=$${negSp.length}`; }
+    else if (user.role === 'rdo') {
+      const acs = user.scope?.area_coaches || [];
+      if (acs.length) { negSp.push(acs); negWhere += ` AND area_coach = ANY($${negSp.length}::text[])`; }
+      else { negSp.push(user.scope?.rc_name||user.name); negWhere += ` AND region_coach=$${negSp.length}`; }
+    }
+    const negRes = await p.query(
+      `SELECT store_id, store_name, area_coach, details FROM intel_flags WHERE ${negWhere} ORDER BY area_coach, store_name`,
+      negSp
+    );
+
+    // Flatten complaint details into individual comment rows
+    const negative = [];
+    for (const row of negRes.rows) {
+      const complaints = row.details?.complaints || [];
+      for (const c of complaints) {
+        negative.push({
+          store_id:   row.store_id,
+          store_name: row.store_name,
+          area_coach: row.area_coach,
+          comment_date: c.event_date || date,
+          source:     c.source,
+          summary:    c.summary,
+          comment_text: c.comment,
+          categories: c.categories || [],
+          name_mentioned: c.name_mentioned || null,
+          severity:   c.severity || 'medium',
+          overall_satisfaction: c.overall_satisfaction,
+        });
+      }
+    }
+
+    res.json({ date, positive: posRes.rows, negative });
+  } catch (err) {
+    console.error('[Intel] /smg-comments error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/intel/weekly-digest — Monday digest for user's scope ─────────────
 router.get('/weekly-digest', async (req, res) => {
   try {

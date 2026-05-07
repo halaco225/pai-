@@ -273,6 +273,7 @@ button{font-family:inherit;cursor:pointer}
     <button class="tab-btn" id="tbf" onclick="switchTab('flags',this)">Flags <span class="tab-cnt hidden" id="flagCnt">0</span></button>
     <button class="tab-btn hidden" id="tba" onclick="switchTab('accountability',this)">Accountability</button>
     <button class="tab-btn" id="tbdg" onclick="switchTab('digest',this)">Weekly Digest</button>
+    <button class="tab-btn" id="tbsmg" onclick="switchTab('smg',this)">Guest Comments</button>
   </div>
 
   <div class="content">
@@ -345,6 +346,18 @@ button{font-family:inherit;cursor:pointer}
         <button class="copy-btn" onclick="copyDigest()">Copy</button>
       </div>
       <div class="digest-area" id="digestText">Loading digest…</div>
+    </div>
+
+    <div class="tab-panel" id="panel-smg">
+      <div class="section-hdr">
+        <div class="section-ttl">Guest Comments</div>
+        <div style="display:flex;gap:8px">
+          <button class="copy-btn" id="smgFilterAll" onclick="setSMGFilter('all',this)" style="color:#60a5fa;border-color:#3b82f6">All</button>
+          <button class="copy-btn" id="smgFilterPos" onclick="setSMGFilter('positive',this)">Positive</button>
+          <button class="copy-btn" id="smgFilterNeg" onclick="setSMGFilter('negative',this)">Negative</button>
+        </div>
+      </div>
+      <div id="smgContainer"><div class="loading"><span class="spin">⟳</span></div></div>
     </div>
 
   </div>
@@ -821,10 +834,11 @@ function switchTab(tab,btn){
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab-btn,.nav-item').forEach(b=>b.classList.remove('active'));
   document.getElementById('panel-'+tab).classList.add('active');
-  const map={dashboard:'tbd',brief:'tbb',flags:'tbf',accountability:'tba',digest:'tbdg'};
+  const map={dashboard:'tbd',brief:'tbb',flags:'tbf',accountability:'tba',digest:'tbdg',smg:'tbsmg'};
   if(map[tab])document.getElementById(map[tab])?.classList.add('active');
   if(btn)btn.classList.add('active');
   if(tab==='digest'&&document.getElementById('digestText').textContent==='Loading digest…')loadDigest();
+  if(tab==='smg')loadSMGComments();
 }
 
 function fmtRole(r){return{rdo:'RDO / Region Coach',area_coach:'Area Coach',vp:'VP Operations'}[r]||r;}
@@ -908,6 +922,83 @@ function openLaborDrill(acName){
   document.getElementById('laborDrillModal').style.display='flex';
 }
 function closeLaborDrill(){document.getElementById('laborDrillModal').style.display='none';}
+
+// ── Guest Comments (SMG) ──────────────────────────────────────────────────────
+let smgData={positive:[],negative:[]};
+let smgFilter='all';
+let smgLoaded=false;
+
+async function loadSMGComments(){
+  if(smgLoaded)return;
+  const c=document.getElementById('smgContainer');
+  c.innerHTML='<div class="loading"><span class="spin">⟳</span></div>';
+  try{
+    const data=await fetch('/api/intel/smg-comments').then(r=>r.json());
+    if(data.error)throw new Error(data.error);
+    smgData=data;
+    smgLoaded=true;
+    renderSMGComments();
+  }catch(e){c.innerHTML='<div class="empty"><p>Error loading comments: '+escH(e.message)+'</p></div>';}
+}
+
+function setSMGFilter(f,btn){
+  smgFilter=f;
+  document.querySelectorAll('#smgFilterAll,#smgFilterPos,#smgFilterNeg').forEach(b=>{
+    b.style.color='#64748b';b.style.borderColor='#1e2d4d';
+  });
+  btn.style.color='#60a5fa';btn.style.borderColor='#3b82f6';
+  renderSMGComments();
+}
+
+function renderSMGComments(){
+  const c=document.getElementById('smgContainer');
+  const pos=smgFilter!=='negative'?smgData.positive||[]:[];
+  const neg=smgFilter!=='positive'?smgData.negative||[]:[];
+  if(!pos.length&&!neg.length){
+    c.innerHTML='<div class="empty"><div class="empty-icon">💬</div><p>No SMG comments found for this date.</p></div>';
+    return;
+  }
+  // Group by store
+  const stores={};
+  pos.forEach(c=>{
+    const k=c.store_id||c.store_name;
+    if(!stores[k])stores[k]={store_name:c.store_name||c.store_id,area_coach:c.area_coach,pos:[],neg:[]};
+    stores[k].pos.push(c);
+  });
+  neg.forEach(c=>{
+    const k=c.store_id||c.store_name;
+    if(!stores[k])stores[k]={store_name:c.store_name||c.store_id,area_coach:c.area_coach,pos:[],neg:[]};
+    stores[k].neg.push(c);
+  });
+  const catFmt={rude_staff:'Rude Staff',poor_food:'Poor Food',poor_service:'Poor Service',wait_time:'Wait Time',wrong_order:'Wrong Order',cleanliness:'Cleanliness',positive_staff:'Positive Staff',great_food:'Great Food',other:'Other'};
+  const html=Object.values(stores).sort((a,b)=>b.neg.length-a.neg.length).map(s=>{
+    const negCards=s.neg.map(c=>{
+      const cats=(c.categories||[]).filter(x=>catFmt[x]).map(x=>'<span style="background:#1e2d4d;color:#94a3b8;font-size:10px;padding:1px 6px;border-radius:4px;margin-right:3px">'+escH(catFmt[x])+'</span>').join('');
+      const nameWarn=c.name_mentioned?'<div style="color:#f87171;font-size:11px;font-weight:700;margin-bottom:3px">⚠ Employee named: '+escH(c.name_mentioned)+'</div>':'';
+      const sat=c.overall_satisfaction!=null?'<span style="color:#64748b;font-size:11px"> · '+c.overall_satisfaction+'/5</span>':'';
+      return '<div style="border-left:3px solid #ef4444;padding:8px 10px;background:#0c1425;border-radius:6px;margin-bottom:8px">'
+        +nameWarn
+        +'<div style="font-size:12px;font-weight:600;color:#fbbf24;margin-bottom:3px">'+escH(c.summary||'Complaint')+sat+'</div>'
+        +(cats?'<div style="margin-bottom:4px">'+cats+'</div>':'')
+        +'<div style="font-size:11px;color:#94a3b8;font-style:italic">"'+escH((c.comment_text||'').substring(0,300))+'"</div>'
+        +'</div>';
+    }).join('');
+    const posCards=s.pos.map(c=>'<div style="border-left:3px solid #22c55e;padding:8px 10px;background:#0c1425;border-radius:6px;margin-bottom:8px">'
+      +'<div style="font-size:12px;font-weight:600;color:#86efac;margin-bottom:3px">★ '+escH(c.summary||'Positive')+'</div>'
+      +'<div style="font-size:11px;color:#94a3b8;font-style:italic">"'+escH((c.comment_text||'').substring(0,300))+'"</div>'
+      +'</div>').join('');
+    return '<div class="flag-card" style="margin-bottom:14px">'
+      +'<div class="flag-top"><div><div class="flag-sname">'+escH(s.store_name||'Unknown')+'</div>'
+      +'<div class="flag-ac">'+escH(s.area_coach||'')+'</div></div>'
+      +'<div class="flag-right">'
+      +(s.neg.length?'<span class="sev-pill sev-h">'+s.neg.length+' Negative</span>':'')
+      +(s.pos.length?'<span class="sev-pill" style="background:#14532d;color:#86efac;border-color:#22c55e;margin-left:4px">'+s.pos.length+' Positive</span>':'')
+      +'</div></div>'
+      +(negCards||posCards?'<div style="margin-top:10px">'+negCards+posCards+'</div>':'')
+      +'</div>';
+  }).join('');
+  c.innerHTML=html;
+}
 
 init();
 </script>
