@@ -199,6 +199,11 @@ button{font-family:inherit;cursor:pointer}
 .modal-submit{padding:8px 18px;background:#3b82f6;border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;transition:background .15s}
 .modal-submit:hover:not(:disabled){background:#2563eb}
 .modal-submit:disabled{opacity:.4;cursor:default}
+.modal-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.modal-hdr span{font-size:15px;font-weight:700;color:#f1f5f9}
+.modal-close{background:transparent;border:1px solid #1e2d4d;color:#64748b;font-size:16px;cursor:pointer;padding:3px 9px;border-radius:6px;line-height:1;transition:all .15s}
+.modal-close:hover{background:#1e2d4d;color:#e2e8f0}
+.drill-modal-box{background:#131d35;border:1px solid #1e2d4d;border-radius:14px;padding:22px;width:680px;max-width:95vw;max-height:85vh;overflow-y:auto}
 .loading{text-align:center;padding:50px 20px;color:#3b4d6b}
 .spin{font-size:26px;display:inline-block;animation:spin 1s linear infinite}
 .empty{text-align:center;padding:50px 20px;color:#3b4d6b}
@@ -572,7 +577,12 @@ function renderPerfTable(data){
     const lc=laborByAC[ac.area_coach]||0;
     const laborCell=lc>0?'<span class="'+(lc>3?'r':'a')+'" style="cursor:pointer;text-decoration:underline dotted" onclick="openLaborDrill(\''+escH(ac.area_coach||'')+'\')">'+lc+' over</span>':'<span class="g">OK</span>';
     const rm=ac.routines_missed||0,rl=ac.routines_late||0;
-    const routinesCell=(rm+rl)>0?'<span class="'+(rm>0?'r':'a')+'">'+rm+' missed'+(rl?' · '+rl+' late':'')+'</span>':'<span class="n">—</span>';
+    const routinesCell=(rm+rl)>0?'<span class="'+(rm>0?'r':'a')+'" style="cursor:pointer;text-decoration:underline dotted" onclick="openAuditDrill()">'+rm+' missed'+(rl?' · '+rl+' late':'')+'</span>':'<span class="n">—</span>';
+    const cancelCnt=ac.cancels!=null?Math.round(ac.cancels):null;
+    const cancelCell=cancelCnt==null?'<span class="n">—</span>':cancelCnt===0?'<span class="g">0</span>':'<span class="'+(cancelCnt>3?'r':cancelCnt>1?'a':'g')+'" style="cursor:pointer;text-decoration:underline dotted" onclick="openCancelDrill(\''+escH(ac.area_coach||'')+'\')">'+cancelCnt+'</span>';
+    const coCnt=ac.forgot_clockout!=null?Math.round(ac.forgot_clockout):null;
+    const coCell=coCnt==null?'<span class="n">—</span>':coCnt===0?'<span class="g">0</span>':'<span class="'+(coCnt>2?'r':'a')+'" style="cursor:pointer;text-decoration:underline dotted" onclick="openClockoutDrill(\''+escH(ac.area_coach||'')+'\')">'+coCnt+'</span>';
+    const flagCell='<span style="cursor:pointer" title="View flags for '+escH(ac.area_coach||'')+'" onclick="jumpToFlagsForAC(\''+escH(ac.area_coach||'')+'\')">'+(ac.flag_count>0?fPill(ac.flag_count):'<span class="n">0</span>')+'</span>';
     return '<tr class="'+(isOpen?'drill-active':'')+'" id="acrow-'+sid+'">'
       +'<td class="n">'+(i+1)+'</td>'
       +'<td><div class="ac-cell" data-ac="'+escH(ac.area_coach||'')+'" onclick="toggleDrill(this.dataset.ac)">'
@@ -583,11 +593,11 @@ function renderPerfTable(data){
       +'<td>'+mCell(ac.growth_pct,'pct_s','growth')+'</td>'
       +'<td>'+laborCell+'</td>'
       +'<td>'+mCell(ac.ot_hours,'hrs','ot')+'</td>'
-      +'<td>'+mCell(ac.cancels,'int','cancel')+'</td>'
-      +'<td>'+mCell(ac.forgot_clockout,'int','co')+'</td>'
+      +'<td>'+cancelCell+'</td>'
+      +'<td>'+coCell+'</td>'
       +'<td>'+routinesCell+'</td>'
       +'<td>'+(ac.avg_win_score!=null?'<span class="'+(ac.avg_win_score>=75?'g':ac.avg_win_score>=65?'a':'r')+'">'+ac.avg_win_score+'%</span>':'<span class="n">—</span>')+'</td>'
-      +'<td>'+fPill(ac.flag_count)+'</td></tr>'
+      +'<td>'+flagCell+'</td></tr>'
       +'<tr class="drill-row '+(isOpen?'open':'')+'" id="drill-'+sid+'">'
       +'<td class="drill-cell" colspan="11"><div class="drill-inner" id="dc-'+sid+'">'+(isOpen?renderDrill(ac):'')+'</div></td></tr>';
   }).join('');
@@ -642,7 +652,7 @@ function renderDrill(ac){
       +'<td>'+mCell(s.forgot_clockout,'int','co')+'</td>'
       +'<td>'+rc+'</td>'
       +'<td>'+(s.win_score!=null?'<span class="'+(s.win_score>=75?'g':s.win_score>=65?'a':'r')+'">'+s.win_score+'%</span>':'<span class="n">—</span>')+'</td>'
-      +'<td>'+fPill(s.flag_count)+'</td></tr>';
+      +'<td><span style="cursor:pointer" onclick="jumpToFlagsForStore(\''+escH(s.store_id||'')+'\',\''+escH(s.store_name||s.store_id||'')+'\')">'+fPill(s.flag_count)+'</span></td></tr>';
   }).join('');
   return '<div class="drill-hdr">↳ '+escH(ac.area_coach||'')+' — Store Breakdown</div>'
     +'<div class="store-cards">'+cards+'</div>'
@@ -697,26 +707,7 @@ function applyFlagFilter(filter,btn){
   else if(filter==='open')flags=flags.filter(f=>f.status!=='addressed'&&f.status!=='archived');
   else if(filter==='addressed')flags=flags.filter(f=>f.status==='addressed');
   const sorted=[...flags].sort((a,b)=>sevOrd(b.severity)-sevOrd(a.severity));
-  const c=document.getElementById('flagsContainer');
-  if(!sorted.length){c.innerHTML='<div class="empty"><div class="empty-icon">✅</div><p>No flags match this filter.</p></div>';return;}
-  c.innerHTML=sorted.map(f=>{
-    const isAck=f.status==='addressed'||f.status==='archived';
-    const sc=f.severity==='high'?'sev-h':f.severity==='medium'?'sev-m':'sev-l';
-    const cc=f.severity==='high'?'sev-high':f.severity==='medium'?'sev-medium':'sev-low';
-    const fid=escH(String(f.id||''));
-    const ackBtn=isAck?'<span class="ack-btn done">✓ Addressed</span>'
-      :f.severity==='high'?'<button class="ack-btn" data-id="'+fid+'" data-store="'+escH(f.store_name||f.store_id||'')+'" data-metric="'+escH(f.metric_type||'')+'" onclick="openAckModal(this.dataset.id,this.dataset.store,this.dataset.metric)">Acknowledge</button>'
-      :'<label class="ack-check"><input type="checkbox" onchange="quickAck(this,\''+fid+'\')"> Mark reviewed</label>';
-    return'<div class="flag-card '+cc+'">'
-      +'<div class="flag-top"><div><div class="flag-sname">'+escH(f.store_name||f.store_id||'Unknown Store')+'</div>'
-      +'<div class="flag-ac">'+escH(f.area_coach||'')+'</div></div>'
-      +'<div class="flag-right"><span class="sev-pill '+sc+'">'+(f.severity||'low').toUpperCase()+'</span>'
-      +'<span class="metric-lbl">'+fmtMetric(f.metric_type)+'</span></div></div>'
-      +'<div class="flag-body">'+buildFlagDetail(f)+'</div>'
-      +'<div class="flag-bottom"><span class="flag-time">'+fmtDate(f.flag_date||f.created_at)+'</span>'
-      +ackBtn+'</div></div>';
-  }).join('');
-  renderUrgentBanner();
+  renderFlagList(sorted,document.getElementById('flagsContainer'));
 }
 
 async function loadBrief(){
@@ -1034,6 +1025,96 @@ function openLaborDrill(acName){
 }
 function closeLaborDrill(){document.getElementById('laborDrillModal').style.display='none';}
 
+function openCancelDrill(acName){
+  const ac=(kpiData?.by_ac||[]).find(a=>a.area_coach===acName);
+  const stores=(ac?.stores||[]).filter(s=>(s.cancels||0)>0).sort((a,b)=>(b.cancels||0)-(a.cancels||0));
+  const unmadeByStore={};
+  allFlags.filter(f=>f.metric_type==='CANCEL_UNMADE'&&f.area_coach===acName)
+    .forEach(f=>{unmadeByStore[f.store_id]=Math.round(f.value||0);});
+  const rows=stores.map(s=>{
+    const total=Math.round(s.cancels||0);
+    const unmade=unmadeByStore[s.store_id]||0;
+    const made=Math.max(0,total-unmade);
+    return'<tr>'
+      +'<td style="color:#e2e8f0;font-weight:600">'+escH(s.store_name||s.store_id)+'</td>'
+      +'<td style="color:#94a3b8;text-align:center">'+total+'</td>'
+      +'<td style="text-align:center"><span class="'+(unmade>0?'r':'n')+'">'+unmade+'</span></td>'
+      +'<td style="color:#94a3b8;text-align:center">'+made+'</td>'
+      +'</tr>';
+  }).join('');
+  document.getElementById('cancelDrillTitle').textContent=acName+' — Cancel Detail';
+  document.getElementById('cancelDrillBody').innerHTML=rows||'<tr><td colspan="4" style="color:#64748b;text-align:center;padding:16px">No cancels found</td></tr>';
+  document.getElementById('cancelDrillModal').style.display='flex';
+}
+function closeCancelDrill(){document.getElementById('cancelDrillModal').style.display='none';}
+
+function openClockoutDrill(acName){
+  const flags=allFlags.filter(f=>f.metric_type==='FORGOT_CLOCKOUT'&&f.area_coach===acName&&f.status!=='addressed'&&f.status!=='archived');
+  const rows=flags.map(f=>{
+    const det=f.details||{};
+    const emps=det.employees||[];
+    if(emps.length){
+      return emps.map(e=>'<tr>'
+        +'<td style="color:#e2e8f0;font-weight:600">'+escH(f.store_name||f.store_id)+'</td>'
+        +'<td style="color:#f1f5f9">'+escH(e.name||'Unknown')+'</td>'
+        +'<td style="color:#64748b">'+escH(e.job_code||'—')+'</td>'
+        +'<td style="color:#f59e0b">'+(e.hours_est!=null?e.hours_est+'h est':'—')+'</td>'
+        +'</tr>').join('');
+    }
+    return'<tr>'
+      +'<td style="color:#e2e8f0;font-weight:600">'+escH(f.store_name||f.store_id)+'</td>'
+      +'<td style="color:#f59e0b">'+Math.round(f.value||0)+' employee'+(f.value!==1?'s':'')+'</td>'
+      +'<td>—</td><td>—</td></tr>';
+  }).join('');
+  document.getElementById('clockoutDrillTitle').textContent=acName+' — Forgot to Clock Out';
+  document.getElementById('clockoutDrillBody').innerHTML=rows||'<tr><td colspan="4" style="color:#64748b;text-align:center;padding:16px">No clock-out issues found</td></tr>';
+  document.getElementById('clockoutDrillModal').style.display='flex';
+}
+function closeClockoutDrill(){document.getElementById('clockoutDrillModal').style.display='none';}
+
+function renderFlagList(sorted,c){
+  if(!sorted.length){c.innerHTML='<div class="empty"><div class="empty-icon">✅</div><p>No flags match this filter.</p></div>';return;}
+  c.innerHTML=sorted.map(f=>{
+    const isAck=f.status==='addressed'||f.status==='archived';
+    const sc=f.severity==='high'?'sev-h':f.severity==='medium'?'sev-m':'sev-l';
+    const cc=f.severity==='high'?'sev-high':f.severity==='medium'?'sev-medium':'sev-low';
+    const fid=escH(String(f.id||''));
+    const ackBtn=isAck?'<span class="ack-btn done">✓ Addressed</span>'
+      :f.severity==='high'?'<button class="ack-btn" data-id="'+fid+'" data-store="'+escH(f.store_name||f.store_id||'')+'" data-metric="'+escH(f.metric_type||'')+'" onclick="openAckModal(this.dataset.id,this.dataset.store,this.dataset.metric)">Acknowledge</button>'
+      :'<label class="ack-check"><input type="checkbox" onchange="quickAck(this,\''+fid+'\')"> Mark reviewed</label>';
+    return'<div class="flag-card '+cc+'">'
+      +'<div class="flag-top"><div><div class="flag-sname">'+escH(f.store_name||f.store_id||'Unknown Store')+'</div>'
+      +'<div class="flag-ac">'+escH(f.area_coach||'')+'</div></div>'
+      +'<div class="flag-right"><span class="sev-pill '+sc+'">'+(f.severity||'low').toUpperCase()+'</span>'
+      +'<span class="metric-lbl">'+fmtMetric(f.metric_type)+'</span></div></div>'
+      +'<div class="flag-body">'+buildFlagDetail(f)+'</div>'
+      +'<div class="flag-bottom"><span class="flag-time">'+fmtDate(f.flag_date||f.created_at)+'</span>'
+      +ackBtn+'</div></div>';
+  }).join('');
+  renderUrgentBanner();
+}
+
+function jumpToFlagsForAC(acName){
+  switchTab('flags',document.getElementById('tbf'));
+  document.querySelectorAll('.ff-btn').forEach(b=>b.classList.remove('active'));
+  setTimeout(()=>{
+    const flags=allFlags.filter(f=>f.area_coach===acName&&f.status!=='addressed'&&f.status!=='archived');
+    const c=document.getElementById('flagsContainer');
+    renderFlagList([...flags].sort((a,b)=>sevOrd(b.severity)-sevOrd(a.severity)),c);
+  },50);
+}
+
+function jumpToFlagsForStore(storeId,storeName){
+  switchTab('flags',document.getElementById('tbf'));
+  document.querySelectorAll('.ff-btn').forEach(b=>b.classList.remove('active'));
+  setTimeout(()=>{
+    const flags=allFlags.filter(f=>f.store_id===storeId&&f.status!=='addressed'&&f.status!=='archived');
+    const c=document.getElementById('flagsContainer');
+    if(!flags.length){c.innerHTML='<div class="empty"><div class="empty-icon">✅</div><p>No open flags for '+escH(storeName||storeId)+'.</p></div>';return;}
+    renderFlagList([...flags].sort((a,b)=>sevOrd(b.severity)-sevOrd(a.severity)),c);
+  },50);
+}
+
 // ── Guest Comments (SMG) ──────────────────────────────────────────────────────
 let smgData={positive:[],negative:[]};
 let smgFilter='all';
@@ -1115,7 +1196,7 @@ init();
 </script>
 
 <div id="auditDrillModal" class="modal-bg" style="display:none" onclick="if(event.target===this)closeAuditDrill()">
-  <div class="modal-box" style="max-width:720px;width:95%">
+  <div class="drill-modal-box">
     <div class="modal-hdr">
       <span>HutBot Audits — <span style="color:#f59e0b">Late</span> &amp; <span style="color:#ef4444">Missed</span></span>
       <button class="modal-close" onclick="closeAuditDrill()">✕</button>
@@ -1129,12 +1210,34 @@ init();
 </div>
 
 <div id="laborDrillModal" class="modal-bg" style="display:none" onclick="if(event.target===this)closeLaborDrill()">
-  <div class="modal-box" style="max-width:700px;width:95%">
+  <div class="drill-modal-box">
     <div class="modal-hdr"><span id="laborDrillTitle">Labor Detail</span><button class="modal-close" onclick="closeLaborDrill()">✕</button></div>
     <p style="color:#94a3b8;font-size:13px;margin:0 0 12px">Stores that used more labor than scheduled on lower-than-forecast sales</p>
     <div style="overflow-x:auto"><table class="ack-tbl" style="width:100%">
       <thead><tr><th>Store</th><th>Sales vs Forecast</th><th>Hours Over</th><th>$ Over Budget</th><th>Type</th></tr></thead>
       <tbody id="laborDrillBody"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<div id="cancelDrillModal" class="modal-bg" style="display:none" onclick="if(event.target===this)closeCancelDrill()">
+  <div class="drill-modal-box">
+    <div class="modal-hdr"><span id="cancelDrillTitle">Cancel Detail</span><button class="modal-close" onclick="closeCancelDrill()">✕</button></div>
+    <p style="color:#94a3b8;font-size:13px;margin:0 0 12px">Cancel Unmades require follow-up. Cancel Mades are recoveries that offset the miss.</p>
+    <div style="overflow-x:auto"><table class="ack-tbl" style="width:100%">
+      <thead><tr><th>Store</th><th style="text-align:center">Total</th><th style="text-align:center;color:#ef4444">Unmades</th><th style="text-align:center;color:#94a3b8">Mades</th></tr></thead>
+      <tbody id="cancelDrillBody"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<div id="clockoutDrillModal" class="modal-bg" style="display:none" onclick="if(event.target===this)closeClockoutDrill()">
+  <div class="drill-modal-box">
+    <div class="modal-hdr"><span id="clockoutDrillTitle">Forgot to Clock Out</span><button class="modal-close" onclick="closeClockoutDrill()">✕</button></div>
+    <p style="color:#94a3b8;font-size:13px;margin:0 0 12px">Employees who may not have clocked out — verify and correct in Fourth.</p>
+    <div style="overflow-x:auto"><table class="ack-tbl" style="width:100%">
+      <thead><tr><th>Store</th><th>Employee</th><th>Job Code</th><th>Est. Hours</th></tr></thead>
+      <tbody id="clockoutDrillBody"></tbody>
     </table></div>
   </div>
 </div>
