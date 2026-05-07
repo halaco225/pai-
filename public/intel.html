@@ -413,12 +413,6 @@ function vpFilterParam(){
 function onVpSelectChange(val){
   if(val==='all') setVpFilter(null,null);
   else if(val.startsWith('rc:')) setVpFilter(val.slice(3),null);
-  else if(val.startsWith('ac:')) {
-    // find which rc this ac belongs to
-    const acName=val.slice(3);
-    const region=vpScopeOptions.find(r=>r.area_coaches.includes(acName));
-    setVpFilter(region?.rc_name||null,acName);
-  }
 }
 
 async function setVpFilter(rcName,acName){
@@ -447,12 +441,9 @@ async function setupVpFilter(u){
     vpScopeOptions=data.regions||[];
     const sel=document.getElementById('vpFilterSelect');
     // Build grouped options: All Regions + one optgroup per RDO with their ACs
-    let html='<option value="all">⬛ All Regions</option>';
+    let html='<option value="all">All Regions</option>';
     for(const r of vpScopeOptions){
-      html+=`<option value="rc:${escH(r.rc_name)}">▸ ${escH(r.rc_name)} (Region)</option>`;
-      for(const ac of (r.area_coaches||[])){
-        html+=`<option value="ac:${escH(ac)}">&nbsp;&nbsp;&nbsp;${escH(ac)}</option>`;
-      }
+      html+=`<option value="rc:${escH(r.rc_name)}">${escH(r.rc_name)}</option>`;
     }
     sel.innerHTML=html;
     document.getElementById('vpFilterBar').classList.add('visible');
