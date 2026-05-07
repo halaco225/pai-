@@ -14,7 +14,17 @@
     --ist-orange: #fd7e14; --ist-red: #dc3545;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Arial, sans-serif; min-height: 100vh; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Arial, sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+  .page-layout { display: flex; flex: 1; }
+  .sidebar { width: 200px; min-width: 200px; background: #0d0d0d; border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 16px 0; }
+  .sidebar-section { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; color: #555; padding: 8px 16px 4px; text-transform: uppercase; }
+  .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 9px 16px; font-size: 13px; color: var(--muted); text-decoration: none; border-left: 3px solid transparent; transition: color 0.15s, background 0.15s; cursor: pointer; }
+  .sidebar-item:hover { color: var(--text); background: #161616; }
+  .sidebar-item.active { color: var(--red); border-left-color: var(--red); background: #1a0a0a; font-weight: 600; }
+  .sidebar-item svg { flex-shrink: 0; opacity: 0.7; }
+  .sidebar-item.active svg { opacity: 1; }
+  .sidebar-bottom { margin-top: auto; padding: 12px 0; border-top: 1px solid var(--border); }
+  .main-content { flex: 1; min-width: 0; }
 
   /* ── Nav ── */
   .nav { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 20px; display: flex; align-items: center; height: 56px; gap: 12px; }
@@ -169,6 +179,35 @@
   <a href="/dashboard" class="nav-back">← Dashboard</a>
 </nav>
 
+<div class="page-layout">
+
+<aside class="sidebar">
+  <div class="sidebar-section">Modules</div>
+  <a href="/pl-analyzer" class="sidebar-item">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+    P&L Analyzer
+  </a>
+  <a href="/intel" class="sidebar-item">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    Intel
+  </a>
+  <a href="/weekly-recap" class="sidebar-item">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+    Weekly Recap
+  </a>
+  <a href="/velocity" class="sidebar-item active">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
+    Velocity
+  </a>
+  <div class="sidebar-bottom">
+    <a href="/dashboard" class="sidebar-item">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      PAI Dashboard
+    </a>
+  </div>
+</aside>
+
+<div class="main-content">
 <div class="container">
 
   <!-- Status bar -->
@@ -1836,5 +1875,8 @@ async function api(url, opts = {}) {
 // Boot
 init();
 </script>
+</div><!-- /.container -->
+</div><!-- /.main-content -->
+</div><!-- /.page-layout -->
 </body>
 </html>
