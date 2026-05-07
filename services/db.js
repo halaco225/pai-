@@ -480,11 +480,12 @@ async function getVelocityDOWDrill({ dow, weeks = 12 } = {}) {
   if (!p) return [];
   try {
     const res = await p.query(`
-      SELECT store_id, record_date, week_key, period_week, ist_avg
+      SELECT store_id, record_date, week_key, period_week,
+             ist_avg, make_time, production_time
       FROM velocity_daily_records
       WHERE EXTRACT(DOW FROM record_date) = $1
         AND record_date >= NOW() - INTERVAL '${weeks * 7} days'
-        AND ist_avg IS NOT NULL
+        AND (ist_avg IS NOT NULL OR make_time IS NOT NULL OR production_time IS NOT NULL)
       ORDER BY record_date ASC
     `, [dow]);
     return res.rows;
