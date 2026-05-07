@@ -36,6 +36,7 @@ button{font-family:inherit;cursor:pointer}
 .mh-sub{font-size:12px;color:#64748b;margin-top:2px}
 .mh-right{display:flex;align-items:center;gap:10px}
 .date-pill{display:flex;align-items:center;gap:6px;padding:6px 12px;background:#111d35;border:1px solid #1e2d4d;border-radius:8px;font-size:12px;color:#64748b}
+.date-pill input[type="date"]{background:transparent;border:none;color:#60a5fa;font-size:12px;cursor:pointer;outline:none;font-family:inherit;font-weight:600;color-scheme:dark}
 .refresh-btn{display:flex;align-items:center;gap:6px;padding:7px 16px;background:#3b82f6;border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;transition:background .15s}
 .refresh-btn:hover{background:#2563eb}
 .run-batch-btn{display:flex;align-items:center;gap:6px;padding:7px 16px;background:transparent;border:1px solid #1e3a5f;border-radius:8px;color:#60a5fa;font-size:13px;font-weight:600;transition:all .15s}
@@ -247,7 +248,7 @@ button{font-family:inherit;cursor:pointer}
       <div class="mh-sub" id="pageSub">Loading…</div>
     </div>
     <div class="mh-right">
-      <div class="date-pill">📅 <span id="dateDisplay"></span></div>
+      <div class="date-pill">📅 <input type="date" id="dateInput" onchange="onDateChange(this.value)"></div>
       <button class="run-batch-btn hidden" id="runBatchBtn" onclick="runBatchNow()">⚡ Run Batch</button>
       <button class="refresh-btn" onclick="init()">↺ Refresh Data</button>
     </div>
@@ -380,6 +381,7 @@ button{font-family:inherit;cursor:pointer}
 <script>
 let currentUser=null,kpiData=null,allFlags=[],briefData={urgent:[],watch:[],wins:[]};
 let curFilter='all',curBriefTab='urgent',openDrillAC=null,currentFlagId=null;
+let selectedDate='';
 
 async function init(){
   try{
@@ -402,7 +404,9 @@ function setupUser(u){
     u.scope?.type==='rdo'?(u.scope.region_name||'Region'):u.role==='vp'?'VP View':'All Regions';
   document.getElementById('pageTitle').textContent='Daily Intel — '+scope;
   document.getElementById('pageSub').textContent='Good morning, '+(u.name||'').split(' ')[0]+". Here's what needs your attention today.";
-  document.getElementById('dateDisplay').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const yest=new Date();yest.setDate(yest.getDate()-1);
+  selectedDate=yest.toLocaleDateString('en-CA',{timeZone:'America/New_York'});
+  document.getElementById('dateInput').value=selectedDate;
   if(['rdo','vp'].includes(u.role)){
     document.getElementById('navAck').classList.remove('hidden');
     document.getElementById('tba').classList.remove('hidden');
@@ -413,7 +417,7 @@ function setupUser(u){
 
 async function loadKPIs(){
   try{
-    const data=await fetch('/api/intel/kpis').then(r=>r.json());
+    const data=await fetch('/api/intel/kpis?date='+selectedDate).then(r=>r.json());
     if(data.error)throw new Error(data.error);
     kpiData=data;
     document.getElementById('lastSync').textContent=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
@@ -602,7 +606,7 @@ function fPill(cnt){const c=cnt||0;if(!c)return'<span class="n">0</span>';const 
 
 async function loadFlags(){
   try{
-    const data=await fetch('/api/intel/flags').then(r=>r.json());
+    const data=await fetch('/api/intel/flags?date='+selectedDate).then(r=>r.json());
     allFlags=Array.isArray(data)?data:(data.flags||[]);
     const open=allFlags.filter(f=>f.status!=='addressed'&&f.status!=='archived').length;
     if(open>0){
@@ -853,20 +857,28 @@ function fmtMetric(t){return{CHANGE_DOWN:'Change Down',CHANGED_MILES:'Changed Mi
 async function runBatchNow(){
   const btn=document.getElementById('runBatchBtn');
   if(btn.disabled)return;
-  const date=prompt('Date to process (YYYY-MM-DD), or leave blank for yesterday:','');
   btn.disabled=true;btn.className='run-batch-btn running';btn.textContent='⟳ Running…';
   try{
-    const body=date&&date.trim()?{date:date.trim()}:{};
-    const res=await fetch('/api/intel/automation/run-now',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const res=await fetch('/api/intel/automation/run-now',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:selectedDate})});
     const d=await res.json();
     if(!res.ok)throw new Error(d.error||'Failed');
     btn.textContent='⚡ Batch Started';
     setTimeout(()=>{btn.disabled=false;btn.className='run-batch-btn';btn.textContent='⚡ Run Batch';},8000);
-    setTimeout(()=>init(),10000); // auto-refresh after pipeline has time to run
+    setTimeout(()=>Promise.all([loadKPIs(),loadFlags(),loadBrief()]),10000);
   }catch(err){
     alert('Batch error: '+err.message);
     btn.disabled=false;btn.className='run-batch-btn';btn.textContent='⚡ Run Batch';
   }
+}
+
+async function onDateChange(val){
+  if(!val)return;
+  selectedDate=val;
+  smgLoaded=false;
+  // Immediately load existing data for this date
+  await Promise.all([loadKPIs(),loadFlags(),loadBrief()]);
+  // Then auto-run batch to pull fresh data for the selected date
+  runBatchNow();
 }
 function logout(){fetch('/api/auth/logout',{method:'POST'}).then(()=>window.location.href='/');}
 
@@ -933,7 +945,7 @@ async function loadSMGComments(){
   const c=document.getElementById('smgContainer');
   c.innerHTML='<div class="loading"><span class="spin">⟳</span></div>';
   try{
-    const data=await fetch('/api/intel/smg-comments').then(r=>r.json());
+    const data=await fetch('/api/intel/smg-comments?date='+selectedDate).then(r=>r.json());
     if(data.error)throw new Error(data.error);
     smgData=data;
     smgLoaded=true;
