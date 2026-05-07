@@ -876,7 +876,7 @@ async function onDateChange(val){
   selectedDate=val;
   smgLoaded=false;
   // Immediately load existing data for this date
-  await Promise.all([loadKPIs(),loadFlags(),loadBrief()]);
+  await Promise.all([loadKPIs(),loadFlags(),loadBrief(),loadSMGComments()]);
   // Then auto-run batch to pull fresh data for the selected date
   runBatchNow();
 }
