@@ -14,7 +14,7 @@ const { requireAuth } = require('../middleware/auth');
 const db = require('../services/db');
 const { ALIGNMENT, REGIONS, AREAS, AREA_COACHES } = require('../services/velocity-alignment');
 const { parseAboveStorePDF, parseSOSExcel, parseDeliveryExcel, parseSOSExcelODS } = require('../services/velocity-parser');
-const { getWeekKey, getPeriodWeek, getWeekDateRange, getYesterdayChicago, computeWTD, analyzeDOWPatterns, FISCAL_CALENDAR } = require('../services/velocity-compute');
+const { getWeekKey, getPeriodWeek, getWeekDateRange, getYesterdayChicago, computeWTD, analyzeDOWPatterns, FISCAL_CALENDAR, parseMinutes } = require('../services/velocity-compute');
 const { generateExcelExport } = require('../services/velocity-export');
 const { sendDailyEmails } = require('../services/velocity-email');
 
@@ -322,8 +322,20 @@ router.get('/meta', (req, res) => {
   }
   const regionToAreasList = {};
   for (const [r, set] of Object.entries(regionToAreas)) regionToAreasList[r] = [...set].sort();
+
+  // Detect logged-in user's scope from alignment
+  const userName = req.session?.user?.name || '';
+  const alignVals = Object.values(ALIGNMENT);
+  const isRegionCoach = alignVals.some(s => s.region_coach === userName);
+  const isAreaCoach   = !isRegionCoach && alignVals.some(s => s.area_coach === userName);
+  const userRegion = isRegionCoach ? userName
+    : (alignVals.find(s => s.area_coach === userName)?.region_coach || null);
+  const userArea = isAreaCoach ? userName : null;
+  const userRole = isRegionCoach ? 'region' : isAreaCoach ? 'area' : 'company';
+
   res.json({ regions: REGIONS, areas: AREAS, area_coaches: AREA_COACHES,
-    region_to_areas: regionToAreasList, store_count: Object.keys(ALIGNMENT).length });
+    region_to_areas: regionToAreasList, store_count: Object.keys(ALIGNMENT).length,
+    userRole, userRegion, userArea });
 });
 
 // ── GET /api/velocity/weeks — available weeks in DB ──────────────────
@@ -458,9 +470,13 @@ router.get('/trends', async (req, res) => {
       const sorted = Object.values(byBucket).sort((a,b) => a.key.localeCompare(b.key));
       const points = sorted.map(({ key, label, recs: rs }) => {
         const valid = rs.filter(r => r.ist_avg != null);
+        const validMake = rs.map(r => parseMinutes(r.make_time)).filter(v => v != null);
+        const validProd = rs.map(r => parseMinutes(r.production_time)).filter(v => v != null);
         return {
           key, label,
-          avg_ist: valid.length ? Math.round(valid.reduce((a,r)=>a+parseFloat(r.ist_avg),0)/valid.length*10)/10 : null,
+          avg_ist:        valid.length      ? Math.round(valid.reduce((a,r)=>a+parseFloat(r.ist_avg),0)/valid.length*10)/10 : null,
+          avg_make:       validMake.length  ? Math.round(validMake.reduce((a,v)=>a+v,0)/validMake.length*100)/100 : null,
+          avg_production: validProd.length  ? Math.round(validProd.reduce((a,v)=>a+v,0)/validProd.length*100)/100 : null,
           store_count: [...new Set(rs.map(r=>r.store_id))].length,
           total_orders: rs.reduce((a,r)=>a+(r.total_orders||0),0)
         };
@@ -513,8 +529,28 @@ router.get('/dow-trends', async (req, res) => {
 
     // Fast path: no filters, no groupBy — use SQL aggregate
     if (!areaCoach && !region && !groupBy) {
-      const dowRows = await db.getVelocityDOWTrends({ storeId, weeks: 12 });
-      return res.json({ patterns: analyzeDOWPatterns(dowRows) });
+      // Use raw records so we can also aggregate make/production per DOW
+      const endDate2   = getYesterdayChicago();
+      const startDate2 = (() => { const d = new Date(endDate2 + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - 84); return d.toISOString().split('T')[0]; })();
+      let rawRecs = await db.getVelocityRecords({ startDate: startDate2, endDate: endDate2 });
+      if (storeId) rawRecs = rawRecs.filter(r => r.store_id === storeId);
+      const byDOW2 = {};
+      for (const r of rawRecs) {
+        const d   = r.record_date instanceof Date ? r.record_date : new Date(r.record_date + 'T12:00:00Z');
+        const dow = d.getUTCDay();
+        if (!byDOW2[dow]) byDOW2[dow] = { dow, day_name: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow], istVals: [], makeVals: [], prodVals: [] };
+        if (r.ist_avg != null) byDOW2[dow].istVals.push(parseFloat(r.ist_avg));
+        const mk = parseMinutes(r.make_time); if (mk != null) byDOW2[dow].makeVals.push(mk);
+        const pr = parseMinutes(r.production_time); if (pr != null) byDOW2[dow].prodVals.push(pr);
+      }
+      const dowRows2 = Object.values(byDOW2).map(d => ({
+        dow: d.dow, day_name: d.day_name,
+        avg_ist: d.istVals.length ? d.istVals.reduce((a,v)=>a+v,0)/d.istVals.length : null,
+        avg_make: d.makeVals.length ? Math.round(d.makeVals.reduce((a,v)=>a+v,0)/d.makeVals.length*100)/100 : null,
+        avg_production: d.prodVals.length ? Math.round(d.prodVals.reduce((a,v)=>a+v,0)/d.prodVals.length*100)/100 : null,
+        sample_count: d.istVals.length
+      }));
+      return res.json({ patterns: analyzeDOWPatterns(dowRows2) });
     }
 
     // Fetch raw records for filtering / grouping
@@ -546,34 +582,42 @@ router.get('/dow-trends', async (req, res) => {
         if (!groups[key]) groups[key] = { label, store_id: groupBy === 'store' ? r.store_id : null, area: al.area_coach, region: al.region_coach, byDow: {} };
         const d   = r.record_date instanceof Date ? r.record_date : new Date(r.record_date + 'T12:00:00Z');
         const dow = d.getUTCDay();
-        if (!groups[key].byDow[dow]) groups[key].byDow[dow] = [];
-        groups[key].byDow[dow].push(parseFloat(r.ist_avg));
+        if (!groups[key].byDow[dow]) groups[key].byDow[dow] = { istVals: [], makeVals: [], prodVals: [] };
+        if (r.ist_avg != null) groups[key].byDow[dow].istVals.push(parseFloat(r.ist_avg));
+        const mk = parseMinutes(r.make_time); if (mk != null) groups[key].byDow[dow].makeVals.push(mk);
+        const pr = parseMinutes(r.production_time); if (pr != null) groups[key].byDow[dow].prodVals.push(pr);
       }
       const result = Object.values(groups).map(g => {
         const dowRows = Object.entries(g.byDow).map(([dow, vals]) => ({
           dow: parseInt(dow), day_name: DOW_NAMES_LOCAL[parseInt(dow)],
-          avg_ist: Math.round(vals.reduce((a,v)=>a+v,0)/vals.length * 10) / 10,
-          sample_count: vals.length
-        }));
+          avg_ist: vals.istVals.length ? Math.round(vals.istVals.reduce((a,v)=>a+v,0)/vals.istVals.length * 10) / 10 : null,
+          avg_make: vals.makeVals.length ? Math.round(vals.makeVals.reduce((a,v)=>a+v,0)/vals.makeVals.length*100)/100 : null,
+          avg_production: vals.prodVals.length ? Math.round(vals.prodVals.reduce((a,v)=>a+v,0)/vals.prodVals.length*100)/100 : null,
+          sample_count: vals.istVals.length
+        })).filter(d => d.avg_ist != null);
         return { label: g.label, store_id: g.store_id, area: g.area, region: g.region, patterns: analyzeDOWPatterns(dowRows) };
       });
       result.sort((a,b) => (a.region||'').localeCompare(b.region||'') || (a.area||'').localeCompare(b.area||'') || a.label.localeCompare(b.label));
       return res.json({ groups: result });
     }
 
-    // Non-grouped with filters (existing behaviour)
+    // Non-grouped with filters
     const byDOW = {};
     for (const r of records) {
       const d   = r.record_date instanceof Date ? r.record_date : new Date(r.record_date + 'T12:00:00Z');
       const dow = d.getUTCDay();
-      if (!byDOW[dow]) byDOW[dow] = { dow, day_name: DOW_NAMES_LOCAL[dow], vals: [] };
-      byDOW[dow].vals.push(parseFloat(r.ist_avg));
+      if (!byDOW[dow]) byDOW[dow] = { dow, day_name: DOW_NAMES_LOCAL[dow], istVals: [], makeVals: [], prodVals: [] };
+      if (r.ist_avg != null) byDOW[dow].istVals.push(parseFloat(r.ist_avg));
+      const mk = parseMinutes(r.make_time); if (mk != null) byDOW[dow].makeVals.push(mk);
+      const pr = parseMinutes(r.production_time); if (pr != null) byDOW[dow].prodVals.push(pr);
     }
     const dowRows = Object.values(byDOW).map(d => ({
       dow: d.dow, day_name: d.day_name,
-      avg_ist: d.vals.reduce((a, v) => a + v, 0) / d.vals.length,
-      sample_count: d.vals.length
-    }));
+      avg_ist: d.istVals.length ? d.istVals.reduce((a, v) => a + v, 0) / d.istVals.length : null,
+      avg_make: d.makeVals.length ? Math.round(d.makeVals.reduce((a,v)=>a+v,0)/d.makeVals.length*100)/100 : null,
+      avg_production: d.prodVals.length ? Math.round(d.prodVals.reduce((a,v)=>a+v,0)/d.prodVals.length*100)/100 : null,
+      sample_count: d.istVals.length
+    })).filter(d => d.avg_ist != null);
     res.json({ patterns: analyzeDOWPatterns(dowRows) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

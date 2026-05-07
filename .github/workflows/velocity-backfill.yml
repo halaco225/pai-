@@ -27,7 +27,7 @@ jobs:
           success=0
           failed=0
 
-          while [ "$cur" \<= "$END" ]; do
+          while [[ "$cur" <= "$END" ]]; do
             RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
               "${{ secrets.PAI_BASE_URL }}/api/velocity/automation/pull-ods" \
               -H "Content-Type: application/json" \

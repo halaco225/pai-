@@ -65,6 +65,19 @@ function getYesterdayChicago() {
   return chicagoToday.toISOString().slice(0, 10);
 }
 
+// ── Parse a make/production time value to decimal minutes ───────────
+// Handles: "4:30" (mm:ss), "4.5" (decimal min), Excel fraction (<1 = fraction of day)
+function parseMinutes(v) {
+  if (v == null) return null;
+  const s = String(v).trim();
+  const mmss = s.match(/^(\d+):(\d{2})$/);
+  if (mmss) return parseInt(mmss[1]) + parseInt(mmss[2]) / 60;
+  const n = parseFloat(s);
+  if (isNaN(n)) return null;
+  if (n > 0 && n < 1) return Math.round(n * 1440 * 100) / 100; // Excel time fraction → minutes
+  return n;
+}
+
 // ── Compute WTD aggregates from raw DB rows ──────────────────────────
 function computeWTD(records) {
   // records: array of velocity_daily_records rows for one week
@@ -96,6 +109,16 @@ function computeWTD(records) {
     const wtd_gt25 = days.reduce((a, d) => a + (d.ist_gt25 || 0), 0);
     const wtd_orders = days.reduce((a, d) => a + (d.total_orders || 0), 0);
 
+    const validMake = days.map(d => parseMinutes(d.make_time)).filter(v => v != null);
+    const wtd_make_min = validMake.length > 0
+      ? Math.round(validMake.reduce((a, v) => a + v, 0) / validMake.length * 100) / 100
+      : null;
+
+    const validProd = days.map(d => parseMinutes(d.production_time)).filter(v => v != null);
+    const wtd_prod_min = validProd.length > 0
+      ? Math.round(validProd.reduce((a, v) => a + v, 0) / validProd.length * 100) / 100
+      : null;
+
     // Build daily breakdown map
     const daily = {};
     for (const d of days) {
@@ -124,6 +147,8 @@ function computeWTD(records) {
       wtd_lt19_pct,
       wtd_lt10, wtd_1014, wtd_1518, wtd_1925, wtd_gt25,
       wtd_orders,
+      wtd_make_min,
+      wtd_prod_min,
       daily
     });
   }
@@ -177,5 +202,5 @@ function getInsight(ist, avg) {
 module.exports = {
   getWeekKey, getPeriodWeek, getWeekDateRange,
   getYesterdayChicago, computeWTD, istColorClass, istColor,
-  analyzeDOWPatterns, FISCAL_CALENDAR, DOW_NAMES
+  analyzeDOWPatterns, FISCAL_CALENDAR, DOW_NAMES, parseMinutes
 };
