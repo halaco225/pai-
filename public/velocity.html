@@ -897,7 +897,7 @@ async function loadDOWDrill(dow, dayName) {
   const drill = document.getElementById('dowDrill');
   const chart = document.getElementById('dowDrillChart');
   drill.classList.remove('hidden');
-  document.getElementById('dowDrillTitle').textContent = `${dayName} — Week-over-Week IST Trend`;
+  document.getElementById('dowDrillTitle').textContent = `${dayName} — Week-over-Week ${metricLabel()} Trend`;
   chart.innerHTML = '<span class="spinner"></span>';
 
   try {
@@ -1650,13 +1650,27 @@ function renderDOW(patterns) {
   const DOW_IDX = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
   const mk = state.metric === 'make' ? 'avg_make' : state.metric === 'prod' ? 'avg_production' : 'avg_ist';
   const useIST = state.metric === 'ist';
+
+  // Compute overall average across all days for the selected metric (for vs-avg insight)
+  const metricVals = patterns.map(p => p[mk]).filter(v => v != null);
+  const metricOverallAvg = metricVals.length ? metricVals.reduce((a,v)=>a+v,0)/metricVals.length : null;
+
   grid.innerHTML = allDays.map(day => {
     const p = patterns.find(p => p.day_name.trim() === day);
     const dow = DOW_IDX[day];
     if (!p) return `<div class="dow-card" onclick="drillDOW(${dow},'${day}')"><div class="day">${day}</div><div class="ist ist-none">—</div><div class="insight">no data</div></div>`;
-    const val = p[mk] ?? p.avg_ist;
-    const cls = useIST ? istColorClass(val) : 'ist-none';
-    const insightTxt = useIST ? `${p.insight} (${p.vs_avg >= 0 ? '+' : ''}${p.vs_avg} vs avg)` : `${val != null ? val + ' min' : '—'}`;
+    const val = p[mk];
+    const cls = useIST ? istColorClass(val ?? p.avg_ist) : 'ist-none';
+    let insightTxt;
+    if (useIST) {
+      insightTxt = `${p.insight} (${p.vs_avg >= 0 ? '+' : ''}${p.vs_avg} vs avg)`;
+    } else if (val != null && metricOverallAvg != null) {
+      const delta = Math.round((val - metricOverallAvg) * 10) / 10;
+      const dir = delta > 1 ? 'typically slower' : delta < -1 ? 'typically fastest' : delta > 0.3 ? 'slightly above avg' : delta < -0.3 ? 'slightly below avg' : 'average pace';
+      insightTxt = `${dir} (${delta >= 0 ? '+' : ''}${delta} vs avg)`;
+    } else {
+      insightTxt = 'no data';
+    }
     return `<div class="dow-card" onclick="drillDOW(${dow},'${day}')" data-dow="${dow}">
       <div class="day">${day}</div>
       <div class="ist ${cls}">${val != null ? val : '—'}</div>

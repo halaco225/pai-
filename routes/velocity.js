@@ -639,12 +639,14 @@ router.get('/dow-drill', async (req, res) => {
     if (areaCoach) records = records.filter(r => (ALIGNMENT[r.store_id]?.area_coach) === areaCoach);
     if (region)    records = records.filter(r => (ALIGNMENT[r.store_id]?.region_coach) === region);
 
-    // Group by week_key, aggregate avg IST
+    // Group by week_key, aggregate avg IST + make + production
     const byWeek = {};
     for (const r of records) {
       const wk = r.week_key instanceof Date ? r.week_key.toISOString().split('T')[0] : String(r.week_key).split('T')[0];
-      if (!byWeek[wk]) byWeek[wk] = { vals: [], period_week: r.period_week };
-      byWeek[wk].vals.push(parseFloat(r.ist_avg));
+      if (!byWeek[wk]) byWeek[wk] = { istVals: [], makeVals: [], prodVals: [], period_week: r.period_week };
+      if (r.ist_avg != null) byWeek[wk].istVals.push(parseFloat(r.ist_avg));
+      const mk = parseMinutes(r.make_time); if (mk != null) byWeek[wk].makeVals.push(mk);
+      const pr = parseMinutes(r.production_time); if (pr != null) byWeek[wk].prodVals.push(pr);
     }
 
     const weekData = Object.entries(byWeek)
@@ -653,8 +655,10 @@ router.get('/dow-drill', async (req, res) => {
         week_key: wk,
         period_week: d.period_week,
         date_range: getWeekDateRange(wk),
-        avg_ist: Math.round(d.vals.reduce((a,v)=>a+v,0)/d.vals.length*10)/10,
-        sample_count: d.vals.length
+        avg_ist: d.istVals.length ? Math.round(d.istVals.reduce((a,v)=>a+v,0)/d.istVals.length*10)/10 : null,
+        avg_make: d.makeVals.length ? Math.round(d.makeVals.reduce((a,v)=>a+v,0)/d.makeVals.length*100)/100 : null,
+        avg_production: d.prodVals.length ? Math.round(d.prodVals.reduce((a,v)=>a+v,0)/d.prodVals.length*100)/100 : null,
+        sample_count: d.istVals.length
       }));
 
     for (let i = 1; i < weekData.length; i++) {
