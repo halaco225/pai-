@@ -43,13 +43,13 @@ button{font-family:inherit;cursor:pointer}
 .run-batch-btn:hover{background:#1e3a5f}
 .run-batch-btn:disabled{opacity:.5;cursor:default}
 .run-batch-btn.running{border-color:#f59e0b;color:#f59e0b}
-.vp-filter-bar{padding:10px 24px;background:#070d1c;border-bottom:1px solid #1e2d4d;display:none;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.vp-filter-bar{padding:10px 24px;background:#070d1c;border-bottom:1px solid #1e2d4d;display:none;align-items:center;gap:12px;flex-shrink:0}
 .vp-filter-bar.visible{display:flex}
-.vp-filter-label{font-size:10px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.12em;margin-right:4px;white-space:nowrap}
-.vp-filter-btn{padding:5px 14px;background:transparent;border:1px solid #1e2d4d;border-radius:20px;color:#64748b;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s}
-.vp-filter-btn:hover{border-color:#3b82f6;color:#60a5fa}
-.vp-filter-btn.active{background:#1e3a5f;border-color:#3b82f6;color:#60a5fa;font-weight:600}
-.vp-filter-sep{width:1px;height:18px;background:#1e2d4d;margin:0 4px}
+.vp-filter-label{font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.12em;white-space:nowrap}
+.vp-filter-select{background:#111d35;border:1px solid #1e2d4d;border-radius:8px;color:#60a5fa;font-size:13px;font-weight:600;padding:6px 14px;cursor:pointer;outline:none;font-family:inherit;min-width:240px}
+.vp-filter-select:focus{border-color:#3b82f6}
+.vp-filter-select option{background:#111d35;color:#e2e8f0;font-weight:400}
+.vp-filter-select optgroup{background:#0c1425;color:#64748b;font-weight:700;font-size:11px}
 .status-bar{display:flex;align-items:center;gap:20px;padding:8px 24px;background:#0a1120;border-bottom:1px solid #1e2d4d;font-size:11px;flex-shrink:0}
 .sb-dot{display:inline-flex;align-items:center;gap:5px;color:#64748b}
 .dot{width:7px;height:7px;border-radius:50%;background:#475569}
@@ -273,11 +273,10 @@ button{font-family:inherit;cursor:pointer}
   </div>
 
   <div class="vp-filter-bar" id="vpFilterBar">
-    <span class="vp-filter-label">View:</span>
-    <button class="vp-filter-btn active" id="vpBtnAll" onclick="setVpFilter(null,null)">All Regions</button>
-    <span class="vp-filter-sep"></span>
-    <div id="vpRegionBtns" style="display:flex;gap:8px;flex-wrap:wrap"></div>
-    <div id="vpAcBtns" style="display:flex;gap:6px;flex-wrap:wrap;margin-left:4px"></div>
+    <span class="vp-filter-label">Viewing:</span>
+    <select id="vpFilterSelect" class="vp-filter-select" onchange="onVpSelectChange(this.value)">
+      <option value="all">All Regions</option>
+    </select>
   </div>
 
   <div class="urgent-banner" id="urgentBanner">
@@ -411,38 +410,34 @@ function vpFilterParam(){
   return '';
 }
 
+function onVpSelectChange(val){
+  if(val==='all') setVpFilter(null,null);
+  else if(val.startsWith('rc:')) setVpFilter(val.slice(3),null);
+  else if(val.startsWith('ac:')) {
+    // find which rc this ac belongs to
+    const acName=val.slice(3);
+    const region=vpScopeOptions.find(r=>r.area_coaches.includes(acName));
+    setVpFilter(region?.rc_name||null,acName);
+  }
+}
+
 async function setVpFilter(rcName,acName){
   vpScopeFilter={rc_name:rcName,ac_name:acName};
-  // Update button states
-  document.getElementById('vpBtnAll').classList.toggle('active',!rcName&&!acName);
-  document.querySelectorAll('.vp-rc-btn').forEach(b=>{
-    b.classList.toggle('active',b.dataset.rc===rcName&&!acName);
-  });
-  document.querySelectorAll('.vp-ac-btn').forEach(b=>{
-    b.classList.toggle('active',b.dataset.ac===acName);
-  });
-  // Show/hide AC buttons for selected region
-  renderVpAcBtns(rcName);
+  // Sync dropdown value
+  const sel=document.getElementById('vpFilterSelect');
+  if(sel){
+    if(acName) sel.value='ac:'+acName;
+    else if(rcName) sel.value='rc:'+rcName;
+    else sel.value='all';
+  }
   // Update page title
   const titleSuffix=acName?acName:rcName?(rcName+' Region'):'All Regions';
   document.getElementById('pageTitle').textContent='Daily Intel — '+titleSuffix;
   // Reload all data
-  let smgWasLoaded=smgLoaded;
+  const smgWasLoaded=smgLoaded;
   smgLoaded=false;
   await Promise.all([loadKPIs(),loadFlags(),loadBrief()]);
   if(smgWasLoaded) await loadSMGComments();
-}
-
-function renderVpAcBtns(rcName){
-  const container=document.getElementById('vpAcBtns');
-  if(!rcName){container.innerHTML='';return;}
-  const region=vpScopeOptions.find(r=>r.rc_name===rcName);
-  if(!region||!region.area_coaches.length){container.innerHTML='';return;}
-  container.innerHTML=region.area_coaches.map(ac=>
-    `<button class="vp-filter-btn vp-ac-btn" data-ac="${escH(ac)}" onclick="setVpFilter('${escH(rcName).replace(/'/g,"\\'")}','${escH(ac).replace(/'/g,"\\'")}')">
-      ${escH(ac.split(' ')[0])}
-    </button>`
-  ).join('');
 }
 
 async function setupVpFilter(u){
@@ -450,14 +445,17 @@ async function setupVpFilter(u){
   try{
     const data=await fetch('/api/intel/vp-scope-options').then(r=>r.json());
     vpScopeOptions=data.regions||[];
-    const bar=document.getElementById('vpFilterBar');
-    bar.classList.add('visible');
-    const rcContainer=document.getElementById('vpRegionBtns');
-    rcContainer.innerHTML=vpScopeOptions.map(r=>
-      `<button class="vp-filter-btn vp-rc-btn" data-rc="${escH(r.rc_name)}" onclick="setVpFilter('${escH(r.rc_name).replace(/'/g,"\\'")}',null)">
-        ${escH(r.rc_name.split(' ')[0])}
-      </button>`
-    ).join('');
+    const sel=document.getElementById('vpFilterSelect');
+    // Build grouped options: All Regions + one optgroup per RDO with their ACs
+    let html='<option value="all">⬛ All Regions</option>';
+    for(const r of vpScopeOptions){
+      html+=`<option value="rc:${escH(r.rc_name)}">▸ ${escH(r.rc_name)} (Region)</option>`;
+      for(const ac of (r.area_coaches||[])){
+        html+=`<option value="ac:${escH(ac)}">&nbsp;&nbsp;&nbsp;${escH(ac)}</option>`;
+      }
+    }
+    sel.innerHTML=html;
+    document.getElementById('vpFilterBar').classList.add('visible');
   }catch(e){console.error('vpFilter:',e);}
 }
 
