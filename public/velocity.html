@@ -218,6 +218,14 @@
       <label>Store</label><br>
       <input type="text" id="storeSearch" placeholder="Search store..." oninput="applyFilters()" style="width:150px">
     </div>
+    <div>
+      <label>Metric</label><br>
+      <div class="view-tabs" style="margin:4px 0 0">
+        <div class="tab active" id="metricBtnIST" onclick="setMetric('ist')">IST</div>
+        <div class="tab" id="metricBtnMake" onclick="setMetric('make')">Make Time</div>
+        <div class="tab" id="metricBtnProd" onclick="setMetric('prod')">Prod Time</div>
+      </div>
+    </div>
     <div style="display:flex;align-items:flex-end">
       <button class="btn btn-outline btn-sm" onclick="clearFilters()">Clear</button>
     </div>
@@ -273,7 +281,7 @@
   <!-- DOW pattern view -->
   <div class="trend-section hidden" id="dowSection">
     <div class="trend-header">
-      <h3>Day-of-Week IST Patterns</h3>
+      <h3 id="dowTitle">Day-of-Week IST Patterns</h3>
       <select id="dowWeeks" onchange="loadDOW()">
         <option value="8">8 Weeks</option>
         <option value="12" selected>12 Weeks</option>
@@ -319,6 +327,8 @@
           <th>Area Coach</th>
           <th>Region</th>
           <th onclick="sortBy('wtd_ist')" style="cursor:pointer">Avg IST ↕</th>
+          <th onclick="sortBy('wtd_make_min')" style="cursor:pointer">Make Time ↕</th>
+          <th onclick="sortBy('wtd_prod_min')" style="cursor:pointer">Prod Time ↕</th>
           <th>Orders</th>
           <th>Days</th>
         </tr>
@@ -369,7 +379,8 @@ let state = {
   sortDir: 'asc',
   filters: { region: '', area: '', store: '' },
   viewBy: 'all',
-  currentUser: null
+  currentUser: null,
+  metric: 'ist'  // 'ist' | 'make' | 'prod'
 };
 
 // ── Boot ──────────────────────────────────────────────────────────────
@@ -491,15 +502,48 @@ function resolveStoreForApi() {
   return matches.length === 1 ? matches[0].store_id : null;
 }
 
+function metricLabel() {
+  if (state.metric === 'make') return 'Make Time';
+  if (state.metric === 'prod') return 'Prod Time';
+  return 'IST';
+}
+
 function setTrendGranularity(gran) {
   state.trendGranularity = gran;
   document.querySelectorAll('.trend-gran-btn').forEach(b => b.classList.toggle('active', b.dataset.gran === gran));
-  const titles = { weekly: 'Week-over-Week IST Trend', daily: 'Daily IST Trend', period: 'Period IST Trend' };
-  document.getElementById('trendTitle').textContent = titles[gran] || 'IST Trend';
+  const ml = metricLabel();
+  const titles = { weekly: `Week-over-Week ${ml} Trend`, daily: `Daily ${ml} Trend`, period: `Period ${ml} Trend` };
+  document.getElementById('trendTitle').textContent = titles[gran] || `${ml} Trend`;
   const isDaily = gran === 'daily';
   document.getElementById('trendWeeks').style.display = isDaily ? 'none' : '';
   document.getElementById('trendDays').style.display  = isDaily ? '' : 'none';
   loadTrend();
+}
+
+function setMetric(m) {
+  state.metric = m;
+  document.querySelectorAll('#metricBtnIST,#metricBtnMake,#metricBtnProd').forEach(b => b.classList.remove('active'));
+  const btnMap = { ist: 'metricBtnIST', make: 'metricBtnMake', prod: 'metricBtnProd' };
+  document.getElementById(btnMap[m])?.classList.add('active');
+
+  // Update sort field to match metric
+  if (m === 'make') state.sortField = 'wtd_make_min';
+  else if (m === 'prod') state.sortField = 'wtd_prod_min';
+  else state.sortField = 'wtd_ist';
+
+  // Update trend/DOW titles
+  const ml = metricLabel();
+  const gran = state.trendGranularity || 'weekly';
+  const trendTitles = { weekly: `Week-over-Week ${ml} Trend`, daily: `Daily ${ml} Trend`, period: `Period ${ml} Trend` };
+  const trendTitle = document.getElementById('trendTitle');
+  if (trendTitle) trendTitle.textContent = trendTitles[gran] || `${ml} Trend`;
+  const dowTitle = document.getElementById('dowTitle');
+  if (dowTitle) dowTitle.textContent = `Day-of-Week ${ml} Patterns`;
+
+  // Re-render current view
+  if (state.view === 'trend') loadTrend();
+  else if (state.view === 'dow') loadDOW();
+  else applyFilters();
 }
 
 async function loadTrend() {
@@ -634,6 +678,8 @@ function ptdStoreRow(s, priorMap) {
     <td>${s.area_coach||'—'}</td>
     <td style="color:var(--muted);font-size:12px">${s.region_coach||'—'}</td>
     <td><span class="${istColorClass(s.wtd_ist)}">${s.wtd_ist != null ? s.wtd_ist + ' min' : '—'}</span>${deltaHtml}</td>
+    <td>${fmtMakeMin(s.wtd_make_min)}</td>
+    <td>${fmtMakeMin(s.wtd_prod_min)}</td>
     <td>${s.wtd_orders||0}</td><td>${s.days_reported||0}</td>
   </tr>`;
 }
@@ -642,6 +688,8 @@ function ptdSummaryRow(stores, level, region, area, cls, priorMap) {
   const valid  = stores.filter(s => s.wtd_ist != null);
   const avgIST = valid.length ? parseFloat((valid.reduce((a,s)=>a+s.wtd_ist,0)/valid.length).toFixed(1)) : null;
   const orders = stores.reduce((a,s)=>a+(s.wtd_orders||0),0);
+  const avgMake = avgMakeMin(stores, 'wtd_make_min');
+  const avgProd = avgMakeMin(stores, 'wtd_prod_min');
   let priorAvg = null;
   if (priorMap) {
     const pv = stores.filter(s => priorMap[s.store_id] != null);
@@ -654,6 +702,8 @@ function ptdSummaryRow(stores, level, region, area, cls, priorMap) {
     <td colspan="2"><strong>${label}</strong> <small style="color:var(--muted)">${stores.length} stores</small></td>
     <td style="color:var(--muted);font-size:12px">${level === 'AREA' ? region : ''}</td>
     <td><span class="${istColorClass(avgIST)}">${avgIST != null ? avgIST + ' min' : '—'}</span>${deltaHtml}</td>
+    <td>${fmtMakeMin(avgMake)}</td>
+    <td>${fmtMakeMin(avgProd)}</td>
     <td>${orders.toLocaleString()}</td><td>—</td>
   </tr>`;
 }
@@ -1074,21 +1124,29 @@ async function runInsights() {
 
 // ── Trend hierarchy renderer ───────────────────────────────────────────
 function renderTrendBars(weeks) {
-  const valid = weeks.filter(w => w.avg_ist != null);
+  const mk = state.metric === 'make' ? 'avg_make' : state.metric === 'prod' ? 'avg_production' : 'avg_ist';
+  const colorFn = state.metric === 'ist' ? istColorHex : () => '#4e9af1';
+  const valid = weeks.filter(w => w[mk] != null);
   if (!valid.length) return '<p style="font-size:11px;color:var(--muted)">No data</p>';
-  const maxIST = Math.max(...valid.map(w => w.avg_ist), 25);
-  const minIST = Math.min(...valid.map(w => w.avg_ist), 15);
-  const range  = maxIST - minIST || 5;
-  const bars = weeks.map(w => {
-    const h = w.avg_ist ? ((w.avg_ist - minIST) / range * 42 + 8).toFixed(0) : 0;
-    const dHtml = w.delta != null
-      ? (w.delta > 0 ? `<span class="delta-bad" style="font-size:9px">▲${w.delta}</span>`
-         : w.delta < 0 ? `<span class="delta-good" style="font-size:9px">▼${Math.abs(w.delta)}</span>` : '')
+  const maxV = Math.max(...valid.map(w => w[mk]));
+  const minV = Math.min(...valid.map(w => w[mk]));
+  const range = maxV - minV || 5;
+  const bars = weeks.map((w, i) => {
+    const v = w[mk];
+    const h = v != null ? ((v - minV) / range * 42 + 8).toFixed(0) : 0;
+    let delta = w.delta;
+    if (state.metric !== 'ist' && i > 0) {
+      const prev = weeks[i-1][mk];
+      delta = (v != null && prev != null) ? Math.round((v - prev) * 10) / 10 : null;
+    }
+    const dHtml = delta != null
+      ? (delta > 0 ? `<span class="delta-bad" style="font-size:9px">▲${delta}</span>`
+         : delta < 0 ? `<span class="delta-good" style="font-size:9px">▼${Math.abs(delta)}</span>` : '')
       : '';
     return `<div style="flex:1;min-width:46px;text-align:center">
       <div style="font-size:9px;color:var(--muted);height:13px;line-height:13px">${dHtml}</div>
-      <div style="height:${h}px;background:${istColorHex(w.avg_ist)};border-radius:3px 3px 0 0;margin:0 2px"></div>
-      <div style="margin-top:2px;font-size:11px;font-weight:700;color:${istColorHex(w.avg_ist)}">${w.avg_ist ?? '—'}</div>
+      <div style="height:${h}px;background:${colorFn(v)};border-radius:3px 3px 0 0;margin:0 2px"></div>
+      <div style="margin-top:2px;font-size:11px;font-weight:700;color:${colorFn(v)}">${v ?? '—'}</div>
       <div style="font-size:9px;color:var(--muted)">${w.label||w.period_week||''}</div>
     </div>`;
   }).join('');
@@ -1147,12 +1205,18 @@ function renderDOWHierarchy(groups, viewBy) {
       <td style="padding:6px 8px 6px ${padLeft};font-weight:600;white-space:nowrap">
         <span class="dow-name-link" onclick="drillIntoArea(${gi})">${g.label}</span>
       </td>`;
+    const dowMk = state.metric === 'make' ? 'avg_make' : state.metric === 'prod' ? 'avg_production' : 'avg_ist';
+    const dowUseIST = state.metric === 'ist';
     for (const d of DAYS) {
       const pat = (g.patterns || []).find(p => p.day_name.trim() === d);
-      html += pat
-        ? `<td class="dow-day-cell" style="text-align:center;padding:6px 8px" onclick="drillIntoAreaDay(${gi},${DAY_DOW[d]},'${d}')">
-            <span class="${istColorClass(pat.avg_ist)}" style="font-weight:700">${pat.avg_ist}</span></td>`
-        : `<td style="text-align:center;padding:6px 8px;color:var(--muted)">—</td>`;
+      if (pat) {
+        const val = pat[dowMk] ?? pat.avg_ist;
+        const cls = dowUseIST ? istColorClass(val) : '';
+        html += `<td class="dow-day-cell" style="text-align:center;padding:6px 8px" onclick="drillIntoAreaDay(${gi},${DAY_DOW[d]},'${d}')">
+            <span class="${cls}" style="font-weight:700">${val ?? '—'}</span></td>`;
+      } else {
+        html += `<td style="text-align:center;padding:6px 8px;color:var(--muted)">—</td>`;
+      }
     }
     html += `</tr>`;
   });
@@ -1198,21 +1262,79 @@ function switchView(view) {
 
 // ── Render functions ──────────────────────────────────────────────────
 function renderScorecards(stores, isDay = false) {
-  const valid = stores.filter(s => s.wtd_ist != null || s.ist_avg != null);
-  const istField = isDay ? 'ist_avg' : 'wtd_ist';
-  const ordField = isDay ? 'total_orders' : 'wtd_orders';
+  const istField  = isDay ? 'ist_avg'         : 'wtd_ist';
+  const ordField  = isDay ? 'total_orders'     : 'wtd_orders';
+  const makeField = isDay ? 'make_time'        : 'wtd_make_min';
+  const prodField = isDay ? 'production_time'  : 'wtd_prod_min';
 
-  const avgIST = valid.length ? (valid.reduce((a,s) => a + (s[istField]||0), 0) / valid.length).toFixed(1) : '—';
-  const totalOrd = valid.reduce((a,s) => a + (s[ordField]||0), 0);
-  const slowStores = valid.filter(s => (s[istField]||0) >= 19).length;
-  const cls = istColorClass(parseFloat(avgIST));
+  // Use all stores (not filtered) for scope comparisons
+  const allStores = (isDay ? state.dayData?.stores : state.wtdData?.stores) || stores;
 
-  document.getElementById('scorecards').innerHTML = `
-    <div class="scorecard"><div class="val ${cls}">${avgIST}</div><div class="lbl">Avg IST (min)</div></div>
-    <div class="scorecard"><div class="val">${valid.length}</div><div class="lbl">Stores Reporting</div></div>
-    <div class="scorecard"><div class="val">${totalOrd.toLocaleString()}</div><div class="lbl">Total Deliveries</div></div>
-    <div class="scorecard"><div class="val ${slowStores > 0 ? 'ist-orange':''}">${slowStores}</div><div class="lbl">Stores ≥19 min</div></div>
-  `;
+  function avgMetric(arr, field) {
+    const vals = arr.map(s => {
+      const v = s[field];
+      if (v == null) return null;
+      if (typeof v === 'string') {
+        const mmss = v.match(/^(\d+):(\d{2})$/);
+        if (mmss) return parseInt(mmss[1]) + parseInt(mmss[2]) / 60;
+        const n = parseFloat(v);
+        return isNaN(n) ? null : (n > 0 && n < 1 ? Math.round(n * 1440 * 10) / 10 : n);
+      }
+      return typeof v === 'number' ? v : null;
+    }).filter(v => v != null);
+    return vals.length ? Math.round(vals.reduce((a, v) => a + v, 0) / vals.length * 10) / 10 : null;
+  }
+
+  function fmt(v) { return v != null ? v.toFixed(1) + ' min' : '—'; }
+
+  const meta = state.meta || {};
+  const userRole   = meta.userRole   || 'company';
+  const userRegion = meta.userRegion || null;
+  const userArea   = meta.userArea   || null;
+
+  const compIST  = avgMetric(allStores, istField);
+  const compMake = avgMetric(allStores, makeField);
+  const compProd = avgMetric(allStores, prodField);
+  const totalOrd = allStores.reduce((a, s) => a + (s[ordField] || 0), 0);
+  const storeCount = allStores.filter(s => s[istField] != null).length;
+  const slowStores = allStores.filter(s => (s[istField] || 0) >= 19).length;
+
+  let regIST = null, regMake = null, regProd = null;
+  if (userRegion) {
+    const rs = allStores.filter(s => s.region_coach === userRegion);
+    regIST  = avgMetric(rs, istField);
+    regMake = avgMetric(rs, makeField);
+    regProd = avgMetric(rs, prodField);
+  }
+
+  let areaIST = null, areaMake = null, areaProd = null;
+  if (userArea) {
+    const as = allStores.filter(s => s.area_coach === userArea);
+    areaIST  = avgMetric(as, istField);
+    areaMake = avgMetric(as, makeField);
+    areaProd = avgMetric(as, prodField);
+  }
+
+  let istCard, makeCard, prodCard;
+
+  if (userRole === 'area') {
+    istCard  = `<div class="scorecard"><div class="val ${istColorClass(areaIST)}">${fmt(areaIST)}</div><div class="lbl">IST (My Area)</div><div class="lbl" style="font-size:10px;color:var(--muted)">Rgn: ${fmt(regIST)} · Co: ${fmt(compIST)}</div></div>`;
+    makeCard = `<div class="scorecard"><div class="val">${fmt(areaMake)}</div><div class="lbl">Make Time (My Area)</div><div class="lbl" style="font-size:10px;color:var(--muted)">Rgn: ${fmt(regMake)} · Co: ${fmt(compMake)}</div></div>`;
+    prodCard = `<div class="scorecard"><div class="val">${fmt(areaProd)}</div><div class="lbl">Prod Time (My Area)</div><div class="lbl" style="font-size:10px;color:var(--muted)">Rgn: ${fmt(regProd)} · Co: ${fmt(compProd)}</div></div>`;
+  } else if (userRole === 'region') {
+    istCard  = `<div class="scorecard"><div class="val ${istColorClass(regIST)}">${fmt(regIST)}</div><div class="lbl">IST (My Region)</div><div class="lbl" style="font-size:10px;color:var(--muted)">Company: ${fmt(compIST)}</div></div>`;
+    makeCard = `<div class="scorecard"><div class="val">${fmt(regMake)}</div><div class="lbl">Make Time (My Region)</div><div class="lbl" style="font-size:10px;color:var(--muted)">Company: ${fmt(compMake)}</div></div>`;
+    prodCard = `<div class="scorecard"><div class="val">${fmt(regProd)}</div><div class="lbl">Prod Time (My Region)</div><div class="lbl" style="font-size:10px;color:var(--muted)">Company: ${fmt(compProd)}</div></div>`;
+  } else {
+    istCard  = `<div class="scorecard"><div class="val ${istColorClass(compIST)}">${fmt(compIST)}</div><div class="lbl">Avg IST</div><div class="lbl" style="font-size:10px;color:var(--muted)">${slowStores} stores ≥19 min</div></div>`;
+    makeCard = `<div class="scorecard"><div class="val">${fmt(compMake)}</div><div class="lbl">Avg Make Time</div></div>`;
+    prodCard = `<div class="scorecard"><div class="val">${fmt(compProd)}</div><div class="lbl">Avg Prod Time</div></div>`;
+  }
+
+  document.getElementById('scorecards').innerHTML =
+    istCard + makeCard + prodCard +
+    `<div class="scorecard"><div class="val">${storeCount}</div><div class="lbl">Stores Reporting</div></div>` +
+    `<div class="scorecard"><div class="val">${totalOrd.toLocaleString()}</div><div class="lbl">Total Deliveries</div></div>`;
 }
 
 function renderDayPills(days) {
@@ -1356,6 +1478,8 @@ function summaryRowDay(stores, level, region, area, cls) {
     <td colspan="2"><strong>${label}</strong> <small style="color:var(--muted)">${stores.length} stores</small></td>
     <td style="color:var(--muted);font-size:12px">${level === 'AREA' ? region : ''}</td>
     <td><span class="${istColorClass(parseFloat(avgIST))}">${avgIST != null ? avgIST + ' min' : '—'}</span></td>
+    <td>—</td>
+    <td>—</td>
     <td>${orders.toLocaleString()}</td>
     <td>—</td>
   </tr>`;
@@ -1396,6 +1520,8 @@ function renderTableDay(stores) {
             <td>${s.area_coach||'—'}</td>
             <td style="color:var(--muted);font-size:12px">${s.region_coach||'—'}</td>
             <td><span class="${istColorClass(s.ist_avg)}">${s.ist_avg != null ? s.ist_avg + ' min' : '—'}</span></td>
+            <td>—</td>
+            <td>—</td>
             <td>${s.total_orders||0}</td>
             <td>1</td>
           </tr>`));
@@ -1406,12 +1532,24 @@ function renderTableDay(stores) {
   tbody.innerHTML = rows.join('');
 }
 
+function fmtMakeMin(v) {
+  if (v == null) return '—';
+  return (typeof v === 'number' ? v.toFixed(2) : v) + ' min';
+}
+
+function avgMakeMin(stores, field) {
+  const vals = stores.map(s => s[field]).filter(v => v != null && typeof v === 'number');
+  return vals.length ? Math.round(vals.reduce((a,v)=>a+v,0)/vals.length*100)/100 : null;
+}
+
 function storeRow(s, cls) {
   return `<tr class="${cls}">
     <td><strong>${s.name||s.store_id}</strong><br><small style="color:var(--muted)">${s.store_id}</small></td>
     <td>${s.area_coach||'—'}</td>
     <td style="color:var(--muted);font-size:12px">${s.region_coach||'—'}</td>
     <td><span class="${istColorClass(s.wtd_ist)}">${s.wtd_ist != null ? s.wtd_ist + ' min' : '—'}</span></td>
+    <td>${fmtMakeMin(s.wtd_make_min)}</td>
+    <td>${fmtMakeMin(s.wtd_prod_min)}</td>
     <td>${s.wtd_orders||0}</td>
     <td>${s.days_reported||0}</td>
   </tr>`;
@@ -1421,6 +1559,8 @@ function summaryRow(stores, level, region, area, cls) {
   const valid = stores.filter(s => s.wtd_ist != null);
   const avgIST = valid.length ? (valid.reduce((a,s)=>a+s.wtd_ist,0)/valid.length).toFixed(1) : null;
   const orders = stores.reduce((a,s)=>a+(s.wtd_orders||0),0);
+  const avgMake = avgMakeMin(stores, 'wtd_make_min');
+  const avgProd = avgMakeMin(stores, 'wtd_prod_min');
   const label = level === 'REGION' ? region : area;
   const sub = `${stores.length} stores`;
 
@@ -1428,6 +1568,8 @@ function summaryRow(stores, level, region, area, cls) {
     <td colspan="2"><strong>${label}</strong> <small style="color:var(--muted)">${sub}</small></td>
     <td style="color:var(--muted);font-size:12px">${level === 'AREA' ? region : ''}</td>
     <td><span class="${istColorClass(parseFloat(avgIST))}">${avgIST != null ? avgIST + ' min' : '—'}</span></td>
+    <td>${fmtMakeMin(avgMake)}</td>
+    <td>${fmtMakeMin(avgProd)}</td>
     <td>${orders.toLocaleString()}</td>
     <td>—</td>
   </tr>`;
@@ -1437,28 +1579,41 @@ function renderTrendChart(weeks, container) {
   const el = container || document.getElementById('trendChart');
   if (!weeks.length) { el.innerHTML = '<p style="color:var(--muted);font-size:13px">No trend data available</p>'; return; }
 
-  const maxIST = Math.max(...weeks.filter(w=>w.avg_ist).map(w=>w.avg_ist), 25);
-  const minIST = Math.min(...weeks.filter(w=>w.avg_ist).map(w=>w.avg_ist), 15);
-  const range = maxIST - minIST || 5;
+  const mk = state.metric === 'make' ? 'avg_make' : state.metric === 'prod' ? 'avg_production' : 'avg_ist';
+  const colorFn = state.metric === 'ist' ? istColorHex : () => '#4e9af1';
+  const valid = weeks.filter(w => w[mk] != null).map(w => w[mk]);
+  if (!valid.length) { el.innerHTML = '<p style="color:var(--muted);font-size:13px">No ' + metricLabel() + ' data available</p>'; return; }
 
-  const bars = weeks.map(w => {
-    const pct = w.avg_ist ? ((w.avg_ist - minIST) / range * 60 + 10).toFixed(0) : 0;
-    const deltaHtml = w.delta != null ? (w.delta > 0 ? `<span class="delta-bad">▲ +${w.delta}</span>` : w.delta < 0 ? `<span class="delta-good">▼ ${w.delta}</span>` : '<span class="delta-flat">—</span>') : '';
+  const maxV = Math.max(...valid);
+  const minV = Math.min(...valid);
+  const range = maxV - minV || 5;
+
+  const bars = weeks.map((w, i) => {
+    const v = w[mk];
+    const pct = v != null ? ((v - minV) / range * 60 + 10).toFixed(0) : 0;
+    // compute delta client-side for non-IST metrics
+    let delta = w.delta;
+    if (state.metric !== 'ist' && i > 0) {
+      const prev = weeks[i-1][mk];
+      delta = (v != null && prev != null) ? Math.round((v - prev) * 10) / 10 : null;
+    }
+    const deltaHtml = delta != null ? (delta > 0 ? `<span class="delta-bad">▲ +${delta}</span>` : delta < 0 ? `<span class="delta-good">▼ ${delta}</span>` : '<span class="delta-flat">—</span>') : '';
     return `<div style="flex:1;min-width:70px;text-align:center">
       <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${deltaHtml}</div>
-      <div style="height:${pct}px;background:${istColorHex(w.avg_ist)};border-radius:4px 4px 0 0;margin:0 4px"></div>
-      <div style="margin-top:4px;font-size:13px;font-weight:700;color:${istColorHex(w.avg_ist)}">${w.avg_ist != null ? w.avg_ist : '—'}</div>
+      <div style="height:${pct}px;background:${colorFn(v)};border-radius:4px 4px 0 0;margin:0 4px"></div>
+      <div style="margin-top:4px;font-size:13px;font-weight:700;color:${colorFn(v)}">${v != null ? v : '—'}</div>
       <div style="font-size:10px;color:var(--muted)">${w.label||w.period_week||w.week_key}</div>
       <div style="font-size:10px;color:var(--muted)">${w.date_range||''}</div>
     </div>`;
   }).join('');
 
+  const targetLine = state.metric === 'ist' ? '<span>IST target: 19 min</span>' : '';
   el.innerHTML = `
     <div style="display:flex;align-items:flex-end;gap:0;height:120px;padding:0 0 8px;border-bottom:1px solid var(--border)">
       ${bars}
     </div>
     <div style="display:flex;gap:8px;font-size:11px;margin-top:8px;color:var(--muted)">
-      <span>IST target: 19 min</span>
+      ${targetLine}
     </div>`;
 }
 
@@ -1468,14 +1623,19 @@ function renderDOW(patterns) {
   if (!patterns.length) { grid.innerHTML = '<p style="color:var(--muted)">No pattern data yet</p>'; return; }
   const allDays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const DOW_IDX = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+  const mk = state.metric === 'make' ? 'avg_make' : state.metric === 'prod' ? 'avg_production' : 'avg_ist';
+  const useIST = state.metric === 'ist';
   grid.innerHTML = allDays.map(day => {
     const p = patterns.find(p => p.day_name.trim() === day);
     const dow = DOW_IDX[day];
     if (!p) return `<div class="dow-card" onclick="drillDOW(${dow},'${day}')"><div class="day">${day}</div><div class="ist ist-none">—</div><div class="insight">no data</div></div>`;
+    const val = p[mk] ?? p.avg_ist;
+    const cls = useIST ? istColorClass(val) : 'ist-none';
+    const insightTxt = useIST ? `${p.insight} (${p.vs_avg >= 0 ? '+' : ''}${p.vs_avg} vs avg)` : `${val != null ? val + ' min' : '—'}`;
     return `<div class="dow-card" onclick="drillDOW(${dow},'${day}')" data-dow="${dow}">
       <div class="day">${day}</div>
-      <div class="ist ${istColorClass(p.avg_ist)}">${p.avg_ist}</div>
-      <div class="insight">${p.insight} (${p.vs_avg >= 0 ? '+' : ''}${p.vs_avg} vs avg)</div>
+      <div class="ist ${cls}">${val != null ? val : '—'}</div>
+      <div class="insight">${insightTxt}</div>
       <div class="insight" style="color:#555">${p.sample_count} samples</div>
     </div>`;
   }).join('');
