@@ -421,7 +421,6 @@ function renderKPIs(data){
     if(ac.growth_pct!=null){gSum+=+ac.growth_pct;nG++;}
   });
   const avgG=nG?gSum/nG:null;
-  const openF=allFlags.filter(f=>f.status!=='addressed'&&f.status!=='archived').length;
   const laborFlags=allFlags.filter(f=>['LABOR_OVER_BUDGET','LABOR_NOT_ADJUSTED','LABOR_UNDER_BUDGET'].includes(f.metric_type)&&f.status!=='addressed'&&f.status!=='archived');
   const laborStores=new Set(laborFlags.map(f=>f.store_id)).size;
   document.getElementById('kpiGrid').innerHTML=`
@@ -436,12 +435,6 @@ function renderKPIs(data){
       <div class="kpi-val ${avgG==null?'':avgG>=0?'green':'red'}">${avgG!=null?fmtPct(avgG):'—'}</div>
       <div class="kpi-delta ${avgG==null?'':avgG>=0?'up':'dn'}">${avgG!=null?(avgG>=0?'▲ Above':'▼ Below')+' prior day':''}</div>
       <div class="kpi-bench">Avg across ${nG} location${nG!==1?'s':''}</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Open Flags</div>
-      <div class="kpi-val ${openF>5?'red':openF>2?'amber':'green'}">${openF}</div>
-      <div class="kpi-delta ${openF===0?'up':'dn'}">${openF===0?'✓ All clear':openF+' requiring attention'}</div>
-      <div class="kpi-bench">Threshold: <span class="${openF<=2?'ok':'ng'}">${openF<=2?'Within Range':'Over Limit'}</span></div>
     </div>
     <div class="kpi-card">
       <div class="kpi-label">Labor Over Budget</div>

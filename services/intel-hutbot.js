@@ -163,6 +163,7 @@ async function writeHutBotFlags(records, targetDate) {
 
     const prevDays = await db.getConsecutiveDays(rec.store_id, metric_type, targetDate);
 
+    const trendDays = prevDays + 1;
     await db.insertIntelFlag({
       store_id:     rec.store_id,
       store_name:   rec.store_name || asgn.store_name,
@@ -181,9 +182,11 @@ async function writeHutBotFlags(records, targetDate) {
         status:         rec.status,
         scheduled_time: rec.scheduled_time || null,
         minutes_late:   rec.minutes_late   || null,
-        submitted_by:   rec.submitted_by   || null,
+        responsible:    rec.submitted_by   || null, // lead for missed, submitter for late
+        trend_days:     trendDays,
+        trend_note:     trendDays >= 2 ? `${trendDays}-day trend for this routine` : null,
       },
-      consecutive_days_out: prevDays + 1,
+      consecutive_days_out: trendDays,
       severity,
       is_new: prevDays === 0,
     });

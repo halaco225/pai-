@@ -188,23 +188,27 @@ function parseDBS(filePath, targetDate) {
           cash_variance_day: cashVar,
         });
 
-        if (changeDown != null && changeDown > 30) {
-          storeFlags.push({ ...base, metric_type: 'CHANGE_DOWN', value: changeDown, target: 30, variance: changeDown - 30 });
+        if (changeDown != null && changeDown > 50) {
+          const sev = changeDown > 150 ? 'high' : 'medium';
+          storeFlags.push({ ...base, metric_type: 'CHANGE_DOWN', value: changeDown, target: 50, variance: changeDown - 50, severity: sev });
         }
         if (changedMiles != null && changedMiles !== 0) {
-          storeFlags.push({ ...base, metric_type: 'CHANGED_MILES', value: changedMiles, target: 0, variance: changedMiles });
+          storeFlags.push({ ...base, metric_type: 'CHANGED_MILES', value: changedMiles, target: 0, variance: changedMiles, severity: 'medium' });
         }
         if (paidouts != null && paidouts !== 0) {
-          storeFlags.push({ ...base, metric_type: 'PAIDOUT', value: paidouts, target: 0, variance: paidouts });
+          storeFlags.push({ ...base, metric_type: 'PAIDOUT', value: paidouts, target: 0, variance: paidouts, severity: 'medium' });
         }
         if (cashVar != null && absVal(cashVar) > 50) {
-          storeFlags.push({ ...base, metric_type: 'CASH_VARIANCE', value: cashVar, target: 50, variance: absVal(cashVar) - 50 });
+          const sev = absVal(cashVar) > 150 ? 'high' : 'medium';
+          storeFlags.push({ ...base, metric_type: 'CASH_VARIANCE', value: cashVar, target: 50, variance: absVal(cashVar) - 50, severity: sev });
         }
         if (refunds != null && refunds > 20) {
-          storeFlags.push({ ...base, metric_type: 'REFUNDS', value: refunds, target: 20, variance: refunds - 20 });
+          const sev = refunds > 50 ? 'high' : 'medium';
+          storeFlags.push({ ...base, metric_type: 'REFUNDS', value: refunds, target: 20, variance: refunds - 20, severity: sev });
         }
         if (cancelUnmade != null && cancelUnmade > 50) {
-          storeFlags.push({ ...base, metric_type: 'CANCEL_UNMADE', value: cancelUnmade, target: 50, variance: cancelUnmade - 50 });
+          const sev = cancelUnmade > 100 ? 'high' : 'medium';
+          storeFlags.push({ ...base, metric_type: 'CANCEL_UNMADE', value: cancelUnmade, target: 50, variance: cancelUnmade - 50, severity: sev });
         }
 
         // ── Tier 2 Soft: Discount % ────────────────────────────────────────
@@ -282,13 +286,11 @@ async function processDBS(filePath, targetDate) {
     metricsWritten++;
   }
 
-  // Write Tier 1 flags with consecutive day logic
+  // Write Tier 1 flags — severity set by value magnitude, consecutive_days kept for trend display only
   let flagsWritten = 0;
   for (const flag of storeFlags) {
     const prevDays = await db.getConsecutiveDays(flag.store_id, flag.metric_type, flag.metric_date);
-    const consecutiveDays = prevDays + 1;
-    const severity = consecutiveDays >= 4 ? 'high' : consecutiveDays >= 2 ? 'medium' : 'low';
-    await db.insertIntelFlag({ ...flag, consecutive_days_out: consecutiveDays, severity, is_new: prevDays === 0 });
+    await db.insertIntelFlag({ ...flag, consecutive_days_out: prevDays + 1, is_new: prevDays === 0 });
     flagsWritten++;
   }
 

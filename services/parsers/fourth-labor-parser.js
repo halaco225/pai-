@@ -7,11 +7,10 @@
  *  7=Act Lab%  8=Sch Lab%   9=Lab% Var
  * 10=Act Hrs  11=Sch Hrs   12=Hrs Var
  *
- * FLAG RULES (Fri-Sun only):
- *  - LABOR_NOT_ADJUSTED: Sales Var < 0 AND Hrs Var > 10
- *  - LABOR_OVER_BUDGET:  Lab$ Var > +$200
- *  - LABOR_UNDER_BUDGET: Lab$ Var < -$200
- * Mon-Thu: informational only (soft indicators for display, no flags)
+ * FLAG RULES (every day):
+ *  - LABOR_OVER_BUDGET: Act Lab$ > Sch Lab$ (any positive variance)
+ *    Severity: high if >$200, medium if >$50, low otherwise
+ *  Negative variance (under budget) = good, no flag.
  */
 const XLSX = require('xlsx');
 const db   = require('../db');
@@ -70,9 +69,7 @@ function parseFourthLaborFile(filePath) {
 
 async function processFourthLabor(filePath, targetDate) {
   console.log(`[FourthLabor] Parsing ${filePath} for ${targetDate}`);
-  // DOW check
-  const dow = new Date(targetDate + 'T12:00:00Z').getUTCDay(); // 0=Sun,5=Fri,6=Sat
-  const flaggingActive = dow === 0 || dow >= 5; // Fri, Sat, Sun
+  const dow = new Date(targetDate + 'T12:00:00Z').getUTCDay();
 
   let stores;
   try {
@@ -82,7 +79,7 @@ async function processFourthLabor(filePath, targetDate) {
     return { success: false, error: err.message };
   }
 
-  console.log(`[FourthLabor] ${stores.length} stores, flagging=${flaggingActive}`);
+  console.log(`[FourthLabor] ${stores.length} stores`);
   const assignments = await db.getStoreAssignments();
   let flagsWritten = 0;
 
@@ -99,13 +96,15 @@ async function processFourthLabor(filePath, targetDate) {
       tier:         1,
     };
     const details = {
-      sales_var:      s.sales_var,
-      sales_var_pct:  s.fcst_sales ? (s.sales_var / s.fcst_sales) : null,
+      sales_var:        s.sales_var,
+      sales_var_pct:    s.fcst_sales ? (s.sales_var / s.fcst_sales) : null,
       labor_dollar_var: s.lab_dollar_var,
-      hours_var:      s.hrs_var,
-      act_labor_pct:  s.act_lab_pct,
-      sch_labor_pct:  s.sch_lab_pct,
-      day_of_week:    dow,
+      hours_var:        s.hrs_var,
+      act_labor_pct:    s.act_lab_pct,
+      sch_labor_pct:    s.sch_lab_pct,
+      act_lab_dollar:   s.act_lab_dollar,
+      sch_lab_dollar:   s.sch_lab_dollar,
+      day_of_week:      dow,
     };
 
     if (s.act_lab_pct != null) {
@@ -113,53 +112,17 @@ async function processFourthLabor(filePath, targetDate) {
         indicator: 'labor_pct', value: s.act_lab_pct, target: 28, source: 'FOURTH' });
     }
 
-    if (!flaggingActive) {
-      // Mon-Thu: store as soft indicators for display
-      if (s.sales_var != null) {
-        await db.upsertSoftIndicator({ store_id: s.store_id, metric_date: targetDate,
-          indicator: 'fourth_sales_var', value: s.sales_var, target: 0, source: 'FOURTH' });
-      }
-      continue;
-    }
-
-    // ── FLAG 1: Scissors Pattern — Sales down, Hours over ────────────────
-    if (s.sales_var != null && s.hrs_var != null && s.sales_var < 0 && s.hrs_var > 10) {
-      const severity = s.hrs_var > 20 ? 'high' : 'medium';
-      const prevDays = await db.getConsecutiveDays(s.store_id, 'LABOR_NOT_ADJUSTED', targetDate);
+    // Flag only when Act Lab$ > Sch Lab$ (positive variance = over budget)
+    // Negative variance = under budget = good, no flag
+    if (s.lab_dollar_var != null && s.lab_dollar_var > 0) {
+      const severity = s.lab_dollar_var > 200 ? 'high' : s.lab_dollar_var > 50 ? 'medium' : 'low';
+      const prevDays = await db.getConsecutiveDays(s.store_id, 'LABOR_OVER_BUDGET', targetDate);
       await db.insertIntelFlag({
-        ...base, metric_type: 'LABOR_NOT_ADJUSTED',
-        value: s.hrs_var, target: 0, variance: s.hrs_var,
+        ...base, metric_type: 'LABOR_OVER_BUDGET',
+        value: s.lab_dollar_var, target: 0, variance: s.lab_dollar_var,
         consecutive_days_out: prevDays + 1, severity, is_new: prevDays === 0, details,
       });
       flagsWritten++;
-    }
-
-    // ── FLAG 2: Labor $ over $200 either direction ────────────────────────
-    if (s.lab_dollar_var != null) {
-      if (s.lab_dollar_var > 200) {
-        const prevDays = await db.getConsecutiveDays(s.store_id, 'LABOR_OVER_BUDGET', targetDate);
-        await db.insertIntelFlag({
-          ...base, metric_type: 'LABOR_OVER_BUDGET',
-          value: s.lab_dollar_var, target: 200, variance: s.lab_dollar_var - 200,
-          consecutive_days_out: prevDays + 1, severity: 'medium', is_new: prevDays === 0, details,
-        });
-        flagsWritten++;
-      } else if (s.lab_dollar_var < -200) {
-        const prevDays = await db.getConsecutiveDays(s.store_id, 'LABOR_UNDER_BUDGET', targetDate);
-        await db.insertIntelFlag({
-          ...base, metric_type: 'LABOR_UNDER_BUDGET',
-          value: s.lab_dollar_var, target: -200, variance: s.lab_dollar_var + 200,
-          consecutive_days_out: prevDays + 1, severity: 'medium', is_new: prevDays === 0, details,
-        });
-        flagsWritten++;
-      }
-    }
-
-    // ── FLAG 3: Sales miss -5%+ by Friday ────────────────────────────────
-    const salesVarPct = s.fcst_sales ? (s.sales_var / s.fcst_sales) : null;
-    if (salesVarPct != null && salesVarPct <= -0.05) {
-      await db.upsertSoftIndicator({ store_id: s.store_id, metric_date: targetDate,
-        indicator: 'sales_miss_pct', value: salesVarPct, target: -0.05, source: 'FOURTH' });
     }
   }
 

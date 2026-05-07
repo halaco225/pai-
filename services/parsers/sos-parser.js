@@ -92,12 +92,18 @@ async function processSOS(filePath, targetDate) {
     if (s.prod_min != null && s.prod_min > 20) {
       const prevDays = await db.getConsecutiveDays(s.store_id, 'PRODUCTION_TIME', targetDate);
       const consecutive = prevDays + 1;
-      const severity = consecutive >= 4 ? 'high' : consecutive >= 2 ? 'medium' : 'low';
-      const details  = { label: s.prod_min > 25 ? 'critical' : null, pct_prod_lt15: s.pct_prod_lt15 };
+      // Severity by value only — no day escalation; consecutive_days kept for trend display
+      const severity = s.prod_min > 25 ? 'high' : 'medium';
+      const details  = {
+        label: s.prod_min > 25 ? 'critical' : null,
+        pct_prod_lt15: s.pct_prod_lt15,
+        trend_days: consecutive,
+        trend_note: consecutive >= 2 ? `${consecutive}-day trend` : null,
+      };
       await db.insertIntelFlag({
         ...base, tier: 1, metric_type: 'PRODUCTION_TIME',
-        value: parseFloat(s.prod_min.toFixed(2)), target: 15.0,
-        variance: parseFloat((s.prod_min - 15).toFixed(2)),
+        value: parseFloat(s.prod_min.toFixed(2)), target: 20.0,
+        variance: parseFloat((s.prod_min - 20).toFixed(2)),
         consecutive_days_out: consecutive, severity, is_new: prevDays === 0,
         details,
       });
@@ -159,7 +165,7 @@ async function evaluateStackedSoftFlags(storeIds, targetDate, assignments) {
 
     if (persistentNegative.length < 2) continue;
 
-    // Build stacked performance flag
+    // Build stacked performance flag — severity by indicator count, not consecutive days
     const severity = persistentNegative.length >= 3 ? 'high' : 'medium';
     const asgn = assignments[store_id] || {};
     const prevDays = await db.getConsecutiveDays(store_id, 'PERFORMANCE_TREND', targetDate);
@@ -168,6 +174,8 @@ async function evaluateStackedSoftFlags(storeIds, targetDate, assignments) {
       indicators_negative: persistentNegative,
       consecutive_days: 3,
       indicator_count: persistentNegative.length,
+      trend_days: prevDays + 1,
+      trend_note: `${persistentNegative.length} indicator${persistentNegative.length !== 1 ? 's' : ''} negative for 3+ days`,
     };
 
     await db.insertIntelFlag({

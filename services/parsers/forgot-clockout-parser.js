@@ -23,6 +23,19 @@ function parseDate(v) {
   return String(v).trim();
 }
 
+// Estimate hours worked from punch-in to midnight of that day
+function estimateHours(punchInStr) {
+  if (!punchInStr) return null;
+  try {
+    const d = new Date(punchInStr);
+    if (isNaN(d.getTime())) return null;
+    const midnight = new Date(d);
+    midnight.setHours(23, 59, 0, 0);
+    const hrs = (midnight - d) / 3600000;
+    return hrs > 0 ? parseFloat(hrs.toFixed(1)) : null;
+  } catch (_) { return null; }
+}
+
 function parseForgotClockOut(filePath) {
   const wb   = XLSX.readFile(filePath, { cellDates: false, raw: true });
   const ws   = wb.Sheets[wb.SheetNames[0]];
@@ -87,11 +100,12 @@ async function processForgotClockOut(filePath, targetDate) {
     const severity = employees.length >= 3 ? 'high' : 'medium';
     const prevDays = await db.getConsecutiveDays(store_id, 'FORGOT_CLOCKOUT', targetDate);
 
-    // Build employee list — names only, no SSN
+    // Build employee list — names + estimated hours, no SSN
     const empList = employees.map(e => ({
       name:      `${e.first_name} ${e.last_name}`.trim(),
       punch_in:  e.punch_in,
       job_code:  e.job_code,
+      hours_est: estimateHours(e.punch_in),
     }));
 
     await db.insertIntelFlag({
@@ -115,50 +129,8 @@ async function processForgotClockOut(filePath, targetDate) {
     flagsWritten++;
   }
 
-  // Monday: re-surface uncorrected flags from prior week
-  const dow = new Date(targetDate + 'T12:00:00Z').getUTCDay();
-  if (dow === 1) {
-    await createMondayReminders(targetDate, assignments);
-  }
-
   console.log(`[ClockOut] Done — ${flagsWritten} stores flagged`);
   return { success: true, recordsProcessed: records.length, flagsWritten };
-}
-
-async function createMondayReminders(targetDate, assignments) {
-  const p = require('../db').getPool();
-  if (!p) return;
-  // Find unacknowledged FORGOT_CLOCKOUT from the past 7 days (prior week)
-  const res = await p.query(`
-    SELECT DISTINCT store_id FROM intel_flags
-    WHERE metric_type = 'FORGOT_CLOCKOUT'
-      AND metric_date >= $1::date - INTERVAL '7 days'
-      AND metric_date < $1::date
-      AND status NOT IN ('addressed','resolved','archived')
-      AND id NOT IN (SELECT flag_id FROM intel_acknowledgments)
-  `, [targetDate]);
-
-  for (const row of res.rows) {
-    const store_id = row.store_id;
-    const asgn = assignments[store_id] || {};
-    await db.insertIntelFlag({
-      store_id,
-      store_name:   asgn.store_name,
-      area_coach:   asgn.area_coach,
-      region_coach: asgn.region_coach,
-      territory_vp: asgn.vp,
-      metric_type:  'CLOCKOUT_REMINDER',
-      metric_date:  targetDate,
-      value:        1, target: 0, variance: 1,
-      source:       'ONEDATA_PAYROLL',
-      tier:         1,
-      details:      { note: 'Payroll reminder — uncorrected clock-out from prior week' },
-      consecutive_days_out: 1,
-      severity:     'medium',
-      is_new:       true,
-    });
-  }
-  if (res.rows.length) console.log(`[ClockOut] ${res.rows.length} Monday CLOCKOUT_REMINDER flags created`);
 }
 
 module.exports = { processForgotClockOut };
