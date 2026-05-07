@@ -733,6 +733,29 @@ function switchBriefTab(tab,btn){
   renderBriefItems(tab);
 }
 
+function briefDesc(f){
+  const det=(typeof f.details==='object'&&f.details)||{};
+  const days=f.consecutive_days_out||0;
+  const trend=days>1?' · '+days+'-day trend':'';
+  switch(f.metric_type){
+    case'GUEST_COMPLAINT':
+      let gd=(det.negative_count||Math.round(f.value||0))+' negative review'+(+(det.negative_count||f.value||0)!==1?'s':'')+' today';
+      if(det.names_mentioned&&det.names_mentioned.length)gd+=' · Employee named: '+det.names_mentioned.join(', ');
+      return gd;
+    case'PERFORMANCE_TREND':return'Multiple metrics below threshold'+trend;
+    case'CHANGE_DOWN':return'Change fund down $'+Math.round(f.value||0)+' (limit $'+Math.round(f.target||50)+')'+trend;
+    case'CANCEL_UNMADE':return Math.round(f.value||0)+' cancel/unmade orders'+trend;
+    case'CASH_VARIANCE':return'Cash variance $'+Math.abs(Math.round(f.value||0))+trend;
+    case'FORGOT_CLOCKOUT':return((det.employees&&det.employees.length?det.employees.map(e=>e.name).join(', '):Math.round(f.value||0)+' employee'+(f.value!==1?'s':''))+' forgot to clock out');
+    case'LABOR_OVER_BUDGET':return'$'+Math.round(f.value||0)+' over scheduled labor'+trend;
+    case'ROUTINE_MISSED':return(det.routine_name||'Routine')+' not submitted'+(det.responsible?' · '+det.responsible:'')+trend;
+    case'ROUTINE_LATE':return(det.routine_name||'Routine')+' submitted '+(det.minutes_late!=null?det.minutes_late+' min ':'')+' late'+(det.responsible?' · '+det.responsible:'')+trend;
+    case'PUSH_SURVEYS':return'No SMG survey responses for 2+ days';
+    case'PRODUCTION_TIME':return'Prod time '+Math.round(f.value||0)+' min (target <'+Math.round(f.target||20)+' min)'+trend;
+    default:return fmtMetric(f.metric_type)+(f.value!=null?' — '+Math.round(Number(f.value)):'')+trend;
+  }
+}
+
 function renderBriefItems(tab){
   const items=briefData[tab]||[];
   const c=document.getElementById('briefItems');
@@ -743,49 +766,54 @@ function renderBriefItems(tab){
     return;
   }
   if(tab==='wins'){
-    c.innerHTML=items.map(s=>'<div class="shoutout-card"><div class="sh-store">★ '+escH(s.store_name||s.store_id||'')+'</div><div class="sh-body">'+escH(s.summary||s.comment_text||'')+'</div><div class="sh-meta">'+escH(s.area_coach||'')+'</div></div>').join('');
+    c.innerHTML=items.map((s,i)=>'<div class="shoutout-card" style="cursor:pointer" onclick="openBriefDetail(\'wins\','+i+')">'
+      +'<div class="sh-store">★ '+escH(s.store_name||s.store_id||'')+'</div>'
+      +'<div class="sh-body">'+escH(s.summary||s.comment_text||'')+'</div>'
+      +'<div class="sh-meta">'+escH(s.area_coach||'')+'<span style="float:right;color:#166534;font-size:11px">Tap for full review →</span></div>'
+      +'</div>').join('');
   }else{
     const tc=tab==='urgent'?'tag-u':'tag-w';
-    c.innerHTML=items.map(f=>{
-      const det=(typeof f.details==='object'&&f.details)||{};
-      const days=f.consecutive_days_out||0;
-      const trend=days>1?' · '+days+'-day trend':'';
-      let desc='';
-      switch(f.metric_type){
-        case'GUEST_COMPLAINT':
-          desc=(det.negative_count||Math.round(f.value||0))+' negative review'+(+(det.negative_count||f.value||0)!==1?'s':'')+' today';
-          if(det.names_mentioned&&det.names_mentioned.length)desc+=' · Employee named: '+det.names_mentioned.join(', ');
-          break;
-        case'PERFORMANCE_TREND':
-          desc='Multiple metrics below threshold'+trend;break;
-        case'CHANGE_DOWN':
-          desc='Change fund down $'+Math.round(f.value||0)+' (limit $'+Math.round(f.target||50)+')'+trend;break;
-        case'CANCEL_UNMADE':
-          desc=Math.round(f.value||0)+' cancel/unmade orders'+trend;break;
-        case'CASH_VARIANCE':
-          desc='Cash variance $'+Math.abs(Math.round(f.value||0))+trend;break;
-        case'FORGOT_CLOCKOUT':
-          desc=(det.employees&&det.employees.length?det.employees.map(e=>e.name).join(', '):Math.round(f.value||0)+' employee'+(f.value!==1?'s':''))+' forgot to clock out';break;
-        case'LABOR_OVER_BUDGET':
-          desc='$'+Math.round(f.value||0)+' over scheduled labor'+trend;break;
-        case'ROUTINE_MISSED':
-          desc=(det.routine_name||'Routine')+' not submitted'+(det.responsible?' · '+det.responsible:'')+trend;break;
-        case'ROUTINE_LATE':
-          desc=(det.routine_name||'Routine')+' submitted '+(det.minutes_late!=null?det.minutes_late+' min ':'')+' late'+(det.responsible?' · '+det.responsible:'')+trend;break;
-        case'PUSH_SURVEYS':
-          desc='No SMG survey responses for 2+ days';break;
-        case'PRODUCTION_TIME':
-          desc='Prod time '+Math.round(f.value||0)+' min (target <'+Math.round(f.target||20)+' min)'+trend;break;
-        default:
-          desc=fmtMetric(f.metric_type)+(f.value!=null?' — '+Math.round(Number(f.value)):'')+trend;
-      }
-      return'<div class="brief-card"><div class="bc-store">'+escH(f.store_name||f.store_id||'Unknown')+' <span class="bc-time">· '+fmtDate(f.flag_date||f.created_at)+'</span></div>'
+    c.innerHTML=items.map((f,i)=>{
+      const desc=briefDesc(f);
+      return'<div class="brief-card" style="cursor:pointer" onclick="openBriefDetail(\''+tab+'\','+i+')">'
+        +'<div class="bc-store">'+escH(f.store_name||f.store_id||'Unknown')+' <span class="bc-time">· '+fmtDate(f.flag_date||f.created_at)+'</span></div>'
         +'<div class="bc-desc">'+escH(desc)+'</div>'
         +'<div class="bc-desc" style="color:#64748b;font-size:11px">'+escH(f.area_coach||'')+'</div>'
-        +'<div class="bc-tags"><span class="bc-tag '+tc+'">'+(tab==='urgent'?'Urgent':'Watch')+'</span><span class="bc-tag tag-w">'+fmtMetric(f.metric_type)+'</span></div></div>';
+        +'<div class="bc-tags"><span class="bc-tag '+tc+'">'+(tab==='urgent'?'Urgent':'Watch')+'</span>'
+        +'<span class="bc-tag tag-w">'+fmtMetric(f.metric_type)+'</span>'
+        +'<span style="margin-left:auto;font-size:11px;color:#475569">Tap for details →</span></div>'
+        +'</div>';
     }).join('');
   }
 }
+
+function openBriefDetail(tab,idx){
+  const items=briefData[tab]||[];
+  const item=items[idx];
+  if(!item)return;
+  const modal=document.getElementById('briefDetailModal');
+  const isWin=tab==='wins';
+  if(isWin){
+    document.getElementById('briefDetailTitle').textContent='★ '+(item.store_name||item.store_id||'Shoutout');
+    document.getElementById('briefDetailSub').textContent=(item.area_coach||'')+(item.shoutout_date?' · '+fmtDate(item.shoutout_date):'');
+    document.getElementById('briefDetailBody').innerHTML='<div style="font-size:14px;color:#6ee7b7;line-height:1.7;padding:12px 0;border-left:3px solid #22c55e;padding-left:14px;font-style:italic">"'
+      +escH(item.comment_text||item.full_comment||item.summary||'')+'</div>';
+    document.getElementById('briefDetailAck').innerHTML='';
+  }else{
+    const f=item;
+    const isAck=f.status==='addressed'||f.status==='archived';
+    const fid=escH(String(f.id||''));
+    document.getElementById('briefDetailTitle').textContent=f.store_name||f.store_id||'Unknown Store';
+    document.getElementById('briefDetailSub').textContent=(f.area_coach?f.area_coach+' · ':'')+fmtMetric(f.metric_type);
+    document.getElementById('briefDetailBody').innerHTML=buildFlagDetail(f);
+    const ackHtml=isAck?'<span class="ack-btn done">✓ Addressed</span>'
+      :f.severity==='high'?'<button class="ack-btn" onclick="openAckModal(\''+fid+'\',\''+escH(f.store_name||f.store_id||'')+'\',\''+escH(f.metric_type||'')+'\');closeBriefDetail()">Acknowledge</button>'
+      :'<label class="ack-check"><input type="checkbox" onchange="quickAck(this,\''+fid+'\');closeBriefDetail()"> Mark reviewed</label>';
+    document.getElementById('briefDetailAck').innerHTML=ackHtml;
+  }
+  modal.style.display='flex';
+}
+function closeBriefDetail(){document.getElementById('briefDetailModal').style.display='none';}
 
 function renderShoutouts(list){
   const c=document.getElementById('shoutoutsContainer');
@@ -1228,6 +1256,17 @@ init();
       <thead><tr><th>Store</th><th style="text-align:center">Total</th><th style="text-align:center;color:#ef4444">Unmades</th><th style="text-align:center;color:#94a3b8">Mades</th></tr></thead>
       <tbody id="cancelDrillBody"></tbody>
     </table></div>
+  </div>
+</div>
+
+<div id="briefDetailModal" class="modal-bg" style="display:none" onclick="if(event.target===this)closeBriefDetail()">
+  <div class="drill-modal-box" style="max-width:600px">
+    <div class="modal-hdr">
+      <div><div class="modal-ttl" id="briefDetailTitle"></div><div class="modal-sub" id="briefDetailSub"></div></div>
+      <button class="modal-close" onclick="closeBriefDetail()">✕</button>
+    </div>
+    <div id="briefDetailBody" style="margin-bottom:16px"></div>
+    <div style="display:flex;justify-content:flex-end" id="briefDetailAck"></div>
   </div>
 </div>
 
