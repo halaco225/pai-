@@ -688,11 +688,42 @@ function renderBriefItems(tab){
   }else{
     const tc=tab==='urgent'?'tag-u':'tag-w';
     c.innerHTML=items.map(f=>{
-      const detail=[];
-      if(f.value!=null)detail.push('Value: '+Number(f.value).toFixed(2));
-      if(f.target!=null)detail.push('Target: '+Number(f.target).toFixed(2));
-      if(f.consecutive_days_out>1)detail.push(f.consecutive_days_out+' days out');
-      return'<div class="brief-card"><div class="bc-store">'+escH(f.store_name||f.store_id||'Unknown')+' <span class="bc-time">· '+fmtDate(f.flag_date||f.created_at)+'</span></div>'+(detail.length?'<div class="bc-desc">'+escH(detail.join(' · '))+'</div>':'')+'<div class="bc-desc" style="color:#64748b;font-size:11px">'+escH(f.area_coach||'')+'</div><div class="bc-tags"><span class="bc-tag '+tc+'">'+(tab==='urgent'?'Urgent':'Watch')+'</span><span class="bc-tag tag-w">'+fmtMetric(f.metric_type)+'</span></div></div>';
+      const det=(typeof f.details==='object'&&f.details)||{};
+      const days=f.consecutive_days_out||0;
+      const trend=days>1?' · '+days+'-day trend':'';
+      let desc='';
+      switch(f.metric_type){
+        case'GUEST_COMPLAINT':
+          desc=(det.negative_count||Math.round(f.value||0))+' negative review'+(+(det.negative_count||f.value||0)!==1?'s':'')+' today';
+          if(det.names_mentioned&&det.names_mentioned.length)desc+=' · Employee named: '+det.names_mentioned.join(', ');
+          break;
+        case'PERFORMANCE_TREND':
+          desc='Multiple metrics below threshold'+trend;break;
+        case'CHANGE_DOWN':
+          desc='Change fund down $'+Math.round(f.value||0)+' (limit $'+Math.round(f.target||50)+')'+trend;break;
+        case'CANCEL_UNMADE':
+          desc=Math.round(f.value||0)+' cancel/unmade orders'+trend;break;
+        case'CASH_VARIANCE':
+          desc='Cash variance $'+Math.abs(Math.round(f.value||0))+trend;break;
+        case'FORGOT_CLOCKOUT':
+          desc=(det.employees&&det.employees.length?det.employees.map(e=>e.name).join(', '):Math.round(f.value||0)+' employee'+(f.value!==1?'s':''))+' forgot to clock out';break;
+        case'LABOR_OVER_BUDGET':
+          desc='$'+Math.round(f.value||0)+' over scheduled labor'+trend;break;
+        case'ROUTINE_MISSED':
+          desc=(det.routine_name||'Routine')+' not submitted'+(det.responsible?' · '+det.responsible:'')+trend;break;
+        case'ROUTINE_LATE':
+          desc=(det.routine_name||'Routine')+' submitted '+(det.minutes_late!=null?det.minutes_late+' min ':'')+' late'+(det.responsible?' · '+det.responsible:'')+trend;break;
+        case'PUSH_SURVEYS':
+          desc='No SMG survey responses for 2+ days';break;
+        case'PRODUCTION_TIME':
+          desc='Prod time '+Math.round(f.value||0)+' min (target <'+Math.round(f.target||20)+' min)'+trend;break;
+        default:
+          desc=fmtMetric(f.metric_type)+(f.value!=null?' — '+Math.round(Number(f.value)):'')+trend;
+      }
+      return'<div class="brief-card"><div class="bc-store">'+escH(f.store_name||f.store_id||'Unknown')+' <span class="bc-time">· '+fmtDate(f.flag_date||f.created_at)+'</span></div>'
+        +'<div class="bc-desc">'+escH(desc)+'</div>'
+        +'<div class="bc-desc" style="color:#64748b;font-size:11px">'+escH(f.area_coach||'')+'</div>'
+        +'<div class="bc-tags"><span class="bc-tag '+tc+'">'+(tab==='urgent'?'Urgent':'Watch')+'</span><span class="bc-tag tag-w">'+fmtMetric(f.metric_type)+'</span></div></div>';
     }).join('');
   }
 }
