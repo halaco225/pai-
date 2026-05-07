@@ -10,7 +10,7 @@ services:
     name: pai-ayvaz
     env: node
     plan: starter
-    buildCommand: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install && (ls /opt/render/project/src/playwright-browsers/chromium*/chrome-linux64/chrome 2>/dev/null && echo "Chromium already cached") || (PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/playwright-browsers npx playwright install chromium)
+    buildCommand: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install
     startCommand: bash startup.sh
     envVars:
       - key: NODE_ENV
