@@ -747,7 +747,24 @@ function buildFlagDetail(f){
   const tStr=fmtFlagVal(f.metric_type,f.target);
   let extra='';
   if(f.metric_type==='FORGOT_CLOCKOUT'&&det.employees&&det.employees.length){
-    extra='<div class="flag-emp-list">'+det.employees.map(e=>escH(e.name||'')+(e.job_code?'<span class="emp-job"> '+escH(e.job_code)+'</span>':'')).join('<span class="emp-sep"> · </span>')+'</div>';
+    extra='<div class="flag-emp-list">'+det.employees.map(e=>{
+      const hrsStr=e.hours_est!=null?' (~'+e.hours_est+'h est)':'';
+      return escH(e.name||'')+(e.job_code?'<span class="emp-job"> '+escH(e.job_code)+'</span>':'')+'<span style="color:#64748b;font-size:11px">'+escH(hrsStr)+'</span>';
+    }).join('<span class="emp-sep"> · </span>')+'</div>';
+  }else if(f.metric_type==='GUEST_COMPLAINT'&&det.complaints&&det.complaints.length){
+    const catFmt={rude_staff:'Rude Staff',poor_food:'Poor Food',poor_service:'Poor Service',wait_time:'Wait Time',wrong_order:'Wrong Order',cleanliness:'Cleanliness',other:'Other'};
+    const cards=det.complaints.map(c=>{
+      const visitStr=c.event_date?'<span style="color:#64748b;font-size:11px"> · '+escH(c.event_date)+'</span>':'';
+      const nameStr=c.name_mentioned?'<span style="color:#f87171;font-size:11px;font-weight:700"> · Employee: '+escH(c.name_mentioned)+'</span>':'';
+      const cats=(c.categories||[]).filter(x=>catFmt[x]).map(x=>'<span style="background:#1e2d4d;color:#94a3b8;font-size:10px;padding:1px 5px;border-radius:4px;margin-right:3px">'+escH(catFmt[x])+'</span>').join('');
+      return '<div style="border-left:2px solid #374151;padding:6px 0 6px 10px;margin-top:8px">'
+        +'<div style="font-size:12px;font-weight:600;color:#fbbf24">'+escH(c.summary||'Complaint')+visitStr+nameStr+'</div>'
+        +(cats?'<div style="margin-top:3px">'+cats+'</div>':'')
+        +'<div style="font-size:11px;color:#64748b;margin-top:3px;font-style:italic">"'+escH((c.comment||'').substring(0,200))+'"</div>'
+        +'</div>';
+    }).join('');
+    const namesFlag=det.names_mentioned&&det.names_mentioned.length?'<div style="color:#f87171;font-size:12px;font-weight:600;margin-bottom:4px">⚠ Employee named: '+escH(det.names_mentioned.join(', '))+'</div>':'';
+    extra='<div style="margin-top:6px">'+namesFlag+cards+'</div>';
   }else if(f.metric_type==='GUEST_COMPLAINT'&&det.negative_count!=null){
     extra='<div class="flag-val-ctx">'+det.negative_count+' negative review'+(det.negative_count!==1?'s':'')+' · '+det.total_comments+' total</div>';
   }

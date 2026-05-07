@@ -34,12 +34,18 @@ function parseSMGFile(filePath) {
     if (!store_id) continue;
     const comment = row[6] ? String(row[6]).trim() : null;
     if (!comment || comment.length < 5) continue;
+    const overallRaw = row[18];
+    const socialRaw  = row[13];
     comments.push({
       store_id,
-      response_id:   row[0] ? String(row[0]).trim() : null,
-      feedback_date: row[1] ? String(row[1]).trim() : null,
-      source:        row[4] ? String(row[4]).trim() : null,
+      response_id:          row[0]  ? String(row[0]).trim() : null,
+      feedback_date:        row[1]  ? String(row[1]).trim() : null,
+      event_date:           row[2]  ? String(row[2]).trim() : null, // visit date/time
+      source:               row[4]  ? String(row[4]).trim() : null,
+      open_end:             row[5]  ? String(row[5]).trim() : null,
       comment,
+      overall_satisfaction: overallRaw != null ? parseFloat(String(overallRaw)) : null,
+      social_rating:        socialRaw  != null ? parseFloat(String(socialRaw))  : null,
     });
   }
   return comments;
@@ -49,18 +55,35 @@ async function classifyComment(client, comment) {
   try {
     const msg = await client.messages.create({
       model:      'claude-haiku-4-5-20251001',
-      max_tokens: 80,
+      max_tokens: 200,
       messages: [{
         role:    'user',
-        content: `Classify this Pizza Hut customer comment as POSITIVE, NEGATIVE, or NEUTRAL.\nIf NEGATIVE, extract the core issue in 8 words or less.\nIf POSITIVE, extract the highlight in 8 words or less.\nReturn JSON only: {"sentiment":"POSITIVE|NEGATIVE|NEUTRAL","summary":"..."}\n\nComment: "${comment}"`,
+        content: `Analyze this Pizza Hut customer comment. Return JSON only — no other text:
+{
+  "sentiment": "POSITIVE|NEGATIVE|NEUTRAL",
+  "summary": "core issue or highlight in 10 words or less",
+  "categories": ["rude_staff","poor_food","poor_service","wait_time","wrong_order","cleanliness","positive_staff","great_food","other"],
+  "name_mentioned": "employee first name if named in comment, else null",
+  "severity": "high|medium|low"
+}
+
+Rules: NEGATIVE if complaint, rude experience, bad food, names called out negatively. HIGH severity if employee named negatively or very rude. Only pick categories that apply.
+
+Comment: "${comment.replace(/"/g, "'").substring(0, 500)}"`,
       }],
     });
     const text = msg.content[0].text.trim();
-    const json = JSON.parse(text.match(/\{.*\}/s)[0]);
-    return { sentiment: json.sentiment || 'NEUTRAL', summary: json.summary || '' };
+    const json = JSON.parse(text.match(/\{.*?\}/s)[0]);
+    return {
+      sentiment:      json.sentiment     || 'NEUTRAL',
+      summary:        json.summary       || '',
+      categories:     Array.isArray(json.categories) ? json.categories : [],
+      name_mentioned: json.name_mentioned || null,
+      severity:       json.severity      || 'medium',
+    };
   } catch (err) {
     console.warn('[SMG] Classification error:', err.message);
-    return { sentiment: 'NEUTRAL', summary: '' };
+    return { sentiment: 'NEUTRAL', summary: '', categories: [], name_mentioned: null, severity: 'medium' };
   }
 }
 
@@ -78,28 +101,40 @@ async function processSMG(filePath, targetDate) {
   const assignments = await db.getStoreAssignments();
   const client = new Anthropic();
 
-  // Track per-store counts for survey log
+  // Track per-store counts and complaint details for survey log
   const storeCounts = {};
   let flagsWritten = 0, shoutoutsWritten = 0;
 
   for (const c of comments) {
-    if (!storeCounts[c.store_id]) storeCounts[c.store_id] = { total: 0, positive: 0, negative: 0 };
+    if (!storeCounts[c.store_id]) {
+      storeCounts[c.store_id] = { total: 0, positive: 0, negative: 0, complaints: [] };
+    }
     storeCounts[c.store_id].total++;
 
-    const { sentiment, summary } = await classifyComment(client, c.comment);
+    const { sentiment, summary, categories, name_mentioned, severity } = await classifyComment(client, c.comment);
 
     if (sentiment === 'POSITIVE') {
       storeCounts[c.store_id].positive++;
       await db.insertShoutout({
-        store_id:     c.store_id,
+        store_id:      c.store_id,
         shoutout_date: targetDate,
         summary,
-        full_comment: c.comment,
-        source:       c.source,
+        full_comment:  c.comment,
+        source:        c.source,
       });
       shoutoutsWritten++;
     } else if (sentiment === 'NEGATIVE') {
       storeCounts[c.store_id].negative++;
+      storeCounts[c.store_id].complaints.push({
+        summary,
+        categories,
+        name_mentioned,
+        severity,
+        event_date:           c.event_date || c.feedback_date,
+        source:               c.source,
+        overall_satisfaction: c.overall_satisfaction,
+        comment:              c.comment.substring(0, 400), // cap length
+      });
     }
   }
 
@@ -118,7 +153,12 @@ async function processSMG(filePath, targetDate) {
   for (const [store_id, counts] of Object.entries(storeCounts)) {
     if (counts.negative === 0) continue;
     const asgn = assignments[store_id] || {};
-    const severity = counts.negative >= 3 ? 'high' : 'medium';
+    const complaints = counts.complaints;
+
+    // High if any complaint names an employee negatively or has rude_staff, else by count
+    const hasHighSeverity = complaints.some(c => c.name_mentioned || c.categories.includes('rude_staff') || c.severity === 'high');
+    const flagSeverity = hasHighSeverity ? 'high' : counts.negative >= 3 ? 'high' : 'medium';
+
     const prevDays = await db.getConsecutiveDays(store_id, 'GUEST_COMPLAINT', targetDate);
     await db.insertIntelFlag({
       store_id,
@@ -133,9 +173,17 @@ async function processSMG(filePath, targetDate) {
       variance:     counts.negative,
       source:       'SMG',
       tier:         1,
-      details:      { negative_count: counts.negative, total_comments: counts.total },
+      details: {
+        negative_count:    counts.negative,
+        total_comments:    counts.total,
+        names_mentioned:   complaints.filter(c => c.name_mentioned).map(c => c.name_mentioned),
+        top_categories:    [...new Set(complaints.flatMap(c => c.categories))],
+        complaints,
+        trend_days:        prevDays + 1,
+        trend_note:        prevDays >= 1 ? `${prevDays + 1}-day trend of complaints` : null,
+      },
       consecutive_days_out: prevDays + 1,
-      severity,
+      severity:     flagSeverity,
       is_new:       prevDays === 0,
     });
     flagsWritten++;
