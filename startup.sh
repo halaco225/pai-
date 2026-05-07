@@ -2,15 +2,21 @@
 echo "==> Starting PAi server..."
 echo "==> PLAYWRIGHT_BROWSERS_PATH: ${PLAYWRIGHT_BROWSERS_PATH:-not set}"
 
-# Verify browser binary is present — install happens at BUILD time, not here
 BROWSER_DIR="${PLAYWRIGHT_BROWSERS_PATH:-/opt/render/project/src/playwright-browsers}"
-CHROME_BIN=$(find "$BROWSER_DIR" -name "chrome-headless-shell" -o -name "chrome" 2>/dev/null | head -1)
+
+# Install Chromium if not already present (handles cache miss without blocking build)
+CHROME_BIN=$(find "$BROWSER_DIR" -name "chrome" -o -name "chrome-headless-shell" 2>/dev/null | head -1)
 if [ -n "$CHROME_BIN" ]; then
   echo "==> Browser ready: $CHROME_BIN"
 else
-  echo "==> WARNING: No browser binary found in $BROWSER_DIR"
-  echo "==> Directory contents:"
-  ls -la "$BROWSER_DIR" 2>/dev/null || echo "   (directory does not exist)"
+  echo "==> Chromium not found — installing now (first-time only, ~2-3 min)..."
+  PLAYWRIGHT_BROWSERS_PATH="$BROWSER_DIR" npx playwright install chromium
+  CHROME_BIN=$(find "$BROWSER_DIR" -name "chrome" -o -name "chrome-headless-shell" 2>/dev/null | head -1)
+  if [ -n "$CHROME_BIN" ]; then
+    echo "==> Browser installed: $CHROME_BIN"
+  else
+    echo "==> WARNING: Browser install may have failed — scraping will be unavailable"
+  fi
 fi
 
 exec node server.js
