@@ -97,11 +97,12 @@ async function getAccessToken() {
       },
       body,
     });
-    console.log(`[SMG] Login response: HTTP ${resp.status}`);
+    console.log(`[SMG] Login response: HTTP ${resp.status} — ${resp.body.slice(0, 400)}`);
     if (resp.status === 200) {
       const data = JSON.parse(resp.body);
-      const token = data.accessToken || data.access_token;
+      const token = data.accessToken || data.access_token || data.token || data.Token;
       if (token) { console.log('[SMG] Got access token via login'); return token; }
+      console.warn('[SMG] Login 200 but no token field found. Keys:', Object.keys(data));
     }
     console.warn('[SMG] Login failed, trying refresh token fallback...');
   }
