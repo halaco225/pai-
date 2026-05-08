@@ -80,6 +80,41 @@ router.post('/automation/pull-ods', async (req, res) => {
   }
 });
 
+// ── POST /api/velocity/automation/upload-sos — token-auth SOS file upload ──
+// Accepts a multipart file upload (PH_Speed_Of_Service.xlsx) and saves
+// make_time + production_time only (never touches IST data).
+router.post('/automation/upload-sos', upload.single('file'), async (req, res) => {
+  const token = req.headers['x-automation-token'] || req.query.token;
+  if (token !== (process.env.VELOCITY_AUTOMATION_TOKEN || 'velocity-auto-2024')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  if (!req.file) return res.status(400).json({ error: 'No file' });
+  try {
+    const parsed = parseSOSExcel(req.file.path);
+    try { fs.unlinkSync(req.file.path); } catch(e) {}
+    if (!parsed.stores?.length) return res.status(400).json({ error: 'No store data found' });
+    const finalDate = parsed.reportDate || getYesterdayChicago();
+    const weekKey  = getWeekKey(finalDate);
+    const periodWk = getPeriodWeek(finalDate);
+    let saved = 0;
+    for (const s of parsed.stores) {
+      if (!ALIGNMENT[s.store_id]) continue;
+      await db.upsertVelocityRecord({
+        store_id: s.store_id, record_date: finalDate,
+        week_key: weekKey, period_week: periodWk,
+        make_time: s.make_time ?? null, pct_lt4: s.pct_lt4 ?? null,
+        production_time: s.production_time ?? null,
+        data_source: 'sos_excel', uploader: 'automation'
+      });
+      saved++;
+    }
+    res.json({ status: 'ok', date: finalDate, storesSaved: saved });
+  } catch (e) {
+    try { fs.unlinkSync(req.file?.path); } catch(_) {}
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── POST /api/velocity/automation/send-emails — 7AM cron trigger ─────
 router.post('/automation/send-emails', async (req, res) => {
   const token = req.headers['x-automation-token'] || req.query.token;
