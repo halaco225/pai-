@@ -2,18 +2,23 @@
 /**
  * SMG comment export — pure HTTP approach.
  *
- * Auth flow:
- *   1. POST credentials to auth.smg.com/connect/token (OAuth2 password grant)
- *      → returns { access_token, refresh_token, expires_in }
- *   2. POST to 360.smg.com/api/export/v2/commentreport with Bearer token
- *      → returns xlsx binary
+ * Auth flow (tried in order):
+ *   1. SMG_REFRESH_TOKEN env var  → refresh_token grant (fastest)
+ *   2. DB smg_auth table          → stored refresh_token (fast, survives redeploys)
+ *   3. Playwright PKCE login      → automatic browser login, captures + stores token
+ *
+ * After Playwright login succeeds the refresh_token is written to DB so all
+ * future runs use path 2 (no browser needed).
+ *
+ * Export flow (once access_token is obtained):
+ *   POST to 360.smg.com/api/export/v2/commentreport with Bearer token
+ *   → returns xlsx binary
  */
 const https = require('https');
 const fs    = require('fs');
 const path  = require('path');
 
 const SMG_TOKEN_URL   = 'https://auth.smg.com/connect/token';
-const SMG_REFRESH_URL = 'https://360.smg.com/api/authentication/token/refresh';
 const SMG_EXPORT_URL  = 'https://360.smg.com/api/export/v2/commentreport';
 const ACCOUNT_ID     = '5b6205b27485e95d90e0a366';
 const REPORT_ID      = '5b621d617485e95d90e0a36f';
@@ -78,56 +83,181 @@ function httpRequest(method, url, { headers = {}, body, binary = false } = {}) {
   });
 }
 
-// ── Step 1: OAuth2 password grant → Bearer token ────────────────────────────
+// ── Auth path 1 & 2: refresh_token grant ────────────────────────────────────
 
-async function getAccessToken() {
-  const refreshToken = process.env.SMG_REFRESH_TOKEN || '';
-  const user = process.env.SMG_USER || '';
-  const pass = process.env.SMG_PASSWORD || '';
-
-  // Prefer refresh token — password grant is disabled on auth.smg.com
-  if (refreshToken) {
-    console.log('[SMG] Requesting token via refresh_token grant...');
-    const formBody = new URLSearchParams({
-      grant_type:    'refresh_token',
-      refresh_token: refreshToken,
-      client_id:     'smg360',
-    }).toString();
-    const resp = await httpRequest('POST', SMG_TOKEN_URL, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: formBody,
-    });
-    if (resp.status === 200) {
-      const data = JSON.parse(resp.body);
-      const token = data.access_token || data.accessToken;
-      if (token) { console.log('[SMG] Got access token via refresh'); return token; }
-    }
-    console.warn(`[SMG] Refresh token failed: HTTP ${resp.status} — ${resp.body.slice(0, 200)}`);
-    throw new Error(`SMG refresh_token failed: HTTP ${resp.status} — ${resp.body.slice(0, 200)}`);
-  }
-
-  // Fallback: password grant (may be disabled — set SMG_REFRESH_TOKEN env var instead)
-  if (!user || !pass) throw new Error('SMG_REFRESH_TOKEN (preferred) or SMG_USER/SMG_PASSWORD env vars not set');
-  console.log('[SMG] Attempting password grant (fallback)...');
+async function exchangeRefreshToken(refreshToken) {
   const formBody = new URLSearchParams({
-    grant_type: 'password',
-    username:   user,
-    password:   pass,
-    client_id:  'smg360',
-    scope:      'feedback openid email smg360 offline_access',
+    grant_type:    'refresh_token',
+    refresh_token: refreshToken,
+    client_id:     'smg360',
   }).toString();
   const resp = await httpRequest('POST', SMG_TOKEN_URL, {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: formBody,
   });
   if (resp.status !== 200) {
-    throw new Error(`SMG auth failed: HTTP ${resp.status} — ${resp.body.slice(0, 300)}\nHint: password grant may be disabled — capture a refresh_token from the browser and set SMG_REFRESH_TOKEN env var`);
+    console.warn(`[SMG] refresh_token exchange failed: HTTP ${resp.status} — ${resp.body.slice(0, 200)}`);
+    return null;
   }
   const data = JSON.parse(resp.body);
-  const token = data.access_token || data.accessToken;
-  if (!token) throw new Error(`SMG auth 200 but no access_token. Keys: ${Object.keys(data).join(', ')}`);
-  console.log('[SMG] Got access token via password grant');
-  return token;
+  const accessToken = data.access_token || data.accessToken;
+  if (!accessToken) {
+    console.warn('[SMG] refresh_token exchange: no access_token in response');
+    return null;
+  }
+  // Return both so caller can store updated refresh_token (rotation)
+  return { accessToken, newRefreshToken: data.refresh_token || null };
+}
+
+// ── Auth path 3: Playwright PKCE login → capture token from network ──────────
+
+async function getTokenViaPlaywright(user, pass) {
+  console.log('[SMG] No cached token — attempting Playwright login to 360.smg.com...');
+  const { launchContext } = require('./browser-launch');
+  const tmpDir = '/tmp/smg-pw-profile';
+  fs.mkdirSync(tmpDir, { recursive: true });
+
+  let context;
+  try {
+    let capturedTokenData = null;
+
+    context = await launchContext(tmpDir, {});
+    const page = await context.newPage();
+
+    // Intercept auth.smg.com/connect/token response to capture tokens
+    page.on('response', async (response) => {
+      try {
+        const url = response.url();
+        if (url.includes('auth.smg.com/connect/token') && response.status() === 200) {
+          const data = await response.json();
+          if (data.refresh_token) {
+            console.log('[SMG] Playwright: captured token response from auth.smg.com');
+            capturedTokenData = data;
+          }
+        }
+      } catch (_) {}
+    });
+
+    // Navigate to 360.smg.com — redirects to auth.smg.com login
+    console.log('[SMG] Playwright: navigating to 360.smg.com...');
+    await page.goto('https://360.smg.com', { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+    // Wait for login form (either on 360.smg.com or redirected to auth.smg.com)
+    await page.waitForSelector('input[type="email"], input[type="text"]', { timeout: 30000 });
+
+    // Fill email/username
+    const emailField = page.locator('input[type="email"], input[name*="email" i], input[name*="user" i], input[type="text"]').first();
+    await emailField.fill(user);
+    console.log('[SMG] Playwright: filled username field');
+
+    // Some login flows show password on the same page, others after clicking Next
+    const passVisible = await page.locator('input[type="password"]').isVisible().catch(() => false);
+    if (!passVisible) {
+      // Click Next/Continue to reveal password field
+      const nextBtn = page.locator('button[type="submit"], input[type="submit"], button:has-text("Next"), button:has-text("Continue"), button:has-text("Sign in")').first();
+      await nextBtn.click();
+      await page.waitForSelector('input[type="password"]', { timeout: 15000 });
+    }
+
+    const passField = page.locator('input[type="password"]').first();
+    await passField.fill(pass);
+    console.log('[SMG] Playwright: filled password field');
+
+    // Submit
+    await page.locator('button[type="submit"], input[type="submit"]').first().click();
+    console.log('[SMG] Playwright: submitted login form — waiting for redirect...');
+
+    // Wait for redirect back to 360.smg.com and token capture
+    await page.waitForURL(/360\.smg\.com/, { timeout: 30000 }).catch(() => {});
+
+    // Give the SPA a moment to exchange the code for tokens
+    await page.waitForTimeout(3000);
+
+    if (!capturedTokenData) {
+      // Try waiting a bit longer
+      await page.waitForTimeout(5000);
+    }
+
+    if (!capturedTokenData) {
+      const currentUrl = page.url();
+      throw new Error(`SMG Playwright login: did not capture token. Current URL: ${currentUrl.slice(0, 100)}`);
+    }
+
+    console.log('[SMG] Playwright login succeeded — access_token and refresh_token captured');
+    return {
+      accessToken:  capturedTokenData.access_token || capturedTokenData.accessToken,
+      refreshToken: capturedTokenData.refresh_token,
+    };
+  } finally {
+    if (context) {
+      try { await context.close(); } catch (_) {}
+    }
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+  }
+}
+
+// ── Main auth: env → DB → Playwright ─────────────────────────────────────────
+
+async function getAccessToken() {
+  let db;
+  try { db = require('./db'); } catch (_) { db = null; }
+
+  // ── Path 1: SMG_REFRESH_TOKEN env var ──────────────────────────────────────
+  const envRefreshToken = process.env.SMG_REFRESH_TOKEN || '';
+  if (envRefreshToken) {
+    console.log('[SMG] Trying access token via SMG_REFRESH_TOKEN env var...');
+    const result = await exchangeRefreshToken(envRefreshToken);
+    if (result) {
+      console.log('[SMG] Got access token via env refresh_token');
+      // Store new token if rotation occurred
+      if (result.newRefreshToken && db) {
+        await db.setSMGAuth(result.newRefreshToken).catch(() => {});
+      }
+      return result.accessToken;
+    }
+    // Env token failed — fall through to DB / Playwright
+    console.warn('[SMG] Env SMG_REFRESH_TOKEN failed — trying DB / Playwright fallback');
+  }
+
+  // ── Path 2: DB stored refresh_token ───────────────────────────────────────
+  if (db) {
+    const stored = await db.getSMGAuth().catch(() => null);
+    if (stored && stored.is_valid && stored.refresh_token) {
+      console.log('[SMG] Trying access token via DB-stored refresh_token...');
+      const result = await exchangeRefreshToken(stored.refresh_token);
+      if (result) {
+        console.log('[SMG] Got access token via DB refresh_token');
+        // Update DB with rotated refresh_token if applicable
+        if (result.newRefreshToken) {
+          await db.setSMGAuth(result.newRefreshToken).catch(() => {});
+        }
+        return result.accessToken;
+      }
+      // DB token failed — mark invalid and fall through
+      console.warn('[SMG] DB refresh_token failed — marking invalid, falling through to Playwright');
+      await db.markSMGAuthInvalid().catch(() => {});
+    }
+  }
+
+  // ── Path 3: Playwright PKCE login ─────────────────────────────────────────
+  const user = process.env.SMG_USER     || '';
+  const pass = process.env.SMG_PASSWORD || '';
+  if (!user || !pass) {
+    throw new Error(
+      'SMG auth failed: no valid refresh_token (env or DB) and no SMG_USER/SMG_PASSWORD for Playwright fallback. ' +
+      'Set SMG_REFRESH_TOKEN env var, or ensure SMG_USER + SMG_PASSWORD are set for automatic login.'
+    );
+  }
+
+  const { accessToken, refreshToken } = await getTokenViaPlaywright(user, pass);
+
+  // Persist the refresh_token to DB for future runs
+  if (db && refreshToken) {
+    await db.setSMGAuth(refreshToken).catch(() => {});
+    console.log('[SMG] Stored new refresh_token in DB — future runs will use pure HTTP');
+  }
+
+  return accessToken;
 }
 
 // ── Step 2: Build date range (30-day window ending at targetDate) ────────────

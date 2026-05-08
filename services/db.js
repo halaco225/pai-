@@ -732,6 +732,15 @@ async function initIntelDB() {
     )
   `);
 
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS smg_auth (
+      id            SERIAL PRIMARY KEY,
+      refresh_token TEXT        NOT NULL,
+      is_valid      BOOLEAN     NOT NULL DEFAULT TRUE,
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
   // Seed store assignments from velocity-alignment.js so all parsers have hierarchy
   await seedStoreAssignmentsFromAlignment();
 }
@@ -770,6 +779,43 @@ async function markHutBotAuthInvalid() {
     await p.query('UPDATE hutbot_auth SET is_valid = FALSE');
   } catch (err) {
     console.error('DB markHutBotAuthInvalid error:', err.message);
+  }
+}
+
+// ── SMG auth token storage ────────────────────────────────────────────────────
+async function getSMGAuth() {
+  const p = getPool();
+  if (!p) return null;
+  try {
+    const r = await p.query('SELECT refresh_token, is_valid FROM smg_auth ORDER BY updated_at DESC LIMIT 1');
+    return r.rows[0] || null;
+  } catch (err) {
+    console.error('DB getSMGAuth error:', err.message);
+    return null;
+  }
+}
+
+async function setSMGAuth(refreshToken) {
+  const p = getPool();
+  if (!p) return;
+  try {
+    await p.query('DELETE FROM smg_auth');
+    await p.query(
+      'INSERT INTO smg_auth (refresh_token, is_valid) VALUES ($1, TRUE)',
+      [refreshToken]
+    );
+  } catch (err) {
+    console.error('DB setSMGAuth error:', err.message);
+  }
+}
+
+async function markSMGAuthInvalid() {
+  const p = getPool();
+  if (!p) return;
+  try {
+    await p.query('UPDATE smg_auth SET is_valid = FALSE');
+  } catch (err) {
+    console.error('DB markSMGAuthInvalid error:', err.message);
   }
 }
 
@@ -1285,5 +1331,6 @@ module.exports = {
   archiveOldRecoveringFlags,
   getAcknowledgments,
   getHutBotAuth, setHutBotAuth, markHutBotAuthInvalid,
+  getSMGAuth, setSMGAuth, markSMGAuthInvalid,
   getWinScores,
 };
