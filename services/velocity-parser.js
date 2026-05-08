@@ -297,13 +297,13 @@ function parseSOSExcelODS(filePath) {
   hdr.forEach((cell, i) => {
     if (!cell) return;
     const c = String(cell).trim();
-    if (c === 'In Store')    colIdx.ist_avg        = i;
-    if (c === '# Del')       colIdx.total_orders   = i;
-    if (c === 'Make')        colIdx.make_time      = i;
-    if (c === '% < 4')       colIdx.pct_lt4        = i;
-    if (c === 'Production')  colIdx.production_time= i;
-    if (c === '% < 15')      colIdx.pct_lt15       = i;
-    if (c === 'On Time %')   colIdx.on_time_pct    = i;
+    if (/^in.?store$/i.test(c))                     colIdx.ist_avg        = i;
+    if (/^#.?del|total.?orders|orders$/i.test(c))  colIdx.total_orders   = i;
+    if (/^make(\s*(time|avg))?$/i.test(c))         colIdx.make_time      = i;
+    if (/^%?\s*[<u].*4$|^pct.*4$|^lt.*4$/i.test(c)) colIdx.pct_lt4      = i;
+    if (/^prod(uction)?(\s*(time|avg))?$/i.test(c)) colIdx.production_time= i;
+    if (/^%?\s*[<u].*15$|^pct.*15$|^lt.*15$/i.test(c)) colIdx.pct_lt15  = i;
+    if (/^on.?time/i.test(c))                      colIdx.on_time_pct    = i;
     // IST bucket columns — handle headers like "<10", "< 10", "10-14", "10 - 14", "10–14"
     if (/^[<u\(]?\s*(?:under\s*)?0*10\s*$|^[<u].*10|under.?10/i.test(c)) colIdx.ist_lt10 = i;
     if (/^10\s*[-–]\s*14/i.test(c))  colIdx.ist_1014 = i;

@@ -763,7 +763,7 @@ router.post('/upload', upload.array('files'), async (req, res) => {
         if (isPdf)       parsed = await parseAboveStorePDF(file.path);
         else if (isXlsx) {
           if (file.originalname.match(/speed.?of.?service|PH_Speed/i))
-            parsed = parseSOSExcel(file.path);
+            parsed = parseSOSExcelODS(file.path);  // full parser: IST + make + prod
           else if (file.originalname.match(/dispatch|delivery/i))
             parsed = parseDeliveryExcel(file.path);
           else { errors.push(`${file.originalname}: unrecognised file`); continue; }
@@ -793,8 +793,16 @@ router.post('/upload', upload.array('files'), async (req, res) => {
             ist_1518: s.ist_1518, ist_1925: s.ist_1925, ist_gt25: s.ist_gt25,
             ist_lt19_pct: s.ist_lt19_pct, total_orders: s.total_orders
           });
-        } else if (source === 'sos_excel') {
-          Object.assign(record, { make_time: s.make_time, pct_lt4: s.pct_lt4 });
+        } else if (source === 'sos_ods' || source === 'sos_excel') {
+          Object.assign(record, {
+            ist_avg: s.ist_avg ?? null,
+            ist_lt10: s.ist_lt10 ?? 0, ist_1014: s.ist_1014 ?? 0,
+            ist_1518: s.ist_1518 ?? 0, ist_1925: s.ist_1925 ?? 0, ist_gt25: s.ist_gt25 ?? 0,
+            ist_lt19_pct: s.ist_lt19_pct ?? null, total_orders: s.total_orders ?? null,
+            make_time: s.make_time ?? null, pct_lt4: s.pct_lt4 ?? null,
+            production_time: s.production_time ?? null, pct_lt15: s.pct_lt15 ?? null,
+            on_time_pct: s.on_time_pct ?? null
+          });
         } else if (source === 'delivery_excel') {
           Object.assign(record, {
             production_time: s.production_time, pct_lt15: s.pct_lt15,
