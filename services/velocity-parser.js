@@ -179,14 +179,27 @@ function parseSOSExcel(filePath) {
   } catch(e) {}
   if (!reportDate) reportDate = scanForDate(raw);
 
+  // Detect header row to find Make and Production column positions
+  let makeCol = 11, prodCol = 17;
+  for (let i = 0; i < Math.min(15, raw.length); i++) {
+    const hdr = raw[i] || [];
+    hdr.forEach((cell, idx) => {
+      if (!cell) return;
+      const c = String(cell).trim();
+      if (/^make(\s*(time|avg))?$/i.test(c))          makeCol = idx;
+      if (/^prod(uction)?(\s*(time|avg))?$/i.test(c)) prodCol = idx;
+    });
+  }
+
   const stores = [];
   for (const row of raw) {
     if (!row || !row[0] || typeof row[0] !== 'string') continue;
     if (!row[0].match(/^S0?\d{5,6}$/)) continue;
-    const make = row[11] || null;
+    const make = row[makeCol] || null;
+    const prod = row[prodCol] || null;
     const pctLt4 = row[13] ? parseFloat(String(row[13]).replace('%','')) || null : null;
-    if (!make) continue;
-    stores.push({ store_id: normalizeStoreId(row[0].trim()), make_time: make, pct_lt4: pctLt4 });
+    if (!make && !prod) continue;
+    stores.push({ store_id: normalizeStoreId(row[0].trim()), make_time: make, production_time: prod, pct_lt4: pctLt4 });
   }
 
   console.log(`[SOS Excel] ${stores.length} stores, date=${reportDate}`);
