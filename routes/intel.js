@@ -522,7 +522,8 @@ router.get('/kpis', async (req, res) => {
       storeMap[r.store_id] = {
         area_coach: r.area_coach, store_id: r.store_id, store_name: r.store_name,
         net_sales: null, growth_pct: null, cancels: null,
-        labor_pct: null, ot_hours: 0, comments_pos: 0, comments_neg: 0,
+        labor_pct: null, act_lab_dollar: null, sch_lab_dollar: null,
+        ot_hours: 0, comments_pos: 0, comments_neg: 0,
         forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0,
         win_score: null
       };
@@ -530,7 +531,7 @@ router.get('/kpis', async (req, res) => {
 
     // Fetch all metrics for the date — storeMap (seeded from store_assignments) scopes in JS.
     // Avoids type-mismatch issues with store_id = ANY() across different DB column types.
-    const [metricsRes, flagCountRes, fcOtRes, surveyRes, routinesRes, laborRes, winScoreRes] = await Promise.all([
+    const [metricsRes, flagCountRes, fcOtRes, surveyRes, routinesRes, laborRes, winScoreRes, actLabRes, schLabRes] = await Promise.all([
       p.query(`SELECT t.area_coach, t.store_id, t.store_name,
         t.net_sales_day,
         COALESCE(
@@ -565,7 +566,9 @@ router.get('/kpis', async (req, res) => {
         COUNT(CASE WHEN metric_type='ROUTINE_LATE'   THEN 1 END)::int as routines_late
         FROM intel_flags WHERE ${flagWhere} GROUP BY store_id, area_coach`, fp),
       p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='labor_pct'`, [date]),
-      p.query(`SELECT store_id, win_score, survey_count FROM smg_win_scores WHERE period_end_date <= $1 ORDER BY period_end_date DESC`, [date])
+      p.query(`SELECT store_id, win_score, survey_count FROM smg_win_scores WHERE period_end_date <= $1 ORDER BY period_end_date DESC`, [date]),
+      p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='act_lab_dollar'`, [date]),
+      p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='sch_lab_dollar'`, [date])
     ]);
 
     // Build user AC set for fallback scoping when store not in store_assignments
@@ -643,6 +646,12 @@ router.get('/kpis', async (req, res) => {
         storeMap[r.store_id].win_score = r.win_score != null ? +r.win_score : null;
         winScoreSeen.add(r.store_id);
       }
+    }
+    for (const r of actLabRes.rows) {
+      if (storeMap[r.store_id]) storeMap[r.store_id].act_lab_dollar = r.value != null ? +r.value : null;
+    }
+    for (const r of schLabRes.rows) {
+      if (storeMap[r.store_id]) storeMap[r.store_id].sch_lab_dollar = r.value != null ? +r.value : null;
     }
 
     const by_store = Object.values(storeMap);
@@ -1415,6 +1424,61 @@ router.get('/db-check', requireRole('rdo', 'vp'), async (req, res) => {
       flags_by_date:        flagsRes.rows,
       recent_cache_entries: cacheRes.rows
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Flag trend history (last N days for a store+metric) ──────────────────────
+router.get('/flag-trend', requireAuth, async (req, res) => {
+  const { store_id, metric_type, date } = req.query;
+  if (!store_id || !metric_type) return res.json([]);
+  const p = db.getPool();
+  if (!p) return res.json([]);
+  const endDate = date || new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  try {
+    const rows = await p.query(
+      `SELECT TO_CHAR(metric_date,'YYYY-MM-DD') AS metric_date, value, severity, details
+       FROM intel_flags
+       WHERE store_id=$1 AND metric_type=$2 AND metric_date <= $3
+       ORDER BY metric_date DESC LIMIT 10`,
+      [store_id, metric_type, endDate]
+    );
+    res.json(rows.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── HutBot WTD per-store summary ─────────────────────────────────────────────
+router.get('/hutbot-wtd', requireAuth, async (req, res) => {
+  const p = db.getPool();
+  if (!p) return res.json([]);
+  const date = req.query.date || new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  try {
+    // Start of the current week (Monday)
+    const dt = new Date(date + 'T12:00:00');
+    const dow = dt.getDay();
+    const startOfWeek = new Date(dt);
+    startOfWeek.setDate(dt.getDate() - (dow === 0 ? 6 : dow - 1));
+    const weekStart = startOfWeek.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
+    const rows = await p.query(
+      `SELECT store_id, store_name, area_coach,
+         COUNT(CASE WHEN metric_type='ROUTINE_MISSED' THEN 1 END)::int AS missed,
+         COUNT(CASE WHEN metric_type='ROUTINE_LATE'   THEN 1 END)::int AS late,
+         array_agg(DISTINCT CASE WHEN metric_type='ROUTINE_MISSED' THEN details->>'routine_name' END
+           ORDER BY 1) FILTER (WHERE metric_type='ROUTINE_MISSED') AS missed_routines,
+         array_agg(DISTINCT CASE WHEN metric_type='ROUTINE_LATE' THEN details->>'routine_name' END
+           ORDER BY 1) FILTER (WHERE metric_type='ROUTINE_LATE') AS late_routines
+       FROM intel_flags
+       WHERE metric_date BETWEEN $1 AND $2
+         AND metric_type IN ('ROUTINE_MISSED','ROUTINE_LATE')
+       GROUP BY store_id, store_name, area_coach
+       ORDER BY missed DESC, late DESC`,
+      [weekStart, date]
+    );
+    res.json(rows.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
