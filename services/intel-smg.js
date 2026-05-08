@@ -85,7 +85,7 @@ async function getAccessToken() {
   const pass = process.env.SMG_PASSWORD || '';
   const refreshToken = process.env.SMG_REFRESH_TOKEN || '';
 
-  // Prefer fresh login with credentials (never expires)
+  // Try username/password login first
   if (user && pass) {
     console.log('[SMG] Logging in with SMG_USER/SMG_PASSWORD...');
     const body = JSON.stringify({ username: user, password: pass });
@@ -97,18 +97,20 @@ async function getAccessToken() {
       },
       body,
     });
-    console.log(`[SMG] Login response: HTTP ${resp.status} — ${resp.body.slice(0, 400)}`);
+    console.log(`[SMG] Login response: HTTP ${resp.status}`);
     if (resp.status === 200) {
       const data = JSON.parse(resp.body);
       const token = data.accessToken || data.access_token || data.token || data.Token;
       if (token) { console.log('[SMG] Got access token via login'); return token; }
-      console.warn('[SMG] Login 200 but no token field found. Keys:', Object.keys(data));
+      // 200 but token field unexpected — throw so DB log shows the actual response
+      throw new Error(`SMG login 200 but no token found. Response: ${resp.body.slice(0, 300)}`);
     }
-    console.warn('[SMG] Login failed, trying refresh token fallback...');
+    // Non-200 — throw immediately with full response so DB log captures it
+    throw new Error(`SMG login failed: HTTP ${resp.status} — ${resp.body.slice(0, 300)}`);
   }
 
-  // Fallback: refresh token
-  if (!refreshToken) throw new Error('SMG auth failed: no valid credentials. Set SMG_USER + SMG_PASSWORD or SMG_REFRESH_TOKEN.');
+  // No user/pass — try refresh token
+  if (!refreshToken) throw new Error('SMG auth failed: SMG_USER+SMG_PASSWORD not set and no SMG_REFRESH_TOKEN.');
   console.log('[SMG] Trying SMG_REFRESH_TOKEN...');
   const body = JSON.stringify({ refreshToken });
   const resp = await httpRequest('POST', SMG_REFRESH_URL, {
