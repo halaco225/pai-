@@ -7,7 +7,14 @@ CHROME_BIN=$(find "$BROWSER_DIR" -name "chrome" -o -name "chrome-headless-shell"
 if [ -n "$CHROME_BIN" ]; then
   echo "==> Browser ready: $CHROME_BIN"
 else
-  echo "==> WARNING: Chromium not found at $BROWSER_DIR — scraping will be unavailable"
+  echo "==> Chromium not found — installing now..."
+  npx playwright install chromium 2>&1
+  CHROME_BIN=$(find "$BROWSER_DIR" -name "chrome" -o -name "chrome-headless-shell" 2>/dev/null | head -1)
+  if [ -n "$CHROME_BIN" ]; then
+    echo "==> Browser installed: $CHROME_BIN"
+  else
+    echo "==> WARNING: Chromium install failed — Fourth/scraping will be unavailable"
+  fi
 fi
 
 exec node server.js
