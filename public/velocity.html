@@ -1574,13 +1574,15 @@ function summaryRowDay(stores, level, region, area, cls) {
   const valid = stores.filter(s => s.ist_avg != null);
   const avgIST = valid.length ? (valid.reduce((a,s)=>a+s.ist_avg,0)/valid.length).toFixed(1) : null;
   const orders = stores.reduce((a,s)=>a+(s.total_orders||0),0);
+  const avgMake = avgMakeMin(stores, 'make_time');
+  const avgProd = avgMakeMin(stores, 'production_time');
   const label  = level === 'REGION' ? region : area;
   return `<tr class="${cls}">
     <td colspan="2"><strong>${label}</strong> <small style="color:var(--muted)">${stores.length} stores</small></td>
     <td style="color:var(--muted);font-size:12px">${level === 'AREA' ? region : ''}</td>
     <td><span class="${istColorClass(parseFloat(avgIST))}">${avgIST != null ? avgIST + ' min' : '—'}</span></td>
-    <td>—</td>
-    <td>—</td>
+    <td>${fmtMakeMin(avgMake)}</td>
+    <td>${fmtMakeMin(avgProd)}</td>
     <td>${orders.toLocaleString()}</td>
     <td>—</td>
   </tr>`;
@@ -1621,8 +1623,8 @@ function renderTableDay(stores) {
             <td>${s.area_coach||'—'}</td>
             <td style="color:var(--muted);font-size:12px">${s.region_coach||'—'}</td>
             <td><span class="${istColorClass(s.ist_avg)}">${s.ist_avg != null ? s.ist_avg + ' min' : '—'}</span></td>
-            <td>—</td>
-            <td>—</td>
+            <td>${fmtMakeMin(s.make_time)}</td>
+            <td>${fmtMakeMin(s.production_time)}</td>
             <td>${s.total_orders||0}</td>
             <td>1</td>
           </tr>`));

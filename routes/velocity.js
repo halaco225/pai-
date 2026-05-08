@@ -443,8 +443,8 @@ router.get('/day', async (req, res) => {
         ist_1518: r.ist_1518, ist_1925: r.ist_1925, ist_gt25: r.ist_gt25,
         ist_lt19_pct: r.ist_lt19_pct ? parseFloat(r.ist_lt19_pct) : null,
         total_orders: r.total_orders,
-        make_time: r.make_time, pct_lt4: r.pct_lt4,
-        production_time: r.production_time, pct_lt15: r.pct_lt15
+        make_time: parseMinutes(r.make_time), pct_lt4: r.pct_lt4,
+        production_time: parseMinutes(r.production_time), pct_lt15: r.pct_lt15
       };
     });
 
