@@ -989,7 +989,7 @@ function buildFlagDetail(f){
     const nm={growth_pct_day:'Sales Growth',production_lt15:'Production Score',discount_pct:'Discount %',allowance_pct:'Allowance %'};
     const inds=det.indicators_negative;
     const list=inds&&inds.length?inds.map(i=>escH(nm[i]||i)).join(', '):(f.value!=null?escH(String(f.value))+' indicators':'—');
-    return'<div class="flag-inds">'+list+'</div><div class="flag-val-ctx">Multiple metrics below threshold 3+ days '+daysBadge+'</div>';
+    return'<div class="flag-inds">'+list+'</div><div class="flag-val-ctx">Multiple metrics below threshold 3+ days '+daysBadge+'</div>'+trendBox;
   }
   const vStr=fmtFlagVal(f.metric_type,f.value);
   const tStr=fmtFlagVal(f.metric_type,f.target);
