@@ -10,14 +10,14 @@ services:
     name: pai-ayvaz
     env: node
     plan: starter
-    buildCommand: npm install && PLAYWRIGHT_BROWSERS_PATH=./node_modules/.playwright-browsers npx playwright install chromium
+    buildCommand: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install
     startCommand: bash startup.sh
     envVars:
       - key: NODE_ENV
         value: production
-      # ── Playwright browser path — inside node_modules so Render's build cache preserves it ──
+      # ── Playwright browser path (Chromium not installed on Render; scraping skipped if missing) ──
       - key: PLAYWRIGHT_BROWSERS_PATH
-        value: /opt/render/project/src/node_modules/.playwright-browsers
+        value: /opt/render/project/src/playwright-browsers
       # ── Anthropic / Claude ──────────────────────────────────
       - key: ANTHROPIC_API_KEY
         sync: false
