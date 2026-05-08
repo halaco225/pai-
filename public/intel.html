@@ -420,6 +420,15 @@ function onVpSelectChange(val){
   else if(val.startsWith('rc:')) setVpFilter(val.slice(3),null);
 }
 
+async function onDateChange(val){
+  if(!val) return;
+  selectedDate=val;
+  const smgWasLoaded=smgLoaded;
+  smgLoaded=false;
+  await Promise.all([loadKPIs(),loadFlags(),loadBrief()]);
+  if(smgWasLoaded) await loadSMGComments();
+}
+
 async function setVpFilter(rcName,acName){
   vpScopeFilter={rc_name:rcName,ac_name:acName};
   // Sync dropdown value
