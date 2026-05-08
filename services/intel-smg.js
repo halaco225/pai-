@@ -12,6 +12,7 @@ const https = require('https');
 const fs    = require('fs');
 const path  = require('path');
 
+const SMG_TOKEN_URL   = 'https://auth.smg.com/connect/token';
 const SMG_REFRESH_URL = 'https://360.smg.com/api/authentication/token/refresh';
 const SMG_EXPORT_URL  = 'https://360.smg.com/api/export/v2/commentreport';
 const ACCOUNT_ID     = '5b6205b27485e95d90e0a366';
@@ -77,59 +78,35 @@ function httpRequest(method, url, { headers = {}, body, binary = false } = {}) {
   });
 }
 
-// ── Step 1: Get Bearer token — login with username/password, fall back to refresh token ──
-const SMG_LOGIN_URL = 'https://360.smg.com/api/authentication/token';
+// ── Step 1: OAuth2 password grant → Bearer token ────────────────────────────
 
 async function getAccessToken() {
   const user = process.env.SMG_USER || '';
   const pass = process.env.SMG_PASSWORD || '';
-  const refreshToken = process.env.SMG_REFRESH_TOKEN || '';
+  if (!user || !pass) throw new Error('SMG_USER / SMG_PASSWORD env vars not set');
 
-  // Try username/password login first
-  if (user && pass) {
-    console.log('[SMG] Logging in with SMG_USER/SMG_PASSWORD...');
-    const body = JSON.stringify({ username: user, password: pass });
-    const resp = await httpRequest('POST', SMG_LOGIN_URL, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Origin':       'https://360.smg.com',
-        'Referer':      'https://360.smg.com/',
-      },
-      body,
-    });
-    console.log(`[SMG] Login response: HTTP ${resp.status}`);
-    if (resp.status === 200) {
-      const data = JSON.parse(resp.body);
-      const token = data.accessToken || data.access_token || data.token || data.Token;
-      if (token) { console.log('[SMG] Got access token via login'); return token; }
-      // 200 but token field unexpected — throw so DB log shows the actual response
-      throw new Error(`SMG login 200 but no token found. Response: ${resp.body.slice(0, 300)}`);
-    }
-    // Non-200 — throw immediately with full response so DB log captures it
-    throw new Error(`SMG login failed: HTTP ${resp.status} — ${resp.body.slice(0, 300)}`);
-  }
+  console.log('[SMG] Requesting OAuth2 token from auth.smg.com...');
+  const formBody = new URLSearchParams({
+    grant_type: 'password',
+    username:   user,
+    password:   pass,
+    client_id:  'smg360',
+    scope:      'email feedback offline_access openid smg360',
+  }).toString();
 
-  // No user/pass — try refresh token
-  if (!refreshToken) throw new Error('SMG auth failed: SMG_USER+SMG_PASSWORD not set and no SMG_REFRESH_TOKEN.');
-  console.log('[SMG] Trying SMG_REFRESH_TOKEN...');
-  const body = JSON.stringify({ refreshToken });
-  const resp = await httpRequest('POST', SMG_REFRESH_URL, {
-    headers: {
-      'Content-Type': 'application/json',
-      'Origin':       'https://360.smg.com',
-      'Referer':      'https://360.smg.com/',
-    },
-    body,
+  const resp = await httpRequest('POST', SMG_TOKEN_URL, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: formBody,
   });
-  console.log(`[SMG] Refresh response: HTTP ${resp.status}`);
+
   if (resp.status !== 200) {
-    console.log('[SMG] Refresh error body:', resp.body.slice(0, 300));
-    throw new Error(`SMG token refresh failed: HTTP ${resp.status} — ${resp.body.slice(0, 200)}`);
+    throw new Error(`SMG auth failed: HTTP ${resp.status} — ${resp.body.slice(0, 300)}`);
   }
   const data = JSON.parse(resp.body);
-  if (!data.accessToken) throw new Error('SMG refresh response missing accessToken');
-  console.log('[SMG] Got access token via refresh');
-  return data.accessToken;
+  const token = data.access_token || data.accessToken;
+  if (!token) throw new Error(`SMG auth 200 but no access_token. Keys: ${Object.keys(data).join(', ')}`);
+  console.log('[SMG] Got access token');
+  return token;
 }
 
 // ── Step 2: Build date range (30-day window ending at targetDate) ────────────
