@@ -90,8 +90,8 @@ async function getAccessToken() {
     grant_type: 'password',
     username:   user,
     password:   pass,
-    client_id:  'smg360',
-    scope:      'email feedback offline_access openid smg360',
+    client_id:  '360DEMO',
+    scope:      'feedback openid email smg360 offline_access',
   }).toString();
 
   const resp = await httpRequest('POST', SMG_TOKEN_URL, {

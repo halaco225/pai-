@@ -13,6 +13,13 @@ const { chromium } = require('playwright');
 const fs   = require('fs');
 const path = require('path');
 
+// Override PLAYWRIGHT_BROWSERS_PATH to the node_modules location where the build installs Chromium.
+// Render's dashboard env var may still point to the old path; this ensures Playwright always finds it.
+const _nodeBrowsersPath = path.join(__dirname, '..', 'node_modules', '.playwright-browsers');
+if (fs.existsSync(_nodeBrowsersPath)) {
+  process.env.PLAYWRIGHT_BROWSERS_PATH = _nodeBrowsersPath;
+}
+
 /**
  * Resolves the chromium executable path from PLAYWRIGHT_BROWSERS_PATH.
  * Returns undefined when running locally (playwright finds it automatically).
