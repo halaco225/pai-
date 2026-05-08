@@ -407,6 +407,16 @@ router.post('/automation/run-now', requireRole('rdo', 'vp'), async (req, res) =>
   }
 });
 
+// ── GET /api/intel/automation/pipeline-status — session-auth view of last run + DB logs ──
+router.get('/automation/pipeline-status', requireRole('rdo', 'vp'), async (req, res) => {
+  try {
+    const logs = await db.getIntelLogs(30);
+    res.json({ lastRun: lastPipelineResult, recentLogs: logs });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ── GET /api/intel/dashboard — serve cached intel for logged-in user ──────────
 router.get('/dashboard', async (req, res) => {

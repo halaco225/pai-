@@ -9,6 +9,7 @@
 const fs   = require('fs');
 const path = require('path');
 const db   = require('./db');
+const { launchContext } = require('./browser-launch');
 
 const REPORT_URL = 'https://reporting.smg.com/ReportBuilder.aspx';
 
@@ -56,21 +57,15 @@ function parseWinScoreCSV(csvText) {
 }
 
 async function downloadWinScoreCSV(targetDate) {
-  let playwright;
-  try { playwright = require('playwright'); } catch (_) {
-    throw new Error('playwright not installed — run: npm install playwright');
-  }
-
   const user = process.env.SMG_USER || '';
   const pass = process.env.SMG_PASSWORD || '';
   if (!user || !pass) throw new Error('SMG_USER / SMG_PASSWORD env vars not set');
 
-  const tmpDir  = path.join(__dirname, '..', 'uploads');
+  const tmpDir  = '/tmp/uploads';
   fs.mkdirSync(tmpDir, { recursive: true });
   const outPath = path.join(tmpDir, `smg-winscore-${targetDate}.csv`);
 
-  const browser = await playwright.chromium.launch({ headless: true });
-  const context = await browser.newContext({ acceptDownloads: true });
+  const context = await launchContext('/tmp/smg-winscore-profile', { acceptDownloads: true });
   const page    = await context.newPage();
 
   try {
@@ -171,7 +166,7 @@ async function downloadWinScoreCSV(targetDate) {
     console.log(`[WinScore] CSV saved → ${outPath}`);
     return { success: true, filePath: outPath };
   } finally {
-    await browser.close();
+    await context.close();
   }
 }
 
