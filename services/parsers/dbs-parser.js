@@ -198,17 +198,17 @@ function parseDBS(filePath, targetDate) {
         if (paidouts != null && paidouts !== 0) {
           storeFlags.push({ ...base, metric_type: 'PAIDOUT', value: paidouts, target: 0, variance: paidouts, severity: 'medium' });
         }
-        if (cashVar != null && absVal(cashVar) > 50) {
+        if (cashVar != null && absVal(cashVar) > 80) {
           const sev = absVal(cashVar) > 150 ? 'high' : 'medium';
-          storeFlags.push({ ...base, metric_type: 'CASH_VARIANCE', value: cashVar, target: 50, variance: absVal(cashVar) - 50, severity: sev });
+          storeFlags.push({ ...base, metric_type: 'CASH_VARIANCE', value: cashVar, target: 80, variance: absVal(cashVar) - 80, severity: sev });
         }
         if (refunds != null && refunds > 20) {
           const sev = refunds > 50 ? 'high' : 'medium';
           storeFlags.push({ ...base, metric_type: 'REFUNDS', value: refunds, target: 20, variance: refunds - 20, severity: sev });
         }
-        if (cancelUnmade != null && cancelUnmade > 50) {
+        if (cancelUnmade != null && cancelUnmade > 80) {
           const sev = cancelUnmade > 100 ? 'high' : 'medium';
-          storeFlags.push({ ...base, metric_type: 'CANCEL_UNMADE', value: cancelUnmade, target: 50, variance: cancelUnmade - 50, severity: sev });
+          storeFlags.push({ ...base, metric_type: 'CANCEL_UNMADE', value: cancelUnmade, target: 80, variance: cancelUnmade - 80, severity: sev });
         }
 
         // ── Tier 2 Soft: Discount % ────────────────────────────────────────
