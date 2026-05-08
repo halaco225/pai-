@@ -81,31 +81,52 @@ function httpRequest(method, url, { headers = {}, body, binary = false } = {}) {
 // ── Step 1: OAuth2 password grant → Bearer token ────────────────────────────
 
 async function getAccessToken() {
+  const refreshToken = process.env.SMG_REFRESH_TOKEN || '';
   const user = process.env.SMG_USER || '';
   const pass = process.env.SMG_PASSWORD || '';
-  if (!user || !pass) throw new Error('SMG_USER / SMG_PASSWORD env vars not set');
 
-  console.log('[SMG] Requesting OAuth2 token from auth.smg.com...');
+  // Prefer refresh token — password grant is disabled on auth.smg.com
+  if (refreshToken) {
+    console.log('[SMG] Requesting token via refresh_token grant...');
+    const formBody = new URLSearchParams({
+      grant_type:    'refresh_token',
+      refresh_token: refreshToken,
+      client_id:     'smg360',
+    }).toString();
+    const resp = await httpRequest('POST', SMG_TOKEN_URL, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formBody,
+    });
+    if (resp.status === 200) {
+      const data = JSON.parse(resp.body);
+      const token = data.access_token || data.accessToken;
+      if (token) { console.log('[SMG] Got access token via refresh'); return token; }
+    }
+    console.warn(`[SMG] Refresh token failed: HTTP ${resp.status} — ${resp.body.slice(0, 200)}`);
+    throw new Error(`SMG refresh_token failed: HTTP ${resp.status} — ${resp.body.slice(0, 200)}`);
+  }
+
+  // Fallback: password grant (may be disabled — set SMG_REFRESH_TOKEN env var instead)
+  if (!user || !pass) throw new Error('SMG_REFRESH_TOKEN (preferred) or SMG_USER/SMG_PASSWORD env vars not set');
+  console.log('[SMG] Attempting password grant (fallback)...');
   const formBody = new URLSearchParams({
     grant_type: 'password',
     username:   user,
     password:   pass,
-    client_id:  '360DEMO',
+    client_id:  'smg360',
     scope:      'feedback openid email smg360 offline_access',
   }).toString();
-
   const resp = await httpRequest('POST', SMG_TOKEN_URL, {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: formBody,
   });
-
   if (resp.status !== 200) {
-    throw new Error(`SMG auth failed: HTTP ${resp.status} — ${resp.body.slice(0, 300)}`);
+    throw new Error(`SMG auth failed: HTTP ${resp.status} — ${resp.body.slice(0, 300)}\nHint: password grant may be disabled — capture a refresh_token from the browser and set SMG_REFRESH_TOKEN env var`);
   }
   const data = JSON.parse(resp.body);
   const token = data.access_token || data.accessToken;
   if (!token) throw new Error(`SMG auth 200 but no access_token. Keys: ${Object.keys(data).join(', ')}`);
-  console.log('[SMG] Got access token');
+  console.log('[SMG] Got access token via password grant');
   return token;
 }
 

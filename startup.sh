@@ -1,13 +1,14 @@
 #!/bin/bash
 echo "==> Starting PAi server..."
-echo "==> PLAYWRIGHT_BROWSERS_PATH: ${PLAYWRIGHT_BROWSERS_PATH:-not set}"
+echo "==> PLAYWRIGHT_BROWSERS_PATH (env): ${PLAYWRIGHT_BROWSERS_PATH:-not set}"
 
-BROWSER_DIR="${PLAYWRIGHT_BROWSERS_PATH:-/opt/render/project/src/playwright-browsers}"
-CHROME_BIN=$(find "$BROWSER_DIR" -name "chrome" -o -name "chrome-headless-shell" 2>/dev/null | head -1)
+NODE_BROWSERS="/opt/render/project/src/node_modules/.playwright-browsers"
+echo "==> node_modules browser path exists: $([ -d "$NODE_BROWSERS" ] && echo YES || echo NO)"
+CHROME_BIN=$(find "$NODE_BROWSERS" -name "chrome-headless-shell" -o -name "chrome" 2>/dev/null | head -1)
 if [ -n "$CHROME_BIN" ]; then
-  echo "==> Browser ready: $CHROME_BIN"
+  echo "==> Chromium found: $CHROME_BIN"
 else
-  echo "==> WARNING: Chromium not found at $BROWSER_DIR — scraping will be unavailable"
+  echo "==> WARNING: Chromium not found in node_modules path — build may not have installed it"
 fi
 
 exec node server.js
