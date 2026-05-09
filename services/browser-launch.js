@@ -38,6 +38,7 @@ function resolveExecutablePath() {
   // Sub-directory patterns Playwright uses (checked in priority order)
   const subDirs = [
     'chrome-headless-shell-linux64', // Playwright >= 1.40 (chromium_headless_shell-*)
+    'chrome-linux64',                // Chrome for Testing (npx playwright install chromium)
     'chrome-linux',                  // Playwright <  1.40 (chromium-*)
     '',                              // binary directly in the versioned dir
   ];
