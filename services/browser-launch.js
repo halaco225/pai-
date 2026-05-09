@@ -16,16 +16,18 @@
  * path Playwright uses for its own fallback resolution.
  */
 
-// Override the Render dashboard env var (which points to the old build-time
-// path /opt/render/project/src/playwright-browsers) BEFORE playwright loads.
-// startup.sh installs Chromium to /tmp/ms-playwright at runtime.
-process.env.PLAYWRIGHT_BROWSERS_PATH = '/tmp/ms-playwright';
+// Set the browsers path BEFORE requiring playwright — Playwright's internal
+// Registry reads this env var at module-load time and caches it.
+// The build command installs chromium-headless-shell here during the build
+// phase so it is always present without a runtime install step.
+process.env.PLAYWRIGHT_BROWSERS_PATH = '/opt/render/project/src/node_modules/.playwright-browsers';
 
 const { chromium } = require('playwright');
 const fs   = require('fs');
 const path = require('path');
 
-console.log(`[browser-launch] PLAYWRIGHT_BROWSERS_PATH=/tmp/ms-playwright (exists: ${fs.existsSync('/tmp/ms-playwright')})`);
+const _browsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH;
+console.log(`[browser-launch] PLAYWRIGHT_BROWSERS_PATH=${_browsersPath} (exists: ${fs.existsSync(_browsersPath)})`);
 
 /**
  * Resolves the chromium executable path from PLAYWRIGHT_BROWSERS_PATH.
@@ -34,8 +36,8 @@ console.log(`[browser-launch] PLAYWRIGHT_BROWSERS_PATH=/tmp/ms-playwright (exist
 function resolveExecutablePath() {
   // Search candidate paths in priority order for an installed Chromium browser
   const candidates = [
-    '/tmp/ms-playwright',                // startup.sh runtime install (primary on Render)
-    process.env.PLAYWRIGHT_BROWSERS_PATH, // same as above after our override (deduped OK)
+    process.env.PLAYWRIGHT_BROWSERS_PATH, // build-time install in node_modules (primary)
+    '/tmp/ms-playwright',                 // fallback if /tmp install exists
   ].filter(Boolean);
   const base = candidates.find(p => { try { return fs.readdirSync(p).some(e => e.startsWith('chromium')); } catch(_) { return false; } });
   if (!base) return undefined;
