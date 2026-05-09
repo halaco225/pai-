@@ -267,6 +267,7 @@ button{font-family:inherit;cursor:pointer}
     <div class="mh-right">
       <div class="date-pill">📅 <input type="date" id="dateInput" onchange="onDateChange(this.value)"></div>
       <button class="run-batch-btn hidden" id="runBatchBtn" onclick="runBatchNow()">⚡ Run Batch</button>
+      <button class="run-batch-btn hidden" id="backfillBtn" onclick="runBackfill()" style="background:#6366f1">📅 Backfill History</button>
       <button class="refresh-btn" onclick="init()">↺ Refresh Data</button>
     </div>
   </header>
@@ -494,6 +495,7 @@ function setupUser(u){
     document.getElementById('tba').classList.remove('hidden');
     document.getElementById('opsLabel').classList.remove('hidden');
     document.getElementById('runBatchBtn').classList.remove('hidden');
+    document.getElementById('backfillBtn').classList.remove('hidden');
   }
 }
 
@@ -1122,6 +1124,26 @@ async function runBatchNow(){
   }
 }
 
+async function runBackfill(){
+  const btn=document.getElementById('backfillBtn');
+  if(btn.disabled)return;
+  const start=prompt('Backfill start date (YYYY-MM-DD):','2026-04-21');
+  if(!start)return;
+  const end=prompt('Backfill end date (YYYY-MM-DD):','2026-05-07');
+  if(!end)return;
+  if(!confirm(`Run pipeline for every date ${start} → ${end}?\n\nThis runs in the background (~1 min between dates). Check server logs for progress.`))return;
+  btn.disabled=true;btn.textContent='⟳ Backfill Running…';
+  try{
+    const res=await fetch('/api/intel/automation/bulk-backfill',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start,end})});
+    const d=await res.json();
+    if(!res.ok)throw new Error(d.error||'Failed');
+    alert(`✓ Backfill started for ${d.dates.length} dates (${start} → ${end}).\n\nRuns in background — check Render logs for progress. Data will populate in the DB as each date completes.`);
+  }catch(err){
+    alert('Backfill error: '+err.message);
+  }finally{
+    btn.disabled=false;btn.textContent='📅 Backfill History';
+  }
+}
 async function onDateChange(val){
   if(!val)return;
   selectedDate=val;

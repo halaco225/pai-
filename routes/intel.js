@@ -407,6 +407,45 @@ router.post('/automation/run-now', requireRole('rdo', 'vp'), async (req, res) =>
   }
 });
 
+// ── POST /api/intel/automation/bulk-backfill — run pipeline for a date range ──
+// Session auth only — no token needed. Responds immediately, runs async.
+router.post('/automation/bulk-backfill', requireRole('rdo', 'vp'), async (req, res) => {
+  const user = req.session.user;
+  const { start, end } = req.body;
+  if (!start || !end) return res.status(400).json({ error: 'start and end dates required (YYYY-MM-DD)' });
+
+  // Build date list
+  const dates = [];
+  const cur = new Date(start + 'T12:00:00Z');
+  const last = new Date(end + 'T12:00:00Z');
+  while (cur <= last) { dates.push(cur.toISOString().slice(0, 10)); cur.setUTCDate(cur.getUTCDate() + 1); }
+
+  console.log(`[Backfill] ${user.username} triggered backfill for ${dates.length} dates: ${start} → ${end}`);
+  res.json({ status: 'started', dates, message: `Running pipeline for ${dates.length} dates. Check server logs for progress.` });
+
+  // Run sequentially in background — 1 min gap between dates to let the server breathe
+  (async () => {
+    const { runIntelPipeline } = require('../services/intel-pipeline');
+    for (let i = 0; i < dates.length; i++) {
+      const date = dates[i];
+      console.log(`[Backfill] [${i + 1}/${dates.length}] Running pipeline for ${date}...`);
+      await db.logIntelJob({ jobType: 'backfill:start', targetDate: date, status: 'running', message: `Backfill ${i + 1}/${dates.length}` });
+      try {
+        const result = await runIntelPipeline(date);
+        lastPipelineResult = { ...result, completedAt: new Date().toISOString() };
+        const ok = result.errors.length === 0;
+        console.log(`[Backfill] ${date} done — errors: ${result.errors.length}`);
+        await db.logIntelJob({ jobType: 'backfill:done', targetDate: date, status: ok ? 'success' : 'partial', message: result.errors.join('; ').slice(0, 500) || 'ok' });
+      } catch (err) {
+        console.error(`[Backfill] ${date} FAILED:`, err.message);
+        await db.logIntelJob({ jobType: 'backfill:error', targetDate: date, status: 'error', message: err.message.slice(0, 500) });
+      }
+      if (i < dates.length - 1) await new Promise(r => setTimeout(r, 60000)); // 1 min between dates
+    }
+    console.log(`[Backfill] All ${dates.length} dates complete.`);
+  })();
+});
+
 // ── GET /api/intel/automation/pipeline-status — session-auth view of last run + DB logs ──
 router.get('/automation/pipeline-status', requireRole('rdo', 'vp'), async (req, res) => {
   try {
