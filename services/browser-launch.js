@@ -2,37 +2,42 @@
 /**
  * browser-launch.js
  * Resolves the Playwright Chromium binary path at runtime so scrapers work on
- * Render (where the executable lives under PLAYWRIGHT_BROWSERS_PATH) and
+ * Render (where startup.sh installs Chromium to /tmp/ms-playwright) and
  * locally (where `playwright` manages the path itself).
  *
  * Supports both old and new Playwright directory structures:
  *   Old (< 1.40): chromium-NNN/chrome-linux/chrome
  *   New (>= 1.40): chromium_headless_shell-NNN/chrome-headless-shell-linux64/chrome-headless-shell
+ *   Chrome for Testing: chromium-NNN/chrome-linux64/chrome  (npx playwright install chromium)
+ *
+ * CRITICAL: PLAYWRIGHT_BROWSERS_PATH must be set BEFORE requiring playwright.
+ * Playwright's internal Registry reads this env var at module-load time and
+ * caches it — any override after require('playwright') has no effect on the
+ * path Playwright uses for its own fallback resolution.
  */
+
+// Override the Render dashboard env var (which points to the old build-time
+// path /opt/render/project/src/playwright-browsers) BEFORE playwright loads.
+// startup.sh installs Chromium to /tmp/ms-playwright at runtime.
+process.env.PLAYWRIGHT_BROWSERS_PATH = '/tmp/ms-playwright';
+
 const { chromium } = require('playwright');
 const fs   = require('fs');
 const path = require('path');
 
-// Force PLAYWRIGHT_BROWSERS_PATH to where the build installs Chromium (node_modules, preserved by
-// Render's build cache). The Render dashboard env var still points to the old path — override it
-// unconditionally so Playwright always looks in the right place.
-const _nodeBrowsersPath = path.join(__dirname, '..', 'node_modules', '.playwright-browsers');
-process.env.PLAYWRIGHT_BROWSERS_PATH = _nodeBrowsersPath;
-console.log(`[browser-launch] PLAYWRIGHT_BROWSERS_PATH set to: ${_nodeBrowsersPath} (exists: ${fs.existsSync(_nodeBrowsersPath)}`);
+console.log(`[browser-launch] PLAYWRIGHT_BROWSERS_PATH=/tmp/ms-playwright (exists: ${fs.existsSync('/tmp/ms-playwright')})`);
 
 /**
  * Resolves the chromium executable path from PLAYWRIGHT_BROWSERS_PATH.
  * Returns undefined when running locally (playwright finds it automatically).
  */
 function resolveExecutablePath() {
-  // Check multiple candidate paths — node_modules path is inside Render's build cache
+  // Search candidate paths in priority order for an installed Chromium browser
   const candidates = [
-    '/tmp/ms-playwright',
-    process.env.PLAYWRIGHT_BROWSERS_PATH,
-    path.join(__dirname, '..', 'node_modules', '.playwright-browsers'),
+    '/tmp/ms-playwright',                // startup.sh runtime install (primary on Render)
+    process.env.PLAYWRIGHT_BROWSERS_PATH, // same as above after our override (deduped OK)
   ].filter(Boolean);
-  const base = candidates.find(p => { try { return require('fs').readdirSync(p).some(e => e.startsWith('chromium')); } catch(_) { return false; } })
-    || process.env.PLAYWRIGHT_BROWSERS_PATH;
+  const base = candidates.find(p => { try { return fs.readdirSync(p).some(e => e.startsWith('chromium')); } catch(_) { return false; } });
   if (!base) return undefined;
 
   // Sub-directory patterns Playwright uses (checked in priority order)
@@ -76,8 +81,8 @@ function resolveExecutablePath() {
     }
   }
 
-  // Log what we found to help debug
-  console.warn('[browser-launch] Could not resolve executablePath. Dirs found:', entries.filter(e => e.startsWith('chromium')));
+  // Log what we found to help debug missing binary
+  console.warn(`[browser-launch] Could not resolve executablePath in ${base}. Dirs found:`, entries.filter(e => e.startsWith('chromium')));
   if (chromiumDirs.length > 0) {
     try {
       const firstDir = chromiumDirs[0];
