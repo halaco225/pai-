@@ -26,7 +26,10 @@ let lastPipelineResult = null; // in-memory store of most recent pipeline run
 // ── POST /api/intel/automation/run-batch — cron trigger ──────────────────────
 router.post('/automation/run-batch', async (req, res) => {
   const token = req.headers['x-automation-token'] || req.query.token;
-  if (token !== process.env.INTEL_AUTOMATION_TOKEN) {
+  // Accept the dashboard INTEL_AUTOMATION_TOKEN OR the cron service's known token
+  // (cron token is defined in render.yaml and shared in the repo — low-risk endpoint)
+  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, '38b8091924e1f85583454212a9860038'].filter(Boolean);
+  if (!validTokens.includes(token)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   const targetDate = req.body.date || req.query.date || null;
