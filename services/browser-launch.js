@@ -18,9 +18,11 @@
 
 // Set the browsers path BEFORE requiring playwright — Playwright's internal
 // Registry reads this env var at module-load time and caches it.
-// The build command installs chromium-headless-shell here during the build
-// phase so it is always present without a runtime install step.
-process.env.PLAYWRIGHT_BROWSERS_PATH = '/opt/render/project/src/node_modules/.playwright-browsers';
+// The build command installs chromium-headless-shell to playwright-browsers/
+// (non-hidden directory in the project root — guaranteed to be in the
+// Render deployment artifact).  Hidden dirs (.playwright-browsers inside
+// node_modules) are stripped by Render's packager and never reach the VM.
+process.env.PLAYWRIGHT_BROWSERS_PATH = '/opt/render/project/src/playwright-browsers';
 
 const { chromium } = require('playwright');
 const fs   = require('fs');
@@ -36,8 +38,10 @@ console.log(`[browser-launch] PLAYWRIGHT_BROWSERS_PATH=${_browsersPath} (exists:
 function resolveExecutablePath() {
   // Search candidate paths in priority order for an installed Chromium browser
   const candidates = [
-    process.env.PLAYWRIGHT_BROWSERS_PATH, // build-time install in node_modules (primary)
-    '/tmp/ms-playwright',                 // fallback if /tmp install exists
+    process.env.PLAYWRIGHT_BROWSERS_PATH,                         // hardcoded above (playwright-browsers/)
+    '/opt/render/project/src/playwright-browsers',                 // explicit fallback (same path, belt+suspenders)
+    '/opt/render/project/src/node_modules/.playwright-browsers',   // old node_modules path fallback
+    '/tmp/ms-playwright',                                          // runtime install fallback
   ].filter(Boolean);
   const base = candidates.find(p => { try { return fs.readdirSync(p).some(e => e.startsWith('chromium')); } catch(_) { return false; } });
   if (!base) return undefined;
