@@ -2,206 +2,200 @@
 /**
  * Fourth Analytics — exports Labor and OT reports via GoodData Classic REST API.
  *
- * Auth: browser login establishes a GoodData session. ALL API calls are made
- * from within the browser context via page.evaluate(fetch) so the browser's
- * native cookie jar handles auth. Cookie replay via node-fetch fails because
- * GoodData binds the session to the browser context.
+ * Pure HTTP approach — no Playwright/browser needed.
  *
- * Export flow (all inside browser context):
- *   GET  /gdc/md/{project}/objects/{dashboardId}  → parse report URIs
- *   POST /gdc/app/projects/{project}/execute/raw/ → get result URI
- *   GET  result URI (poll until 200)              → xlsx bytes as base64
+ * Auth flow:
+ *   1. POST /gdc/account/login   → sets GDCAuthSST cookie
+ *   2. GET  /gdc/account/token   → sets GDCAuthTT cookie
+ *
+ * Export flow:
+ *   3. GET  /gdc/md/{project}/query/reports  → list all reports
+ *   4. POST /gdc/app/projects/{project}/execute/raw/ { report_req: { report: uri } }
+ *      → returns { uri: resultUri }
+ *   5. GET resultUri (poll until 200) → xlsx bytes
  */
-const { launchContext } = require('./browser-launch');
-const fs   = require('fs');
-const path = require('path');
+const https = require('https');
+const fs    = require('fs');
+const path  = require('path');
 
-const FOURTH_API  = 'https://analytics.na1.fourth.com';
+const FOURTH_HOST = 'analytics.na1.fourth.com';
 const PROJECT_ID  = 'q0t16mq5dgsreqiq8macw3ghv3k1iuqc';
-const PROFILE_DIR = process.env.FOURTH_PROFILE_DIR || '/tmp/fourth-profile';
 
-const DASHBOARDS = {
-  LABOR: { obj: '607717', tab: '8e923313686e' },
-  OT:    { obj: '607556', tab: '9103c1ea9b50' },
-};
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
+// ── HTTP helper with cookie jar ───────────────────────────────────────────────
+
+function httpRequest(method, urlPath, { headers = {}, body, binary = false, cookieJar = [] } = {}) {
+  return new Promise((resolve, reject) => {
+    const data = body ? (typeof body === 'string' ? body : JSON.stringify(body)) : null;
+    const cookieHeader = cookieJar.length ? cookieJar.join('; ') : undefined;
+    const reqHeaders = {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+      ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}),
+      ...headers,
+    };
+
+    const req = https.request({
+      hostname: FOURTH_HOST,
+      path: urlPath,
+      method,
+      headers: reqHeaders,
+    }, res => {
+      const chunks = [];
+      res.on('data', c => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+      res.on('end', () => {
+        // Extract Set-Cookie headers and add to jar
+        const setCookies = res.headers['set-cookie'] || [];
+        const newCookies = setCookies.map(c => c.split(';')[0]);
+        resolve({
+          status:     res.statusCode,
+          headers:    res.headers,
+          newCookies,
+          body:       binary ? Buffer.concat(chunks) : Buffer.concat(chunks).toString('utf8'),
+        });
+      });
+    });
+    const timer = setTimeout(() => req.destroy(new Error(`Fourth timeout: ${method} ${urlPath}`)), 60000);
+    req.on('error', e => { clearTimeout(timer); reject(e); });
+    req.on('close', () => clearTimeout(timer));
+    if (data) req.write(data);
+    req.end();
+  });
+}
+
+// ── Step 1: Login → get GDCAuthSST + GDCAuthTT cookies ───────────────────────
+
+async function getAuthCookies(user, pass) {
+  console.log('[Fourth] Logging in via REST API...');
+  const loginResp = await httpRequest('POST', '/gdc/account/login', {
+    body: { postUserLogin: { login: user, password: pass, remember: 1, captcha: '', verifyCaptcha: '' } },
+  });
+
+  if (loginResp.status !== 200 && loginResp.status !== 201) {
+    throw new Error(`Fourth login failed: HTTP ${loginResp.status} — ${loginResp.body.slice(0, 200)}`);
+  }
+
+  const sstCookies = loginResp.newCookies.filter(c => c.startsWith('GDCAuthSST'));
+  if (!sstCookies.length) {
+    throw new Error(`Fourth login: no GDCAuthSST cookie in response. Cookies: ${loginResp.newCookies.join(', ')}`);
+  }
+  const jar = [...sstCookies];
+  console.log('[Fourth] Got GDCAuthSST — refreshing token...');
+
+  // Step 2: GET /gdc/account/token to get GDCAuthTT
+  const tokenResp = await httpRequest('GET', '/gdc/account/token', { cookieJar: jar });
+  if (tokenResp.status !== 200) {
+    throw new Error(`Fourth token refresh failed: HTTP ${tokenResp.status}`);
+  }
+  const ttCookies = tokenResp.newCookies.filter(c => c.startsWith('GDCAuthTT'));
+  if (ttCookies.length) jar.push(...ttCookies);
+
+  console.log(`[Fourth] Auth cookies ready (${jar.length} cookies)`);
+  return jar;
+}
+
+// ── Step 2: List reports, filter by keyword ───────────────────────────────────
+
+async function findReportUris(jar, reportKey) {
+  console.log('[Fourth] Querying report list...');
+  const resp = await httpRequest('GET', `/gdc/md/${PROJECT_ID}/query/reports`, { cookieJar: jar });
+  if (resp.status !== 200) {
+    throw new Error(`Failed to list reports: HTTP ${resp.status} — ${resp.body.slice(0, 200)}`);
+  }
+
+  const data    = JSON.parse(resp.body);
+  const entries = data.query?.entries || [];
+  console.log(`[Fourth] Total reports in project: ${entries.length}`);
+
+  const keywords = reportKey === 'LABOR'
+    ? ['labor', 'labour']
+    : ['overtime', 'over time', ' ot '];
+
+  let uris = entries
+    .filter(e => keywords.some(kw => (e.title || '').toLowerCase().includes(kw)))
+    .map(e => e.link);
+
+  if (!uris.length) {
+    console.log('[Fourth] No keyword matches — trying all reports');
+    uris = entries.map(e => e.link);
+  }
+
+  console.log(`[Fourth] Using ${uris.length} report URI(s) for ${reportKey}`);
+  return uris;
+}
+
+// ── Step 3: Execute report → poll → download xlsx ─────────────────────────────
+
+async function executeAndDownload(jar, reportUri, outPath) {
+  console.log(`[Fourth] Executing report: ${reportUri}`);
+
+  const execResp = await httpRequest('POST', `/gdc/app/projects/${PROJECT_ID}/execute/raw/`, {
+    cookieJar: jar,
+    body: { report_req: { report: reportUri } },
+  });
+
+  if (execResp.status !== 200 && execResp.status !== 201) {
+    throw new Error(`Execute failed: HTTP ${execResp.status} — ${execResp.body.slice(0, 200)}`);
+  }
+
+  const resultUri = JSON.parse(execResp.body).uri;
+  if (!resultUri) throw new Error('Execute response missing result URI');
+  console.log(`[Fourth] Export queued → ${resultUri}`);
+
+  // Poll until ready
+  for (let i = 1; i <= 40; i++) {
+    await sleep(3000);
+    const pollResp = await httpRequest('GET', resultUri, { cookieJar: jar, binary: true });
+    console.log(`[Fourth] Poll ${i}: HTTP ${pollResp.status} (${pollResp.body.length} bytes)`);
+
+    if (pollResp.status === 200) {
+      const buf = pollResp.body;
+      if (buf.length < 500) throw new Error(`Response too small (${buf.length} bytes) — likely an error page`);
+      if (buf.slice(0, 4).toString() === '%PDF') throw new Error('Got PDF instead of xlsx');
+      fs.writeFileSync(outPath, buf);
+      console.log(`[Fourth] Saved → ${outPath} (${buf.length} bytes)`);
+      return true;
+    }
+    if (pollResp.status !== 202) {
+      throw new Error(`Unexpected poll status ${pollResp.status} — ${pollResp.body.toString().slice(0, 200)}`);
+    }
+  }
+  throw new Error('Export timed out after 40 polls (2 min)');
+}
+
+// ── Main export function ───────────────────────────────────────────────────────
 
 async function downloadFourthReport(reportKey, targetDate) {
   const tmpDir  = '/tmp/uploads';
   fs.mkdirSync(tmpDir, { recursive: true });
   const outPath = path.join(tmpDir, `intel-fourth-${reportKey.toLowerCase()}-${targetDate}.xlsx`);
 
-  const dashInfo = DASHBOARDS[reportKey];
-  if (!dashInfo) throw new Error(`Unknown report key: ${reportKey}`);
-
-  const user = process.env.FOURTH_USER || '';
+  const user = process.env.FOURTH_USER     || '';
   const pass = process.env.FOURTH_PASSWORD || '';
-  if (!user || !pass) throw new Error('FOURTH_USER / FOURTH_PASSWORD env vars not set');
-
-  try { fs.rmSync(PROFILE_DIR, { recursive: true, force: true }); } catch (_) {}
-  const browser = await launchContext(PROFILE_DIR, {});
+  if (!user || !pass) {
+    return { success: false, error: 'FOURTH_USER / FOURTH_PASSWORD env vars not set' };
+  }
 
   try {
-    const page = await browser.newPage();
+    const jar        = await getAuthCookies(user, pass);
+    const reportUris = await findReportUris(jar, reportKey);
 
-    // ── Login ─────────────────────────────────────────────────────────────
-    console.log('[Fourth] Browser login: navigating to account page...');
-    await page.goto(`${FOURTH_API}/account.html`, { waitUntil: 'domcontentloaded', timeout: 20000 });
-    await page.waitForTimeout(2000);
-
-    const emailField = await page.waitForSelector(
-      'input[type="email"], input[name="username"], #username, input[type="text"]',
-      { timeout: 10000 }
-    );
-    await emailField.fill(user);
-
-    let passField = await page.$('input[type="password"], input[name="password"], #password');
-    if (!passField) {
-      await page.click('button[type="submit"], button:has-text("Next"), button:has-text("Continue")').catch(() => {});
-      await page.waitForTimeout(2000);
-      passField = await page.waitForSelector('input[type="password"]', { timeout: 8000 });
-    }
-    await passField.fill(pass);
-    await page.click('button[type="submit"], .s-login-button, button:has-text("Log In"), button:has-text("Sign In")');
-    await page.waitForTimeout(5000);
-    console.log(`[Fourth] Post-login URL: ${page.url()}`);
-
-    // ── Verify session via in-browser fetch ────────────────────────────────
-    const profileCheck = await page.evaluate(async (api) => {
+    for (const uri of reportUris) {
       try {
-        const res = await fetch(`${api}/gdc/account/profile/current`, {
-          headers: { Accept: 'application/json' },
-          credentials: 'include',
-        });
-        return { status: res.status };
-      } catch (e) { return { status: -1, error: e.message }; }
-    }, FOURTH_API);
-    console.log(`[Fourth] Browser profile check: ${profileCheck.status}`);
-    if (profileCheck.status !== 200) {
-      throw new Error(`Auth check failed: profile returned ${profileCheck.status}`);
-    }
-
-    // ── Fetch report list via GoodData query API ──────────────────────────
-    // /gdc/md/{project}/query/reports lists all reports accessible to this
-    // session — no dashboard navigation needed, no 403 on object fetch.
-    console.log('[Fourth] Querying report list...');
-    const reportsResult = await page.evaluate(async ({ api, projId }) => {
-      try {
-        const res = await fetch(`${api}/gdc/md/${projId}/query/reports`, {
-          headers: { Accept: 'application/json' },
-          credentials: 'include',
-        });
-        return { status: res.status, body: await res.text() };
-      } catch (e) { return { status: -1, body: '', error: e.message }; }
-    }, { api: FOURTH_API, projId: PROJECT_ID });
-
-    console.log(`[Fourth] Reports query: HTTP ${reportsResult.status} (${reportsResult.body.length} bytes)`);
-    if (reportsResult.status !== 200) {
-      throw new Error(`Failed to list reports: HTTP ${reportsResult.status} — ${reportsResult.body.slice(0, 200)}`);
-    }
-
-    const reportsData = JSON.parse(reportsResult.body);
-    const allEntries = reportsData.query?.entries || [];
-    console.log(`[Fourth] Total reports in project: ${allEntries.length}`);
-    if (allEntries.length > 0) {
-      console.log('[Fourth] Sample titles:', allEntries.slice(0, 5).map(e => e.title).join(', '));
-    }
-
-    // Filter by keyword relevant to this report type
-    const keywords = reportKey === 'LABOR'
-      ? ['labor', 'labour']
-      : ['overtime', 'over time', ' ot '];
-
-    let reportUris = allEntries
-      .filter(e => keywords.some(kw => (e.title || '').toLowerCase().includes(kw)))
-      .map(e => e.link);
-
-    console.log(`[Fourth] Keyword-matched URIs (${reportKey}):`, JSON.stringify(reportUris));
-
-    // If no keyword match, try all reports (titles may differ from expectation)
-    if (reportUris.length === 0) {
-      console.log('[Fourth] No keyword matches — will try all reports');
-      reportUris = allEntries.map(e => e.link);
-    }
-
-    if (reportUris.length === 0) throw new Error('No report URIs found');
-
-    // ── Execute + poll + download each URI until one succeeds ──────────────
-    for (const reportUri of reportUris) {
-      try {
-        console.log(`[Fourth] Executing: ${reportUri}`);
-        const execResult = await page.evaluate(async ({ api, projId, uri }) => {
-          try {
-            const res = await fetch(`${api}/gdc/app/projects/${projId}/execute/raw/`, {
-              method: 'POST',
-              headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({ report_req: { report: uri } }),
-            });
-            return { status: res.status, body: await res.text() };
-          } catch (e) { return { status: -1, body: '', error: e.message }; }
-        }, { api: FOURTH_API, projId: PROJECT_ID, uri: reportUri });
-
-        if (execResult.status !== 200 && execResult.status !== 201) {
-          console.log(`[Fourth] Execute ${execResult.status} — ${execResult.body.slice(0, 200)}`);
-          continue;
-        }
-        const resultUri = JSON.parse(execResult.body).uri;
-        if (!resultUri) { console.log('[Fourth] No result URI'); continue; }
-        console.log(`[Fourth] Export queued → ${resultUri}`);
-
-        // Poll until ready
-        let base64data = null;
-        for (let i = 1; i <= 30; i++) {
-          await sleep(3000);
-          const pollResult = await page.evaluate(async (url) => {
-            try {
-              const res = await fetch(url, { credentials: 'include' });
-              if (res.status === 200) {
-                const ab = await res.arrayBuffer();
-                const bytes = new Uint8Array(ab);
-                let binary = '';
-                for (let j = 0; j < bytes.length; j++) binary += String.fromCharCode(bytes[j]);
-                return { status: 200, data: btoa(binary), ct: res.headers.get('content-type') };
-              }
-              return { status: res.status, data: null };
-            } catch (e) { return { status: -1, data: null, error: e.message }; }
-          }, `${FOURTH_API}${resultUri}`);
-
-          console.log(`[Fourth] Poll ${i}: ${pollResult.status}${pollResult.ct ? ' ct=' + pollResult.ct : ''}`);
-          if (pollResult.status === 200 && pollResult.data) {
-            base64data = pollResult.data;
-            break;
-          }
-          if (pollResult.status !== 202 && pollResult.status !== -1) {
-            console.log(`[Fourth] Poll unexpected status ${pollResult.status}`);
-            break;
-          }
-        }
-
-        if (!base64data) { console.log(`[Fourth] ${reportUri} — no data`); continue; }
-
-        const buf = Buffer.from(base64data, 'base64');
-        if (buf.length < 500) { console.log(`[Fourth] Too small (${buf.length}b)`); continue; }
-        if (buf.slice(0, 4).toString() === '%PDF') { console.log('[Fourth] Got PDF — skip'); continue; }
-
-        fs.writeFileSync(outPath, buf);
-        console.log(`[Fourth] ${reportKey} → ${outPath} (${buf.length} bytes)`);
+        await executeAndDownload(jar, uri, outPath);
         return { success: true, filePath: outPath };
-
-      } catch (e) {
-        console.log(`[Fourth] ${reportUri} failed: ${e.message}`);
+      } catch (err) {
+        console.warn(`[Fourth] ${uri} failed: ${err.message}`);
       }
     }
 
-    throw new Error('All report URIs failed or returned unusable data');
+    return { success: false, error: 'All report URIs failed or returned unusable data' };
 
   } catch (err) {
     console.error(`[Fourth] ${reportKey} FAILED:`, err.message);
     return { success: false, error: err.message };
-  } finally {
-    try { await browser.close(); } catch (_) {}
   }
 }
 
