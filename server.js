@@ -1,4 +1,8 @@
 require('dotenv').config();
+// Set PLAYWRIGHT_BROWSERS_PATH before anything else can require('playwright')
+// browser-launch.js does this at module load time — require it early so the
+// env var override takes effect before any lazy pipeline require() runs.
+require('./services/browser-launch');
 const express = require('express');
 const session = require('express-session');
 const cors = require('cors');

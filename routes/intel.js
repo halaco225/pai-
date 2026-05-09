@@ -349,45 +349,50 @@ router.get('/debug/playwright', async (req, res) => {
   if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
   const fs   = require('fs');
   const path = require('path');
-  const base = process.env.PLAYWRIGHT_BROWSERS_PATH || 'NOT SET';
   const home = process.env.HOME || '/root';
-  const defaultCache = path.join(home, '.cache', 'ms-playwright');
-  const result = {
-    PLAYWRIGHT_BROWSERS_PATH: base,
+
+  // Check all candidate paths where chromium might live
+  const candidatePaths = [
+    process.env.PLAYWRIGHT_BROWSERS_PATH,                          // dashboard env var
+    '/opt/render/project/src/node_modules/.playwright-browsers',   // build-time install (browser-launch.js target)
+    '/opt/render/project/src/playwright-browsers',                  // old dashboard path
+    path.join(home, '.cache', 'ms-playwright'),                     // playwright default cache
+    '/tmp/ms-playwright',                                           // old startup install path
+  ].filter(Boolean);
+
+  function scanPath(p) {
+    if (!fs.existsSync(p)) return { exists: false };
+    try {
+      const top = fs.readdirSync(p);
+      const chromiumDirs = top.filter(x => x.startsWith('chromium'));
+      const details = chromiumDirs.map(e => {
+        const dir = path.join(p, e);
+        try {
+          const sub = fs.readdirSync(dir);
+          const subDetails = sub.map(s => {
+            const sp = path.join(dir, s);
+            try { return { name: s, files: fs.readdirSync(sp) }; }
+            catch (_) { return { name: s }; }
+          });
+          return { name: e, contents: subDetails };
+        } catch (_) { return { name: e }; }
+      });
+      return { exists: true, topLevel: top, chromiumDirs, details };
+    } catch (err) { return { exists: true, error: err.message }; }
+  }
+
+  const pathResults = {};
+  for (const p of [...new Set(candidatePaths)]) {
+    pathResults[p] = scanPath(p);
+  }
+
+  res.json({
+    PLAYWRIGHT_BROWSERS_PATH_env: process.env.PLAYWRIGHT_BROWSERS_PATH,
+    browserLaunchTarget: '/opt/render/project/src/node_modules/.playwright-browsers',
     HOME: home,
     cwd: process.cwd(),
-    defaultCacheExists: fs.existsSync(defaultCache),
-    defaultCacheEntries: [],
-    browserPathEntries: [],
-  };
-  // Check PLAYWRIGHT_BROWSERS_PATH
-  try {
-    if (base !== 'NOT SET' && fs.existsSync(base)) {
-      const top = fs.readdirSync(base);
-      result.browserPathTopLevel = top.filter(x => x.startsWith('chromium') || x.startsWith('firefox') || x.startsWith('webkit'));
-      for (const e of top.filter(x => x.startsWith('chromium'))) {
-        const dir = path.join(base, e);
-        const sub = { name: e, contents: [] };
-        try {
-          const subEntries = fs.readdirSync(dir);
-          for (const s of subEntries) {
-            const sp = path.join(dir, s);
-            try { sub.contents.push({ name: s, files: fs.readdirSync(sp) }); }
-            catch (_) { sub.contents.push({ name: s }); }
-          }
-        } catch (_) {}
-        result.browserPathEntries.push(sub);
-      }
-    }
-  } catch (err) { result.browserPathError = err.message; }
-  // Check default cache
-  try {
-    if (fs.existsSync(defaultCache)) {
-      const entries = fs.readdirSync(defaultCache);
-      result.defaultCacheEntries = entries;
-    }
-  } catch (_) {}
-  res.json(result);
+    pathResults,
+  });
 });
 
 router.use(requireAuth);
