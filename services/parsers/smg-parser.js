@@ -25,24 +25,63 @@ function parseSMGFile(filePath) {
   const wb   = XLSX.readFile(filePath, { cellDates: false, raw: true });
   const ws   = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+  // ── Find header row dynamically ──────────────────────────────────────────
+  // Look for a row that contains recognizable SMG column headers.
+  // Fallback to hardcoded row 5 / col indices if not found.
+  const HEADER_KEYWORDS = ['comment', 'unit', 'source', 'overall', 'feedback'];
+  let headerRowIdx = 5; // default
+  for (let i = 0; i < Math.min(10, rows.length); i++) {
+    const r = rows[i];
+    if (!r) continue;
+    const cells = r.map(c => (c ? String(c).toLowerCase() : ''));
+    const matches = HEADER_KEYWORDS.filter(kw => cells.some(c => c.includes(kw)));
+    if (matches.length >= 2) { headerRowIdx = i; break; }
+  }
+  const headerRow = rows[headerRowIdx] || [];
+  const dataStartIdx = headerRowIdx + 1;
+
+  // Map column name → index (case-insensitive, partial match)
+  function colIdx(keywords) {
+    for (const kw of keywords) {
+      const idx = headerRow.findIndex(h => h && String(h).toLowerCase().includes(kw));
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  }
+
+  const COL = {
+    response_id:          colIdx(['responseid', 'response id', 'response_id'])          !== -1 ? colIdx(['responseid', 'response id', 'response_id']) : 0,
+    feedback_date:        colIdx(['feedbackdate', 'feedback date', 'feedback_date'])     !== -1 ? colIdx(['feedbackdate', 'feedback date', 'feedback_date']) : 1,
+    event_date:           colIdx(['eventdate', 'event date', 'event_date', 'visitdate']) !== -1 ? colIdx(['eventdate', 'event date', 'event_date', 'visitdate']) : 2,
+    unit:                 colIdx(['unit'])                                               !== -1 ? colIdx(['unit']) : 3,
+    source:               colIdx(['source'])                                             !== -1 ? colIdx(['source']) : 4,
+    open_end:             colIdx(['openend', 'open end', 'open_end'])                   !== -1 ? colIdx(['openend', 'open end', 'open_end']) : 5,
+    comment:              colIdx(['comment'])                                            !== -1 ? colIdx(['comment']) : 6,
+    social_rating:        colIdx(['socialrating', 'social rating', 'social_rating'])    !== -1 ? colIdx(['socialrating', 'social rating', 'social_rating']) : 13,
+    overall_satisfaction: colIdx(['overall'])                                            !== -1 ? colIdx(['overall']) : 18,
+  };
+
+  console.log(`[SMG Parser] Header row ${headerRowIdx}, data starts ${dataStartIdx}, col map:`, JSON.stringify(COL));
+  console.log(`[SMG Parser] Header row contents:`, JSON.stringify(headerRow.slice(0, 25)));
+
   const comments = [];
-  // Header is row index 5, data starts at index 6
-  for (let i = 6; i < rows.length; i++) {
+  for (let i = dataStartIdx; i < rows.length; i++) {
     const row = rows[i];
-    if (!row[0] && !row[3]) continue;
-    const store_id = parseStoreId(row[3]);
+    if (!row) continue;
+    const store_id = parseStoreId(row[COL.unit]);
     if (!store_id) continue;
-    const comment = row[6] ? String(row[6]).trim() : null;
+    const comment = row[COL.comment] ? String(row[COL.comment]).trim() : null;
     if (!comment || comment.length < 5) continue;
-    const overallRaw = row[18];
-    const socialRaw  = row[13];
+    const overallRaw = row[COL.overall_satisfaction];
+    const socialRaw  = row[COL.social_rating];
     comments.push({
       store_id,
-      response_id:          row[0]  ? String(row[0]).trim() : null,
-      feedback_date:        row[1]  ? String(row[1]).trim() : null,
-      event_date:           row[2]  ? String(row[2]).trim() : null, // visit date/time
-      source:               row[4]  ? String(row[4]).trim() : null,
-      open_end:             row[5]  ? String(row[5]).trim() : null,
+      response_id:          row[COL.response_id]   ? String(row[COL.response_id]).trim()   : null,
+      feedback_date:        row[COL.feedback_date]  ? String(row[COL.feedback_date]).trim()  : null,
+      event_date:           row[COL.event_date]     ? String(row[COL.event_date]).trim()     : null,
+      source:               row[COL.source]         ? String(row[COL.source]).trim()         : null,
+      open_end:             row[COL.open_end]       ? String(row[COL.open_end]).trim()       : null,
       comment,
       overall_satisfaction: overallRaw != null ? parseFloat(String(overallRaw)) : null,
       social_rating:        socialRaw  != null ? parseFloat(String(socialRaw))  : null,
