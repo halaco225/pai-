@@ -109,7 +109,38 @@ async function exchangeRefreshToken(refreshToken) {
   return { accessToken, newRefreshToken: data.refresh_token || null };
 }
 
-// ── Auth path 3: Playwright PKCE login → capture token from network ──────────
+// ── Auth path 3: Direct password grant to auth.smg.com ───────────────────────
+// Bypasses reporting.smg.com SSO entirely — works as long as auth.smg.com
+// accepts resource-owner password credentials for client_id=smg360.
+
+async function getTokenViaPasswordGrant(user, pass) {
+  console.log('[SMG] Trying direct password grant to auth.smg.com...');
+  const formBody = new URLSearchParams({
+    grant_type: 'password',
+    username:   user,
+    password:   pass,
+    client_id:  'smg360',
+    scope:      'openid profile email offline_access',
+  }).toString();
+  const resp = await httpRequest('POST', SMG_TOKEN_URL, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: formBody,
+  });
+  if (resp.status !== 200) {
+    console.warn(`[SMG] Password grant failed: HTTP ${resp.status} — ${resp.body.slice(0, 300)}`);
+    return null;
+  }
+  const data = JSON.parse(resp.body);
+  const accessToken = data.access_token || data.accessToken;
+  if (!accessToken) {
+    console.warn('[SMG] Password grant: no access_token in response:', resp.body.slice(0, 200));
+    return null;
+  }
+  console.log('[SMG] Password grant succeeded — got access_token + refresh_token');
+  return { accessToken, refreshToken: data.refresh_token || null };
+}
+
+// ── Auth path 4: Playwright PKCE login → capture token from network ──────────
 
 async function getTokenViaPlaywright(user, pass) {
   console.log('[SMG] No cached token — attempting Playwright login to 360.smg.com...');
@@ -239,16 +270,27 @@ async function getAccessToken() {
     }
   }
 
-  // ── Path 3: Playwright PKCE login ─────────────────────────────────────────
+  // ── Path 3: Direct password grant to auth.smg.com ────────────────────────
   const user = process.env.SMG_USER     || '';
   const pass = process.env.SMG_PASSWORD || '';
   if (!user || !pass) {
     throw new Error(
-      'SMG auth failed: no valid refresh_token (env or DB) and no SMG_USER/SMG_PASSWORD for Playwright fallback. ' +
-      'Set SMG_REFRESH_TOKEN env var, or ensure SMG_USER + SMG_PASSWORD are set for automatic login.'
+      'SMG auth failed: no valid refresh_token (env or DB) and no SMG_USER/SMG_PASSWORD. ' +
+      'Set SMG_REFRESH_TOKEN, or SMG_USER + SMG_PASSWORD in env vars.'
     );
   }
 
+  const pwResult = await getTokenViaPasswordGrant(user, pass);
+  if (pwResult) {
+    if (db && pwResult.refreshToken) {
+      await db.setSMGAuth(pwResult.refreshToken).catch(() => {});
+      console.log('[SMG] Stored refresh_token from password grant — future runs will use pure HTTP');
+    }
+    return pwResult.accessToken;
+  }
+
+  // ── Path 4: Playwright PKCE login (last resort) ────────────────────────────
+  console.log('[SMG] Password grant failed — falling back to Playwright PKCE login...');
   const { accessToken, refreshToken } = await getTokenViaPlaywright(user, pass);
 
   // Persist the refresh_token to DB for future runs
