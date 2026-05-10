@@ -12,7 +12,7 @@ const multer = require('multer');
 const path   = require('path');
 const fs     = require('fs');
 
-// ── Multer config for HutBot file uploads ─────────────────────────────────────
+// ── Multer config for file uploads (HutBot, SMG) ──────────────────────────────
 const hutbotUploadDir = '/tmp/uploads';
 fs.mkdirSync(hutbotUploadDir, { recursive: true });
 const hutbotStorage = multer.diskStorage({
@@ -20,6 +20,12 @@ const hutbotStorage = multer.diskStorage({
   filename: (req, file, cb) => cb(null, `hutbot_${Date.now()}_${file.originalname}`),
 });
 const hutbotUpload = multer({ storage: hutbotStorage, limits: { fileSize: 10 * 1024 * 1024 } });
+
+const smgStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, hutbotUploadDir),
+  filename: (req, file, cb) => cb(null, `smg_${Date.now()}_${file.originalname}`),
+});
+const smgUpload = multer({ storage: smgStorage, limits: { fileSize: 20 * 1024 * 1024 } });
 
 let lastPipelineResult = null; // in-memory store of most recent pipeline run
 
@@ -1290,6 +1296,105 @@ router.post('/upload/hutbot', requireRole('rdo', 'vp', 'area_coach'), hutbotUplo
     });
   } catch (err) {
     console.error('[HutBot Upload] Error:', err.message);
+    fs.unlink(file.path, () => {});
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/intel/upload/smg — manual SMG Comments Excel upload ─────────────
+// Accepts the "Comments by Comment" Excel export from 360.smg.com.
+// Runs the same processing as the automated pipeline (Claude Haiku classification,
+// flags, shoutouts) — no credentials needed, user downloads the file manually.
+router.post('/upload/smg', requireRole('rdo', 'vp', 'area_coach'), smgUpload.single('file'), async (req, res) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: 'No file uploaded. Attach the SMG Comments xlsx export.' });
+
+  const targetDate = req.body.date || (() => {
+    const now = new Date();
+    const est = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    est.setDate(est.getDate() - 1);
+    return est.toISOString().split('T')[0];
+  })();
+
+  console.log(`[SMG Upload] Processing ${file.originalname} for ${targetDate}`);
+
+  try {
+    const { processSMG } = require('../services/parsers/smg-parser');
+    const result = await processSMG(file.path, targetDate);
+
+    if (!result.success) {
+      fs.unlink(file.path, () => {});
+      return res.status(422).json({ error: result.error || 'SMG processing failed' });
+    }
+
+    // Regenerate intel cache so dashboard reflects new data immediately
+    try {
+      const { generateIntelCache } = require('../services/intel-pipeline');
+      await generateIntelCache(targetDate);
+    } catch (cacheErr) {
+      console.warn('[SMG Upload] Cache regen failed (non-fatal):', cacheErr.message);
+    }
+
+    fs.unlink(file.path, () => {});
+    res.json({
+      success: true,
+      message: `Processed ${result.commentsProcessed} comments — ${result.flagsWritten} flags, ${result.shoutoutsWritten} shoutouts for ${targetDate}.`,
+      summary: { ...result, targetDate },
+    });
+  } catch (err) {
+    console.error('[SMG Upload] Error:', err.message);
+    fs.unlink(file.path, () => {});
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/intel/upload/winscore — manual SMG Win Score CSV upload ──────────
+// Accepts the CSV export from reporting.smg.com Comparison Report.
+router.post('/upload/winscore', requireRole('rdo', 'vp', 'area_coach'), smgUpload.single('file'), async (req, res) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: 'No file uploaded. Attach the Win Score CSV export.' });
+
+  const targetDate = req.body.date || (() => {
+    const now = new Date();
+    const est = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    est.setDate(est.getDate() - 1);
+    return est.toISOString().split('T')[0];
+  })();
+
+  console.log(`[WinScore Upload] Processing ${file.originalname} for ${targetDate}`);
+
+  try {
+    const { parseWinScoreCSV } = require('../services/intel-smg-winscore');
+    const csvText = fs.readFileSync(file.path, 'utf8');
+    const scores  = parseWinScoreCSV(csvText);
+
+    if (!scores.length) {
+      fs.unlink(file.path, () => {});
+      return res.json({ success: true, message: 'File parsed — no Win Score data found.', scoresWritten: 0 });
+    }
+
+    const pool = db.getPool();
+    if (!pool) throw new Error('No DB connection');
+
+    let written = 0;
+    for (const s of scores) {
+      await pool.query(`
+        INSERT INTO smg_win_scores (store_id, period_end_date, win_score, survey_count, updated_at)
+        VALUES ($1, $2, $3, $4, NOW())
+        ON CONFLICT (store_id, period_end_date)
+        DO UPDATE SET win_score=$3, survey_count=$4, updated_at=NOW()
+      `, [s.store_id, targetDate, s.win_score, s.survey_count]);
+      written++;
+    }
+
+    fs.unlink(file.path, () => {});
+    res.json({
+      success: true,
+      message: `Processed ${scores.length} stores — ${written} Win Scores written for ${targetDate}.`,
+      summary: { scoresWritten: written, storeCount: scores.length, targetDate },
+    });
+  } catch (err) {
+    console.error('[WinScore Upload] Error:', err.message);
     fs.unlink(file.path, () => {});
     res.status(500).json({ error: err.message });
   }

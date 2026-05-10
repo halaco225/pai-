@@ -268,6 +268,8 @@ button{font-family:inherit;cursor:pointer}
       <div class="date-pill">📅 <input type="date" id="dateInput" onchange="onDateChange(this.value)"></div>
       <button class="run-batch-btn hidden" id="runBatchBtn" onclick="runBatchNow()">⚡ Run Batch</button>
       <button class="run-batch-btn hidden" id="backfillBtn" onclick="runBackfill()" style="background:#6366f1">📅 Backfill History</button>
+      <button class="run-batch-btn hidden" id="smgUploadBtn" onclick="document.getElementById('smgFileInput').click()" style="background:#0e4a2e;border-color:#22c55e;color:#86efac">💬 Upload SMG</button>
+      <input type="file" id="smgFileInput" accept=".xlsx,.xls" class="hidden" onchange="uploadSMGFile(this)">
       <button class="refresh-btn" onclick="init()">↺ Refresh Data</button>
     </div>
   </header>
@@ -496,6 +498,7 @@ function setupUser(u){
     document.getElementById('opsLabel').classList.remove('hidden');
     document.getElementById('runBatchBtn').classList.remove('hidden');
     document.getElementById('backfillBtn').classList.remove('hidden');
+    document.getElementById('smgUploadBtn').classList.remove('hidden');
   }
 }
 
@@ -1107,6 +1110,28 @@ function fmtMoney(v){if(v==null)return'—';const n=Number(v);return n>=1000?'$'
 function fmtPct(v){return v==null?'—':(Number(v)>0?'+':'')+Number(v).toFixed(1)+'%';}
 function fmtHrs(v){return v==null?'—':Number(v).toFixed(1)+' hrs';}
 function fmtMetric(t){return{CHANGE_DOWN:'Change Down',CHANGED_MILES:'Changed Miles',PAIDOUT:'Paid Out',CASH_VARIANCE:'Cash Variance',REFUNDS:'Refunds',CANCEL_UNMADE:'Cancel/Unmade',PRODUCTION_TIME:'Production Time',LABOR_NOT_ADJUSTED:'Labor Not Adjusted',LABOR_OVER_BUDGET:'Labor Over Budget',LABOR_UNDER_BUDGET:'Labor Under Budget',OT_OVER_SCHEDULED:'OT Over Scheduled',OT_OVER_RUN:'OT Over Run',DOUBLE_TIME:'Double Time',FORGOT_CLOCKOUT:'Forgot Clock Out',CLOCKOUT_REMINDER:'Clock Out Reminder',GUEST_COMPLAINT:'Guest Complaint',PUSH_SURVEYS:'Push Surveys Needed',ROUTINE_MISSED:'Routine Missed',ROUTINE_LATE:'Routine Late',PERFORMANCE_TREND:'Performance Trend'}[t]||t||'—';}
+async function uploadSMGFile(input){
+  const file=input.files[0];
+  if(!file)return;
+  const btn=document.getElementById('smgUploadBtn');
+  btn.disabled=true;btn.textContent='⟳ Uploading…';
+  try{
+    const fd=new FormData();
+    fd.append('file',file);
+    fd.append('date',selectedDate);
+    const res=await fetch('/api/intel/upload/smg',{method:'POST',body:fd});
+    const d=await res.json();
+    if(!res.ok)throw new Error(d.error||'Upload failed');
+    alert('✅ '+d.message);
+    await Promise.all([loadKPIs(),loadFlags(),loadBrief()]);
+  }catch(err){
+    alert('❌ SMG upload error: '+err.message);
+  }finally{
+    btn.disabled=false;btn.textContent='💬 Upload SMG';
+    input.value='';
+  }
+}
+
 async function runBatchNow(){
   const btn=document.getElementById('runBatchBtn');
   if(btn.disabled)return;
