@@ -401,6 +401,60 @@ router.get('/debug/playwright', async (req, res) => {
   });
 });
 
+// ── POST /api/intel/upload/smg — manual SMG Comments Excel upload ─────────────
+// Accepts the "Comments by Comment" Excel export from 360.smg.com.
+// Runs the same processing as the automated pipeline (Claude Haiku classification,
+// flags, shoutouts) — no credentials needed, user downloads the file manually.
+// NOTE: This route must be BEFORE router.use(requireAuth) so the automation token works.
+router.post('/upload/smg', smgUpload.single('file'), async (req, res) => {
+  // Accept either a logged-in RDO/VP session OR the automation token
+  const tkn = req.headers['x-automation-token'] || req.query.token;
+  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, '38b8091924e1f85583454212a9860038'].filter(Boolean);
+  const hasToken = tkn && validTokens.includes(tkn);
+  const hasRole  = req.session?.user && ['rdo','vp','area_coach'].includes(req.session.user.role);
+  if (!hasToken && !hasRole) return res.status(401).json({ error: 'Unauthorized' });
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: 'No file uploaded. Attach the SMG Comments xlsx export.' });
+
+  const targetDate = req.body.date || (() => {
+    const now = new Date();
+    const est = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    est.setDate(est.getDate() - 1);
+    return est.toISOString().split('T')[0];
+  })();
+
+  console.log(`[SMG Upload] Processing ${file.originalname} for ${targetDate}`);
+
+  try {
+    const { processSMG } = require('../services/parsers/smg-parser');
+    const result = await processSMG(file.path, targetDate);
+
+    if (!result.success) {
+      fs.unlink(file.path, () => {});
+      return res.status(422).json({ error: result.error || 'SMG processing failed' });
+    }
+
+    // Regenerate intel cache so dashboard reflects new data immediately
+    try {
+      const { generateIntelCache } = require('../services/intel-pipeline');
+      await generateIntelCache(targetDate);
+    } catch (cacheErr) {
+      console.warn('[SMG Upload] Cache regen failed (non-fatal):', cacheErr.message);
+    }
+
+    fs.unlink(file.path, () => {});
+    res.json({
+      success: true,
+      message: `Processed ${result.commentsProcessed} comments — ${result.flagsWritten} flags, ${result.shoutoutsWritten} shoutouts for ${targetDate}.`,
+      summary: { ...result, targetDate },
+    });
+  } catch (err) {
+    console.error('[SMG Upload] Error:', err.message);
+    fs.unlink(file.path, () => {});
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.use(requireAuth);
 
 // ── POST /api/intel/automation/run-now — manual batch trigger (session auth, rdo/vp only) ──
@@ -1296,59 +1350,6 @@ router.post('/upload/hutbot', requireRole('rdo', 'vp', 'area_coach'), hutbotUplo
     });
   } catch (err) {
     console.error('[HutBot Upload] Error:', err.message);
-    fs.unlink(file.path, () => {});
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── POST /api/intel/upload/smg — manual SMG Comments Excel upload ─────────────
-// Accepts the "Comments by Comment" Excel export from 360.smg.com.
-// Runs the same processing as the automated pipeline (Claude Haiku classification,
-// flags, shoutouts) — no credentials needed, user downloads the file manually.
-router.post('/upload/smg', smgUpload.single('file'), async (req, res) => {
-  // Accept either a logged-in RDO/VP session OR the automation token
-  const tkn = req.headers['x-automation-token'] || req.query.token;
-  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, '38b8091924e1f85583454212a9860038'].filter(Boolean);
-  const hasToken = tkn && validTokens.includes(tkn);
-  const hasRole  = req.session?.user && ['rdo','vp','area_coach'].includes(req.session.user.role);
-  if (!hasToken && !hasRole) return res.status(401).json({ error: 'Unauthorized' });
-  const file = req.file;
-  if (!file) return res.status(400).json({ error: 'No file uploaded. Attach the SMG Comments xlsx export.' });
-
-  const targetDate = req.body.date || (() => {
-    const now = new Date();
-    const est = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-    est.setDate(est.getDate() - 1);
-    return est.toISOString().split('T')[0];
-  })();
-
-  console.log(`[SMG Upload] Processing ${file.originalname} for ${targetDate}`);
-
-  try {
-    const { processSMG } = require('../services/parsers/smg-parser');
-    const result = await processSMG(file.path, targetDate);
-
-    if (!result.success) {
-      fs.unlink(file.path, () => {});
-      return res.status(422).json({ error: result.error || 'SMG processing failed' });
-    }
-
-    // Regenerate intel cache so dashboard reflects new data immediately
-    try {
-      const { generateIntelCache } = require('../services/intel-pipeline');
-      await generateIntelCache(targetDate);
-    } catch (cacheErr) {
-      console.warn('[SMG Upload] Cache regen failed (non-fatal):', cacheErr.message);
-    }
-
-    fs.unlink(file.path, () => {});
-    res.json({
-      success: true,
-      message: `Processed ${result.commentsProcessed} comments — ${result.flagsWritten} flags, ${result.shoutoutsWritten} shoutouts for ${targetDate}.`,
-      summary: { ...result, targetDate },
-    });
-  } catch (err) {
-    console.error('[SMG Upload] Error:', err.message);
     fs.unlink(file.path, () => {});
     res.status(500).json({ error: err.message });
   }
