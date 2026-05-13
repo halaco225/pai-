@@ -536,11 +536,16 @@ async function loadDay(dateStr) {
 function resolveStoreForApi() {
   const search = state.filters.store;
   if (!search) return null;
-  const src = state.wtdData?.stores || [];
   // Normalize input to S######
   const normalized = 'S' + search.replace(/^[Ss]/, '').padStart(6, '0');
+  const src = state.wtdData?.stores || state.dayData?.stores || [];
+  // Try exact match against loaded store list
   const exact = src.find(s => s.store_id === normalized || s.store_id?.toLowerCase() === search.toLowerCase());
   if (exact) return exact.store_id;
+  // If input is purely numeric or S+digits, trust the normalized form directly
+  // so Trend/DOW/PTD work even when that store isn't in the current week's WTD data
+  if (/^[Ss]?\d+$/.test(search.trim())) return normalized;
+  // For name/partial-ID searches: only resolve when exactly one store matches
   const matches = src.filter(s =>
     s.name?.toLowerCase().includes(search) || s.store_id?.toLowerCase().includes(search)
   );
