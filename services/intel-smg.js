@@ -127,7 +127,9 @@ async function getTokenViaPasswordGrant(user, pass) {
     body: formBody,
   });
   if (resp.status !== 200) {
-    console.warn(`[SMG] Password grant failed: HTTP ${resp.status} — ${resp.body.slice(0, 300)}`);
+    console.error(`[SMG] Password grant FAILED: HTTP ${resp.status}`);
+    console.error(`[SMG] Response body: ${resp.body.slice(0, 500)}`);
+    console.error(`[SMG] client_id used: smg360, scope: openid profile email offline_access`);
     return null;
   }
   const data = JSON.parse(resp.body);
@@ -289,17 +291,14 @@ async function getAccessToken() {
     return pwResult.accessToken;
   }
 
-  // ── Path 4: Playwright PKCE login (last resort) ────────────────────────────
-  console.log('[SMG] Password grant failed — falling back to Playwright PKCE login...');
-  const { accessToken, refreshToken } = await getTokenViaPlaywright(user, pass);
-
-  // Persist the refresh_token to DB for future runs
-  if (db && refreshToken) {
-    await db.setSMGAuth(refreshToken).catch(() => {});
-    console.log('[SMG] Stored new refresh_token in DB — future runs will use pure HTTP');
-  }
-
-  return accessToken;
+  // Password grant failed — surface the error instead of trying Playwright
+  // (Playwright Chromium binary is not reliably available on Render starter plan)
+  throw new Error(
+    'SMG auth failed: OAuth2 password grant to auth.smg.com returned null. ' +
+    'Check Render logs for "[SMG] Password grant failed" to see the HTTP response. ' +
+    'Possible causes: wrong client_id, unsupported grant type, or credentials mismatch. ' +
+    'Set SMG_REFRESH_TOKEN env var to bypass.'
+  );
 }
 
 // ── Step 2: Build date range (30-day window ending at targetDate) ────────────

@@ -32,6 +32,7 @@ function httpRequest(method, urlPath, { headers = {}, body, binary = false, cook
     const reqHeaders = {
       Accept: 'application/json',
       'Content-Type': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       ...(cookieHeader ? { Cookie: cookieHeader } : {}),
       ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}),
       ...headers,
