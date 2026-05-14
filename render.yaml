@@ -54,7 +54,7 @@ services:
         value: /tmp/hutbot-profile
       # ── Automation tokens ───────────────────────────────────
       - key: VELOCITY_AUTOMATION_TOKEN
-        generateValue: true
+        value: 022f4a0fa4e2ec99541609c47744d599
       - key: INTEL_AUTOMATION_TOKEN
         value: 38b8091924e1f85583454212a9860038
 
