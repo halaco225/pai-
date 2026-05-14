@@ -1,28 +1,29 @@
 'use strict';
 /**
- * SMG comment export — pure HTTP approach.
+ * SMG comment export — pure HTTP, cookie-based auth.
  *
- * Auth flow (tried in order):
- *   1. SMG_REFRESH_TOKEN env var  → refresh_token grant (fastest)
- *   2. DB smg_auth table          → stored refresh_token (fast, survives redeploys)
- *   3. Playwright PKCE login      → automatic browser login, captures + stores token
+ * Auth: reporting.smg.com/Index.aspx ASP.NET Forms login.
+ * The .ASPXAUTH cookie is scoped to *.smg.com, so it authenticates
+ * both reporting.smg.com and 360.smg.com API calls without any OAuth.
  *
- * After Playwright login succeeds the refresh_token is written to DB so all
- * future runs use path 2 (no browser needed).
- *
- * Export flow (once access_token is obtained):
- *   POST to 360.smg.com/api/export/v2/commentreport with Bearer token
- *   → returns xlsx binary
+ * Export flow:
+ *   1. GET reporting.smg.com/Index.aspx → scrape hidden fields
+ *   2. POST credentials → receive .ASPXAUTH cookie
+ *   3. GET 360.smg.com with those cookies → establish 360 session
+ *   4. POST 360.smg.com/api/export/v2/commentreport → xlsx binary
  */
 const https = require('https');
+const http  = require('http');
+const url   = require('url');
 const fs    = require('fs');
 const path  = require('path');
 
-const SMG_TOKEN_URL   = 'https://auth.smg.com/connect/token';
-const SMG_EXPORT_URL  = 'https://360.smg.com/api/export/v2/commentreport';
-const ACCOUNT_ID     = '5b6205b27485e95d90e0a366';
-const REPORT_ID      = '5b621d617485e95d90e0a36f';
-const CARD_ID        = '5b621d617485e95d90e0a370';
+const LOGIN_URL   = 'https://reporting.smg.com/Index.aspx';
+const BASE_360    = 'https://360.smg.com';
+const EXPORT_URL  = `${BASE_360}/api/export/v2/commentreport`;
+const ACCOUNT_ID  = '5b6205b27485e95d90e0a366';
+const REPORT_ID   = '5b621d617485e95d90e0a36f';
+const CARD_ID     = '5b621d617485e95d90e0a370';
 
 // Survey sources included in the filter (from captured network request)
 const FILTER_SOURCES = [
@@ -45,272 +46,155 @@ const ALL_SOURCES = [
   '63f39d717485e921f0f4a405', '5f2ca93d7485e90bec6c7bda',
 ];
 
-// ── HTTP helper ─────────────────────────────────────────────────────────────
+// ── HTTP / cookie helpers ─────────────────────────────────────────────────────
 
-function httpRequest(method, url, { headers = {}, body, binary = false } = {}) {
+function makeCookieJar() {
+  const store = new Map();
+  return {
+    set(domain, cookieHeader) {
+      if (!cookieHeader) return;
+      const headers = Array.isArray(cookieHeader) ? cookieHeader : [cookieHeader];
+      if (!store.has(domain)) store.set(domain, new Map());
+      const jar = store.get(domain);
+      for (const h of headers) {
+        const pair = h.split(';')[0].trim();
+        const eq   = pair.indexOf('=');
+        if (eq < 1) continue;
+        jar.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
+      }
+    },
+    get(domain) {
+      // Collect cookies from exact domain plus parent .smg.com scope
+      const exact  = store.get(domain) || new Map();
+      const parent = store.get('.smg.com') || new Map();
+      const merged = new Map([...parent, ...exact]);
+      return [...merged.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
+    },
+    dump() {
+      const out = {};
+      for (const [d, m] of store) out[d] = Object.fromEntries(m);
+      return out;
+    },
+  };
+}
+
+function httpReq(jar, method, reqUrl, opts = {}) {
   return new Promise((resolve, reject) => {
-    const u = new URL(url);
-    const opts = {
-      hostname: u.hostname,
-      path:     u.pathname + u.search,
-      method,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
-        ...headers,
-      },
+    const parsed  = new url.URL(reqUrl);
+    const domain  = parsed.hostname;
+    const cookies = jar ? jar.get(domain) : '';
+    const isHttps = parsed.protocol === 'https:';
+    const lib     = isHttps ? https : http;
+
+    const headers = {
+      'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      ...(cookies ? { Cookie: cookies } : {}),
+      ...opts.headers,
     };
-    if (body) opts.headers['Content-Length'] = Buffer.byteLength(body);
-    const req = https.request(opts, res => {
+
+    const body = opts.body || null;
+    if (body) {
+      headers['Content-Type']   = headers['Content-Type'] || 'application/x-www-form-urlencoded';
+      headers['Content-Length'] = Buffer.byteLength(body);
+    }
+
+    const reqOpts = {
+      method,
+      hostname: parsed.hostname,
+      port:     parsed.port || (isHttps ? 443 : 80),
+      path:     parsed.pathname + parsed.search,
+      headers,
+    };
+
+    const req = lib.request(reqOpts, (res) => {
+      const setCookies = res.headers['set-cookie'];
+      if (setCookies && jar) jar.set(domain, setCookies);
+
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+        const next = new url.URL(res.headers.location, reqUrl).href;
+        res.resume();
+        return resolve(httpReq(jar, 'GET', next, opts.followRedirectOpts || {}));
+      }
+
       const chunks = [];
       res.on('data', c => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
       res.on('end', () => {
-        clearTimeout(timer);
-        const buf = Buffer.concat(chunks);
         resolve({
           status:  res.statusCode,
           headers: res.headers,
-          body:    binary ? buf : buf.toString('utf8'),
-          buffer:  buf,
+          body:    opts.binary ? Buffer.concat(chunks) : Buffer.concat(chunks).toString('utf8'),
         });
       });
     });
-    const timer = setTimeout(() => {
-      req.destroy(new Error(`SMG request timeout after 60s: ${method} ${url.slice(0, 80)}`));
-    }, 60000);
+
+    const timer = setTimeout(() => req.destroy(new Error('SMG request timeout 60s')), 60000);
     req.on('error', (e) => { clearTimeout(timer); reject(e); });
+    req.on('close', () => clearTimeout(timer));
     if (body) req.write(body);
     req.end();
   });
 }
 
-// ── Auth path 1 & 2: refresh_token grant ────────────────────────────────────
+function extractHidden(html, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const m = html.match(new RegExp(`<input[^>]+name="${escaped}"[^>]+value="([^"]*)"`, 'i')) ||
+            html.match(new RegExp(`<input[^>]+value="([^"]*)"[^>]+name="${escaped}"`, 'i'));
+  return m ? m[1] : '';
+}
 
-async function exchangeRefreshToken(refreshToken) {
-  const formBody = new URLSearchParams({
-    grant_type:    'refresh_token',
-    refresh_token: refreshToken,
-    client_id:     'smg360',
-  }).toString();
-  const resp = await httpRequest('POST', SMG_TOKEN_URL, {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: formBody,
+function formEncode(obj) {
+  return Object.entries(obj)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v ?? '')}`)
+    .join('&');
+}
+
+// ── Auth: login via reporting.smg.com ─────────────────────────────────────────
+
+async function login(jar, user, pass) {
+  console.log('[SMG] GET reporting.smg.com login page');
+  const r1 = await httpReq(jar, 'GET', LOGIN_URL, {});
+  if (r1.status !== 200) throw new Error(`Login page HTTP ${r1.status}`);
+
+  const fields = {
+    __LASTFOCUS:          '',
+    __EVENTTARGET:        '',
+    __EVENTARGUMENT:      '',
+    __VIEWSTATE:          extractHidden(r1.body, '__VIEWSTATE'),
+    __VIEWSTATEGENERATOR: extractHidden(r1.body, '__VIEWSTATEGENERATOR'),
+    __EVENTVALIDATION:    extractHidden(r1.body, '__EVENTVALIDATION'),
+    ctl00_TheScriptManager_HiddenField: extractHidden(r1.body, 'ctl00_TheScriptManager_HiddenField'),
+    'ctl00$cphMain$txtUserName': user,
+    'ctl00$cphMain$txtPassword': pass,
+  };
+
+  console.log('[SMG] POST credentials to reporting.smg.com');
+  const r2 = await httpReq(jar, 'POST', LOGIN_URL, {
+    body: formEncode(fields),
+    headers: { Referer: LOGIN_URL, Origin: 'https://reporting.smg.com' },
   });
-  if (resp.status !== 200) {
-    console.warn(`[SMG] refresh_token exchange failed: HTTP ${resp.status} — ${resp.body.slice(0, 200)}`);
-    return null;
-  }
-  const data = JSON.parse(resp.body);
-  const accessToken = data.access_token || data.accessToken;
-  if (!accessToken) {
-    console.warn('[SMG] refresh_token exchange: no access_token in response');
-    return null;
-  }
-  // Return both so caller can store updated refresh_token (rotation)
-  return { accessToken, newRefreshToken: data.refresh_token || null };
-}
 
-// ── Auth path 3: Direct password grant to auth.smg.com ───────────────────────
-// Bypasses reporting.smg.com SSO entirely — works as long as auth.smg.com
-// accepts resource-owner password credentials for client_id=smg360.
+  if (r2.status === 200 && r2.body.includes('txtPassword')) {
+    throw new Error('Login failed — check SMG_USER / SMG_PASSWORD');
+  }
+  console.log('[SMG] Login OK at reporting.smg.com');
 
-async function getTokenViaPasswordGrant(user, pass) {
-  console.log('[SMG] Trying direct password grant to auth.smg.com...');
-  const formBody = new URLSearchParams({
-    grant_type: 'password',
-    username:   user,
-    password:   pass,
-    client_id:  'smg360',
-    scope:      'openid profile email offline_access',
-  }).toString();
-  const resp = await httpRequest('POST', SMG_TOKEN_URL, {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: formBody,
+  // Establish 360.smg.com session with the same cookies (domain-wide .smg.com)
+  console.log('[SMG] GET 360.smg.com to establish 360 session');
+  await httpReq(jar, 'GET', BASE_360, {
+    headers: { Accept: 'text/html', Referer: 'https://reporting.smg.com/' },
   });
-  if (resp.status !== 200) {
-    console.error(`[SMG] Password grant FAILED: HTTP ${resp.status}`);
-    console.error(`[SMG] Response body: ${resp.body.slice(0, 500)}`);
-    console.error(`[SMG] client_id used: smg360, scope: openid profile email offline_access`);
-    return null;
-  }
-  const data = JSON.parse(resp.body);
-  const accessToken = data.access_token || data.accessToken;
-  if (!accessToken) {
-    console.warn('[SMG] Password grant: no access_token in response:', resp.body.slice(0, 200));
-    return null;
-  }
-  console.log('[SMG] Password grant succeeded — got access_token + refresh_token');
-  return { accessToken, refreshToken: data.refresh_token || null };
+  console.log('[SMG] 360.smg.com session ready');
 }
 
-// ── Auth path 4: Playwright PKCE login → capture token from network ──────────
-
-async function getTokenViaPlaywright(user, pass) {
-  console.log('[SMG] No cached token — attempting Playwright login to 360.smg.com...');
-  const { launchContext } = require('./browser-launch');
-  const tmpDir = '/tmp/smg-pw-profile';
-  fs.mkdirSync(tmpDir, { recursive: true });
-
-  let context;
-  try {
-    let capturedTokenData = null;
-
-    context = await launchContext(tmpDir, {});
-    const page = await context.newPage();
-
-    // Intercept auth.smg.com/connect/token response to capture tokens
-    page.on('response', async (response) => {
-      try {
-        const url = response.url();
-        if (url.includes('auth.smg.com/connect/token') && response.status() === 200) {
-          const data = await response.json();
-          if (data.refresh_token) {
-            console.log('[SMG] Playwright: captured token response from auth.smg.com');
-            capturedTokenData = data;
-          }
-        }
-      } catch (_) {}
-    });
-
-    // Navigate to 360.smg.com — redirects to auth.smg.com login
-    console.log('[SMG] Playwright: navigating to 360.smg.com...');
-    await page.goto('https://360.smg.com', { waitUntil: 'domcontentloaded', timeout: 60000 });
-
-    // Wait for login form (either on 360.smg.com or redirected to auth.smg.com)
-    await page.waitForSelector('input[type="email"], input[type="text"]', { timeout: 30000 });
-
-    // Fill email/username
-    const emailField = page.locator('input[type="email"], input[name*="email" i], input[name*="user" i], input[type="text"]').first();
-    await emailField.fill(user);
-    console.log('[SMG] Playwright: filled username field');
-
-    // Some login flows show password on the same page, others after clicking Next
-    const passVisible = await page.locator('input[type="password"]').isVisible().catch(() => false);
-    if (!passVisible) {
-      // Click Next/Continue to reveal password field
-      const nextBtn = page.locator('button[type="submit"], input[type="submit"], button:has-text("Next"), button:has-text("Continue"), button:has-text("Sign in")').first();
-      await nextBtn.click();
-      await page.waitForSelector('input[type="password"]', { timeout: 15000 });
-    }
-
-    const passField = page.locator('input[type="password"]').first();
-    await passField.fill(pass);
-    console.log('[SMG] Playwright: filled password field');
-
-    // Submit
-    await page.locator('button[type="submit"], input[type="submit"]').first().click();
-    console.log('[SMG] Playwright: submitted login form — waiting for redirect...');
-
-    // Wait for redirect back to 360.smg.com and token capture
-    await page.waitForURL(/360\.smg\.com/, { timeout: 30000 }).catch(() => {});
-
-    // Give the SPA a moment to exchange the code for tokens
-    await page.waitForTimeout(3000);
-
-    if (!capturedTokenData) {
-      // Try waiting a bit longer
-      await page.waitForTimeout(5000);
-    }
-
-    if (!capturedTokenData) {
-      const currentUrl = page.url();
-      throw new Error(`SMG Playwright login: did not capture token. Current URL: ${currentUrl.slice(0, 100)}`);
-    }
-
-    console.log('[SMG] Playwright login succeeded — access_token and refresh_token captured');
-    return {
-      accessToken:  capturedTokenData.access_token || capturedTokenData.accessToken,
-      refreshToken: capturedTokenData.refresh_token,
-    };
-  } finally {
-    if (context) {
-      try { await context.close(); } catch (_) {}
-    }
-    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
-  }
-}
-
-// ── Main auth: env → DB → Playwright ─────────────────────────────────────────
-
-async function getAccessToken() {
-  let db;
-  try { db = require('./db'); } catch (_) { db = null; }
-
-  // ── Path 1: SMG_REFRESH_TOKEN env var ──────────────────────────────────────
-  const envRefreshToken = process.env.SMG_REFRESH_TOKEN || '';
-  if (envRefreshToken) {
-    console.log('[SMG] Trying access token via SMG_REFRESH_TOKEN env var...');
-    const result = await exchangeRefreshToken(envRefreshToken);
-    if (result) {
-      console.log('[SMG] Got access token via env refresh_token');
-      // Store new token if rotation occurred
-      if (result.newRefreshToken && db) {
-        await db.setSMGAuth(result.newRefreshToken).catch(() => {});
-      }
-      return result.accessToken;
-    }
-    // Env token failed — fall through to DB / Playwright
-    console.warn('[SMG] Env SMG_REFRESH_TOKEN failed — trying DB / Playwright fallback');
-  }
-
-  // ── Path 2: DB stored refresh_token ───────────────────────────────────────
-  if (db) {
-    const stored = await db.getSMGAuth().catch(() => null);
-    if (stored && stored.is_valid && stored.refresh_token) {
-      console.log('[SMG] Trying access token via DB-stored refresh_token...');
-      const result = await exchangeRefreshToken(stored.refresh_token);
-      if (result) {
-        console.log('[SMG] Got access token via DB refresh_token');
-        // Update DB with rotated refresh_token if applicable
-        if (result.newRefreshToken) {
-          await db.setSMGAuth(result.newRefreshToken).catch(() => {});
-        }
-        return result.accessToken;
-      }
-      // DB token failed — mark invalid and fall through
-      console.warn('[SMG] DB refresh_token failed — marking invalid, falling through to Playwright');
-      await db.markSMGAuthInvalid().catch(() => {});
-    }
-  }
-
-  // ── Path 3: Direct password grant to auth.smg.com ────────────────────────
-  const user = process.env.SMG_USER     || '';
-  const pass = process.env.SMG_PASSWORD || '';
-  if (!user || !pass) {
-    throw new Error(
-      'SMG auth failed: no valid refresh_token (env or DB) and no SMG_USER/SMG_PASSWORD. ' +
-      'Set SMG_REFRESH_TOKEN, or SMG_USER + SMG_PASSWORD in env vars.'
-    );
-  }
-
-  const pwResult = await getTokenViaPasswordGrant(user, pass);
-  if (pwResult) {
-    if (db && pwResult.refreshToken) {
-      await db.setSMGAuth(pwResult.refreshToken).catch(() => {});
-      console.log('[SMG] Stored refresh_token from password grant — future runs will use pure HTTP');
-    }
-    return pwResult.accessToken;
-  }
-
-  // Password grant failed — surface the error instead of trying Playwright
-  // (Playwright Chromium binary is not reliably available on Render starter plan)
-  throw new Error(
-    'SMG auth failed: OAuth2 password grant to auth.smg.com returned null. ' +
-    'Check Render logs for "[SMG] Password grant failed" to see the HTTP response. ' +
-    'Possible causes: wrong client_id, unsupported grant type, or credentials mismatch. ' +
-    'Set SMG_REFRESH_TOKEN env var to bypass.'
-  );
-}
-
-// ── Step 2: Build date range (30-day window ending at targetDate) ────────────
+// ── Build date range (30-day window ending at targetDate) ─────────────────────
 
 function buildDateRange(targetDate) {
-  // targetDate is "YYYY-MM-DD" in local time; ET midnight = UTC 04:00 or 05:00
-  // Use 05:00 UTC (EST offset) as a safe midnight boundary
-  const endMs   = new Date(targetDate + 'T05:00:00.000Z').getTime() + 86400000; // end of targetDate ET
+  const endMs   = new Date(targetDate + 'T05:00:00.000Z').getTime() + 86400000;
   const startMs = endMs - 30 * 86400000;
   const bmEndMs = startMs - 1;
   const bmStartMs = bmEndMs - 30 * 86400000 + 1;
-
   return {
     startDate:          new Date(startMs).toISOString(),
     endDate:            new Date(endMs - 1).toISOString(),
@@ -320,11 +204,11 @@ function buildDateRange(targetDate) {
   };
 }
 
-// ── Step 3: POST export request → xlsx binary ───────────────────────────────
+// ── Export comments ───────────────────────────────────────────────────────────
 
-async function exportComments(accessToken, targetDate) {
+async function exportComments(jar, targetDate) {
   const dateRange = buildDateRange(targetDate);
-  console.log(`[SMG] Exporting comments for date range ${dateRange.startDate} → ${dateRange.endDate}`);
+  console.log(`[SMG] Exporting comments ${dateRange.startDate} → ${dateRange.endDate}`);
 
   const payload = {
     reportId:              REPORT_ID,
@@ -342,69 +226,84 @@ async function exportComments(accessToken, targetDate) {
         dateType:        0,
         reportGenerated: null,
       },
-      hierarchy:           {},
-      socialSites:         [],
-      attributeMeasures:   [],
-      openEnds:            [],
-      searchTerms:         null,
-      aggregationPeriod:   null,
-      ontologyGroups:      [],
+      hierarchy:         {},
+      socialSites:       [],
+      attributeMeasures: [],
+      openEnds:          [],
+      searchTerms:       null,
+      aggregationPeriod: null,
+      ontologyGroups:    [],
     },
-    exportFileType:    1,
-    baseFileName:      'Comments_ByComment',
-    timeZone:          'America/New_York',
-    separateComments:  true,
+    exportFileType:   1,
+    baseFileName:     'Comments_ByComment',
+    timeZone:         'America/New_York',
+    separateComments: true,
   };
 
   const body = JSON.stringify(payload);
-  const resp = await httpRequest('POST', SMG_EXPORT_URL, {
-    headers: {
-      'Authorization':  `Bearer ${accessToken}`,
-      'AccountId':      ACCOUNT_ID,
-      'Content-Type':   'application/json',
-      'accept':         'application/xlsx',
-      'SMG-LanguageIso': 'en-US',
-      'TimeZone':       'America/New_York',
-      'Origin':         'https://360.smg.com',
-      'Referer':        'https://360.smg.com/',
-    },
+  const resp = await httpReq(jar, 'POST', EXPORT_URL, {
     body,
     binary: true,
+    headers: {
+      'AccountId':       ACCOUNT_ID,
+      'Content-Type':    'application/json',
+      'accept':          'application/xlsx',
+      'SMG-LanguageIso': 'en-US',
+      'TimeZone':        'America/New_York',
+      'Origin':          BASE_360,
+      'Referer':         `${BASE_360}/`,
+      'X-Requested-With': 'XMLHttpRequest',
+    },
   });
 
-  console.log(`[SMG] Export response: HTTP ${resp.status}, size=${resp.buffer.length} bytes`);
+  console.log(`[SMG] Export HTTP ${resp.status}, ${resp.body?.length ?? 0} bytes`);
 
   if (resp.status !== 200) {
-    const msg = resp.buffer.toString('utf8').slice(0, 300);
-    throw new Error(`SMG export failed: HTTP ${resp.status} — ${msg}`);
+    const preview = Buffer.isBuffer(resp.body) ? resp.body.toString('utf8').slice(0, 300) : String(resp.body).slice(0, 300);
+    throw new Error(`SMG export failed: HTTP ${resp.status} — ${preview}`);
   }
 
-  // Verify it looks like an xlsx (PK zip magic bytes)
-  if (resp.buffer[0] !== 0x50 || resp.buffer[1] !== 0x4b) {
-    const preview = resp.buffer.toString('utf8').slice(0, 200);
-    throw new Error(`SMG export returned non-xlsx data: ${preview}`);
+  const buf = Buffer.isBuffer(resp.body) ? resp.body : Buffer.from(resp.body);
+  if (buf[0] !== 0x50 || buf[1] !== 0x4b) {
+    throw new Error(`SMG export returned non-xlsx data: ${buf.toString('utf8').slice(0, 200)}`);
   }
 
-  return resp.buffer;
+  return buf;
 }
 
-// ── Main export function ────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 async function downloadSMGComments(targetDate) {
+  const user = process.env.SMG_USER     || '';
+  const pass = process.env.SMG_PASSWORD || '';
+  if (!user || !pass) {
+    return { success: false, error: 'SMG_USER / SMG_PASSWORD env vars not set' };
+  }
+
   const tmpDir  = '/tmp/uploads';
   fs.mkdirSync(tmpDir, { recursive: true });
   const outPath = path.join(tmpDir, `intel-smg-${targetDate}.xlsx`);
 
+  const jar = makeCookieJar();
+
   try {
-    const accessToken = await getAccessToken();
-    const xlsxBuffer  = await exportComments(accessToken, targetDate);
-    fs.writeFileSync(outPath, xlsxBuffer);
-    console.log(`[SMG] Saved → ${outPath} (${xlsxBuffer.length} bytes)`);
-    return { success: true, filePath: outPath };
+    await login(jar, user, pass);
   } catch (err) {
-    console.error('[SMG] FAILED:', err.message);
-    return { success: false, error: err.message };
+    console.error('[SMG] Login failed:', err.message);
+    return { success: false, error: `Login: ${err.message}` };
   }
+
+  let xlsxBuffer;
+  try {
+    xlsxBuffer = await exportComments(jar, targetDate);
+  } catch (err) {
+    console.error('[SMG] Export failed:', err.message);
+    return { success: false, error: `Export: ${err.message}` };
+  }
+
+  fs.writeFileSync(outPath, xlsxBuffer);
+  console.log(`[SMG] Saved → ${outPath} (${xlsxBuffer.length} bytes)`);
+  return { success: true, filePath: outPath };
 }
 
 module.exports = { downloadSMGComments };
