@@ -187,6 +187,54 @@ function httpReqOneStep(jar, method, reqUrl, opts = {}) {
   });
 }
 
+// OAuth2 password grant: try multiple client_ids to get a Bearer token directly
+async function tryPasswordGrant(user, pass) {
+  const TOKEN_URL = 'https://auth.smg.com/connect/token';
+  const SCOPE     = 'feedback openid email smg360 offline_access';
+  const clients   = ['smg360', 'smg-360', 'smg360web', 'smg360api', 'SMG360'];
+
+  for (const clientId of clients) {
+    const body = formEncode({ grant_type: 'password', username: user, password: pass, client_id: clientId, scope: SCOPE });
+    let resp;
+    try {
+      resp = await new Promise((resolve, reject) => {
+        const parsed = new url.URL(TOKEN_URL);
+        const req = https.request({
+          method: 'POST', hostname: parsed.hostname, path: parsed.pathname,
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Length': Buffer.byteLength(body),
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json',
+          },
+        }, (res) => {
+          const chunks = [];
+          res.on('data', c => chunks.push(c));
+          res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
+        });
+        req.setTimeout(15000, () => req.destroy(new Error('token timeout')));
+        req.on('error', reject);
+        req.write(body);
+        req.end();
+      });
+    } catch (e) {
+      console.log(`[SMG] Password grant ${clientId}: error:`, e.message);
+      continue;
+    }
+    console.log(`[SMG] Password grant client_id=${clientId}: HTTP ${resp.status}`);
+    if (resp.status === 200) {
+      try {
+        const data = JSON.parse(resp.body);
+        if (data.access_token) { console.log('[SMG] Bearer token via password grant'); return data.access_token; }
+      } catch (_) {}
+    }
+    const errMsg = resp.body.slice(0, 200);
+    console.log(`[SMG] Password grant error (${clientId}):`, errMsg);
+    if (!errMsg.includes('invalid_client')) break;
+  }
+  return null;
+}
+
 // OAuth2 implicit flow: exchange .ASPXAUTH session for a Bearer access_token
 async function getBearer(jar) {
   const AUTH_BASE    = 'https://auth.smg.com';
@@ -277,10 +325,24 @@ async function login(jar, user, pass) {
   }
   console.log('[SMG] Login OK at reporting.smg.com');
 
-  // Exchange .ASPXAUTH for an OAuth2 Bearer token via auth.smg.com implicit flow
-  console.log('[SMG] Starting OAuth2 implicit flow via auth.smg.com');
-  const bearer = await getBearer(jar);
-  return bearer;
+  // Try password grant first (fastest), then implicit flow, then cookie-only
+  let bearer = await tryPasswordGrant(user, pass);
+  if (!bearer) {
+    console.log('[SMG] Password grant failed — trying OAuth2 implicit flow');
+    try {
+      bearer = await getBearer(jar);
+    } catch (e) {
+      console.warn('[SMG] OAuth2 implicit failed:', e.message, '— will try cookie-only export');
+    }
+  }
+
+  if (!bearer) {
+    // Establish 360.smg.com session with ASP.NET cookie so cookie-only export has a chance
+    console.log('[SMG] GET 360.smg.com to establish session (cookie-only mode)');
+    await httpReq(jar, 'GET', BASE_360, { headers: { Accept: 'text/html', Referer: 'https://reporting.smg.com/' } });
+  }
+
+  return bearer; // may be null
 }
 
 // ── Build date range (30-day window ending at targetDate) ─────────────────────
@@ -336,19 +398,20 @@ async function exportComments(jar, bearer, targetDate) {
   };
 
   const body = JSON.stringify(payload);
+  console.log(`[SMG] Export POST — bearer=${bearer ? 'yes' : 'no (cookie-only)'}`);
   const resp = await httpReq(jar, 'POST', EXPORT_URL, {
     body,
     binary: true,
     headers: {
-      'AccountId':       ACCOUNT_ID,
-      'Authorization':   `Bearer ${bearer}`,
-      'Content-Type':    'application/json',
-      'accept':          'application/xlsx',
-      'SMG-LanguageIso': 'en-US',
-      'TimeZone':        'America/New_York',
-      'Origin':          BASE_360,
-      'Referer':         `${BASE_360}/`,
+      'AccountId':        ACCOUNT_ID,
+      'Content-Type':     'application/json',
+      'accept':           'application/xlsx',
+      'SMG-LanguageIso':  'en-US',
+      'TimeZone':         'America/New_York',
+      'Origin':           BASE_360,
+      'Referer':          `${BASE_360}/`,
       'X-Requested-With': 'XMLHttpRequest',
+      ...(bearer ? { 'Authorization': `Bearer ${bearer}` } : {}),
     },
   });
 
@@ -385,8 +448,9 @@ async function downloadSMGComments(targetDate) {
   let bearer;
   try {
     bearer = await login(jar, user, pass);
+    // bearer may be null — will attempt cookie-only export
   } catch (err) {
-    console.error('[SMG] Login/auth failed:', err.message);
+    console.error('[SMG] Login failed:', err.message);
     return { success: false, error: `Login: ${err.message}` };
   }
 
