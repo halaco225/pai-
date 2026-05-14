@@ -392,7 +392,7 @@ async function processWinScore(targetDate) {
   const scores = parseReportResponse(raw);
   console.log(`[WinScore] Parsed ${scores.length} store scores`);
   if (!scores.length) {
-    console.warn('[WinScore] No scores parsed. Raw (first 500):', raw.slice(0, 500));
+    console.warn('[WinScore] No scores parsed. Raw (first 2000 chars):\n' + raw.slice(0, 2000));
     return { success: false, error: 'No scores parsed from response' };
   }
 

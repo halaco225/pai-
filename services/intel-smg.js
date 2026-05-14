@@ -187,6 +187,80 @@ function httpReqOneStep(jar, method, reqUrl, opts = {}) {
   });
 }
 
+// ── Playwright-based auth: real browser does the full OIDC flow ───────────────
+
+async function getBearerViaPlaywright(user, pass) {
+  let playwright;
+  try {
+    playwright = require('playwright');
+  } catch (_) {
+    console.log('[SMG] Playwright not available (not installed)');
+    return null;
+  }
+
+  const browsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH;
+  console.log(`[SMG] Playwright available — browsers path: ${browsersPath || '(default)'}`);
+
+  let browser;
+  try {
+    browser = await playwright.chromium.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
+  } catch (e) {
+    console.log('[SMG] Playwright browser launch failed:', e.message);
+    return null;
+  }
+
+  try {
+    const ctx  = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page = await ctx.newPage();
+
+    console.log('[SMG] Playwright: navigating to reporting.smg.com login');
+    await page.goto('https://reporting.smg.com/Index.aspx', { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+    await page.fill('[name="ctl00$cphMain$txtUserName"]', user);
+    await page.fill('[name="ctl00$cphMain$txtPassword"]', pass);
+    await Promise.all([
+      page.waitForNavigation({ timeout: 30000 }),
+      page.click('input[type="submit"], button[type="submit"], input[name*="Login"], input[name*="Btn"]'),
+    ]);
+
+    if ((await page.url()).includes('txtPassword') || (await page.content()).includes('txtPassword')) {
+      throw new Error('Login form still visible — credentials may be wrong');
+    }
+    console.log('[SMG] Playwright: logged in, navigating to 360.smg.com');
+
+    await page.goto('https://360.smg.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+    // Wait up to 20s for oidc-client to store the token in sessionStorage
+    let token = null;
+    for (let i = 0; i < 20; i++) {
+      token = await page.evaluate(() => {
+        // oidc-client key: oidc.user:<authority>:<client_id>
+        const key = Object.keys(sessionStorage).find(k => k.startsWith('oidc.user'));
+        if (!key) return null;
+        try { return JSON.parse(sessionStorage.getItem(key))?.access_token || null; }
+        catch (_) { return null; }
+      });
+      if (token) break;
+      await page.waitForTimeout(1000);
+    }
+
+    if (token) {
+      console.log('[SMG] Playwright: Bearer token obtained from SPA sessionStorage');
+    } else {
+      console.log('[SMG] Playwright: token not found in sessionStorage after 20s');
+    }
+    return token;
+  } catch (e) {
+    console.log('[SMG] Playwright auth failed:', e.message);
+    return null;
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
+
 // OAuth2 password grant: try multiple client_ids to get a Bearer token directly
 async function tryPasswordGrant(user, pass) {
   const TOKEN_URL = 'https://auth.smg.com/connect/token';
@@ -325,8 +399,11 @@ async function login(jar, user, pass) {
   }
   console.log('[SMG] Login OK at reporting.smg.com');
 
-  // Try password grant first (fastest), then implicit flow, then cookie-only
-  let bearer = await tryPasswordGrant(user, pass);
+  // Auth waterfall: Playwright → password grant → OAuth2 implicit → cookie-only
+  let bearer = await getBearerViaPlaywright(user, pass);
+  if (!bearer) {
+    bearer = await tryPasswordGrant(user, pass);
+  }
   if (!bearer) {
     console.log('[SMG] Password grant failed — trying OAuth2 implicit flow');
     try {
