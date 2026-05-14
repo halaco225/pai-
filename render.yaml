@@ -10,14 +10,13 @@ services:
     name: pai-ayvaz
     env: node
     plan: starter
-    buildCommand: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/node_modules/.playwright-browsers npx playwright install chromium-headless-shell && (PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/node_modules/.playwright-browsers npx playwright install-deps chromium-headless-shell || true)
+    buildCommand: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/playwright-browsers npx playwright install chromium-headless-shell && (PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/playwright-browsers npx playwright install-deps chromium-headless-shell || true)
     startCommand: bash startup.sh
     envVars:
       - key: NODE_ENV
         value: production
-      # ── Playwright browser — installed inside node_modules so Render's build cache preserves it ──
       - key: PLAYWRIGHT_BROWSERS_PATH
-        value: /opt/render/project/src/node_modules/.playwright-browsers
+        value: /opt/render/project/src/playwright-browsers
       # ── Anthropic / Claude ──────────────────────────────────
       - key: ANTHROPIC_API_KEY
         sync: false
