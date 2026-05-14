@@ -39,18 +39,32 @@ function makeCookieJar() {
     set(domain, cookieHeader) {
       if (!cookieHeader) return;
       const headers = Array.isArray(cookieHeader) ? cookieHeader : [cookieHeader];
-      if (!store.has(domain)) store.set(domain, new Map());
-      const jar = store.get(domain);
       for (const h of headers) {
-        const pair = h.split(';')[0].trim();
-        const eq   = pair.indexOf('=');
+        const parts = h.split(';');
+        const pair  = parts[0].trim();
+        const eq    = pair.indexOf('=');
         if (eq < 1) continue;
-        jar.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
+        const name  = pair.slice(0, eq).trim();
+        const value = pair.slice(eq + 1).trim();
+        let cookieDomain = domain;
+        for (const p of parts.slice(1)) {
+          const t = p.trim();
+          if (/^domain=/i.test(t)) { cookieDomain = t.slice(7).trim().toLowerCase(); break; }
+        }
+        if (!store.has(cookieDomain)) store.set(cookieDomain, new Map());
+        store.get(cookieDomain).set(name, value);
       }
     },
     get(domain) {
-      const jar = store.get(domain) || new Map();
-      return [...jar.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
+      const result = new Map();
+      const parts = domain.split('.');
+      for (let i = 1; i < parts.length; i++) {
+        const jar = store.get('.' + parts.slice(i).join('.'));
+        if (jar) for (const [k, v] of jar) result.set(k, v);
+      }
+      const jar = store.get(domain);
+      if (jar) for (const [k, v] of jar) result.set(k, v);
+      return [...result.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
     },
   };
 }
@@ -160,6 +174,12 @@ async function login(jar, user, pass) {
 // ── Fiscal period ─────────────────────────────────────────────────────────────
 
 async function getFiscalPeriod(jar) {
+  // Load ReportBuilder.aspx first so the server initialises the session state
+  console.log('[WinScore] Loading ReportBuilder.aspx to init session');
+  await httpReq(jar, 'GET', `${BASE}/ReportBuilder.aspx`, {
+    headers: { Referer: LOGIN },
+  });
+
   const qs = `function=getreportcontroller&reporttype=27&reportsubtype=0&r=${rand()}&periodId=`;
   const r  = await httpReq(jar, 'GET', `${RB_URL}?${qs}`, {
     headers: { Accept: 'application/json, text/javascript, */*', Referer: `${BASE}/ReportBuilder.aspx` },

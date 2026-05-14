@@ -54,21 +54,34 @@ function makeCookieJar() {
     set(domain, cookieHeader) {
       if (!cookieHeader) return;
       const headers = Array.isArray(cookieHeader) ? cookieHeader : [cookieHeader];
-      if (!store.has(domain)) store.set(domain, new Map());
-      const jar = store.get(domain);
       for (const h of headers) {
-        const pair = h.split(';')[0].trim();
-        const eq   = pair.indexOf('=');
+        const parts = h.split(';');
+        const pair  = parts[0].trim();
+        const eq    = pair.indexOf('=');
         if (eq < 1) continue;
-        jar.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
+        const name  = pair.slice(0, eq).trim();
+        const value = pair.slice(eq + 1).trim();
+        // Honour Domain attribute so .smg.com cookies reach all subdomains
+        let cookieDomain = domain;
+        for (const p of parts.slice(1)) {
+          const t = p.trim();
+          if (/^domain=/i.test(t)) { cookieDomain = t.slice(7).trim().toLowerCase(); break; }
+        }
+        if (!store.has(cookieDomain)) store.set(cookieDomain, new Map());
+        store.get(cookieDomain).set(name, value);
       }
     },
     get(domain) {
-      // Collect cookies from exact domain plus parent .smg.com scope
-      const exact  = store.get(domain) || new Map();
-      const parent = store.get('.smg.com') || new Map();
-      const merged = new Map([...parent, ...exact]);
-      return [...merged.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
+      const result = new Map();
+      // Walk parent domains: reporting.smg.com → .smg.com → .com
+      const parts = domain.split('.');
+      for (let i = 1; i < parts.length; i++) {
+        const jar = store.get('.' + parts.slice(i).join('.'));
+        if (jar) for (const [k, v] of jar) result.set(k, v);
+      }
+      const jar = store.get(domain);
+      if (jar) for (const [k, v] of jar) result.set(k, v);
+      return [...result.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
     },
     dump() {
       const out = {};
