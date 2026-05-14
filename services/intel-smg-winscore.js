@@ -185,11 +185,13 @@ async function getFiscalPeriod(jar) {
     headers: { Accept: 'application/json, text/javascript, */*', Referer: `${BASE}/ReportBuilder.aspx` },
   });
   if (r.status !== 200) throw new Error(`getreportcontroller HTTP ${r.status}`);
+  console.log('[WinScore] getreportcontroller raw (500):', r.body.slice(0, 500));
 
   let data;
   try { data = JSON.parse(r.body); }
   catch (e) { throw new Error(`getreportcontroller parse error: ${r.body.slice(0, 200)}`); }
 
+  console.log('[WinScore] getreportcontroller keys:', Object.keys(data || {}));
   const ranges = data.DateRanges || data.dateRanges || [];
   const cur    = ranges.find(d => /current fiscal period/i.test(d.text || d.Text));
   if (!cur) throw new Error(`Current Fiscal Period not found in: ${JSON.stringify(ranges.slice(0, 3))}`);

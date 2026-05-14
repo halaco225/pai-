@@ -199,6 +199,7 @@ async function login(jar, user, pass) {
     headers: { Accept: 'text/html', Referer: 'https://reporting.smg.com/' },
   });
   console.log('[SMG] 360.smg.com session ready');
+  console.log('[SMG] Cookie jar after 360 session:', JSON.stringify(jar.dump()));
 }
 
 // ── Build date range (30-day window ending at targetDate) ─────────────────────
