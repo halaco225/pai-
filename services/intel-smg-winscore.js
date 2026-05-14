@@ -194,7 +194,21 @@ async function getFiscalPeriod(jar) {
   console.log('[WinScore] getreportcontroller keys:', Object.keys(data || {}));
   const ranges = data.DateRanges || data.dateRanges || [];
   const cur    = ranges.find(d => /current fiscal period/i.test(d.text || d.Text));
-  if (!cur) throw new Error(`Current Fiscal Period not found in: ${JSON.stringify(ranges.slice(0, 3))}`);
+
+  if (!cur) {
+    // Fallback: compute a 28-day window ending yesterday (approximates current fiscal period)
+    console.warn('[WinScore] Current Fiscal Period not found — using 28-day fallback window');
+    const end   = new Date();
+    end.setDate(end.getDate() - 1);
+    const start = new Date(end);
+    start.setDate(start.getDate() - 27);
+    const fmt = d => `${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`;
+    const startDate      = fmt(start);
+    const endDate        = fmt(end);
+    const quickDateValue = `${startDate}|${endDate}|False|`;
+    console.log(`[WinScore] Fallback period: ${startDate} – ${endDate}`);
+    return { startDate, endDate, quickDateValue };
+  }
 
   const val   = cur.value || cur.Value; // "4/21/2026|5/18/2026|False|95"
   const parts = val.split('|');

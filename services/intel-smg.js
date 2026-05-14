@@ -1,16 +1,14 @@
 'use strict';
 /**
- * SMG comment export — pure HTTP, cookie-based auth.
+ * SMG comment export — pure HTTP, OAuth2 implicit flow.
  *
- * Auth: reporting.smg.com/Index.aspx ASP.NET Forms login.
- * The .ASPXAUTH cookie is scoped to *.smg.com, so it authenticates
- * both reporting.smg.com and 360.smg.com API calls without any OAuth.
- *
- * Export flow:
+ * Auth flow:
  *   1. GET reporting.smg.com/Index.aspx → scrape hidden fields
- *   2. POST credentials → receive .ASPXAUTH cookie
- *   3. GET 360.smg.com with those cookies → establish 360 session
- *   4. POST 360.smg.com/api/export/v2/commentreport → xlsx binary
+ *   2. POST credentials → receive .ASPXAUTH cookie (Domain=.smg.com)
+ *   3. OAuth2 implicit flow: GET auth.smg.com/connect/authorize (sends .ASPXAUTH)
+ *      → redirects through reporting.smg.com back to 360.smg.com#access_token=xxx
+ *   4. Parse Bearer token from final redirect URL fragment
+ *   5. POST 360.smg.com/api/export/v2/commentreport with Authorization: Bearer <token>
  */
 const https = require('https');
 const http  = require('http');
@@ -150,6 +148,92 @@ function httpReq(jar, method, reqUrl, opts = {}) {
   });
 }
 
+// Single-step HTTP request — does NOT follow redirects, stores cookies, returns location header
+function httpReqOneStep(jar, method, reqUrl, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed  = new url.URL(reqUrl);
+    const domain  = parsed.hostname;
+    const cookies = jar ? jar.get(domain) : '';
+    const isHttps = parsed.protocol === 'https:';
+    const lib     = isHttps ? https : http;
+
+    const headers = {
+      'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept':          'text/html,application/xhtml+xml,*/*;q=0.9',
+      'Accept-Language': 'en-US,en;q=0.9',
+      ...(cookies ? { Cookie: cookies } : {}),
+      ...opts.headers,
+    };
+
+    const reqOpts = {
+      method,
+      hostname: parsed.hostname,
+      port:     parsed.port || (isHttps ? 443 : 80),
+      path:     parsed.pathname + parsed.search,
+      headers,
+    };
+
+    const req = lib.request(reqOpts, (res) => {
+      const setCookies = res.headers['set-cookie'];
+      if (setCookies && jar) jar.set(domain, setCookies);
+      res.resume();
+      resolve({ status: res.statusCode, location: res.headers.location || null });
+    });
+
+    const timer = setTimeout(() => req.destroy(new Error('SMG auth timeout 30s')), 30000);
+    req.on('error', (e) => { clearTimeout(timer); reject(e); });
+    req.on('close', () => clearTimeout(timer));
+    req.end();
+  });
+}
+
+// OAuth2 implicit flow: exchange .ASPXAUTH session for a Bearer access_token
+async function getBearer(jar) {
+  const AUTH_BASE    = 'https://auth.smg.com';
+  const CLIENT_ID    = 'smg360';
+  const SCOPE        = 'feedback openid email smg360 offline_access';
+  const REDIRECT_URI = 'https://360.smg.com';
+  const nonce        = Math.random().toString(36).slice(2);
+  const state        = Math.random().toString(36).slice(2);
+
+  const authorizeUrl = `${AUTH_BASE}/connect/authorize?` + [
+    'response_type=token%20id_token',
+    `client_id=${CLIENT_ID}`,
+    `scope=${encodeURIComponent(SCOPE)}`,
+    `redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
+    `nonce=${nonce}`,
+    `state=${state}`,
+  ].join('&');
+
+  let cur = authorizeUrl;
+  for (let i = 0; i < 12; i++) {
+    const r = await httpReqOneStep(jar, 'GET', cur);
+    console.log(`[SMG] OAuth step ${i+1}: HTTP ${r.status} → ${r.location ? r.location.replace(/[#?].*/, '?...') : '(no redirect)'}`);
+    if (!r.location) {
+      throw new Error(`OAuth flow ended without access_token at step ${i+1} (HTTP ${r.status})`);
+    }
+    const loc = new URL(r.location, cur).href;
+
+    // Check URL fragment AND query string for access_token
+    const fragment = loc.includes('#') ? loc.split('#')[1] : '';
+    const query    = loc.includes('?') ? loc.split('?')[1].split('#')[0] : '';
+    for (const part of [fragment, query]) {
+      if (!part.includes('access_token=')) continue;
+      const params = {};
+      for (const p of part.split('&')) {
+        const eq = p.indexOf('=');
+        if (eq > 0) params[p.slice(0, eq)] = decodeURIComponent(p.slice(eq + 1));
+      }
+      if (params.access_token) {
+        console.log('[SMG] OAuth Bearer token obtained');
+        return params.access_token;
+      }
+    }
+    cur = loc;
+  }
+  throw new Error('OAuth implicit flow: access_token not found after 12 redirects');
+}
+
 function extractHidden(html, name) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const m = html.match(new RegExp(`<input[^>]+name="${escaped}"[^>]+value="([^"]*)"`, 'i')) ||
@@ -193,13 +277,10 @@ async function login(jar, user, pass) {
   }
   console.log('[SMG] Login OK at reporting.smg.com');
 
-  // Establish 360.smg.com session with the same cookies (domain-wide .smg.com)
-  console.log('[SMG] GET 360.smg.com to establish 360 session');
-  await httpReq(jar, 'GET', BASE_360, {
-    headers: { Accept: 'text/html', Referer: 'https://reporting.smg.com/' },
-  });
-  console.log('[SMG] 360.smg.com session ready');
-  console.log('[SMG] Cookie jar after 360 session:', JSON.stringify(jar.dump()));
+  // Exchange .ASPXAUTH for an OAuth2 Bearer token via auth.smg.com implicit flow
+  console.log('[SMG] Starting OAuth2 implicit flow via auth.smg.com');
+  const bearer = await getBearer(jar);
+  return bearer;
 }
 
 // ── Build date range (30-day window ending at targetDate) ─────────────────────
@@ -220,7 +301,7 @@ function buildDateRange(targetDate) {
 
 // ── Export comments ───────────────────────────────────────────────────────────
 
-async function exportComments(jar, targetDate) {
+async function exportComments(jar, bearer, targetDate) {
   const dateRange = buildDateRange(targetDate);
   console.log(`[SMG] Exporting comments ${dateRange.startDate} → ${dateRange.endDate}`);
 
@@ -260,6 +341,7 @@ async function exportComments(jar, targetDate) {
     binary: true,
     headers: {
       'AccountId':       ACCOUNT_ID,
+      'Authorization':   `Bearer ${bearer}`,
       'Content-Type':    'application/json',
       'accept':          'application/xlsx',
       'SMG-LanguageIso': 'en-US',
@@ -300,16 +382,17 @@ async function downloadSMGComments(targetDate) {
 
   const jar = makeCookieJar();
 
+  let bearer;
   try {
-    await login(jar, user, pass);
+    bearer = await login(jar, user, pass);
   } catch (err) {
-    console.error('[SMG] Login failed:', err.message);
+    console.error('[SMG] Login/auth failed:', err.message);
     return { success: false, error: `Login: ${err.message}` };
   }
 
   let xlsxBuffer;
   try {
-    xlsxBuffer = await exportComments(jar, targetDate);
+    xlsxBuffer = await exportComments(jar, bearer, targetDate);
   } catch (err) {
     console.error('[SMG] Export failed:', err.message);
     return { success: false, error: `Export: ${err.message}` };
