@@ -148,8 +148,8 @@ function httpReq(jar, method, reqUrl, opts = {}) {
   });
 }
 
-// Single-step HTTP request — does NOT follow redirects, stores cookies, returns location header
-function httpReqOneStep(jar, method, reqUrl, opts = {}) {
+// Single-step HTTP request — does NOT follow redirects, stores cookies, returns status + location + body
+function httpReqStep(jar, method, reqUrl, opts = {}) {
   return new Promise((resolve, reject) => {
     const parsed  = new url.URL(reqUrl);
     const domain  = parsed.hostname;
@@ -165,6 +165,12 @@ function httpReqOneStep(jar, method, reqUrl, opts = {}) {
       ...opts.headers,
     };
 
+    const body = opts.body || null;
+    if (body) {
+      headers['Content-Type']   = opts.headers?.['Content-Type'] || 'application/x-www-form-urlencoded';
+      headers['Content-Length'] = Buffer.byteLength(body);
+    }
+
     const reqOpts = {
       method,
       hostname: parsed.hostname,
@@ -176,184 +182,142 @@ function httpReqOneStep(jar, method, reqUrl, opts = {}) {
     const req = lib.request(reqOpts, (res) => {
       const setCookies = res.headers['set-cookie'];
       if (setCookies && jar) jar.set(domain, setCookies);
-      res.resume();
-      resolve({ status: res.statusCode, location: res.headers.location || null });
+      const chunks = [];
+      res.on('data', c => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+      res.on('end', () => resolve({
+        status:   res.statusCode,
+        location: res.headers.location || null,
+        body:     Buffer.concat(chunks).toString('utf8'),
+      }));
     });
 
     const timer = setTimeout(() => req.destroy(new Error('SMG auth timeout 30s')), 30000);
     req.on('error', (e) => { clearTimeout(timer); reject(e); });
     req.on('close', () => clearTimeout(timer));
+    if (body) req.write(body);
     req.end();
   });
 }
 
-// ── Playwright-based auth: real browser does the full OIDC flow ───────────────
-
-async function getBearerViaPlaywright(user, pass) {
-  let playwright;
-  try {
-    playwright = require('playwright');
-  } catch (_) {
-    console.log('[SMG] Playwright not available (not installed)');
-    return null;
-  }
-
-  const browsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH;
-  console.log(`[SMG] Playwright available — browsers path: ${browsersPath || '(default)'}`);
-
-  let browser;
-  try {
-    browser = await playwright.chromium.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
-  } catch (e) {
-    console.log('[SMG] Playwright browser launch failed:', e.message);
-    return null;
-  }
-
-  try {
-    const ctx  = await browser.newContext({ ignoreHTTPSErrors: true });
-    const page = await ctx.newPage();
-
-    console.log('[SMG] Playwright: navigating to reporting.smg.com login');
-    await page.goto('https://reporting.smg.com/Index.aspx', { waitUntil: 'domcontentloaded', timeout: 30000 });
-
-    await page.fill('[name="ctl00$cphMain$txtUserName"]', user);
-    await page.fill('[name="ctl00$cphMain$txtPassword"]', pass);
-    await Promise.all([
-      page.waitForNavigation({ timeout: 30000 }),
-      page.click('input[type="submit"], button[type="submit"], input[name*="Login"], input[name*="Btn"]'),
-    ]);
-
-    if ((await page.url()).includes('txtPassword') || (await page.content()).includes('txtPassword')) {
-      throw new Error('Login form still visible — credentials may be wrong');
+function extractTokenFromUrl(loc) {
+  const fragment = loc.includes('#') ? loc.split('#')[1] : '';
+  const query    = loc.includes('?') ? loc.split('?')[1].split('#')[0] : '';
+  for (const part of [fragment, query]) {
+    if (!part || !part.includes('access_token=')) continue;
+    const params = {};
+    for (const p of part.split('&')) {
+      const eq = p.indexOf('=');
+      if (eq > 0) params[p.slice(0, eq)] = decodeURIComponent(p.slice(eq + 1));
     }
-    console.log('[SMG] Playwright: logged in, navigating to 360.smg.com');
-
-    await page.goto('https://360.smg.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
-
-    // Wait up to 20s for oidc-client to store the token in sessionStorage
-    let token = null;
-    for (let i = 0; i < 20; i++) {
-      token = await page.evaluate(() => {
-        // oidc-client key: oidc.user:<authority>:<client_id>
-        const key = Object.keys(sessionStorage).find(k => k.startsWith('oidc.user'));
-        if (!key) return null;
-        try { return JSON.parse(sessionStorage.getItem(key))?.access_token || null; }
-        catch (_) { return null; }
-      });
-      if (token) break;
-      await page.waitForTimeout(1000);
-    }
-
-    if (token) {
-      console.log('[SMG] Playwright: Bearer token obtained from SPA sessionStorage');
-    } else {
-      console.log('[SMG] Playwright: token not found in sessionStorage after 20s');
-    }
-    return token;
-  } catch (e) {
-    console.log('[SMG] Playwright auth failed:', e.message);
-    return null;
-  } finally {
-    await browser.close().catch(() => {});
-  }
-}
-
-// OAuth2 password grant: try multiple client_ids to get a Bearer token directly
-async function tryPasswordGrant(user, pass) {
-  const TOKEN_URL = 'https://auth.smg.com/connect/token';
-  const SCOPE     = 'feedback openid email smg360 offline_access';
-  const clients   = ['smg360', 'smg-360', 'smg360web', 'smg360api', 'SMG360'];
-
-  for (const clientId of clients) {
-    const body = formEncode({ grant_type: 'password', username: user, password: pass, client_id: clientId, scope: SCOPE });
-    let resp;
-    try {
-      resp = await new Promise((resolve, reject) => {
-        const parsed = new url.URL(TOKEN_URL);
-        const req = https.request({
-          method: 'POST', hostname: parsed.hostname, path: parsed.pathname,
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Content-Length': Buffer.byteLength(body),
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'application/json',
-          },
-        }, (res) => {
-          const chunks = [];
-          res.on('data', c => chunks.push(c));
-          res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
-        });
-        req.setTimeout(15000, () => req.destroy(new Error('token timeout')));
-        req.on('error', reject);
-        req.write(body);
-        req.end();
-      });
-    } catch (e) {
-      console.log(`[SMG] Password grant ${clientId}: error:`, e.message);
-      continue;
-    }
-    console.log(`[SMG] Password grant client_id=${clientId}: HTTP ${resp.status}`);
-    if (resp.status === 200) {
-      try {
-        const data = JSON.parse(resp.body);
-        if (data.access_token) { console.log('[SMG] Bearer token via password grant'); return data.access_token; }
-      } catch (_) {}
-    }
-    const errMsg = resp.body.slice(0, 200);
-    console.log(`[SMG] Password grant error (${clientId}):`, errMsg);
-    if (!errMsg.includes('invalid_client')) break;
+    if (params.access_token) return params.access_token;
   }
   return null;
 }
 
-// OAuth2 implicit flow: exchange .ASPXAUTH session for a Bearer access_token
-async function getBearer(jar) {
-  const AUTH_BASE    = 'https://auth.smg.com';
-  const CLIENT_ID    = 'smg360';
-  const SCOPE        = 'feedback openid email smg360 offline_access';
-  const REDIRECT_URI = 'https://360.smg.com';
-  const nonce        = Math.random().toString(36).slice(2);
-  const state        = Math.random().toString(36).slice(2);
+// OAuth2 implicit flow with interactive login:
+// Follows the full OIDC redirect chain, detects auth.smg.com login form,
+// posts credentials, then captures the access_token from the redirect fragment.
+async function getBearer(jar, user, pass) {
+  const AUTH_BASE = 'https://auth.smg.com';
+  const CLIENT_ID = 'smg360';
+  const SCOPE     = 'feedback openid email smg360 offline_access';
 
-  const authorizeUrl = `${AUTH_BASE}/connect/authorize?` + [
-    'response_type=token%20id_token',
-    `client_id=${CLIENT_ID}`,
-    `scope=${encodeURIComponent(SCOPE)}`,
-    `redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
-    `nonce=${nonce}`,
-    `state=${state}`,
-  ].join('&');
+  // Try redirect URIs in order — first match registered in auth.smg.com wins
+  const REDIRECT_URIS = [
+    'https://360.smg.com/auth-callback',
+    'https://360.smg.com/',
+    'https://360.smg.com',
+  ];
 
-  let cur = authorizeUrl;
-  for (let i = 0; i < 12; i++) {
-    const r = await httpReqOneStep(jar, 'GET', cur);
-    console.log(`[SMG] OAuth step ${i+1}: HTTP ${r.status} → ${r.location ? r.location.replace(/[#?].*/, '?...') : '(no redirect)'}`);
-    if (!r.location) {
-      throw new Error(`OAuth flow ended without access_token at step ${i+1} (HTTP ${r.status})`);
+  for (const REDIRECT_URI of REDIRECT_URIS) {
+    const nonce = Math.random().toString(36).slice(2);
+    const state = Math.random().toString(36).slice(2);
+    const authorizeUrl = `${AUTH_BASE}/connect/authorize?` + [
+      'response_type=token%20id_token',
+      `client_id=${encodeURIComponent(CLIENT_ID)}`,
+      `scope=${encodeURIComponent(SCOPE)}`,
+      `redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
+      `nonce=${nonce}`,
+      `state=${state}`,
+    ].join('&');
+
+    console.log(`[SMG] OAuth trying redirect_uri=${REDIRECT_URI}`);
+    try {
+      const token = await _followOAuthFlow(jar, authorizeUrl, user, pass);
+      if (token) return token;
+    } catch (e) {
+      console.log(`[SMG] OAuth redirect_uri=${REDIRECT_URI} failed: ${e.message}`);
     }
-    const loc = new URL(r.location, cur).href;
-
-    // Check URL fragment AND query string for access_token
-    const fragment = loc.includes('#') ? loc.split('#')[1] : '';
-    const query    = loc.includes('?') ? loc.split('?')[1].split('#')[0] : '';
-    for (const part of [fragment, query]) {
-      if (!part.includes('access_token=')) continue;
-      const params = {};
-      for (const p of part.split('&')) {
-        const eq = p.indexOf('=');
-        if (eq > 0) params[p.slice(0, eq)] = decodeURIComponent(p.slice(eq + 1));
-      }
-      if (params.access_token) {
-        console.log('[SMG] OAuth Bearer token obtained');
-        return params.access_token;
-      }
-    }
-    cur = loc;
   }
-  throw new Error('OAuth implicit flow: access_token not found after 12 redirects');
+  return null;
+}
+
+async function _followOAuthFlow(jar, startUrl, user, pass) {
+  let cur = startUrl;
+  let credPosted = false;
+
+  for (let i = 0; i < 15; i++) {
+    const r = await httpReqStep(jar, 'GET', cur);
+    const shortUrl = cur.replace(/[#?].*/, '').slice(0, 80);
+    console.log(`[SMG] OAuth step ${i+1}: HTTP ${r.status} url=${shortUrl} loc=${r.location ? r.location.slice(0, 60) : '—'}`);
+
+    // Token found in redirect location
+    if (r.location) {
+      const loc = new url.URL(r.location, cur).href;
+      const token = extractTokenFromUrl(loc);
+      if (token) { console.log('[SMG] Bearer token obtained via OAuth'); return token; }
+      // auth.smg.com returns error page (not redirect) if redirect_uri unregistered
+      if (r.status >= 400) throw new Error(`HTTP ${r.status} at ${shortUrl}`);
+      cur = loc;
+      continue;
+    }
+
+    // 200 response — check for auth.smg.com login form
+    if (r.status === 200 && !credPosted && cur.includes('auth.smg.com')) {
+      const hasPassField = /name=["']?password["']?/i.test(r.body) || r.body.includes('txtPassword');
+      const hasUserField = /name=["']?(username|email|txtUser)/i.test(r.body);
+      if (hasPassField && hasUserField) {
+        console.log('[SMG] OAuth: auth.smg.com login form detected — posting credentials');
+        const rvt     = extractHidden(r.body, '__RequestVerificationToken') || '';
+        const signinId = new url.URL(cur).searchParams.get('signin') || extractHidden(r.body, 'signin') || '';
+        // Try multiple username field names used by IdentityServer3
+        const userField = /name=["']?email["']?/i.test(r.body) ? 'email' : 'username';
+        const fields = {
+          [userField]: user,
+          password:    pass,
+          ...(rvt      ? { __RequestVerificationToken: rvt } : {}),
+          ...(signinId ? { signin: signinId } : {}),
+        };
+        console.log('[SMG] Auth form fields:', Object.keys(fields).join(', '));
+        const post = await httpReqStep(jar, 'POST', cur, {
+          body: formEncode(fields),
+          headers: { Referer: cur, Origin: 'https://auth.smg.com' },
+        });
+        credPosted = true;
+        console.log(`[SMG] OAuth login POST: HTTP ${post.status} loc=${post.location ? post.location.slice(0,60) : '—'}`);
+        if (post.location) {
+          const loc   = new url.URL(post.location, cur).href;
+          const token = extractTokenFromUrl(loc);
+          if (token) { console.log('[SMG] Bearer token obtained via OAuth'); return token; }
+          cur = loc;
+          continue;
+        }
+        // Wrong credentials: form re-rendered
+        if (post.body && (post.body.includes('Invalid') || post.body.includes('incorrect') || post.body.includes('txtPassword'))) {
+          throw new Error('auth.smg.com rejected credentials — check SMG_USER/SMG_PASSWORD');
+        }
+        throw new Error('Credentials posted but received no redirect');
+      }
+      // Ended at a 200 non-login page — unregistered redirect_uri shows error page
+      const snippet = r.body.slice(0, 200).replace(/\s+/g, ' ');
+      throw new Error(`Flow ended at 200 non-login page: ${snippet}`);
+    }
+
+    if (r.status >= 400) throw new Error(`HTTP ${r.status} at ${shortUrl}`);
+    // Anything else (200 not at auth.smg.com after creds posted) — keep going or bail
+    if (r.status === 200) throw new Error(`Unexpected 200 at ${shortUrl}`);
+  }
+  throw new Error('OAuth: access_token not found after 15 steps');
 }
 
 function extractHidden(html, name) {
@@ -399,18 +363,12 @@ async function login(jar, user, pass) {
   }
   console.log('[SMG] Login OK at reporting.smg.com');
 
-  // Auth waterfall: Playwright → password grant → OAuth2 implicit → cookie-only
-  let bearer = await getBearerViaPlaywright(user, pass);
-  if (!bearer) {
-    bearer = await tryPasswordGrant(user, pass);
-  }
-  if (!bearer) {
-    console.log('[SMG] Password grant failed — trying OAuth2 implicit flow');
-    try {
-      bearer = await getBearer(jar);
-    } catch (e) {
-      console.warn('[SMG] OAuth2 implicit failed:', e.message, '— will try cookie-only export');
-    }
+  // OAuth2 implicit flow — interactive: follows auth.smg.com login form with credentials
+  let bearer = null;
+  try {
+    bearer = await getBearer(jar, user, pass);
+  } catch (e) {
+    console.warn('[SMG] OAuth2 implicit failed:', e.message, '— will try cookie-only export');
   }
 
   if (!bearer) {
