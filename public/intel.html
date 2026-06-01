@@ -606,14 +606,23 @@ function renderPerfTable(data){
     const acSchLab=acStores.reduce((sum,x)=>sum+(x.sch_lab_dollar!=null?+x.sch_lab_dollar:0),0);
     const acHasLab=acStores.some(x=>x.act_lab_dollar!=null);
     const acLabVar=acActLab-acSchLab;
-    const laborCell=acHasLab
+    const acHasLaborPct=ac.sched_labor_pct!=null||ac.act_labor_pct!=null;
+    const acLaborPctVar=ac.act_labor_pct!=null&&ac.sched_labor_pct!=null?+(ac.act_labor_pct-ac.sched_labor_pct).toFixed(2):null;
+    const laborCell=acHasLaborPct
       ?'<div style="font-size:11px;line-height:1.7">'
-        +'<span style="color:#64748b">Act</span> <b style="color:#e2e8f0">$'+Math.round(acActLab)+'</b>'
-        +' <span style="color:#64748b">Sch</span> <b style="color:#94a3b8">$'+Math.round(acSchLab)+'</b>'
-        +' <b style="color:'+(acLabVar>0?'#ef4444':'#22c55e')+'">'+(acLabVar>0?'+':'')+fmtMoney(acLabVar)+'</b>'
+        +(ac.sched_labor_pct!=null?'<span style="color:#64748b">Sch</span> <b style="color:#94a3b8">'+ac.sched_labor_pct.toFixed(1)+'%</b> ':'')
+        +(ac.act_labor_pct!=null?'<span style="color:#64748b">Act</span> <b style="color:#e2e8f0">'+ac.act_labor_pct.toFixed(1)+'%</b>':'')
+        +(acLaborPctVar!=null?' <b style="color:'+(acLaborPctVar>0?'#ef4444':'#22c55e')+'">'+(acLaborPctVar>0?'+':'')+acLaborPctVar.toFixed(1)+'%</b>':'')
         +(lc>0?' <span class="'+(lc>3?'r':'a')+'" style="cursor:pointer;font-size:10px;text-decoration:underline dotted" onclick="event.stopPropagation();openLaborDrill(\''+escH(ac.area_coach||'')+'\')">⚠'+lc+'</span>':'')
         +'</div>'
-      :lc>0?'<span class="'+(lc>3?'r':'a')+'" style="cursor:pointer;text-decoration:underline dotted" onclick="openLaborDrill(\''+escH(ac.area_coach||'')+'\')">'+lc+' over</span>':'<span class="n">—</span>';
+      :acHasLab
+        ?'<div style="font-size:11px;line-height:1.7">'
+          +'<span style="color:#64748b">Act</span> <b style="color:#e2e8f0">$'+Math.round(acActLab)+'</b>'
+          +' <span style="color:#64748b">Sch</span> <b style="color:#94a3b8">$'+Math.round(acSchLab)+'</b>'
+          +' <b style="color:'+(acLabVar>0?'#ef4444':'#22c55e')+'">'+(acLabVar>0?'+':'')+fmtMoney(acLabVar)+'</b>'
+          +(lc>0?' <span class="'+(lc>3?'r':'a')+'" style="cursor:pointer;font-size:10px;text-decoration:underline dotted" onclick="event.stopPropagation();openLaborDrill(\''+escH(ac.area_coach||'')+'\')">⚠'+lc+'</span>':'')
+          +'</div>'
+        :lc>0?'<span class="'+(lc>3?'r':'a')+'" style="cursor:pointer;text-decoration:underline dotted" onclick="openLaborDrill(\''+escH(ac.area_coach||'')+'\')">'+lc+' over</span>':'<span class="n">—</span>';
     const rm=ac.routines_missed||0,rl=ac.routines_late||0;
     const routinesCell=(rm+rl)>0?'<span class="'+(rm>0?'r':'a')+'" style="cursor:pointer;text-decoration:underline dotted" onclick="openAuditDrill()">'+rm+' missed'+(rl?' · '+rl+' late':'')+'</span>':'<span class="n">—</span>';
     const cancelCnt=ac.cancels!=null?Math.round(ac.cancels):null;
@@ -676,7 +685,7 @@ function renderDrill(ac){
       +'<div class="sc-m"><span class="lbl">Growth </span><span class="val">'+(s.growth_pct!=null?fmtPct(s.growth_pct):'—')+'</span></div>'
       +'<div class="sc-m"><span class="lbl">Routines </span><span class="val '+((s.routines_missed||0)>0?'r':'')+'">'+(s.routines_missed||0)+'M '+(s.routines_late||0)+'L</span></div>'
       +'<div class="sc-m"><span class="lbl">Flags </span><span class="val '+((s.flag_count||0)>0?'r':'')+'">'+(s.flag_count||0)+'</span></div>'
-      +(s.act_lab_dollar!=null?'<div class="sc-m" style="grid-column:1/-1"><span class="lbl">Labor </span><span class="val" style="color:#e2e8f0">'+fmtMoney(s.act_lab_dollar)+(s.sch_lab_dollar!=null?' / <span style="color:#64748b">Sch '+fmtMoney(s.sch_lab_dollar)+'</span>':'')+(s.act_lab_dollar!=null&&s.sch_lab_dollar!=null?' <b style="color:'+(+s.act_lab_dollar>+s.sch_lab_dollar?'#ef4444':'#22c55e')+'">'+(+s.act_lab_dollar-+s.sch_lab_dollar>0?'+':'')+fmtMoney(+s.act_lab_dollar-+s.sch_lab_dollar)+'</b>':'')+'</span></div>':'')
+      +(s.sched_labor_pct!=null||s.act_labor_pct!=null?(()=>{const slp=s.sched_labor_pct!=null?+s.sched_labor_pct:null;const alp=s.act_labor_pct!=null?+s.act_labor_pct:null;const v=slp!=null&&alp!=null?+(alp-slp).toFixed(1):null;return'<div class="sc-m" style="grid-column:1/-1"><span class="lbl">Labor% </span><span class="val" style="color:#e2e8f0">'+(slp!=null?'Sch '+slp.toFixed(1)+'% ':'')+(alp!=null?'Act '+alp.toFixed(1)+'%':'')+(v!=null?' <b style="color:'+(v>0?'#ef4444':'#22c55e')+'">'+(v>0?'+':'')+v.toFixed(1)+'%</b>':'')+'</span></div>';})():s.act_lab_dollar!=null?'<div class="sc-m" style="grid-column:1/-1"><span class="lbl">Labor </span><span class="val" style="color:#e2e8f0">'+fmtMoney(s.act_lab_dollar)+(s.sch_lab_dollar!=null?' / <span style="color:#64748b">Sch '+fmtMoney(s.sch_lab_dollar)+'</span>':'')+(s.act_lab_dollar!=null&&s.sch_lab_dollar!=null?' <b style="color:'+(+s.act_lab_dollar>+s.sch_lab_dollar?'#ef4444':'#22c55e')+'">'+(+s.act_lab_dollar-+s.sch_lab_dollar>0?'+':'')+fmtMoney(+s.act_lab_dollar-+s.sch_lab_dollar)+'</b>':'')+'</span></div>':'')
       +'</div><div style="font-size:10px;color:#3b4d6b;margin-top:6px;text-align:right">Tap for detail →</div>'
       +'</div>';
   }).join('');
@@ -687,7 +696,16 @@ function renderDrill(ac){
       +'<td class="n">#'+(i+1)+'</td>'
       +'<td style="color:#60a5fa;font-weight:600;text-decoration:underline dotted">'+escH(s.store_name||s.store_id||'')+'</td>'
       +'<td>'+mCell(s.net_sales,'money','g')+'</td><td>'+mCell(s.growth_pct,'pct_s','growth')+'</td>'
-      +'<td>'+(s.act_lab_dollar!=null||s.sch_lab_dollar!=null?(()=>{
+      +'<td>'+(s.sched_labor_pct!=null||s.act_labor_pct!=null?(()=>{
+        const slp=s.sched_labor_pct!=null?+s.sched_labor_pct:null;
+        const alp=s.act_labor_pct!=null?+s.act_labor_pct:null;
+        const v=slp!=null&&alp!=null?+(alp-slp).toFixed(1):null;
+        return'<span style="font-size:11px;line-height:1.6">'
+          +(slp!=null?'<span style="color:#475569">Sch '+slp.toFixed(1)+'%</span> ':'')
+          +(alp!=null?'<span style="color:#94a3b8">Act '+alp.toFixed(1)+'%</span>':'')
+          +(v!=null?' <b style="color:'+(v>0?'#ef4444':'#22c55e')+'">'+(v>0?'+':'')+v.toFixed(1)+'%</b>':'')
+          +'</span>';
+      })():s.act_lab_dollar!=null||s.sch_lab_dollar!=null?(()=>{
         const act=s.act_lab_dollar!=null?+s.act_lab_dollar:null;
         const sch=s.sch_lab_dollar!=null?+s.sch_lab_dollar:null;
         const v=act!=null&&sch!=null?act-sch:null;
@@ -888,7 +906,17 @@ function openStoreDetail(storeId, storeName, acName){
     +metTile('Clock-Outs',s.forgot_clockout!=null?Math.round(s.forgot_clockout)+'':'—','','#f59e0b')
     +metTile('Routines',(s.routines_missed||0)+'M '+(s.routines_late||0)+'L','',s.routines_missed>0?'#ef4444':'#64748b')
     +metTile('Win Score',s.win_score!=null?s.win_score+'%':'—','',s.win_score>=75?'#22c55e':s.win_score>=65?'#f59e0b':'#ef4444')
-    +(s.act_lab_dollar!=null||s.sch_lab_dollar!=null?(()=>{
+    +(s.sched_labor_pct!=null||s.act_labor_pct!=null?(()=>{
+      const slp=s.sched_labor_pct!=null?+s.sched_labor_pct:null;
+      const alp=s.act_labor_pct!=null?+s.act_labor_pct:null;
+      const v=slp!=null&&alp!=null?+(alp-slp).toFixed(2):null;
+      return'<div style="background:#0c1425;border:1px solid '+(v!=null&&v>0?'#ef444440':'#1e2d4d')+';border-radius:8px;padding:10px">'
+        +'<div style="font-size:10px;color:#475569;font-weight:700;text-transform:uppercase;margin-bottom:6px">Labor %</div>'
+        +(slp!=null?'<div style="font-size:13px;margin-bottom:2px"><span style="color:#64748b">Sch </span><span style="color:#94a3b8;font-weight:600">'+slp.toFixed(1)+'%</span></div>':'')
+        +(alp!=null?'<div style="font-size:13px;margin-bottom:2px"><span style="color:#64748b">Act </span><span style="color:#e2e8f0;font-weight:700">'+alp.toFixed(1)+'%</span></div>':'')
+        +(v!=null?'<div style="font-size:13px"><span style="color:#64748b">Var </span><span style="font-weight:700;color:'+(v>0?'#ef4444':'#22c55e')+'">'+(v>0?'+':'')+v.toFixed(1)+'%</span></div>':'')
+        +'</div>';
+    })():s.act_lab_dollar!=null||s.sch_lab_dollar!=null?(()=>{
       const act=s.act_lab_dollar!=null?+s.act_lab_dollar:null;
       const sch=s.sch_lab_dollar!=null?+s.sch_lab_dollar:null;
       const v=act!=null&&sch!=null?act-sch:null;

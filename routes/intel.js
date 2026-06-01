@@ -659,6 +659,7 @@ router.get('/kpis', async (req, res) => {
         area_coach: r.area_coach, store_id: r.store_id, store_name: r.store_name,
         net_sales: null, growth_pct: null, cancels: null,
         labor_pct: null, act_lab_dollar: null, sch_lab_dollar: null,
+        sched_labor_pct: null, act_labor_pct: null,
         ot_hours: 0, comments_pos: 0, comments_neg: 0,
         forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0,
         win_score: null
@@ -678,7 +679,8 @@ router.get('/kpis', async (req, res) => {
             ELSE NULL
           END
         ) AS growth_pct_day,
-        t.cancel_unmade_day, t.paidouts_day, t.cash_variance_day
+        t.cancel_unmade_day, t.paidouts_day, t.cash_variance_day,
+        t.sched_labor_pct_day, t.act_labor_pct_day
         FROM intel_dbs_metrics t
         LEFT JOIN intel_dbs_metrics p
           ON p.store_id = t.store_id
@@ -737,9 +739,11 @@ router.get('/kpis', async (req, res) => {
         };
       }
       Object.assign(storeMap[r.store_id], {
-        net_sales: r.net_sales_day ? +r.net_sales_day : null,
-        growth_pct: r.growth_pct_day != null ? +r.growth_pct_day : null,
-        cancels: r.cancel_unmade_day ? +r.cancel_unmade_day : null,
+        net_sales:       r.net_sales_day ? +r.net_sales_day : null,
+        growth_pct:      r.growth_pct_day != null ? +r.growth_pct_day : null,
+        cancels:         r.cancel_unmade_day ? +r.cancel_unmade_day : null,
+        sched_labor_pct: r.sched_labor_pct_day != null ? +r.sched_labor_pct_day : null,
+        act_labor_pct:   r.act_labor_pct_day   != null ? +r.act_labor_pct_day   : null,
       });
     }
 
@@ -799,13 +803,15 @@ router.get('/kpis', async (req, res) => {
       if (!acMap[ac]) acMap[ac] = { area_coach: ac, store_count: 0, net_sales: 0,
         gsum: 0, gcnt: 0, cancels: 0, lpsum: 0, lpcnt: 0, ot_hours: 0, comments_pos: 0,
         comments_neg: 0, forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0,
-        wssum: 0, wscnt: 0 };
+        wssum: 0, wscnt: 0, slpsum: 0, slpcnt: 0, alpsum: 0, alpcnt: 0 };
       const a = acMap[ac];
       a.store_count++;
       if (s.net_sales  != null) a.net_sales  += s.net_sales;
       if (s.growth_pct != null) { a.gsum += s.growth_pct; a.gcnt++; }
       if (s.cancels    != null) a.cancels += s.cancels;
-      if (s.labor_pct  != null) { a.lpsum += s.labor_pct; a.lpcnt++; }
+      if (s.labor_pct      != null) { a.lpsum  += s.labor_pct;      a.lpcnt++;  }
+      if (s.sched_labor_pct != null) { a.slpsum += s.sched_labor_pct; a.slpcnt++; }
+      if (s.act_labor_pct   != null) { a.alpsum += s.act_labor_pct;   a.alpcnt++; }
       a.ot_hours       += s.ot_hours       || 0;
       a.comments_pos   += s.comments_pos   || 0;
       a.comments_neg   += s.comments_neg   || 0;
@@ -829,8 +835,10 @@ router.get('/kpis', async (req, res) => {
       net_sales:       a.net_sales    || null,
       growth_pct:      a.gcnt > 0 ? a.gsum / a.gcnt : null,
       cancels:         a.cancels      || null,
-      labor_pct:       a.lpcnt > 0 ? a.lpsum / a.lpcnt : null,
-      ot_hours:        a.ot_hours     || null,
+      labor_pct:        a.lpcnt  > 0 ? a.lpsum  / a.lpcnt  : null,
+      sched_labor_pct:  a.slpcnt > 0 ? a.slpsum / a.slpcnt : null,
+      act_labor_pct:    a.alpcnt > 0 ? a.alpsum / a.alpcnt : null,
+      ot_hours:         a.ot_hours    || null,
       comments_pos:    a.comments_pos,
       comments_neg:    a.comments_neg,
       forgot_clockout:  a.forgot_clockout,

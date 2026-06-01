@@ -37,19 +37,19 @@ const S1 = {
 };
 // Section 2 (Financial/Labor) — identified when col[4] header = "Change Down $"
 const S2 = {
-  CHANGE_DOWN   : 4,
-  ALLOWANCE     : 5,
-  DISCOUNT      : 6,
-  CANCEL_UNMADE : 8,
-  PAIDOUTS      :27,
-  REFUNDS       :28,
-  CREDITS       :29,
-  CASH_VAR_DAY  :31,
-  CASH_VAR_WTD  :32,
-  // Labor columns — indices logged on first run; update these once confirmed from logs
-  // Look for "DBS S2 HEADER" in server logs to find exact indices
-  SCH_LABOR_DAY : null,   // scheduled labor $ — col index TBD
-  ACT_LABOR_DAY : null,   // actual labor $    — col index TBD
+  CHANGE_DOWN      : 4,
+  ALLOWANCE        : 5,
+  DISCOUNT         : 6,
+  CANCEL_UNMADE    : 8,
+  SCHED_LABOR_PCT  :17,  // col R — pct display
+  ACT_LABOR_PCT    :18,  // col S — pct display
+  SCH_LABOR_DAY    : null,  // scheduled labor $ — TBD (check [DBS S2 HEADER] log)
+  ACT_LABOR_DAY    : null,  // actual labor $    — TBD (check [DBS S2 HEADER] log)
+  PAIDOUTS         :27,
+  REFUNDS          :28,
+  CREDITS          :29,
+  CASH_VAR_DAY     :31,
+  CASH_VAR_WTD     :32,
 };
 
 function cellVal(row, idx) {
@@ -174,12 +174,14 @@ function parseDBS(filePath, targetDate) {
 
       if (currentSection === 'financial') {
         // ── Tier 1 Hard Flags ──────────────────────────────────────────────
-        const changeDown   = cellVal(row, S2.CHANGE_DOWN);
-        const changedMiles = cellVal(row, 25); // col Z
-        const paidouts     = cellVal(row, S2.PAIDOUTS);
-        const cashVar      = cellVal(row, S2.CASH_VAR_DAY);
-        const refunds      = cellVal(row, S2.REFUNDS);
-        const cancelUnmade = cellVal(row, S2.CANCEL_UNMADE);
+        const changeDown    = cellVal(row, S2.CHANGE_DOWN);
+        const changedMiles  = cellVal(row, 25); // col Z
+        const paidouts      = cellVal(row, S2.PAIDOUTS);
+        const cashVar       = cellVal(row, S2.CASH_VAR_DAY);
+        const refunds       = cellVal(row, S2.REFUNDS);
+        const cancelUnmade  = cellVal(row, S2.CANCEL_UNMADE);
+        const schedLaborPct = cellVal(row, S2.SCHED_LABOR_PCT);
+        const actLaborPct   = cellVal(row, S2.ACT_LABOR_PCT);
 
         const base = { store_id, store_name, area_coach: currentArea, region_coach: resolvedRC,
                        territory_vp: resolvedVP, metric_date: targetDate, source: 'DBS', tier: 1 };
@@ -191,16 +193,18 @@ function parseDBS(filePath, targetDate) {
         const actLaborDay = S2.ACT_LABOR_DAY != null ? cellVal(row, S2.ACT_LABOR_DAY) : null;
 
         Object.assign(storeMetrics[store_id], {
-          change_down_day:   changeDown,
-          allowance_pct_day: cellVal(row, S2.ALLOWANCE),
-          discount_pct_day:  cellVal(row, S2.DISCOUNT),
-          cancel_unmade_day: cancelUnmade,
-          changed_miles_day: changedMiles,
-          paidouts_day:      paidouts,
-          refunds_day:       refunds,
-          cash_variance_day: cashVar,
-          sch_labor_day:     schLaborDay,
-          act_labor_day:     actLaborDay,
+          change_down_day:     changeDown,
+          allowance_pct_day:   cellVal(row, S2.ALLOWANCE),
+          discount_pct_day:    cellVal(row, S2.DISCOUNT),
+          cancel_unmade_day:   cancelUnmade,
+          changed_miles_day:   changedMiles,
+          paidouts_day:        paidouts,
+          refunds_day:         refunds,
+          cash_variance_day:   cashVar,
+          sched_labor_pct_day: schedLaborPct,
+          act_labor_pct_day:   actLaborPct,
+          sch_labor_day:       schLaborDay,
+          act_labor_day:       actLaborDay,
         });
 
         if (changeDown != null && changeDown > 50) {
@@ -221,9 +225,9 @@ function parseDBS(filePath, targetDate) {
           const sev = refunds > 50 ? 'high' : 'medium';
           storeFlags.push({ ...base, metric_type: 'REFUNDS', value: refunds, target: 20, variance: refunds - 20, severity: sev });
         }
-        if (cancelUnmade != null && cancelUnmade > 80) {
-          const sev = cancelUnmade > 100 ? 'high' : 'medium';
-          storeFlags.push({ ...base, metric_type: 'CANCEL_UNMADE', value: cancelUnmade, target: 80, variance: cancelUnmade - 80, severity: sev });
+        if (cancelUnmade != null && cancelUnmade >= 100) {
+          const sev = cancelUnmade >= 150 ? 'high' : 'medium';
+          storeFlags.push({ ...base, metric_type: 'CANCEL_UNMADE', value: cancelUnmade, target: 100, variance: cancelUnmade - 100, severity: sev });
         }
 
         // ── Tier 2 Soft: Discount % ────────────────────────────────────────

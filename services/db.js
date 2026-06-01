@@ -590,6 +590,10 @@ async function initIntelDB() {
     ADD COLUMN IF NOT EXISTS details JSONB
   `);
 
+  // Migration: add DBS labor % columns
+  await p.query(`ALTER TABLE intel_dbs_metrics ADD COLUMN IF NOT EXISTS sched_labor_pct_day DECIMAL(8,4)`);
+  await p.query(`ALTER TABLE intel_dbs_metrics ADD COLUMN IF NOT EXISTS act_labor_pct_day   DECIMAL(8,4)`);
+
   // Migration: dedup then add UNIQUE constraint (needed for ON CONFLICT in upsertIntelFlag)
   await p.query(`
     DELETE FROM intel_flags a
@@ -831,28 +835,31 @@ async function upsertDBSMetrics(record) {
          growth_pct_day, growth_pct_wtd, growth_pct_ptd,
          production_lt15_day, change_down_day, allowance_pct_day,
          discount_pct_day, cancel_unmade_day, changed_miles_day,
-         paidouts_day, refunds_day, cash_variance_day)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+         paidouts_day, refunds_day, cash_variance_day,
+         sched_labor_pct_day, act_labor_pct_day)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
       ON CONFLICT (store_id, metric_date) DO UPDATE SET
-        store_name          = EXCLUDED.store_name,
-        area_coach          = EXCLUDED.area_coach,
-        region_coach        = EXCLUDED.region_coach,
-        territory_vp        = EXCLUDED.territory_vp,
-        net_sales_day       = EXCLUDED.net_sales_day,
-        net_sales_wtd       = EXCLUDED.net_sales_wtd,
-        net_sales_ptd       = EXCLUDED.net_sales_ptd,
-        growth_pct_day      = EXCLUDED.growth_pct_day,
-        growth_pct_wtd      = EXCLUDED.growth_pct_wtd,
-        growth_pct_ptd      = EXCLUDED.growth_pct_ptd,
-        production_lt15_day = EXCLUDED.production_lt15_day,
-        change_down_day     = EXCLUDED.change_down_day,
-        allowance_pct_day   = EXCLUDED.allowance_pct_day,
-        discount_pct_day    = EXCLUDED.discount_pct_day,
-        cancel_unmade_day   = EXCLUDED.cancel_unmade_day,
-        changed_miles_day   = EXCLUDED.changed_miles_day,
-        paidouts_day        = EXCLUDED.paidouts_day,
-        refunds_day         = EXCLUDED.refunds_day,
-        cash_variance_day   = EXCLUDED.cash_variance_day
+        store_name           = EXCLUDED.store_name,
+        area_coach           = EXCLUDED.area_coach,
+        region_coach         = EXCLUDED.region_coach,
+        territory_vp         = EXCLUDED.territory_vp,
+        net_sales_day        = EXCLUDED.net_sales_day,
+        net_sales_wtd        = EXCLUDED.net_sales_wtd,
+        net_sales_ptd        = EXCLUDED.net_sales_ptd,
+        growth_pct_day       = EXCLUDED.growth_pct_day,
+        growth_pct_wtd       = EXCLUDED.growth_pct_wtd,
+        growth_pct_ptd       = EXCLUDED.growth_pct_ptd,
+        production_lt15_day  = EXCLUDED.production_lt15_day,
+        change_down_day      = EXCLUDED.change_down_day,
+        allowance_pct_day    = EXCLUDED.allowance_pct_day,
+        discount_pct_day     = EXCLUDED.discount_pct_day,
+        cancel_unmade_day    = EXCLUDED.cancel_unmade_day,
+        changed_miles_day    = EXCLUDED.changed_miles_day,
+        paidouts_day         = EXCLUDED.paidouts_day,
+        refunds_day          = EXCLUDED.refunds_day,
+        cash_variance_day    = EXCLUDED.cash_variance_day,
+        sched_labor_pct_day  = EXCLUDED.sched_labor_pct_day,
+        act_labor_pct_day    = EXCLUDED.act_labor_pct_day
       RETURNING id
     `, [
       record.store_id, record.store_name ?? null, record.area_coach ?? null,
@@ -862,7 +869,8 @@ async function upsertDBSMetrics(record) {
       record.production_lt15_day ?? null, record.change_down_day ?? null,
       record.allowance_pct_day ?? null, record.discount_pct_day ?? null,
       record.cancel_unmade_day ?? null, record.changed_miles_day ?? null,
-      record.paidouts_day ?? null, record.refunds_day ?? null, record.cash_variance_day ?? null
+      record.paidouts_day ?? null, record.refunds_day ?? null, record.cash_variance_day ?? null,
+      record.sched_labor_pct_day ?? null, record.act_labor_pct_day ?? null
     ]);
     return res.rows[0];
   } catch (err) {

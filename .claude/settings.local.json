@@ -20,7 +20,17 @@
       "Bash(ls \"C:\\\\Users\\\\Precision 3551\\\\Desktop\\\\pai\\\\services\"\" | grep -E \"claude)",
       "Bash(pl)",
       "Bash(daily \")",
-      "WebFetch(domain:pai-ayvaz.onrender.com)"
+      "WebFetch(domain:pai-ayvaz.onrender.com)",
+      "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git pull *)",
+      "Bash(git stash *)",
+      "Bash(git rebase *)",
+      "Bash(GIT_EDITOR=true git rebase --continue)",
+      "Bash(cat .git/rebase-merge/msgnum .git/rebase-merge/end)",
+      "Bash(ls .git/rebase-merge/)"
     ]
   }
 }
