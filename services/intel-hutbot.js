@@ -87,6 +87,16 @@ async function scrapeHutBot(targetDate) {
   const allItems = respData.items || [];
   console.log(`[HutBot] API returned ${allItems.length} items (totalElements=${respData.totalElements})`);
 
+  // Convert an ISO timestamp to YYYY-MM-DD in EST (handles UTC offsets correctly)
+  function toESTDate(isoStr) {
+    if (!isoStr) return '';
+    try {
+      return new Date(isoStr).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    } catch (_) {
+      return String(isoStr).slice(0, 10);
+    }
+  }
+
   // Build store name → store_id reverse lookup from store assignments
   const assignments = await db.getStoreAssignments();
   const nameToId = new Map();
@@ -101,9 +111,20 @@ async function scrapeHutBot(targetDate) {
   for (const item of allItems) {
     // item: { id, status, dueDate, submitTimestamp, lead, submittedBy, storeName, shiftType }
 
-    // Date filter — API may return more than one day; keep only targetDate
-    const itemDate = (item.dueDate || item.submitTimestamp || '').slice(0, 10);
-    if (itemDate && itemDate !== targetDate) continue;
+    // Date filter — use EST conversion so late-night routines are not shifted to the next UTC day
+    const itemDate = toESTDate(item.dueDate || item.submitTimestamp);
+    if (itemDate && itemDate !== targetDate) {
+      console.log(`[HutBot] Skipping (date mismatch): itemDate=${itemDate} targetDate=${targetDate} store="${item.storeName}" status="${item.status}"`);
+      continue;
+    }
+
+    // Normalize status — API may return MISSED/LATE/Missed/Late
+    const rawStatus = (item.status || '').toLowerCase().trim();
+    const status = rawStatus === 'missed' ? 'missed' : rawStatus === 'late' ? 'late' : null;
+    if (!status) {
+      console.log(`[HutBot] Skipping status="${item.status}" (not missed/late)`);
+      continue;
+    }
 
     // Resolve store_id by name lookup
     const normalizedName = (item.storeName || '').toLowerCase().trim();
@@ -124,15 +145,21 @@ async function scrapeHutBot(targetDate) {
       continue;
     }
 
-    const status = item.status === 'missed' ? 'missed' : 'late';
-    const minutesLate = (item.submitTimestamp && item.dueDate)
+    const minutesLate = (item.submitTimestamp && item.dueDate && status === 'late')
       ? Math.round((new Date(item.submitTimestamp) - new Date(item.dueDate)) / 60000)
       : null;
+
+    // Normalize routine name: Opening / Shift Change / Close
+    const rawShift = (item.shiftType || item.checklistName || '').toLowerCase();
+    const routine_name = rawShift.includes('open') ? 'Opening' :
+                         (rawShift.includes('close') || rawShift.includes('clos')) ? 'Close' :
+                         (rawShift.includes('shift') || rawShift.includes('mid')) ? 'Shift Change' :
+                         (item.shiftType || item.checklistName || 'Routine');
 
     records.push({
       store_id,
       store_name:    item.storeName || null,
-      routine_name:  item.shiftType || item.checklistName || 'Routine',
+      routine_name,
       status,
       scheduled_time: item.dueDate || null,
       minutes_late:  minutesLate,
@@ -164,6 +191,11 @@ async function writeHutBotFlags(records, targetDate) {
     const prevDays = await db.getConsecutiveDays(rec.store_id, metric_type, targetDate);
 
     const trendDays = prevDays + 1;
+    const lateNote = rec.minutes_late ? ` (${rec.minutes_late} min late)` : '';
+    const flagDesc = isMissed
+      ? `${rec.routine_name} — NOT COMPLETED`
+      : `${rec.routine_name} — LATE${lateNote}`;
+
     await db.insertIntelFlag({
       store_id:     rec.store_id,
       store_name:   rec.store_name || asgn.store_name,
@@ -178,11 +210,12 @@ async function writeHutBotFlags(records, targetDate) {
       source:       'HUTBOT',
       tier:         1,
       details: {
+        description:    flagDesc,
         routine_name:   rec.routine_name,
         status:         rec.status,
         scheduled_time: rec.scheduled_time || null,
         minutes_late:   rec.minutes_late   || null,
-        responsible:    rec.submitted_by   || null, // lead for missed, submitter for late
+        responsible:    rec.submitted_by   || null,
         trend_days:     trendDays,
         trend_note:     trendDays >= 2 ? `${trendDays}-day trend for this routine` : null,
       },

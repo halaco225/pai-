@@ -46,6 +46,10 @@ const S2 = {
   CREDITS       :29,
   CASH_VAR_DAY  :31,
   CASH_VAR_WTD  :32,
+  // Labor columns — indices logged on first run; update these once confirmed from logs
+  // Look for "DBS S2 HEADER" in server logs to find exact indices
+  SCH_LABOR_DAY : null,   // scheduled labor $ — col index TBD
+  ACT_LABOR_DAY : null,   // actual labor $    — col index TBD
 };
 
 function cellVal(row, idx) {
@@ -120,6 +124,11 @@ function parseDBS(filePath, targetDate) {
     if (isSectionHeader(colA, colE)) {
       const hdr = String(colE).trim();
       currentSection = hdr === 'Net Sales $' ? 'operations' : 'financial';
+      // Dump all column values so we can identify labor column indices
+      if (currentSection === 'financial') {
+        console.log('[DBS S2 HEADER] Column indices for labor lookup:',
+          row.map((v, i) => `[${i}]=${v}`).filter(s => !s.endsWith('=null')).join(' | '));
+      }
       continue;
     }
 
@@ -177,6 +186,10 @@ function parseDBS(filePath, targetDate) {
 
         // Capture raw KPI snapshot — merged with ops section data below
         if (!storeMetrics[store_id]) storeMetrics[store_id] = { store_id, store_name, area_coach: currentArea, region_coach: resolvedRC, territory_vp: resolvedVP, metric_date: targetDate };
+        // Extract scheduled/actual labor if column indices are known
+        const schLaborDay = S2.SCH_LABOR_DAY != null ? cellVal(row, S2.SCH_LABOR_DAY) : null;
+        const actLaborDay = S2.ACT_LABOR_DAY != null ? cellVal(row, S2.ACT_LABOR_DAY) : null;
+
         Object.assign(storeMetrics[store_id], {
           change_down_day:   changeDown,
           allowance_pct_day: cellVal(row, S2.ALLOWANCE),
@@ -186,6 +199,8 @@ function parseDBS(filePath, targetDate) {
           paidouts_day:      paidouts,
           refunds_day:       refunds,
           cash_variance_day: cashVar,
+          sch_labor_day:     schLaborDay,
+          act_labor_day:     actLaborDay,
         });
 
         if (changeDown != null && changeDown > 50) {
@@ -221,6 +236,14 @@ function parseDBS(filePath, targetDate) {
         const allowance = cellVal(row, S2.ALLOWANCE);
         if (allowance != null) {
           softIndicators.push({ store_id, metric_date: targetDate, indicator: 'allowance_pct', value: allowance, target: null, source: 'DBS' });
+        }
+
+        // ── Labor Scheduled vs Actual (from DBS financial section) ──────────
+        if (S2.SCH_LABOR_DAY != null && schLaborDay != null) {
+          softIndicators.push({ store_id, metric_date: targetDate, indicator: 'sch_lab_dollar', value: schLaborDay, target: null, source: 'DBS' });
+        }
+        if (S2.ACT_LABOR_DAY != null && actLaborDay != null) {
+          softIndicators.push({ store_id, metric_date: targetDate, indicator: 'act_lab_dollar', value: actLaborDay, target: null, source: 'DBS' });
         }
       }
 

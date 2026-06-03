@@ -68,7 +68,7 @@ button{font-family:inherit;cursor:pointer}
 .content{flex:1;overflow-y:auto;padding:16px 24px 32px}
 .tab-panel{display:none}
 .tab-panel.active{display:block}
-.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:20px}
 .kpi-card{background:#131d35;border:1px solid #1e2d4d;border-radius:12px;padding:18px}
 .kpi-label{font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px}
 .kpi-val{font-size:30px;font-weight:800;color:#f1f5f9;line-height:1;margin-bottom:8px}
@@ -210,7 +210,7 @@ button{font-family:inherit;cursor:pointer}
 .empty-icon{font-size:28px;margin-bottom:10px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-@media(max-width:1100px){.two-col{grid-template-columns:1fr}.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:1300px){.two-col{grid-template-columns:1fr}.kpi-grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:900px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
 .hidden{display:none!important}
 </style>
 </head>
@@ -556,6 +556,18 @@ function renderKPIs(data){
       </div>
       <div class="kpi-delta ${lateCount===0&&missedCount===0?'up':'dn'}">${lateCount===0&&missedCount===0?'✓ All audits on time':lateCount+' late · '+missedCount+' missed'}</div>
       <div class="kpi-bench" style="color:#3b82f6;font-size:11px">Click to view details</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Win Score PTD</div>
+      ${(()=>{
+        const ws=data.region?.avg_win_score;
+        const cls=ws==null?'':ws>=80?'green':ws>=70?'amber':'red';
+        const acs=data.by_ac||[];
+        const storesWithWs=acs.flatMap(a=>a.stores||[]).filter(s=>s.win_score!=null).length;
+        return `<div class="kpi-val ${cls}">${ws!=null?ws.toFixed(1)+'%':'—'}</div>
+        <div class="kpi-delta ${ws==null?'':ws>=80?'up':'dn'}">${ws!=null?(ws>=80?'✓ On target':'⚠ Below 80% target'):'No data yet'}</div>
+        <div class="kpi-bench">${storesWithWs} store${storesWithWs!==1?'s':''} reporting</div>`;
+      })()}
     </div>`;
 }
 
@@ -1110,6 +1122,33 @@ function fmtMoney(v){if(v==null)return'—';const n=Number(v);return n>=1000?'$'
 function fmtPct(v){return v==null?'—':(Number(v)>0?'+':'')+Number(v).toFixed(1)+'%';}
 function fmtHrs(v){return v==null?'—':Number(v).toFixed(1)+' hrs';}
 function fmtMetric(t){return{CHANGE_DOWN:'Change Down',CHANGED_MILES:'Changed Miles',PAIDOUT:'Paid Out',CASH_VARIANCE:'Cash Variance',REFUNDS:'Refunds',CANCEL_UNMADE:'Cancel/Unmade',PRODUCTION_TIME:'Production Time',LABOR_NOT_ADJUSTED:'Labor Not Adjusted',LABOR_OVER_BUDGET:'Labor Over Budget',LABOR_UNDER_BUDGET:'Labor Under Budget',OT_OVER_SCHEDULED:'OT Over Scheduled',OT_OVER_RUN:'OT Over Run',DOUBLE_TIME:'Double Time',FORGOT_CLOCKOUT:'Forgot Clock Out',CLOCKOUT_REMINDER:'Clock Out Reminder',GUEST_COMPLAINT:'Guest Complaint',PUSH_SURVEYS:'Push Surveys Needed',ROUTINE_MISSED:'Routine Missed',ROUTINE_LATE:'Routine Late',PERFORMANCE_TREND:'Performance Trend'}[t]||t||'—';}
+function buildFlagDesc(f){
+  const d=f.details||{};
+  // HutBot routines — description baked into details
+  if((f.metric_type==='ROUTINE_MISSED'||f.metric_type==='ROUTINE_LATE')&&d.description) return d.description;
+  if(f.metric_type==='ROUTINE_MISSED'||f.metric_type==='ROUTINE_LATE'){
+    const r=d.routine_name||'Routine';
+    const late=f.metric_type==='ROUTINE_LATE'?(d.minutes_late?' ('+d.minutes_late+' min late)':''):'';
+    const trend=d.trend_days>=2?' — '+d.trend_days+'-day trend':'';
+    return r+(f.metric_type==='ROUTINE_MISSED'?' — NOT COMPLETED':' — LATE'+late)+trend;
+  }
+  // Financial flags
+  const val=f.value!=null?+f.value:null;
+  const tgt=f.target!=null?+f.target:null;
+  if(f.metric_type==='CHANGE_DOWN') return val!=null?'Change Down: $'+val.toFixed(2)+' (threshold $'+tgt+')':'Change Down exceeded threshold';
+  if(f.metric_type==='CHANGED_MILES') return val!=null?val+' changed miles':'Changed miles flagged';
+  if(f.metric_type==='PAIDOUT') return val!=null?'Paid out: $'+val.toFixed(2):'Paid out flagged';
+  if(f.metric_type==='CASH_VARIANCE') return val!=null?'Cash variance: $'+val.toFixed(2)+' (threshold $'+tgt+')':'Cash variance exceeded threshold';
+  if(f.metric_type==='REFUNDS') return val!=null?'Refunds: $'+val.toFixed(2):'Refunds exceeded threshold';
+  if(f.metric_type==='CANCEL_UNMADE') return val!=null?'Cancel/Unmade: $'+val.toFixed(2):'Cancel/Unmade exceeded threshold';
+  if(f.metric_type==='FORGOT_CLOCKOUT') return 'Employee forgot to clock out';
+  if(f.metric_type==='OT_OVER_SCHEDULED'||f.metric_type==='OT_OVER_RUN') return val!=null?'OT hours: '+val.toFixed(1)+' hrs':'Overtime flagged';
+  if(f.metric_type==='DOUBLE_TIME') return val!=null?'Double time: '+val.toFixed(1)+' hrs':'Double time flagged';
+  if(f.metric_type==='GUEST_COMPLAINT') return d.summary||d.comment_text||'Guest complaint received';
+  // Fallback: show value vs target if available
+  if(val!=null&&tgt!=null) return fmtMetric(f.metric_type)+': '+val+' (threshold: '+tgt+')';
+  return d.note||d.description||fmtMetric(f.metric_type)+' flagged';
+}
 async function uploadSMGFile(input){
   const file=input.files[0];
   if(!file)return;

@@ -841,7 +841,8 @@ router.get('/kpis', async (req, res) => {
       stores:          storesByAC[a.area_coach] || [],
     }));
 
-    const validGrowth = by_store.filter(s => s.growth_pct != null);
+    const validGrowth  = by_store.filter(s => s.growth_pct != null);
+    const validWinScore = by_store.filter(s => s.win_score != null);
     const region = {
       store_count:     by_store.length,
       net_sales:       by_store.reduce((s,r) => s+(r.net_sales||0), 0) || null,
@@ -853,7 +854,8 @@ router.get('/kpis', async (req, res) => {
       comments_neg:    by_store.reduce((s,r) => s+(r.comments_neg||0), 0),
       forgot_clockout:  by_store.reduce((s,r) => s+(r.forgot_clockout||0), 0),
       routines_missed:  by_store.reduce((s,r) => s+(r.routines_missed||0), 0),
-      routines_late:    by_store.reduce((s,r) => s+(r.routines_late||0), 0)
+      routines_late:    by_store.reduce((s,r) => s+(r.routines_late||0), 0),
+      avg_win_score:    validWinScore.length ? Math.round(validWinScore.reduce((s,r) => s+r.win_score, 0) / validWinScore.length * 10) / 10 : null
     };
 
     res.json({ region, by_ac, by_store, date });
