@@ -177,6 +177,16 @@ async function scrapeHutBot(targetDate) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function writeHutBotFlags(records, targetDate) {
+  const pool = db.getPool();
+
+  // Clear existing HutBot flags for all dates we're about to write
+  const datesToClear = [...new Set(records.map(r => r.report_date).filter(Boolean))];
+  if (!datesToClear.length) datesToClear.push(targetDate);
+  for (const d of datesToClear) {
+    await pool.query('DELETE FROM intel_flags WHERE metric_date = $1 AND source = $2', [d, 'HUTBOT']);
+    console.log(`[HutBot] Cleared existing HutBot flags for ${d}`);
+  }
+
   const assignments = await db.getStoreAssignments();
   const dow = new Date(targetDate + 'T12:00:00Z').getUTCDay();
   const isMonday = dow === 1;
