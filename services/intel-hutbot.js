@@ -91,10 +91,11 @@ async function scrapeHutBot(targetDate) {
     console.log(`[HutBot] Page ${page + 1}: ${items.length} items (total=${data.totalElements})`);
     if (!items.length) break;
 
-    // Count how many items on this page match our accepted dates with late/missed status
+    // Count how many items on this page match accepted dates with actionable status
     const pageHits = items.filter(it => {
       const s = (it.status || '').toLowerCase().trim();
-      if (s !== 'late' && s !== 'missed') return false;
+      const isActionable = s === 'late' || s === 'missed' || s === 'not_submitted' || s === 'overdue';
+      if (!isActionable) return false;
       const d = new Date(it.dueDate || it.submitTimestamp || '');
       if (isNaN(d)) return false;
       const dt = d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
