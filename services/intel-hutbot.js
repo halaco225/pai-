@@ -19,8 +19,8 @@ const YUM_API = 'https://api.superapp.yum.com/admin-proxy/checklists/search';
 //  Scrape via REST API
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function callApi(cookieStr) {
-  const response = await fetch(`${YUM_API}?offset=0&pageSize=100`, {
+async function callApi(cookieStr, offset = 0, pageSize = 200) {
+  const response = await fetch(`${YUM_API}?offset=${offset}&pageSize=${pageSize}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -50,42 +50,44 @@ async function scrapeHutBot(targetDate) {
     return { success: false, error: `HutBot login failed: ${err.message}` };
   }
 
-  let response = await callApi(cookie);
-  console.log(`[HutBot] API response: ${response.status}`);
-
-  // If session expired, log in fresh and retry once
-  if (response.status === 401 || response.status === 403) {
-    console.warn('[HutBot] Session expired — re-logging in');
-    await db.markHutBotAuthInvalid();
-    try {
-      cookie = await login();
-      await db.setHutBotAuth(cookie, 'auto-retry');
-      response = await callApi(cookie);
-      console.log(`[HutBot] Retry response: ${response.status}`);
-    } catch (err) {
-      return { success: false, error: `HutBot re-login failed: ${err.message}` };
+  // Helper: fetch one page, retry once on 401/403
+  async function fetchPage(offset) {
+    let resp = await callApi(cookie, offset);
+    if (resp.status === 401 || resp.status === 403) {
+      console.warn('[HutBot] Session expired — re-logging in');
+      await db.markHutBotAuthInvalid();
+      try {
+        cookie = await login();
+        await db.setHutBotAuth(cookie, 'auto-retry');
+        resp = await callApi(cookie, offset);
+      } catch (err) {
+        throw new Error(`HutBot re-login failed: ${err.message}`);
+      }
     }
+    if (resp.status === 401 || resp.status === 403) throw new Error(`HutBot auth failed (HTTP ${resp.status})`);
+    if (!resp.ok) {
+      const t = await resp.text();
+      throw new Error(`Yum API ${resp.status}: ${t.slice(0, 200)}`);
+    }
+    return resp.json();
   }
 
-  if (response.status === 401 || response.status === 403) {
-    return { success: false, error: `HutBot auth failed after re-login (HTTP ${response.status})` };
-  }
+  // Paginate up to MAX_PAGES to collect late/missed items for targetDate or today
+  const PAGE_SIZE = 200;
+  const MAX_PAGES = 15;
+  const allItems  = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    let data;
+    try { data = await fetchPage(page * PAGE_SIZE); }
+    catch (err) { return { success: false, error: err.message }; }
 
-  if (!response.ok) {
-    const text = await response.text();
-    console.error(`[HutBot] API error ${response.status}: ${text.slice(0, 300)}`);
-    return { success: false, error: `Yum API returned ${response.status}: ${text.slice(0, 200)}` };
+    const items = data.items || [];
+    console.log(`[HutBot] Page ${page + 1}: ${items.length} items (total=${data.totalElements})`);
+    if (!items.length) break;
+    allItems.push(...items);
+    if (allItems.length >= (data.totalElements || 0)) break;
   }
-
-  let respData;
-  try {
-    respData = await response.json();
-  } catch (err) {
-    return { success: false, error: `HutBot API response parse failed: ${err.message}` };
-  }
-
-  const allItems = respData.items || [];
-  console.log(`[HutBot] API returned ${allItems.length} items (totalElements=${respData.totalElements})`);
+  console.log(`[HutBot] Collected ${allItems.length} items across pages`);
 
   // Convert an ISO timestamp to YYYY-MM-DD in EST (handles UTC offsets correctly)
   function toESTDate(isoStr) {
@@ -106,25 +108,23 @@ async function scrapeHutBot(targetDate) {
     }
   }
 
-  // Filter to target date and map to records
+  // Accept items for targetDate OR today (API is real-time; cron runs the next morning)
+  const todayEST = toESTDate(new Date().toISOString());
+  const acceptDates = new Set([targetDate, todayEST]);
+
+  // Filter to accepted dates and map to records
   const records = [];
   for (const item of allItems) {
     // item: { id, status, dueDate, submitTimestamp, lead, submittedBy, storeName, shiftType }
 
-    // Date filter — use EST conversion so late-night routines are not shifted to the next UTC day
-    const itemDate = toESTDate(item.dueDate || item.submitTimestamp);
-    if (itemDate && itemDate !== targetDate) {
-      console.log(`[HutBot] Skipping (date mismatch): itemDate=${itemDate} targetDate=${targetDate} store="${item.storeName}" status="${item.status}"`);
-      continue;
-    }
-
-    // Normalize status — API may return MISSED/LATE/Missed/Late
+    // Normalize status first — skip non-late/missed immediately
     const rawStatus = (item.status || '').toLowerCase().trim();
     const status = rawStatus === 'missed' ? 'missed' : rawStatus === 'late' ? 'late' : null;
-    if (!status) {
-      console.log(`[HutBot] Skipping status="${item.status}" (not missed/late)`);
-      continue;
-    }
+    if (!status) continue;
+
+    // Date filter — keep items for targetDate or today
+    const itemDate = toESTDate(item.dueDate || item.submitTimestamp);
+    if (itemDate && !acceptDates.has(itemDate)) continue;
 
     // Resolve store_id by name lookup
     const normalizedName = (item.storeName || '').toLowerCase().trim();
@@ -164,7 +164,7 @@ async function scrapeHutBot(targetDate) {
       scheduled_time: item.dueDate || null,
       minutes_late:  minutesLate,
       submitted_by:  item.submittedBy || item.lead || null,
-      report_date:   targetDate,
+      report_date:   itemDate || targetDate,
     });
   }
 
