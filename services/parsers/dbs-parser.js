@@ -124,10 +124,9 @@ function parseDBS(filePath, targetDate) {
     if (isSectionHeader(colA, colE)) {
       const hdr = String(colE).trim();
       currentSection = hdr === 'Net Sales $' ? 'operations' : 'financial';
-      // Dump all column values so we can identify labor column indices
       if (currentSection === 'financial') {
-        console.log('[DBS S2 HEADER] Column indices for labor lookup:',
-          row.map((v, i) => `[${i}]=${v}`).filter(s => !s.endsWith('=null')).join(' | '));
+        const dump = row.map((v, i) => v != null ? `[${i}]=${String(v).trim()}` : null).filter(Boolean).join('  ');
+        console.log(`[DBS S2 HEADER] ${dump}`);
       }
       continue;
     }
