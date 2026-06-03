@@ -229,6 +229,7 @@ async function getBearer(jar, user, pass) {
     'https://360.smg.com',
   ];
 
+  let lastErr = 'unknown';
   for (const REDIRECT_URI of REDIRECT_URIS) {
     const nonce = Math.random().toString(36).slice(2);
     const state = Math.random().toString(36).slice(2);
@@ -247,8 +248,29 @@ async function getBearer(jar, user, pass) {
       if (token) return token;
     } catch (e) {
       console.log(`[SMG] OAuth redirect_uri=${REDIRECT_URI} failed: ${e.message}`);
+      lastErr = e.message;
     }
   }
+  throw new Error(`OAuth2 failed for all redirect URIs — last error: ${lastErr}. Cannot get Bearer token.`);
+}
+
+// Extract access_token from a 200 response body.
+// IdentityServer often delivers tokens via a self-submitting hidden form (form_post),
+// a JSON body, or a JS variable assignment rather than a URL fragment.
+function extractTokenFromBody(body) {
+  if (!body) return null;
+  // Hidden form field: <input type="hidden" name="access_token" value="...">
+  const formMatch = body.match(/<input[^>]+name=["']?access_token["']?[^>]+value=["']([^"']+)["']/i)
+                 || body.match(/<input[^>]+value=["']([^"']+)["'][^>]+name=["']?access_token["']?/i);
+  if (formMatch) return formMatch[1];
+  // JSON body: {"access_token":"..."}
+  try {
+    const json = JSON.parse(body);
+    if (json.access_token) return json.access_token;
+  } catch (_) {}
+  // JS variable: access_token = "..." or access_token:"..."
+  const jsMatch = body.match(/access_token['":\s=]+["']([A-Za-z0-9._\-]+)["']/);
+  if (jsMatch) return jsMatch[1];
   return null;
 }
 
@@ -259,63 +281,75 @@ async function _followOAuthFlow(jar, startUrl, user, pass) {
   for (let i = 0; i < 15; i++) {
     const r = await httpReqStep(jar, 'GET', cur);
     const shortUrl = cur.replace(/[#?].*/, '').slice(0, 80);
-    console.log(`[SMG] OAuth step ${i+1}: HTTP ${r.status} url=${shortUrl} loc=${r.location ? r.location.slice(0, 60) : '—'}`);
+    console.log(`[SMG] OAuth step ${i+1}: HTTP ${r.status} url=${shortUrl} loc=${r.location ? r.location.slice(0, 80) : '—'}`);
 
-    // Token found in redirect location
+    // Token in redirect Location header (standard implicit flow fragment)
     if (r.location) {
       const loc = new url.URL(r.location, cur).href;
       const token = extractTokenFromUrl(loc);
-      if (token) { console.log('[SMG] Bearer token obtained via OAuth'); return token; }
-      // auth.smg.com returns error page (not redirect) if redirect_uri unregistered
+      if (token) { console.log('[SMG] Bearer token obtained from redirect fragment'); return token; }
       if (r.status >= 400) throw new Error(`HTTP ${r.status} at ${shortUrl}`);
       cur = loc;
       continue;
     }
 
-    // 200 response — check for auth.smg.com login form
-    if (r.status === 200 && !credPosted && cur.includes('auth.smg.com')) {
-      const hasPassField = /name=["']?password["']?/i.test(r.body) || r.body.includes('txtPassword');
-      const hasUserField = /name=["']?(username|email|txtUser)/i.test(r.body);
-      if (hasPassField && hasUserField) {
-        console.log('[SMG] OAuth: auth.smg.com login form detected — posting credentials');
-        const rvt     = extractHidden(r.body, '__RequestVerificationToken') || '';
-        const signinId = new url.URL(cur).searchParams.get('signin') || extractHidden(r.body, 'signin') || '';
-        // Try multiple username field names used by IdentityServer3
-        const userField = /name=["']?email["']?/i.test(r.body) ? 'email' : 'username';
-        const fields = {
-          [userField]: user,
-          password:    pass,
-          ...(rvt      ? { __RequestVerificationToken: rvt } : {}),
-          ...(signinId ? { signin: signinId } : {}),
-        };
-        console.log('[SMG] Auth form fields:', Object.keys(fields).join(', '));
-        const post = await httpReqStep(jar, 'POST', cur, {
-          body: formEncode(fields),
-          headers: { Referer: cur, Origin: 'https://auth.smg.com' },
-        });
-        credPosted = true;
-        console.log(`[SMG] OAuth login POST: HTTP ${post.status} loc=${post.location ? post.location.slice(0,60) : '—'}`);
-        if (post.location) {
-          const loc   = new url.URL(post.location, cur).href;
-          const token = extractTokenFromUrl(loc);
-          if (token) { console.log('[SMG] Bearer token obtained via OAuth'); return token; }
-          cur = loc;
-          continue;
+    // 200 response — could be login form, form_post token delivery, or error page
+    if (r.status === 200) {
+      // Always check for token in body first (form_post / JS delivery)
+      const bodyToken = extractTokenFromBody(r.body);
+      if (bodyToken) { console.log('[SMG] Bearer token obtained from response body (form_post)'); return bodyToken; }
+
+      // auth.smg.com login form — post credentials
+      if (!credPosted && cur.includes('auth.smg.com')) {
+        const hasPassField = /name=["']?password["']?/i.test(r.body) || r.body.includes('txtPassword');
+        const hasUserField = /name=["']?(username|email|txtUser)/i.test(r.body);
+        if (hasPassField && hasUserField) {
+          console.log('[SMG] OAuth: auth.smg.com login form detected — posting credentials');
+          const rvt      = extractHidden(r.body, '__RequestVerificationToken') || '';
+          const signinId = new url.URL(cur).searchParams.get('signin') || extractHidden(r.body, 'signin') || '';
+          const userField = /name=["']?email["']?/i.test(r.body) ? 'email' : 'username';
+          const fields = {
+            [userField]: user,
+            password:    pass,
+            ...(rvt      ? { __RequestVerificationToken: rvt } : {}),
+            ...(signinId ? { signin: signinId } : {}),
+          };
+          console.log('[SMG] Auth form fields:', Object.keys(fields).join(', '));
+          const post = await httpReqStep(jar, 'POST', cur, {
+            body: formEncode(fields),
+            headers: { Referer: cur, Origin: 'https://auth.smg.com' },
+          });
+          credPosted = true;
+          console.log(`[SMG] OAuth login POST: HTTP ${post.status} loc=${post.location ? post.location.slice(0, 80) : '—'}`);
+          // Check body of POST response for token (some servers respond with form_post directly)
+          const postBodyToken = extractTokenFromBody(post.body);
+          if (postBodyToken) { console.log('[SMG] Bearer token obtained from POST response body'); return postBodyToken; }
+          if (post.location) {
+            const loc   = new url.URL(post.location, cur).href;
+            const token = extractTokenFromUrl(loc);
+            if (token) { console.log('[SMG] Bearer token obtained from POST redirect'); return token; }
+            cur = loc;
+            continue;
+          }
+          if (post.body && (post.body.includes('Invalid') || post.body.includes('incorrect') || post.body.includes('txtPassword'))) {
+            throw new Error('auth.smg.com rejected credentials — check SMG_USER/SMG_PASSWORD');
+          }
+          throw new Error('Credentials posted but received no redirect and no token in body');
         }
-        // Wrong credentials: form re-rendered
-        if (post.body && (post.body.includes('Invalid') || post.body.includes('incorrect') || post.body.includes('txtPassword'))) {
-          throw new Error('auth.smg.com rejected credentials — check SMG_USER/SMG_PASSWORD');
-        }
-        throw new Error('Credentials posted but received no redirect');
+        // auth.smg.com 200 but no login form — log body snippet for diagnosis
+        const snippet = r.body.slice(0, 300).replace(/\s+/g, ' ');
+        console.log(`[SMG] OAuth: auth.smg.com 200 with no login form — body: ${snippet}`);
+        throw new Error(`auth.smg.com returned 200 without login form (redirect_uri may be unregistered)`);
       }
-      // Ended at a 200 non-login page — unregistered redirect_uri shows error page
-      const snippet = r.body.slice(0, 200).replace(/\s+/g, ' ');
-      throw new Error(`Flow ended at 200 non-login page: ${snippet}`);
+
+      // 200 at a non-auth.smg.com URL (e.g. reporting.smg.com/signin-oidc after creds posted)
+      // Log body snippet so we can diagnose what the server returned
+      const snippet = r.body.slice(0, 300).replace(/\s+/g, ' ');
+      console.log(`[SMG] OAuth: 200 at ${shortUrl} — body: ${snippet}`);
+      throw new Error(`Unexpected 200 at ${shortUrl} — no token in body. Check logs for body snippet.`);
     }
 
     if (r.status >= 400) throw new Error(`HTTP ${r.status} at ${shortUrl}`);
-    // Anything else (200 not at auth.smg.com after creds posted) — keep going or bail
-    if (r.status === 200) throw new Error(`Unexpected 200 at ${shortUrl}`);
   }
   throw new Error('OAuth: access_token not found after 15 steps');
 }
@@ -363,21 +397,9 @@ async function login(jar, user, pass) {
   }
   console.log('[SMG] Login OK at reporting.smg.com');
 
-  // OAuth2 implicit flow — interactive: follows auth.smg.com login form with credentials
-  let bearer = null;
-  try {
-    bearer = await getBearer(jar, user, pass);
-  } catch (e) {
-    console.warn('[SMG] OAuth2 implicit failed:', e.message, '— will try cookie-only export');
-  }
-
-  if (!bearer) {
-    // Establish 360.smg.com session with ASP.NET cookie so cookie-only export has a chance
-    console.log('[SMG] GET 360.smg.com to establish session (cookie-only mode)');
-    await httpReq(jar, 'GET', BASE_360, { headers: { Accept: 'text/html', Referer: 'https://reporting.smg.com/' } });
-  }
-
-  return bearer; // may be null
+  // OAuth2 implicit flow — throws if all redirect URIs fail
+  const bearer = await getBearer(jar, user, pass);
+  return bearer;
 }
 
 // ── Build date range (30-day window ending at targetDate) ─────────────────────
