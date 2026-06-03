@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 // All users share the default password: welcome1@
 const DEFAULT_PASSWORD_HASH = '$2a$10$CMS4xDFNmb2.SavfTs2FHufXBO1LjX5Z4YtUWH.t8EWdZ6aHLTPuG';
 
-// ── Org hierarchy (from Master Alignment P5 REV 042326) ────────────────────
+// ── Org hierarchy (from Master Alignment P6 REV 052626) ────────────────────
 // scope: { type, ac_name?, area?, region_coach?, rc_name?, area_coaches?, vp_name?, region_coaches? }
 const USER_ROSTER = [
   // ── VPs ──────────────────────────────────────────────────────────────────
