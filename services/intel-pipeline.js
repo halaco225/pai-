@@ -114,40 +114,9 @@ async function runIntelPipeline(targetDate) {
   }
   await logStep('sos', results.steps.sos, targetDate);
 
-  // ── Step 3: Fourth Labor ───────────────────────────────────────────────────
-  console.log('[Intel Pipeline] Step 3: Fourth Labor');
-  try {
-    const dl = await downloadFourthReport('LABOR', targetDate);
-    if (!dl.success) throw new Error(dl.error);
-    const r = await processFourthLabor(dl.filePath, targetDate);
-    cleanupFile(dl.filePath);
-    results.steps.fourthLabor = r;
-  } catch (err) {
-    results.errors.push(`FourthLabor: ${err.message}`);
-    results.steps.fourthLabor = { success: false, error: err.message };
-    console.error('[Intel Pipeline] Fourth Labor failed:', err.message);
-  }
-  await logStep('fourthLabor', results.steps.fourthLabor, targetDate);
-
-  // ── Step 4: Fourth OT (Sun/Mon only) ──────────────────────────────────────
-  const dow = new Date(targetDate + 'T12:00:00Z').getUTCDay();
-  if (dow === 0 || dow === 1) {
-    console.log('[Intel Pipeline] Step 4: Fourth OT');
-    try {
-      const dl = await downloadFourthReport('OT', targetDate);
-      if (!dl.success) throw new Error(dl.error);
-      const r = await processFourthOT(dl.filePath, targetDate);
-      cleanupFile(dl.filePath);
-      results.steps.fourthOT = r;
-    } catch (err) {
-      results.errors.push(`FourthOT: ${err.message}`);
-      results.steps.fourthOT = { success: false, error: err.message };
-      console.error('[Intel Pipeline] Fourth OT failed:', err.message);
-    }
-    await logStep('fourthOT', results.steps.fourthOT, targetDate);
-  } else {
-    results.steps.fourthOT = { skipped: true, reason: 'Only runs Sun/Mon' };
-  }
+  // Steps 3 & 4 (Fourth Labor / OT) disabled — API returns no usable data
+  results.steps.fourthLabor = { skipped: true, reason: 'Disabled' };
+  results.steps.fourthOT    = { skipped: true, reason: 'Disabled' };
 
   // ── Step 5: Forgot to Clock Out ────────────────────────────────────────────
   console.log('[Intel Pipeline] Step 5: Forgot to Clock Out');
@@ -179,17 +148,8 @@ async function runIntelPipeline(targetDate) {
   }
   await logStep('smg', results.steps.smg, targetDate);
 
-  // ── Step 6b: SMG Win Score (Current Fiscal Period PTD) ────────────────────
-  console.log('[Intel Pipeline] Step 6b: SMG Win Score');
-  try {
-    const r = await processWinScore(targetDate);
-    results.steps.winScore = r;
-  } catch (err) {
-    results.errors.push(`WinScore: ${err.message}`);
-    results.steps.winScore = { success: false, error: err.message };
-    console.error('[Intel Pipeline] Win Score failed:', err.message);
-  }
-  await logStep('winScore', results.steps.winScore, targetDate);
+  // Step 6b (SMG Win Score) disabled — SMG session auth broken, fix later
+  results.steps.winScore = { skipped: true, reason: 'Disabled' };
 
   // ── Step 7: Hut Bot ────────────────────────────────────────────────────────
   console.log('[Intel Pipeline] Step 7: Hut Bot');
