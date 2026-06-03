@@ -72,10 +72,16 @@ async function scrapeHutBot(targetDate) {
     return resp.json();
   }
 
-  // Paginate up to MAX_PAGES to collect late/missed items for targetDate or today
-  const PAGE_SIZE = 200;
-  const MAX_PAGES = 15;
-  const allItems  = [];
+  // Paginate to find late/missed items for targetDate or today.
+  // API returns ~today's items first; yesterday's missed items are deeper in the result set.
+  // Stop after 5 consecutive pages with no relevant-date items once we've found some,
+  // or after 100 pages hard cap.
+  const PAGE_SIZE  = 500;
+  const MAX_PAGES  = 100;
+  const allItems   = [];
+  let foundAny     = false;  // have we seen any acceptDate items yet?
+  let emptyStreak  = 0;      // consecutive pages with no acceptDate late/missed items
+
   for (let page = 0; page < MAX_PAGES; page++) {
     let data;
     try { data = await fetchPage(page * PAGE_SIZE); }
@@ -84,7 +90,21 @@ async function scrapeHutBot(targetDate) {
     const items = data.items || [];
     console.log(`[HutBot] Page ${page + 1}: ${items.length} items (total=${data.totalElements})`);
     if (!items.length) break;
-    allItems.push(...items);
+
+    // Count how many items on this page match our accepted dates with late/missed status
+    const pageHits = items.filter(it => {
+      const s = (it.status || '').toLowerCase().trim();
+      if (s !== 'late' && s !== 'missed') return false;
+      const d = new Date(it.dueDate || it.submitTimestamp || '');
+      if (isNaN(d)) return false;
+      const dt = d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+      return dt === targetDate || dt === new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    }).length;
+
+    if (pageHits > 0) { foundAny = true; emptyStreak = 0; allItems.push(...items); }
+    else if (foundAny) { emptyStreak++; allItems.push(...items); if (emptyStreak >= 5) { console.log('[HutBot] 5 consecutive pages with no target-date matches — stopping'); break; } }
+    else { allItems.push(...items); } // still searching, keep going
+
     if (allItems.length >= (data.totalElements || 0)) break;
   }
   console.log(`[HutBot] Collected ${allItems.length} items across pages`);
