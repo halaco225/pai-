@@ -181,7 +181,7 @@ function parseDBS(filePath, targetDate) {
         const cancelUnmade  = cellVal(row, S2.CANCEL_UNMADE);
         const schedLaborPct = cellVal(row, S2.SCHED_LABOR_PCT);
         const actLaborPct   = cellVal(row, S2.ACT_LABOR_PCT);
-        if (storeFlags.length === 0) console.log(`[DBS S2 LABOR SAMPLE] store=${store_id} raw17=${row[17]} raw18=${row[18]} sched=${schedLaborPct} act=${actLaborPct}`);
+        if (!storeMetrics[store_id]?.sched_labor_pct_day && schedLaborPct != null) console.log(`[DBS S2 LABOR SAMPLE] store=${store_id} raw17=${row[17]} raw18=${row[18]} sched=${schedLaborPct} act=${actLaborPct}`);
 
         const base = { store_id, store_name, area_coach: currentArea, region_coach: resolvedRC,
                        territory_vp: resolvedVP, metric_date: targetDate, source: 'DBS', tier: 1 };

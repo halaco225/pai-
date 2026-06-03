@@ -137,9 +137,11 @@ async function scrapeHutBot(targetDate) {
   for (const item of allItems) {
     // item: { id, status, dueDate, submitTimestamp, lead, submittedBy, storeName, shiftType }
 
-    // Normalize status first — skip non-late/missed immediately
+    // Normalize status — Yum API uses NOT_SUBMITTED for missed, OVERDUE for late
     const rawStatus = (item.status || '').toLowerCase().trim();
-    const status = rawStatus === 'missed' ? 'missed' : rawStatus === 'late' ? 'late' : null;
+    const status = (rawStatus === 'missed' || rawStatus === 'not_submitted') ? 'missed'
+                 : (rawStatus === 'late'   || rawStatus === 'overdue')       ? 'late'
+                 : null;
     if (!status) continue;
 
     // Date filter — keep items for targetDate or today
