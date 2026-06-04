@@ -57,8 +57,9 @@ async function main() {
     const context = await browser.newContext();
     const page    = await context.newPage();
 
-    // Log browser console for debugging
-    page.on('console', msg => { if (msg.type() !== 'log') return; console.log('BROWSER: ' + msg.text().slice(0, 120)); });
+    // Log all navigations and console
+    page.on('framenavigated', f => { if (f === page.mainFrame()) console.log('NAV→ ' + f.url().slice(0, 100)); });
+    page.on('console', msg => { if (['warning','error'].includes(msg.type())) return; console.log('BROWSER: ' + msg.text().slice(0, 100)); });
 
     let bearerToken = null;
 
@@ -91,6 +92,16 @@ async function main() {
     console.log('Storage cleared. Reloading...');
     await page.goto('https://360.smg.com', { waitUntil: 'networkidle', timeout: 30000 });
     console.log('URL after reload: ' + page.url().slice(0, 100));
+
+    // Log what's visible on the page
+    const bodyText = await page.evaluate(() => document.body.innerText || document.body.textContent || '').catch(() => '');
+    console.log('Page body (first 300): ' + bodyText.replace(/\s+/g, ' ').slice(0, 300));
+
+    // Log all links/buttons on the page
+    const buttons = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('a, button')).map(el => el.textContent.trim().slice(0, 50) + ' [' + (el.href || el.type || '') + ']').filter(t => t.length > 2).slice(0, 20)
+    ).catch(() => []);
+    console.log('Clickable elements: ' + JSON.stringify(buttons));
 
     // The route guard should now redirect to auth.smg.com — wait for it
     if (!capturedAuthorizeUrl) {
