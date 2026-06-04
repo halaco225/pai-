@@ -11,6 +11,7 @@
  */
 const { chromium } = require('playwright');
 const { getSmg360Auth } = require('./smg360-auth-helper');
+const { loginToReporting } = require('./reporting-login');
 const fs    = require('fs');
 const https = require('https');
 const http  = require('http');
@@ -44,98 +45,6 @@ const CARD_ID        = '5b621d617485e95d90e0a370';
 const FILTER_SOURCES = ['6684c1735040640c94fe34da','5b522bf87485e96d80b2dfaf','60ada0b4de7df021c003f620','65807135e6485f00fc5c9fb4'];
 const ALL_SOURCES    = ['5b73cc62f820781a3c28152c','6684c1735040640c94fe34da','644a8e03de7dee17c04fe327','5b522bf87485e96d80b2dfaf','661d4b6df820780f14f6fcf1','65a0028a504064228089de85','60ada0b4de7df021c003f620','642dca8350406420fc9bb262','6983e2725040640e14f8ebcf','65807135e6485f00fc5c9fb4','5d42044ef8207820d81c1169','64ec730ce6485f17e494aa4d','61e7494350406421a4ea9608','5ed7b8d6f820782450e5d26f','5b522969f8207835f04a3106','5ad79fc0f82078451850a66b','63f39d717485e921f0f4a405','5f2ca93d7485e90bec6c7bda'];
 
-async function loginToReportingPortal(page, context) {
-  console.log('Logging in to reporting.smg.com...');
-  // Navigate to the actual login form (MultiLanguage.aspx, not Index.aspx)
-  await page.goto('https://reporting.smg.com/MultiLanguage.aspx', { waitUntil: 'domcontentloaded', timeout: 30000 });
-  console.log('Login page URL: ' + page.url().slice(0, 80));
-
-  // Log the page structure for diagnosis
-  const pageInfo = await page.evaluate(() => {
-    const inputs = Array.from(document.querySelectorAll('input')).map(i => ({
-      name: i.name, id: i.id, type: i.type, placeholder: i.placeholder
-    }));
-    const forms = Array.from(document.querySelectorAll('form')).map(f => ({
-      action: f.action, method: f.method, inputs: f.querySelectorAll('input').length
-    }));
-    return { inputs, forms, url: window.location.href };
-  });
-  console.log('Page inputs: ' + JSON.stringify(pageInfo.inputs.filter(i => ['text','password','submit'].includes(i.type))));
-  console.log('Forms: ' + JSON.stringify(pageInfo.forms));
-
-  // Find the actual username/password fields (flexible matching)
-  const formData = await page.evaluate(({ username, password }) => {
-    // Find password field (unambiguous)
-    const passField = document.querySelector('input[type="password"]');
-    if (!passField) return { error: 'no password field found' };
-
-    // Find username field — try multiple patterns
-    const userField = document.querySelector('input[name*="txtUserName"], input[name="username"], input[type="text"][name*="user"], input[id*="txtUserName"]')
-                   || document.querySelector('input[type="text"]');
-    if (!userField) return { error: 'no username field found' };
-
-    // Set values
-    userField.value = username;
-    passField.value = password;
-
-    // Dispatch events
-    [userField, passField].forEach(field => {
-      ['focus', 'input', 'change', 'blur'].forEach(ev => {
-        field.dispatchEvent(new Event(ev, { bubbles: true }));
-      });
-    });
-
-    return { userFieldName: userField.name, passFieldName: passField.name };
-  }, { username: SMG_USER, password: SMG_PASS });
-  console.log('Form submit result: ' + JSON.stringify(formData));
-
-  // Click the actual submit button — triggers ValidateIndexSubmitButton.js
-  await Promise.all([
-    page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 }).catch(() => {}),
-    page.click('#smg360LoginButton'),
-  ]);
-
-  // Wait briefly for navigation to settle
-  await page.waitForTimeout(2000);
-  const afterSubmitUrl = page.url();
-  console.log('After submit URL: ' + afterSubmitUrl.slice(0, 80));
-
-  // Check if .ASPXAUTH cookie was set — that's the real success signal
-  const allCookies = await context.cookies('https://reporting.smg.com');
-  const aspxAuth = allCookies.find(c => c.name === '.ASPXAUTH');
-  console.log('.ASPXAUTH set: ' + (aspxAuth ? 'YES domain=' + aspxAuth.domain : 'NO'));
-  console.log('All reporting cookies: ' + allCookies.map(c => c.name).join(', '));
-
-  if (!aspxAuth) {
-    // If no .ASPXAUTH, try submitting the form on MultiLanguage.aspx directly
-    if (afterSubmitUrl.includes('MultiLanguage')) {
-      console.log('On MultiLanguage.aspx without .ASPXAUTH — trying login form here...');
-      const mlFormData = await page.evaluate(({ username, password }) => {
-        const passField = document.querySelector('input[type="password"]');
-        const userField = document.querySelector('input[type="text"]') || document.querySelector('input[name*="User"]');
-        if (!passField || !userField) return { error: 'fields not found', html: document.body.innerHTML.slice(0, 500) };
-        userField.value = username;
-        passField.value = password;
-        ['input','change','blur'].forEach(ev => {
-          userField.dispatchEvent(new Event(ev, { bubbles: true }));
-          passField.dispatchEvent(new Event(ev, { bubbles: true }));
-        });
-        const form = passField.closest('form');
-        form.submit();
-        return { userFieldName: userField.name, formAction: form.action };
-      }, { username: SMG_USER, password: SMG_PASS });
-      console.log('MultiLanguage form submit: ' + JSON.stringify(mlFormData));
-      await page.waitForTimeout(3000);
-      const mlCookies = await context.cookies('https://reporting.smg.com');
-      const mlAuth = mlCookies.find(c => c.name === '.ASPXAUTH');
-      if (!mlAuth) throw new Error('Login failed on MultiLanguage.aspx too. URL: ' + page.url());
-      console.log('.ASPXAUTH set after MultiLanguage submit');
-    } else {
-      throw new Error('Login failed — no .ASPXAUTH cookie. URL: ' + afterSubmitUrl);
-    }
-  }
-  console.log('reporting.smg.com login succeeded');
-}
 
 async function main() {
   const browser = await chromium.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox'] });
@@ -150,7 +59,7 @@ async function main() {
 
     // ── Step 2: If no cookie, log in to reporting.smg.com first ──────────────
     if (authResult.mode !== 'cookie') {
-      await loginToReportingPortal(page, context);
+      await loginToReporting(page, context, SMG_USER, SMG_PASS);
 
       // ── Step 3: Navigate to 360.smg.com — app authenticates via .ASPXAUTH ──
       console.log('Navigating to 360.smg.com with reporting session...');
