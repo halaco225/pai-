@@ -72,20 +72,41 @@ async function main() {
       }
     });
 
-    // ── Step 1: Navigate to OAuth2 authorize endpoint directly ────────────────
-    const nonce = Math.random().toString(36).slice(2);
-    const state = Math.random().toString(36).slice(2);
-    const authorizeUrl = 'https://auth.smg.com/connect/authorize?' + [
-      'response_type=token%20id_token',
-      'client_id=smg360',
-      'scope=' + encodeURIComponent('feedback openid email smg360 offline_access'),
-      'redirect_uri=' + encodeURIComponent('https://360.smg.com/auth-callback'),
-      'nonce=' + nonce,
-      'state=' + state,
-    ].join('&');
+    // ── Step 1: Navigate to 360.smg.com and let the app redirect to auth.smg.com
+    // The Angular route guard will use the correct client_id+redirect_uri+scope.
+    // Intercept that navigation to capture the exact authorize URL used by the app.
+    let capturedAuthorizeUrl = null;
+    page.on('request', (req) => {
+      const url = req.url();
+      if (url.startsWith('https://auth.smg.com/connect/authorize') && !capturedAuthorizeUrl) {
+        capturedAuthorizeUrl = url;
+        console.log('Captured authorize URL: ' + url.slice(0, 120));
+      }
+    });
 
-    console.log('Navigating to auth.smg.com/connect/authorize...');
-    await page.goto(authorizeUrl, { waitUntil: 'networkidle', timeout: 60000 });
+    console.log('Navigating to 360.smg.com with cleared storage...');
+    await page.goto('https://360.smg.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    // Clear any stale storage that causes JSON parse errors in the route guard
+    await page.evaluate(() => { try { localStorage.clear(); sessionStorage.clear(); } catch(_) {} });
+    console.log('Storage cleared. Reloading...');
+    await page.goto('https://360.smg.com', { waitUntil: 'networkidle', timeout: 30000 });
+    console.log('URL after reload: ' + page.url().slice(0, 100));
+
+    // The route guard should now redirect to auth.smg.com — wait for it
+    if (!capturedAuthorizeUrl) {
+      console.log('Waiting for auth redirect (up to 15s)...');
+      await page.waitForURL(u => u.startsWith('https://auth.smg.com'), { timeout: 15000 }).catch(() => {});
+      console.log('URL after auth wait: ' + page.url().slice(0, 100));
+    }
+
+    // If captured the authorize URL, navigate directly so we land on the login form
+    if (capturedAuthorizeUrl || page.url().startsWith('https://auth.smg.com')) {
+      const targetUrl = capturedAuthorizeUrl || page.url();
+      console.log('Going to auth.smg.com authorize...');
+      if (!page.url().startsWith('https://auth.smg.com')) {
+        await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30000 });
+      }
+    }
     console.log('Auth page URL: ' + page.url().slice(0, 100));
 
     // ── Step 2: Wait for login form OR auto-redirect (Angular takes time to render)
