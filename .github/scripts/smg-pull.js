@@ -66,20 +66,31 @@ async function loginToReportingPortal(page) {
     });
   }, { username: SMG_USER, password: SMG_PASS });
 
-  // Submit form and wait for navigation
-  await Promise.all([
-    page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 }).catch(() => {}),
-    page.evaluate(() => { document.querySelector('form').submit(); }),
-  ]);
+  // Submit the form that contains the username field
+  await page.evaluate(() => {
+    const field = document.querySelector('[name="ctl00$cphMain$txtUserName"]');
+    if (field) field.closest('form').submit();
+    else document.querySelector('form').submit();
+  });
 
-  const afterUrl = page.url();
-  console.log('After login URL: ' + afterUrl.slice(0, 80));
+  // Wait until we land somewhere that is NOT a login or error page
+  // The login chain goes: POST Index.aspx → LandingPage.aspx → MultiLanguage.aspx → LandingPage.aspx → dashboard.aspx
+  const loginPages = ['MultiLanguage', 'Index.aspx', 'Error='];
+  const isLoginPage = url => loginPages.some(p => url.includes(p));
 
-  // Verify login succeeded (should redirect away from login page)
-  if (afterUrl.includes('Error=1') || afterUrl.includes('MultiLanguage')) {
-    throw new Error('reporting.smg.com login failed — check SMG_USER/SMG_PASSWORD. URL: ' + afterUrl);
+  for (let i = 0; i < 20; i++) {
+    await page.waitForTimeout(1000);
+    const url = page.url();
+    if (!isLoginPage(url)) {
+      console.log('Redirected away from login pages: ' + url.slice(0, 80));
+      break;
+    }
+    if (i === 19) {
+      console.log('Final login URL: ' + url);
+      throw new Error('reporting.smg.com login failed — still on login page after 20s. URL: ' + url);
+    }
   }
-  console.log('reporting.smg.com login succeeded');
+  console.log('reporting.smg.com login succeeded: ' + page.url().slice(0, 80));
 }
 
 async function main() {
