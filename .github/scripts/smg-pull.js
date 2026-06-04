@@ -50,18 +50,26 @@ async function loginToReportingPortal(page) {
   await page.goto('https://reporting.smg.com/MultiLanguage.aspx', { waitUntil: 'domcontentloaded', timeout: 30000 });
   console.log('Login page URL: ' + page.url().slice(0, 80));
 
-  // Fill username and password using name attribute selectors
-  const userSel = 'input[name="ctl00$cphMain$txtUserName"]';
-  const passSel = 'input[name="ctl00$cphMain$txtPassword"]';
+  // Wait for login form fields
+  await page.waitForSelector('input[name="ctl00$cphMain$txtUserName"]', { timeout: 10000 });
 
-  await page.waitForSelector(userSel, { timeout: 10000 });
-  await page.fill(userSel, SMG_USER);
-  await page.fill(passSel, SMG_PASS);
+  // Set values and dispatch events to satisfy JavaScript validation (ValidateIndexSubmitButton.js)
+  await page.evaluate(({ username, password }) => {
+    const userField = document.querySelector('[name="ctl00$cphMain$txtUserName"]');
+    const passField = document.querySelector('[name="ctl00$cphMain$txtPassword"]');
+    if (!userField || !passField) throw new Error('Login fields not found');
+    userField.value = username;
+    passField.value = password;
+    ['input', 'change', 'blur', 'keyup'].forEach(ev => {
+      userField.dispatchEvent(new Event(ev, { bubbles: true }));
+      passField.dispatchEvent(new Event(ev, { bubbles: true }));
+    });
+  }, { username: SMG_USER, password: SMG_PASS });
 
-  // Submit and wait for redirect to dashboard
+  // Submit form and wait for navigation
   await Promise.all([
     page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 }).catch(() => {}),
-    page.click('input[type="submit"], button[type="submit"]').catch(() => page.keyboard.press('Enter')),
+    page.evaluate(() => { document.querySelector('form').submit(); }),
   ]);
 
   const afterUrl = page.url();
