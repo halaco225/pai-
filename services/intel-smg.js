@@ -297,8 +297,33 @@ async function getBearerWithPlaywright(user, pass) {
     return null;
   }
 
-  const executablePath = findExecutable();
-  console.log(`[SMG] Playwright: executable=${executablePath || 'auto-detect'}`);
+  let executablePath = findExecutable();
+  console.log(`[SMG] Playwright: executable=${executablePath || 'not found — will install'}`);
+
+  // Install browser if not found — runs inline so we can see success/failure in logs
+  if (!executablePath) {
+    console.log('[SMG] Installing Playwright chromium-headless-shell...');
+    try {
+      const { spawnSync } = require('child_process');
+      const playwrightCli = _path.join(process.cwd(), 'node_modules', 'playwright', 'cli.js');
+      const result = spawnSync(
+        process.execPath,
+        [playwrightCli, 'install', 'chromium-headless-shell'],
+        {
+          env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: '/opt/render/project/src/playwright-browsers' },
+          timeout: 120000,
+          encoding: 'utf8',
+        }
+      );
+      console.log('[SMG] Playwright install stdout:', (result.stdout || '').slice(-500));
+      if (result.stderr) console.log('[SMG] Playwright install stderr:', result.stderr.slice(-500));
+      console.log('[SMG] Playwright install exit code:', result.status);
+      executablePath = findExecutable();
+      console.log('[SMG] Executable after install:', executablePath || 'STILL NOT FOUND');
+    } catch (installErr) {
+      console.error('[SMG] Playwright install threw:', installErr.message);
+    }
+  }
 
   const launchOpts = {
     headless: true,
