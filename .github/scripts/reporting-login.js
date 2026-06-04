@@ -13,8 +13,10 @@ async function getAspxAuthCookie(context) {
 async function waitForAspxAuthCookie(context, timeoutMs = 30000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const cookie = await getAspxAuthCookie(context);
-    if (cookie && cookie.value) return cookie;
+    try {
+      const cookie = await getAspxAuthCookie(context);
+      if (cookie && cookie.value) return cookie;
+    } catch (_) { return null; } // browser closed
     await new Promise(resolve => setTimeout(resolve, 500));
   }
   return null;
@@ -78,13 +80,15 @@ async function loginToReporting(page, context, username, password, options = {})
   ].join(', ');
 
   const submit = page.locator(submitCandidates).first();
-  const authWait = waitForAspxAuthCookie(context, timeoutMs);
+  // Start polling for .ASPXAUTH after initiating the login click
+  let authWait;
 
   if (await submit.count()) {
     await submit.click();
   } else {
     await passInput.press('Enter');
   }
+  authWait = waitForAspxAuthCookie(context, timeoutMs);
 
   // The login redirects to MultiLanguage.aspx for language selection BEFORE .ASPXAUTH is set.
   // Wait briefly to detect the language selection page.
@@ -93,26 +97,34 @@ async function loginToReporting(page, context, username, password, options = {})
 
   if (currentUrl.includes('MultiLanguage')) {
     console.log('On language selection page — selecting English...');
-    // Find English option (radio button, checkbox, or link) and click it
+    // Find English option — try by label text first, then by known numeric value
     const selected = await page.evaluate(() => {
-      // Try radio buttons with value matching English
-      const radios = Array.from(document.querySelectorAll('input[type="radio"], input[type="checkbox"]'));
-      const englishRadio = radios.find(r => /^en(-us)?$/i.test(r.value) || /^english$/i.test(r.value) || r.value === 'en');
-      if (englishRadio) { englishRadio.click(); return 'radio:' + englishRadio.value; }
-
-      // Try links with text "English"
-      const links = Array.from(document.querySelectorAll('a'));
-      const englishLink = links.find(a => /^english$/i.test(a.textContent.trim()));
-      if (englishLink) { englishLink.click(); return 'link:' + englishLink.href; }
-
-      // Try selecting a language dropdown
-      const selects = document.querySelectorAll('select');
-      for (const sel of selects) {
-        const opt = Array.from(sel.options).find(o => /en/i.test(o.value) || /english/i.test(o.text));
-        if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true })); return 'select:' + opt.value; }
+      // 1. Find by label text "English"
+      const labels = Array.from(document.querySelectorAll('label'));
+      const englishLabel = labels.find(l => l.textContent.trim() === 'English');
+      if (englishLabel) {
+        const radio = (englishLabel.htmlFor ? document.getElementById(englishLabel.htmlFor) : null)
+                   || englishLabel.querySelector('input');
+        if (radio) { radio.checked = true; radio.click(); return 'label:' + radio.value; }
+        englishLabel.click();
+        return 'label-click';
       }
-      // Log available options for diagnosis
-      return 'not found — radios:' + radios.map(r => r.value).join(',') + ' links:' + links.slice(0,10).map(a=>a.textContent.trim()).join(',');
+
+      // 2. Click any element with exact text "English"
+      const all = Array.from(document.querySelectorAll('td, li, span, a, button'));
+      const englishEl = all.find(el => el.textContent.trim() === 'English');
+      if (englishEl) { englishEl.click(); return 'element:' + englishEl.tagName; }
+
+      // 3. Known numeric value from GA analytics (Language=US = value 2)
+      const radios = Array.from(document.querySelectorAll('input[type="radio"]'));
+      const v2 = radios.find(r => r.value === '2');
+      if (v2) { v2.checked = true; v2.click(); return 'radio-value-2'; }
+
+      // 4. First visible radio button as fallback
+      const firstVisible = radios.find(r => r.offsetParent !== null);
+      if (firstVisible) { firstVisible.checked = true; firstVisible.click(); return 'first-radio:' + firstVisible.value; }
+
+      return 'not-found labels:' + labels.map(l=>l.textContent.trim()).filter(t=>t).slice(0,10).join('|');
     });
     console.log('Language selection result: ' + selected);
 
