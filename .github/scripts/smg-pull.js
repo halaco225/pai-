@@ -110,40 +110,54 @@ async function main() {
 
   console.log(`Logged in. Final URL: ${page.url().slice(0, 80)}`);
 
-  // Wait for Angular to make its initial API calls so we can capture the token
+  // Navigate to the Comments page — this forces Angular to make authenticated API calls
   if (!bearerToken) {
-    console.log('Waiting for Bearer token from page API calls...');
-    await page.waitForTimeout(5000);
+    console.log('Navigating to Comments page to trigger authenticated API calls...');
+    await page.goto('https://360.smg.com/#/card/5b621d617485e95d90e0a370?id=5b621d617485e95d90e0a370', { waitUntil: 'networkidle', timeout: 30000 }).catch(() => {});
+    await page.waitForTimeout(4000);
   }
 
-  // Fallback: try extracting token from localStorage/sessionStorage
+  // Still no token from requests — extract from localStorage (oidc-client pattern)
   if (!bearerToken) {
+    console.log('Checking localStorage for token...');
     bearerToken = await page.evaluate(() => {
-      for (const storage of [localStorage, sessionStorage]) {
-        for (let i = 0; i < storage.length; i++) {
-          const key = storage.key(i);
-          try {
-            const val = storage.getItem(key);
-            if (!val) continue;
-            // oidc-client stores as JSON with access_token field
-            if (val.startsWith('{')) {
-              const obj = JSON.parse(val);
-              if (obj.access_token) return obj.access_token;
-            }
-            // Some apps store the raw token directly
-            if (val.length > 100 && val.split('.').length === 3) return val;
-          } catch (_) {}
-        }
+      const keys = Object.keys(localStorage);
+      console.log('localStorage keys:', JSON.stringify(keys));
+      for (const key of keys) {
+        try {
+          const val = localStorage.getItem(key);
+          if (!val || val.length < 10) continue;
+          // oidc-client-js: stored as JSON with access_token
+          if (val.startsWith('{')) {
+            const obj = JSON.parse(val);
+            if (obj.access_token) return obj.access_token;
+            if (obj.token) return obj.token;
+          }
+          // Raw JWT (3 dot-separated base64 segments, >100 chars)
+          if (val.length > 100 && val.split('.').length === 3 && !val.includes(' ')) return val;
+        } catch (_) {}
       }
-      // Check URL fragment (implicit flow)
-      const hash = window.location.hash || '';
-      const params = new URLSearchParams(hash.replace('#', ''));
-      return params.get('access_token') || null;
+      return null;
     }).catch(() => null);
+    if (bearerToken) console.log('Token found in localStorage, length=' + bearerToken.length);
   }
 
-  if (!bearerToken) throw new Error('Could not capture Bearer token from page. Login may have failed.');
-  console.log(`Bearer token captured (length=${bearerToken.length})`);
+  // Last resort: trigger a known API endpoint and intercept the request
+  if (!bearerToken) {
+    console.log('Triggering API call via page.evaluate fetch...');
+    const result = await page.evaluate(async () => {
+      try {
+        // Make a lightweight API call — the Angular $http interceptor adds the Bearer token
+        // We can't read it back but we can trigger it for the context interceptor
+        await fetch('https://360.smg.com/api/accounts', { credentials: 'include' });
+      } catch (_) {}
+      return null;
+    }).catch(() => null);
+    await page.waitForTimeout(2000);
+  }
+
+  if (!bearerToken) throw new Error('Could not capture Bearer token from page. Login may have failed or token is not in localStorage.');
+  console.log('Bearer token captured, length=' + bearerToken.length);
 
 
   await browser.close();
