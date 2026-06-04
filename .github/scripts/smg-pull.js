@@ -88,35 +88,58 @@ async function main() {
     await page.goto(authorizeUrl, { waitUntil: 'networkidle', timeout: 60000 });
     console.log('Auth page URL: ' + page.url().slice(0, 100));
 
-    // ── Step 2: Fill login form (Angular SPA renders the form in browser) ─────
-    // Wait up to 10s for the password field to appear
-    const pwLocator = page.locator('input[type="password"]');
-    await pwLocator.waitFor({ timeout: 10000 }).catch(() => {});
+    // ── Step 2: Wait for login form OR auto-redirect (Angular takes time to render)
+    console.log('Waiting for login form or redirect (up to 45s)...');
 
-    const pwInput = await page.$('input[type="password"]');
-    if (pwInput) {
-      console.log('Login form found — filling credentials');
-      const userInput = await page.$('input[name="username"]') || await page.$('input[name="email"]') || await page.$('input[type="email"]') || await page.$('input[type="text"]');
-      if (userInput) {
-        console.log('Username field: ' + await userInput.getAttribute('name') + '/' + await userInput.getAttribute('type'));
-        await userInput.fill(SMG_USER);
-      }
-      await pwInput.fill(SMG_PASS);
+    // Race: wait for password field OR URL change to 360.smg.com
+    await Promise.race([
+      page.locator('input[type="password"]').waitFor({ timeout: 45000 }).catch(() => {}),
+      page.waitForURL('**360.smg.com**', { timeout: 45000 }).catch(() => {}),
+    ]);
 
-      const btn = await page.$('button[type="submit"]') || await page.$('input[type="submit"]') || await page.$('button:has-text("Sign")') || await page.$('button:has-text("Log")');
-      if (btn) {
-        console.log('Clicking submit: ' + await btn.textContent().catch(() => 'btn'));
-        await Promise.all([
-          page.waitForNavigation({ timeout: 30000 }).catch(() => {}),
-          btn.click(),
-        ]);
-      }
-      // Wait for redirect to 360.smg.com with token
-      await page.waitForURL('**/auth-callback**', { timeout: 20000 }).catch(() => {});
-      console.log('After login URL: ' + page.url().slice(0, 100));
+    const currentUrlAfterWait = page.url();
+    console.log('URL after wait: ' + currentUrlAfterWait.slice(0, 120));
+
+    // If already redirected to 360.smg.com with token, we're done
+    if (currentUrlAfterWait.includes('360.smg.com') && currentUrlAfterWait.includes('access_token')) {
+      console.log('Auto-redirected with token.');
+    } else if (currentUrlAfterWait.includes('360.smg.com')) {
+      console.log('Redirected to 360.smg.com (no token in URL yet — may be in hash).');
+      const hash = await page.evaluate(() => window.location.hash).catch(() => '');
+      console.log('URL hash: ' + hash.slice(0, 100));
+      const t = extractToken('360.smg.com' + hash);
+      if (t) bearerToken = t;
     } else {
-      console.log('No login form found. Page title: ' + await page.title());
-      console.log('Page content preview: ' + (await page.content()).slice(0, 500).replace(/\s+/g, ' '));
+      // Still on auth.smg.com — try to fill login form
+      const pwInput = await page.$('input[type="password"]');
+      if (pwInput) {
+        console.log('Login form found — filling credentials');
+        const userInput = await page.$('input[name="username"]') || await page.$('input[name="email"]') || await page.$('input[type="email"]') || await page.$('input[type="text"]');
+        if (userInput) {
+          console.log('Username field type: ' + await userInput.getAttribute('type'));
+          await userInput.fill(SMG_USER);
+        }
+        await pwInput.fill(SMG_PASS);
+
+        const btn = await page.$('button[type="submit"]') || await page.$('input[type="submit"]');
+        if (btn) {
+          console.log('Submitting form...');
+          await Promise.all([
+            page.waitForURL('**360.smg.com**', { timeout: 30000 }).catch(() => {}),
+            btn.click(),
+          ]);
+        }
+        console.log('After submit URL: ' + page.url().slice(0, 120));
+        const hash2 = await page.evaluate(() => window.location.hash).catch(() => '');
+        console.log('After submit hash: ' + hash2.slice(0, 100));
+        const t2 = extractToken(page.url() + hash2);
+        if (t2) bearerToken = t2;
+      } else {
+        console.log('No login form and no redirect. Page title: ' + await page.title());
+        // Log page body for diagnosis
+        const body = (await page.evaluate(() => document.body.innerText).catch(() => '')).slice(0, 500);
+        console.log('Page body: ' + body);
+      }
     }
 
     // Try reading from current URL fragment
