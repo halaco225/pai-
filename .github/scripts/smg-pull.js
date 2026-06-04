@@ -85,13 +85,15 @@ async function loginToReportingPortal(page, context) {
       });
     });
 
-    // Find and submit the form
-    const form = passField.closest('form') || document.querySelector('form');
-    const action = form ? form.action : 'no form';
-    form.submit();
-    return { userFieldName: userField.name, passFieldName: passField.name, formAction: action };
+    return { userFieldName: userField.name, passFieldName: passField.name };
   }, { username: SMG_USER, password: SMG_PASS });
   console.log('Form submit result: ' + JSON.stringify(formData));
+
+  // Click the actual submit button — triggers ValidateIndexSubmitButton.js
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 }).catch(() => {}),
+    page.click('#smg360LoginButton'),
+  ]);
 
   // Wait briefly for navigation to settle
   await page.waitForTimeout(2000);
