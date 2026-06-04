@@ -300,29 +300,44 @@ async function getBearerWithPlaywright(user, pass) {
   let executablePath = findExecutable();
   console.log(`[SMG] Playwright: executable=${executablePath || 'not found — will install'}`);
 
-  // Install browser if not found — runs inline so we can see success/failure in logs
+  // Install browser if not found — surface all output in thrown error so it lands in pipeline DB
   if (!executablePath) {
     console.log('[SMG] Installing Playwright chromium-headless-shell...');
-    try {
-      const { spawnSync } = require('child_process');
-      const playwrightCli = _path.join(process.cwd(), 'node_modules', 'playwright', 'cli.js');
+    const { spawnSync } = require('child_process');
+    // Try the binary wrapper first, then fall back to node + cli.js
+    const cliCandidates = [
+      _path.join(process.cwd(), 'node_modules', '.bin', 'playwright'),
+      _path.join(process.cwd(), 'node_modules', 'playwright', 'cli.js'),
+    ];
+    const cliPath = cliCandidates.find(p => _fs.existsSync(p));
+    console.log('[SMG] Playwright CLI path:', cliPath || 'NOT FOUND');
+
+    let installOut = 'no output', installErr2 = '', installExit = -1;
+    if (cliPath) {
+      const isJs = cliPath.endsWith('.js');
       const result = spawnSync(
-        process.execPath,
-        [playwrightCli, 'install', 'chromium-headless-shell'],
+        isJs ? process.execPath : cliPath,
+        isJs ? [cliPath, 'install', 'chromium-headless-shell'] : ['install', 'chromium-headless-shell'],
         {
           env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: '/opt/render/project/src/playwright-browsers' },
-          timeout: 120000,
+          timeout: 300000,
           encoding: 'utf8',
         }
       );
-      console.log('[SMG] Playwright install stdout:', (result.stdout || '').slice(-500));
-      if (result.stderr) console.log('[SMG] Playwright install stderr:', result.stderr.slice(-500));
-      console.log('[SMG] Playwright install exit code:', result.status);
-      executablePath = findExecutable();
-      console.log('[SMG] Executable after install:', executablePath || 'STILL NOT FOUND');
-    } catch (installErr) {
-      console.error('[SMG] Playwright install threw:', installErr.message);
+      installOut  = (result.stdout || '').slice(-800);
+      installErr2 = (result.stderr || '').slice(-400);
+      installExit = result.status;
+      if (result.error) installErr2 += ' spawnError:' + result.error.message;
     }
+
+    executablePath = findExecutable();
+    const installMsg = `cli=${cliPath || 'MISSING'} exit=${installExit} binary=${executablePath || 'NOT_FOUND'} out=${installOut} err=${installErr2}`;
+    console.log('[SMG] Install result:', installMsg);
+
+    if (!executablePath) {
+      throw new Error(`Playwright install failed — ${installMsg}`);
+    }
+    console.log('[SMG] Playwright installed successfully:', executablePath);
   }
 
   const launchOpts = {
