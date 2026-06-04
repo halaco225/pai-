@@ -139,18 +139,19 @@ async function loginToReporting(page, context, username, password, options = {})
     console.log('After language selection: ' + page.url().slice(0, 80));
   }
 
-  // Now wait for .ASPXAUTH cookie
-  const authCookie = await authWait;
-  if (!authCookie) {
-    const finalUrl = page.url();
+  // Success check: we should be on the dashboard (not a login page)
+  // .ASPXAUTH may not be exposed — check URL instead
+  const finalUrl = page.url();
+  const isOnLoginPage = ['MultiLanguage', 'Index.aspx', 'Error=', 'LandingPage'].some(p => finalUrl.includes(p));
+  if (isOnLoginPage) {
     const bodyText = await page.locator('body').innerText().catch(() => '');
-    throw new Error('Reporting login did not produce .ASPXAUTH cookie. URL: ' + finalUrl + ' body: ' + bodyText.slice(0, 500));
+    throw new Error('Reporting login failed — still on auth page. URL: ' + finalUrl + ' body: ' + bodyText.slice(0, 300));
   }
 
-  console.log('Reporting login succeeded — .ASPXAUTH cookie acquired.');
-  await page.waitForLoadState('domcontentloaded').catch(() => {});
-  await page.waitForTimeout(1000);
-  return authCookie;
+  console.log('Reporting login succeeded. URL: ' + finalUrl.slice(0, 80));
+  // Give iFrames time to load (360.smg.com iFrame sets authorizationData cookie)
+  await page.waitForTimeout(2000);
+  return { url: finalUrl };
 }
 
 module.exports = { loginToReporting, getAspxAuthCookie, waitForAspxAuthCookie };
