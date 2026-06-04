@@ -219,11 +219,59 @@ function extractTokenFromUrl(loc) {
 // to render the login form. Playwright runs a real headless browser instead.
 
 async function getBearerWithPlaywright(user, pass) {
-  const { launchContext } = require('./browser-launch');
-  const tmpProfile = `/tmp/smg-oauth-${Date.now()}`;
-  let context;
+  // Use chromium.launch() (not launchPersistentContext) — no profile dir needed
+  // for a one-shot OAuth flow. Resolve the executable path explicitly across all
+  // candidate locations so we don't rely on Playwright's registry (which fails
+  // when PLAYWRIGHT_BROWSERS_PATH points to a dir without the binary).
+  process.env.PLAYWRIGHT_BROWSERS_PATH = '/opt/render/project/src/playwright-browsers';
+  const { chromium } = require('playwright');
+  const _fs   = require('fs');
+  const _path = require('path');
+
+  function findExecutable() {
+    const bases = [
+      '/opt/render/project/src/playwright-browsers',
+      '/opt/render/project/src/node_modules/.playwright-browsers',
+      '/tmp/ms-playwright',
+      process.env.HOME ? _path.join(process.env.HOME, '.cache', 'ms-playwright') : null,
+    ].filter(Boolean);
+    const subDirs  = ['chrome-headless-shell-linux64', 'chrome-linux64', 'chrome-linux', ''];
+    const binaries = ['chrome-headless-shell', 'chromium_headless_shell', 'chrome', 'chromium'];
+    for (const base of bases) {
+      let entries; try { entries = _fs.readdirSync(base); } catch (_) { continue; }
+      for (const entry of entries.filter(e => e.startsWith('chromium'))) {
+        const dir = _path.join(base, entry);
+        for (const sub of subDirs) {
+          const searchDir = sub ? _path.join(dir, sub) : dir;
+          for (const bin of binaries) {
+            const candidate = _path.join(searchDir, bin);
+            if (_fs.existsSync(candidate)) return candidate;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  const executablePath = findExecutable();
+  console.log(`[SMG] Playwright: executable=${executablePath || 'auto-detect'}`);
+
+  const launchOpts = {
+    headless: true,
+    args: [
+      '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+      '--disable-gpu', '--disable-http2', '--ignore-certificate-errors',
+      '--single-process', '--disable-extensions', '--no-first-run',
+      '--disable-background-networking', '--mute-audio', '--window-size=1280,800',
+      '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    ],
+  };
+  if (executablePath) launchOpts.executablePath = executablePath;
+
+  let browser;
   try {
-    context = await launchContext(tmpProfile);
+    browser = await chromium.launch(launchOpts);
+    const context = await browser.newContext();
     const page = await context.newPage();
 
     let bearerToken = null;
@@ -304,8 +352,7 @@ async function getBearerWithPlaywright(user, pass) {
 
     return bearerToken;
   } finally {
-    if (context) await context.close().catch(() => {});
-    try { require('fs').rmSync(tmpProfile, { recursive: true, force: true }); } catch (_) {}
+    if (browser) await browser.close().catch(() => {});
   }
 }
 
