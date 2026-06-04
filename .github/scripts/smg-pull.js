@@ -50,28 +50,48 @@ async function loginToReportingPortal(page) {
   await page.goto('https://reporting.smg.com/MultiLanguage.aspx', { waitUntil: 'domcontentloaded', timeout: 30000 });
   console.log('Login page URL: ' + page.url().slice(0, 80));
 
-  // Wait for login form fields
-  await page.waitForSelector('input[name="ctl00$cphMain$txtUserName"]', { timeout: 10000 });
+  // Log the page structure for diagnosis
+  const pageInfo = await page.evaluate(() => {
+    const inputs = Array.from(document.querySelectorAll('input')).map(i => ({
+      name: i.name, id: i.id, type: i.type, placeholder: i.placeholder
+    }));
+    const forms = Array.from(document.querySelectorAll('form')).map(f => ({
+      action: f.action, method: f.method, inputs: f.querySelectorAll('input').length
+    }));
+    return { inputs, forms, url: window.location.href };
+  });
+  console.log('Page inputs: ' + JSON.stringify(pageInfo.inputs.filter(i => ['text','password','submit'].includes(i.type))));
+  console.log('Forms: ' + JSON.stringify(pageInfo.forms));
 
-  // Set values and dispatch events to satisfy JavaScript validation (ValidateIndexSubmitButton.js)
-  await page.evaluate(({ username, password }) => {
-    const userField = document.querySelector('[name="ctl00$cphMain$txtUserName"]');
-    const passField = document.querySelector('[name="ctl00$cphMain$txtPassword"]');
-    if (!userField || !passField) throw new Error('Login fields not found');
+  // Find the actual username/password fields (flexible matching)
+  const formData = await page.evaluate(({ username, password }) => {
+    // Find password field (unambiguous)
+    const passField = document.querySelector('input[type="password"]');
+    if (!passField) return { error: 'no password field found' };
+
+    // Find username field — try multiple patterns
+    const userField = document.querySelector('input[name*="txtUserName"], input[name="username"], input[type="text"][name*="user"], input[id*="txtUserName"]')
+                   || document.querySelector('input[type="text"]');
+    if (!userField) return { error: 'no username field found' };
+
+    // Set values
     userField.value = username;
     passField.value = password;
-    ['input', 'change', 'blur', 'keyup'].forEach(ev => {
-      userField.dispatchEvent(new Event(ev, { bubbles: true }));
-      passField.dispatchEvent(new Event(ev, { bubbles: true }));
-    });
-  }, { username: SMG_USER, password: SMG_PASS });
 
-  // Submit the form that contains the username field
-  await page.evaluate(() => {
-    const field = document.querySelector('[name="ctl00$cphMain$txtUserName"]');
-    if (field) field.closest('form').submit();
-    else document.querySelector('form').submit();
-  });
+    // Dispatch events
+    [userField, passField].forEach(field => {
+      ['focus', 'input', 'change', 'blur'].forEach(ev => {
+        field.dispatchEvent(new Event(ev, { bubbles: true }));
+      });
+    });
+
+    // Find and submit the form
+    const form = passField.closest('form') || document.querySelector('form');
+    const action = form ? form.action : 'no form';
+    form.submit();
+    return { userFieldName: userField.name, passFieldName: passField.name, formAction: action };
+  }, { username: SMG_USER, password: SMG_PASS });
+  console.log('Form submit result: ' + JSON.stringify(formData));
 
   // Wait until we land somewhere that is NOT a login or error page
   // The login chain goes: POST Index.aspx → LandingPage.aspx → MultiLanguage.aspx → LandingPage.aspx → dashboard.aspx
