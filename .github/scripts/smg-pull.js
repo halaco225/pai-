@@ -81,30 +81,21 @@ async function main() {
     console.log('Logging in to reporting.smg.com...');
     await page.goto('https://reporting.smg.com/Index.aspx', { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // Extract hidden form fields and submit
-    const loginResult = await page.evaluate(async ({ user, pass }) => {
-      const form = document.querySelector('form');
-      if (!form) return 'no form';
-      const inputs = {};
-      for (const el of document.querySelectorAll('input[type=hidden]')) {
-        inputs[el.name] = el.value;
-      }
-      inputs['ctl00$cphMain$txtUserName'] = user;
-      inputs['ctl00$cphMain$txtPassword'] = pass;
-      const body = Object.entries(inputs).map(([k,v]) => encodeURIComponent(k)+'='+encodeURIComponent(v)).join('&');
-      const resp = await fetch('https://reporting.smg.com/Index.aspx', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Referer': 'https://reporting.smg.com/Index.aspx', 'Origin': 'https://reporting.smg.com' },
-        body,
-      });
-      return 'HTTP ' + resp.status + ' url=' + resp.url;
-    }, { user: SMG_USER, pass: SMG_PASS });
-    console.log('reporting.smg.com login result: ' + loginResult);
+    // Fill and submit the login form natively (Playwright handles cookies correctly)
+    await page.fill('#cphMain_txtUserName', SMG_USER).catch(() => page.fill('input[name="ctl00$cphMain$txtUserName"]', SMG_USER));
+    await page.fill('#cphMain_txtPassword', SMG_PASS).catch(() => page.fill('input[name="ctl00$cphMain$txtPassword"]', SMG_PASS));
+    console.log('Submitting login form...');
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 }).catch(() => {}),
+      page.click('input[type=submit], button[type=submit]').catch(() => page.keyboard.press('Enter')),
+    ]);
+    console.log('After login URL: ' + page.url().slice(0, 80));
 
-    // Check if logged in (cookie should now be set)
-    const cookies = await context.cookies('https://reporting.smg.com');
-    const authCookie = cookies.find(c => c.name === '.ASPXAUTH');
-    console.log('.ASPXAUTH cookie: ' + (authCookie ? 'SET (domain=' + authCookie.domain + ')' : 'NOT SET'));
+    // Check if logged in
+    const allCookies = await context.cookies();
+    const authCookie = allCookies.find(c => c.name === '.ASPXAUTH');
+    console.log('.ASPXAUTH cookie: ' + (authCookie ? 'SET (domain=' + authCookie.domain + ')' : 'NOT SET — trying to continue anyway'));
+    console.log('Total cookies: ' + allCookies.length + ' — ' + allCookies.map(c => c.name).join(', ').slice(0, 200));
 
     // ── Step 2: Navigate to 360.smg.com — Angular will redirect to auth.smg.com ─
     console.log('Navigating to 360.smg.com (session cookie should trigger OAuth)...');
