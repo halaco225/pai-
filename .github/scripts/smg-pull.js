@@ -94,16 +94,16 @@ async function main() {
     // Race: wait for password field OR URL change to 360.smg.com
     await Promise.race([
       page.locator('input[type="password"]').waitFor({ timeout: 45000 }).catch(() => {}),
-      page.waitForURL('**360.smg.com**', { timeout: 45000 }).catch(() => {}),
+      page.waitForURL(u => u.startsWith('https://360.smg.com'), { timeout: 45000 }).catch(() => {}),
     ]);
 
     const currentUrlAfterWait = page.url();
     console.log('URL after wait: ' + currentUrlAfterWait.slice(0, 120));
 
     // If already redirected to 360.smg.com with token, we're done
-    if (currentUrlAfterWait.includes('360.smg.com') && currentUrlAfterWait.includes('access_token')) {
+    if (currentUrlAfterWait.startsWith('https://360.smg.com') && currentUrlAfterWait.includes('access_token')) {
       console.log('Auto-redirected with token.');
-    } else if (currentUrlAfterWait.includes('360.smg.com')) {
+    } else if (currentUrlAfterWait.startsWith('https://360.smg.com')) {
       console.log('Redirected to 360.smg.com (no token in URL yet — may be in hash).');
       const hash = await page.evaluate(() => window.location.hash).catch(() => '');
       console.log('URL hash: ' + hash.slice(0, 100));
