@@ -443,34 +443,33 @@ router.post('/upload/smg', smgUpload.single('file'), async (req, res) => {
 
   console.log(`[SMG Upload] Processing ${file.originalname} for ${targetDate}`);
 
-  try {
-    const { processSMG } = require('../services/parsers/smg-parser');
-    const result = await processSMG(file.path, targetDate);
+  // Respond immediately — processing takes minutes (Claude API per comment)
+  res.json({ status: 'started', file: file.originalname, targetDate });
 
-    if (!result.success) {
-      fs.unlink(file.path, () => {});
-      return res.status(422).json({ error: result.error || 'SMG processing failed' });
-    }
-
-    // Regenerate intel cache so dashboard reflects new data immediately
+  // Process async so connection doesn't time out
+  (async () => {
     try {
-      const { generateIntelCache } = require('../services/intel-pipeline');
-      await generateIntelCache(targetDate);
-    } catch (cacheErr) {
-      console.warn('[SMG Upload] Cache regen failed (non-fatal):', cacheErr.message);
-    }
+      const { processSMG } = require('../services/parsers/smg-parser');
+      const result = await processSMG(file.path, targetDate);
 
-    fs.unlink(file.path, () => {});
-    res.json({
-      success: true,
-      message: `Processed ${result.commentsProcessed} comments — ${result.flagsWritten} flags, ${result.shoutoutsWritten} shoutouts for ${targetDate}.`,
-      summary: { ...result, targetDate },
-    });
-  } catch (err) {
-    console.error('[SMG Upload] Error:', err.message);
-    fs.unlink(file.path, () => {});
-    res.status(500).json({ error: err.message });
-  }
+      if (!result.success) {
+        console.error('[SMG Upload] Processing failed:', result.error);
+      } else {
+        console.log(`[SMG Upload] Done — ${result.commentsProcessed} comments, ${result.flagsWritten} flags, ${result.shoutoutsWritten} shoutouts for ${targetDate}`);
+        try {
+          const { generateIntelCache } = require('../services/intel-pipeline');
+          await generateIntelCache(targetDate);
+          console.log('[SMG Upload] Intel cache regenerated');
+        } catch (cacheErr) {
+          console.warn('[SMG Upload] Cache regen failed (non-fatal):', cacheErr.message);
+        }
+      }
+    } catch (err) {
+      console.error('[SMG Upload] Error:', err.message);
+    } finally {
+      fs.unlink(file.path, () => {});
+    }
+  })();
 });
 
 router.use(requireAuth);
