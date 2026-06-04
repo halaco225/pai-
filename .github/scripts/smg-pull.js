@@ -93,24 +93,46 @@ async function loginToReportingPortal(page) {
   }, { username: SMG_USER, password: SMG_PASS });
   console.log('Form submit result: ' + JSON.stringify(formData));
 
-  // Wait until we land somewhere that is NOT a login or error page
-  // The login chain goes: POST Index.aspx → LandingPage.aspx → MultiLanguage.aspx → LandingPage.aspx → dashboard.aspx
-  const loginPages = ['MultiLanguage', 'Index.aspx', 'Error='];
-  const isLoginPage = url => loginPages.some(p => url.includes(p));
+  // Wait briefly for navigation to settle
+  await page.waitForTimeout(2000);
+  const afterSubmitUrl = page.url();
+  console.log('After submit URL: ' + afterSubmitUrl.slice(0, 80));
 
-  for (let i = 0; i < 20; i++) {
-    await page.waitForTimeout(1000);
-    const url = page.url();
-    if (!isLoginPage(url)) {
-      console.log('Redirected away from login pages: ' + url.slice(0, 80));
-      break;
-    }
-    if (i === 19) {
-      console.log('Final login URL: ' + url);
-      throw new Error('reporting.smg.com login failed — still on login page after 20s. URL: ' + url);
+  // Check if .ASPXAUTH cookie was set — that's the real success signal
+  const allCookies = await context.cookies('https://reporting.smg.com');
+  const aspxAuth = allCookies.find(c => c.name === '.ASPXAUTH');
+  console.log('.ASPXAUTH set: ' + (aspxAuth ? 'YES domain=' + aspxAuth.domain : 'NO'));
+  console.log('All reporting cookies: ' + allCookies.map(c => c.name).join(', '));
+
+  if (!aspxAuth) {
+    // If no .ASPXAUTH, try submitting the form on MultiLanguage.aspx directly
+    if (afterSubmitUrl.includes('MultiLanguage')) {
+      console.log('On MultiLanguage.aspx without .ASPXAUTH — trying login form here...');
+      const mlFormData = await page.evaluate(({ username, password }) => {
+        const passField = document.querySelector('input[type="password"]');
+        const userField = document.querySelector('input[type="text"]') || document.querySelector('input[name*="User"]');
+        if (!passField || !userField) return { error: 'fields not found', html: document.body.innerHTML.slice(0, 500) };
+        userField.value = username;
+        passField.value = password;
+        ['input','change','blur'].forEach(ev => {
+          userField.dispatchEvent(new Event(ev, { bubbles: true }));
+          passField.dispatchEvent(new Event(ev, { bubbles: true }));
+        });
+        const form = passField.closest('form');
+        form.submit();
+        return { userFieldName: userField.name, formAction: form.action };
+      }, { username: SMG_USER, password: SMG_PASS });
+      console.log('MultiLanguage form submit: ' + JSON.stringify(mlFormData));
+      await page.waitForTimeout(3000);
+      const mlCookies = await context.cookies('https://reporting.smg.com');
+      const mlAuth = mlCookies.find(c => c.name === '.ASPXAUTH');
+      if (!mlAuth) throw new Error('Login failed on MultiLanguage.aspx too. URL: ' + page.url());
+      console.log('.ASPXAUTH set after MultiLanguage submit');
+    } else {
+      throw new Error('Login failed — no .ASPXAUTH cookie. URL: ' + afterSubmitUrl);
     }
   }
-  console.log('reporting.smg.com login succeeded: ' + page.url().slice(0, 80));
+  console.log('reporting.smg.com login succeeded');
 }
 
 async function main() {
