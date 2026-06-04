@@ -214,9 +214,53 @@ function extractTokenFromUrl(loc) {
   return null;
 }
 
-// ── Auth: Playwright-based OAuth2 ────────────────────────────────────────────
-// auth.smg.com is an AngularJS SPA — plain HTTP cannot execute its JavaScript
-// to render the login form. Playwright runs a real headless browser instead.
+// ── Auth: try ROPC grant first, fall back to Playwright ──────────────────────
+
+// OAuth2 Resource Owner Password Credentials grant — plain HTTP POST, no browser.
+// Many IdentityServer installs support this. Returns token string or null.
+async function getBearerViaROPC(user, pass) {
+  const TOKEN_URL = 'https://auth.smg.com/connect/token';
+  const body = [
+    'grant_type=password',
+    `client_id=smg360`,
+    `scope=${encodeURIComponent('feedback openid email smg360 offline_access')}`,
+    `username=${encodeURIComponent(user)}`,
+    `password=${encodeURIComponent(pass)}`,
+  ].join('&');
+
+  return new Promise((resolve) => {
+    const parsed  = new url.URL(TOKEN_URL);
+    const options = {
+      method:   'POST',
+      hostname: parsed.hostname,
+      port:     443,
+      path:     parsed.pathname,
+      headers: {
+        'Content-Type':   'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(body),
+        'User-Agent':     'Mozilla/5.0',
+      },
+    };
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        console.log(`[SMG] ROPC response HTTP ${res.statusCode}: ${data.slice(0, 200)}`);
+        if (res.statusCode === 200) {
+          try {
+            const json = JSON.parse(data);
+            resolve(json.access_token || null);
+          } catch (_) { resolve(null); }
+        } else {
+          resolve(null);
+        }
+      });
+    });
+    req.on('error', (e) => { console.warn('[SMG] ROPC request error:', e.message); resolve(null); });
+    req.write(body);
+    req.end();
+  });
+}
 
 async function getBearerWithPlaywright(user, pass) {
   // Use chromium.launch() (not launchPersistentContext) — no profile dir needed
@@ -454,12 +498,23 @@ async function downloadSMGComments(targetDate) {
   fs.mkdirSync(tmpDir, { recursive: true });
   const outPath = path.join(tmpDir, `intel-smg-${targetDate}.xlsx`);
 
-  let bearer;
-  try {
-    bearer = await getBearerWithPlaywright(user, pass);
-  } catch (err) {
-    console.error('[SMG] Playwright auth failed:', err.message);
-    return { success: false, error: `Login: ${err.message}` };
+  // Try ROPC grant first (plain HTTP, no browser required)
+  let bearer = await getBearerViaROPC(user, pass);
+  if (bearer) {
+    console.log('[SMG] Bearer token obtained via ROPC grant');
+  } else {
+    // Fall back to Playwright (requires Chromium binary on Render)
+    console.log('[SMG] ROPC failed or unsupported — trying Playwright OAuth2');
+    try {
+      bearer = await getBearerWithPlaywright(user, pass);
+    } catch (err) {
+      console.error('[SMG] Playwright auth failed:', err.message);
+      return { success: false, error: `Login: ${err.message}` };
+    }
+  }
+
+  if (!bearer) {
+    return { success: false, error: 'Login: all auth methods failed (ROPC + Playwright)' };
   }
 
   const jar = makeCookieJar(); // empty — Bearer token handles auth
