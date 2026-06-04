@@ -2,14 +2,18 @@
 /**
  * smg-pull.js — GitHub Actions daily SMG comments pull.
  *
- * Auth: PKCE authorization code flow → 360.smg.com sets authorizationData cookie.
- * Token is in cookie "authorizationData" (JSON: access_token, refresh_token).
+ * Auth strategy (in order):
+ *   1. Check for existing authorizationData cookie on 360.smg.com → use it
+ *   2. Log in to reporting.smg.com (sets .ASPXAUTH for .smg.com domain)
+ *   3. Navigate to 360.smg.com → app silently authenticates via .ASPXAUTH
+ *   4. Read authorizationData cookie that the app sets
+ *   5. If auth.smg.com/connect/authorize URL is captured instead, log it for diagnosis
  */
 const { chromium } = require('playwright');
-const crypto = require('crypto');
-const fs     = require('fs');
-const https  = require('https');
-const http   = require('http');
+const { getSmg360Auth } = require('./smg360-auth-helper');
+const fs    = require('fs');
+const https = require('https');
+const http  = require('http');
 
 const SMG_USER    = process.env.SMG_USER;
 const SMG_PASS    = process.env.SMG_PASSWORD;
@@ -30,16 +34,8 @@ function buildDateRange(targetDate) {
   return {
     startDate: new Date(startMs).toISOString(), endDate: new Date(endMs-1).toISOString(),
     benchmarkStartDate: new Date(startMs - 30*86400000).toISOString(),
-    benchmarkEndDate: new Date(startMs - 1).toISOString(), appliedByUser: false,
+    benchmarkEndDate:   new Date(startMs - 1).toISOString(), appliedByUser: false,
   };
-}
-
-// PKCE helpers
-function generateVerifier() {
-  return crypto.randomBytes(32).toString('base64url');
-}
-function generateChallenge(verifier) {
-  return crypto.createHash('sha256').update(verifier).digest('base64url');
 }
 
 const ACCOUNT_ID     = '5b6205b27485e95d90e0a366';
@@ -48,99 +44,34 @@ const CARD_ID        = '5b621d617485e95d90e0a370';
 const FILTER_SOURCES = ['6684c1735040640c94fe34da','5b522bf87485e96d80b2dfaf','60ada0b4de7df021c003f620','65807135e6485f00fc5c9fb4'];
 const ALL_SOURCES    = ['5b73cc62f820781a3c28152c','6684c1735040640c94fe34da','644a8e03de7dee17c04fe327','5b522bf87485e96d80b2dfaf','661d4b6df820780f14f6fcf1','65a0028a504064228089de85','60ada0b4de7df021c003f620','642dca8350406420fc9bb262','6983e2725040640e14f8ebcf','65807135e6485f00fc5c9fb4','5d42044ef8207820d81c1169','64ec730ce6485f17e494aa4d','61e7494350406421a4ea9608','5ed7b8d6f820782450e5d26f','5b522969f8207835f04a3106','5ad79fc0f82078451850a66b','63f39d717485e921f0f4a405','5f2ca93d7485e90bec6c7bda'];
 
-async function getAccessToken(context, page) {
-  // Check if authorizationData cookie already exists (session established)
-  const cookies = await context.cookies('https://360.smg.com');
-  const authCookie = cookies.find(c => c.name === 'authorizationData');
-  if (authCookie) {
-    try {
-      const data = JSON.parse(decodeURIComponent(authCookie.value));
-      const token = data.access_token || data.accessToken;
-      if (token) { console.log('authorizationData cookie found — using existing token'); return token; }
-    } catch(_) {}
+async function loginToReportingPortal(page) {
+  console.log('Logging in to reporting.smg.com...');
+  // Navigate to the actual login form (MultiLanguage.aspx, not Index.aspx)
+  await page.goto('https://reporting.smg.com/MultiLanguage.aspx', { waitUntil: 'domcontentloaded', timeout: 30000 });
+  console.log('Login page URL: ' + page.url().slice(0, 80));
+
+  // Fill username and password using name attribute selectors
+  const userSel = 'input[name="ctl00$cphMain$txtUserName"]';
+  const passSel = 'input[name="ctl00$cphMain$txtPassword"]';
+
+  await page.waitForSelector(userSel, { timeout: 10000 });
+  await page.fill(userSel, SMG_USER);
+  await page.fill(passSel, SMG_PASS);
+
+  // Submit and wait for redirect to dashboard
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 }).catch(() => {}),
+    page.click('input[type="submit"], button[type="submit"]').catch(() => page.keyboard.press('Enter')),
+  ]);
+
+  const afterUrl = page.url();
+  console.log('After login URL: ' + afterUrl.slice(0, 80));
+
+  // Verify login succeeded (should redirect away from login page)
+  if (afterUrl.includes('Error=1') || afterUrl.includes('MultiLanguage')) {
+    throw new Error('reporting.smg.com login failed — check SMG_USER/SMG_PASSWORD. URL: ' + afterUrl);
   }
-  console.log('No valid authorizationData cookie — starting OAuth2 PKCE flow');
-
-  // Generate PKCE parameters
-  const verifier   = generateVerifier();
-  const challenge  = generateChallenge(verifier);
-  const state      = crypto.randomBytes(8).toString('hex');
-  const nonce      = crypto.randomBytes(8).toString('hex');
-
-  page.on('framenavigated', f => { if (f === page.mainFrame()) console.log('NAV→ ' + f.url().slice(0, 100)); });
-
-  // Build authorize URL — PKCE code flow, redirect_uri = app origin
-  const authorizeUrl = 'https://auth.smg.com/connect/authorize?' + [
-    'response_type=code',
-    'client_id=smg360',
-    'scope=' + encodeURIComponent('feedback openid email smg360 offline_access'),
-    'redirect_uri=' + encodeURIComponent('https://360.smg.com'),
-    'code_challenge=' + challenge,
-    'code_challenge_method=S256',
-    'state=' + state,
-    'nonce=' + nonce,
-  ].join('&');
-
-  console.log('Navigating to auth.smg.com (PKCE code flow)...');
-  await page.goto(authorizeUrl, { waitUntil: 'networkidle', timeout: 60000 });
-  console.log('Auth page: ' + page.url().slice(0, 100));
-
-  // Wait up to 30s for login form
-  await page.locator('input[type="password"]').waitFor({ timeout: 30000 }).catch(() => {});
-  const pwInput = await page.$('input[type="password"]');
-  if (pwInput) {
-    console.log('Login form — filling credentials');
-    const userInput = await page.$('input[name="username"]') || await page.$('input[name="email"]')
-                   || await page.$('input[type="email"]')   || await page.$('input[type="text"]');
-    if (userInput) await userInput.fill(SMG_USER);
-    await pwInput.fill(SMG_PASS);
-    const btn = await page.$('button[type="submit"]') || await page.$('input[type="submit"]');
-    if (btn) {
-      await Promise.all([
-        page.waitForURL(u => u.startsWith('https://360.smg.com'), { timeout: 30000 }).catch(() => {}),
-        btn.click(),
-      ]);
-    }
-  } else {
-    const body = (await page.evaluate(() => document.body.innerText || '').catch(() => '')).replace(/\s+/g,' ').slice(0, 200);
-    console.log('No login form. Page: ' + body);
-  }
-  console.log('After auth: ' + page.url().slice(0, 100));
-
-  // Wait for Angular app to process the redirect and set authorizationData cookie
-  await page.waitForTimeout(5000);
-
-  // Check authorizationData cookie
-  const cookies2 = await context.cookies('https://360.smg.com');
-  const authCookie2 = cookies2.find(c => c.name === 'authorizationData');
-  if (authCookie2) {
-    try {
-      const data = JSON.parse(decodeURIComponent(authCookie2.value));
-      const token = data.access_token || data.accessToken;
-      if (token) { console.log('authorizationData cookie set after auth, token length=' + token.length); return token; }
-    } catch(e) { console.log('Cookie parse error: ' + e.message); }
-  }
-
-  // All cookies for debugging
-  const allCookies = await context.cookies();
-  console.log('All cookie names: ' + allCookies.map(c => c.name).join(', ').slice(0, 300));
-
-  // CDP fallback — intercept API requests to capture Bearer token
-  console.log('Trying CDP intercept for Bearer token...');
-  let capturedToken = null;
-  const cdp = await context.newCDPSession(page);
-  await cdp.send('Fetch.enable', { patterns: [{ urlPattern: 'https://360.smg.com/api/*', requestStage: 'Request' }] });
-  cdp.on('Fetch.requestPaused', async ({ requestId, request }) => {
-    const auth = request.headers['Authorization'] || request.headers['authorization'];
-    if (auth && auth.toLowerCase().startsWith('bearer ')) capturedToken = auth.replace(/^bearer\s+/i, '');
-    await cdp.send('Fetch.continueRequest', { requestId }).catch(() => {});
-  });
-  await page.goto('https://360.smg.com', { waitUntil: 'networkidle', timeout: 20000 }).catch(() => {});
-  await page.waitForTimeout(4000);
-  await cdp.send('Fetch.disable').catch(() => {});
-  if (capturedToken) { console.log('Token from CDP, length=' + capturedToken.length); return capturedToken; }
-
-  throw new Error('No access token after all attempts. Final URL: ' + page.url().slice(0,100));
+  console.log('reporting.smg.com login succeeded');
 }
 
 async function main() {
@@ -148,51 +79,125 @@ async function main() {
   try {
     const context = await browser.newContext();
     const page    = await context.newPage();
+    page.on('framenavigated', f => { if (f === page.mainFrame()) console.log('NAV→ ' + f.url().slice(0, 100)); });
 
-    const accessToken = await getAccessToken(context, page);
+    // ── Step 1: Check for existing authorizationData cookie ───────────────────
+    let authResult = await getSmg360Auth(page, context, { timeoutMs: 5000 });
+    console.log('Initial auth check: mode=' + authResult.mode);
+
+    // ── Step 2: If no cookie, log in to reporting.smg.com first ──────────────
+    if (authResult.mode !== 'cookie') {
+      await loginToReportingPortal(page);
+
+      // ── Step 3: Navigate to 360.smg.com — app authenticates via .ASPXAUTH ──
+      console.log('Navigating to 360.smg.com with reporting session...');
+      authResult = await getSmg360Auth(page, context, { timeoutMs: 15000 });
+      console.log('Auth result after reporting login: mode=' + authResult.mode);
+    }
+
+    // ── Step 4: Handle result ─────────────────────────────────────────────────
+    let accessToken = null;
+
+    if (authResult.mode === 'cookie') {
+      accessToken = authResult.tokens.accessToken;
+      console.log('Using authorizationData cookie, token length=' + accessToken.length);
+    } else if (authResult.mode === 'authorize_url') {
+      // Log the real authorize URL for diagnosis — do NOT hand-reconstruct it
+      console.log('Real authorize URL captured: ' + authResult.authorizeUrl.slice(0, 200));
+      console.log('Params: ' + JSON.stringify(authResult.params));
+      throw new Error('Got real authorize URL but login form handling not yet implemented for this flow. See logs for the exact URL.');
+    } else {
+      throw new Error(authResult.message || 'Authentication failed — no token obtained');
+    }
+
     await browser.close();
 
-    // Download SMG export
+    // ── Step 5: Download SMG export ───────────────────────────────────────────
     console.log('Downloading SMG export...');
     const payload = {
       reportId: REPORT_ID, cardId: CARD_ID, sortBy: 1,
       sourceOffsets: ALL_SOURCES.map(s => ({ sourceId: s, offset: 0 })),
       showCommentTranslation: false, includeSubcategories: true, text: '', topics: [],
-      filter: { sources: FILTER_SOURCES, dateFilter: { dateRange: buildDateRange(TARGET_DATE), dateType: 0, reportGenerated: null }, hierarchy: {}, socialSites: [], attributeMeasures: [], openEnds: [], searchTerms: null, aggregationPeriod: null, ontologyGroups: [] },
+      filter: {
+        sources: FILTER_SOURCES,
+        dateFilter: { dateRange: buildDateRange(TARGET_DATE), dateType: 0, reportGenerated: null },
+        hierarchy: {}, socialSites: [], attributeMeasures: [], openEnds: [],
+        searchTerms: null, aggregationPeriod: null, ontologyGroups: [],
+      },
       exportFileType: 1, baseFileName: 'Comments_ByComment', timeZone: 'America/New_York', separateComments: true,
     };
     const body = JSON.stringify(payload);
     const xlsxBuf = await new Promise((resolve, reject) => {
-      const req = https.request({ method: 'POST', hostname: '360.smg.com', port: 443, path: '/api/export/v2/commentreport',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'accept': 'application/xlsx', 'AccountId': ACCOUNT_ID, 'Authorization': 'Bearer ' + accessToken, 'SMG-LanguageIso': 'en-US', 'TimeZone': 'America/New_York', 'Origin': 'https://360.smg.com', 'Referer': 'https://360.smg.com/', 'X-Requested-With': 'XMLHttpRequest' }
+      const req = https.request({
+        method: 'POST', hostname: '360.smg.com', port: 443,
+        path: '/api/export/v2/commentreport',
+        headers: {
+          'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body),
+          'accept': 'application/xlsx', 'AccountId': ACCOUNT_ID,
+          'Authorization': 'Bearer ' + accessToken,
+          'SMG-LanguageIso': 'en-US', 'TimeZone': 'America/New_York',
+          'Origin': 'https://360.smg.com', 'Referer': 'https://360.smg.com/',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
       }, (res) => {
         const chunks = [];
         res.on('data', c => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
-        res.on('end', () => { const buf = Buffer.concat(chunks); console.log('Export HTTP ' + res.statusCode + ', ' + buf.length + ' bytes'); if (res.statusCode !== 200) return reject(new Error('Export HTTP ' + res.statusCode + ': ' + buf.toString('utf8').slice(0,200))); resolve(buf); });
+        res.on('end', () => {
+          const buf = Buffer.concat(chunks);
+          console.log('Export HTTP ' + res.statusCode + ', ' + buf.length + ' bytes');
+          if (res.statusCode !== 200) return reject(new Error('Export HTTP ' + res.statusCode + ': ' + buf.toString('utf8').slice(0, 200)));
+          resolve(buf);
+        });
       });
-      req.on('error', reject); req.write(body); req.end();
+      req.on('error', reject);
+      req.write(body);
+      req.end();
     });
-    if (xlsxBuf[0] !== 0x50 || xlsxBuf[1] !== 0x4b) throw new Error('Not xlsx: ' + xlsxBuf.toString('utf8').slice(0,200));
 
-    // Upload to PAi
+    if (xlsxBuf[0] !== 0x50 || xlsxBuf[1] !== 0x4b) {
+      throw new Error('Response is not xlsx: ' + xlsxBuf.toString('utf8').slice(0, 200));
+    }
+
+    // ── Step 6: Upload to PAi ─────────────────────────────────────────────────
     const tmpFile = '/tmp/smg-' + TARGET_DATE + '.xlsx';
     fs.writeFileSync(tmpFile, xlsxBuf);
-    console.log('Uploading to PAi...');
-    const boundary = '----Boundary' + Date.now();
-    const fileContent = fs.readFileSync(tmpFile);
-    const formBody = Buffer.concat([
+    console.log('Uploading to PAi (' + xlsxBuf.length + ' bytes)...');
+
+    const boundary  = '----Boundary' + Date.now();
+    const fileBytes = fs.readFileSync(tmpFile);
+    const formBody  = Buffer.concat([
       Buffer.from('--' + boundary + '\r\nContent-Disposition: form-data; name="date"\r\n\r\n' + TARGET_DATE + '\r\n'),
       Buffer.from('--' + boundary + '\r\nContent-Disposition: form-data; name="file"; filename="smg-' + TARGET_DATE + '.xlsx"\r\nContent-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n'),
-      fileContent, Buffer.from('\r\n--' + boundary + '--\r\n'),
+      fileBytes,
+      Buffer.from('\r\n--' + boundary + '--\r\n'),
     ]);
+
     const uploadResult = await new Promise((resolve, reject) => {
       const parsed = new URL(PAI_URL + '/api/intel/upload/smg');
-      const lib = parsed.protocol === 'https:' ? https : http;
-      const req = lib.request({ method: 'POST', hostname: parsed.hostname, port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80), path: parsed.pathname, headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary, 'Content-Length': formBody.length, 'X-Automation-Token': AUTH_TOKEN } }, (res) => { let d = ''; res.on('data', c => d += c); res.on('end', () => resolve({ status: res.statusCode, body: d })); });
-      req.on('error', reject); req.write(formBody); req.end();
+      const lib    = parsed.protocol === 'https:' ? https : http;
+      const req    = lib.request({
+        method: 'POST', hostname: parsed.hostname,
+        port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+        path: parsed.pathname,
+        headers: {
+          'Content-Type':    'multipart/form-data; boundary=' + boundary,
+          'Content-Length':  formBody.length,
+          'X-Automation-Token': AUTH_TOKEN,
+        },
+      }, (res) => {
+        let d = '';
+        res.on('data', c => d += c);
+        res.on('end', () => resolve({ status: res.statusCode, body: d }));
+      });
+      req.on('error', reject);
+      req.write(formBody);
+      req.end();
     });
+
     console.log('Upload HTTP ' + uploadResult.status + ': ' + uploadResult.body);
-    if (uploadResult.status < 200 || uploadResult.status >= 300) throw new Error('Upload failed HTTP ' + uploadResult.status);
+    if (uploadResult.status < 200 || uploadResult.status >= 300) {
+      throw new Error('Upload failed HTTP ' + uploadResult.status);
+    }
     console.log('SMG comments pull complete.');
     fs.unlinkSync(tmpFile);
 
