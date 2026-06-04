@@ -70,11 +70,24 @@ async function main() {
   // ── Step 1: Navigate to 360.smg.com, capture Bearer token from page requests ─
   let bearerToken = null;
 
-  // Intercept all requests the Angular app makes — capture its Bearer token
+  // Intercept all requests — log headers for diagnosis, capture Bearer token
   context.on('request', (request) => {
-    const auth = request.headers()['authorization'] || request.headers()['Authorization'];
-    if (auth && auth.startsWith('Bearer ') && request.url().includes('360.smg.com')) {
-      bearerToken = auth.replace('Bearer ', '');
+    const url = request.url();
+    const headers = request.headers();
+    // Log any request to smg.com domains
+    if (url.includes('smg.com')) {
+      const authKeys = Object.keys(headers).filter(k => k.toLowerCase().includes('auth') || k.toLowerCase().includes('token') || k.toLowerCase().includes('bearer'));
+      if (authKeys.length > 0) {
+        console.log('REQUEST ' + request.method() + ' ' + url.slice(0, 80));
+        for (const k of authKeys) console.log('  ' + k + ': ' + headers[k].slice(0, 60));
+      }
+    }
+    // Capture bearer from any header variant
+    for (const [k, v] of Object.entries(headers)) {
+      if (k.toLowerCase().includes('auth') && v.toLowerCase().includes('bearer ')) {
+        bearerToken = v.replace(/^bearer\s+/i, '');
+        console.log('Bearer token captured from header: ' + k + ', length=' + bearerToken.length);
+      }
     }
   });
 
@@ -122,6 +135,11 @@ async function main() {
     console.log('Checking localStorage for token...');
     bearerToken = await page.evaluate(() => {
       const keys = Object.keys(localStorage);
+      // Log all keys and first 80 chars of each value for diagnosis
+      for (const k of keys) {
+        const v = localStorage.getItem(k) || '';
+        console.log('LS key=' + k + ' val=' + v.slice(0, 80));
+      }
       console.log('localStorage keys:', JSON.stringify(keys));
       for (const key of keys) {
         try {
