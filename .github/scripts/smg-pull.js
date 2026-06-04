@@ -61,9 +61,34 @@ async function main() {
     if (authResult.mode !== 'cookie') {
       await loginToReporting(page, context, SMG_USER, SMG_PASS);
 
-      // ── Step 3: Navigate to 360.smg.com — app authenticates via .ASPXAUTH ──
-      console.log('Navigating to 360.smg.com with reporting session...');
-      authResult = await getSmg360Auth(page, context, { timeoutMs: 15000 });
+      // After login we land on dashboard.aspx which loads 360.smg.com in an iFrame.
+      // That iFrame navigates to 360.smg.com/#access_token=... and sets the
+      // authorizationData cookie. Wait up to 15s for it before navigating away.
+      console.log('Waiting for authorizationData cookie from dashboard iFrame...');
+      let authDataCookie = null;
+      for (let i = 0; i < 30; i++) {
+        await page.waitForTimeout(500);
+        const cookies = await context.cookies('https://360.smg.com').catch(() => []);
+        authDataCookie = cookies.find(c => c.name === 'authorizationData');
+        if (authDataCookie) { console.log('authorizationData cookie set after ' + (i * 0.5).toFixed(1) + 's'); break; }
+      }
+
+      if (authDataCookie) {
+        // Parse cookie directly — no need to navigate to 360.smg.com
+        try {
+          const { getTokensFromAuthorizationDataCookie } = require('./smg360-auth-helper');
+          authResult = await getTokensFromAuthorizationDataCookie(context);
+          if (authResult && authResult.tokens && authResult.tokens.accessToken) {
+            authResult = { mode: 'cookie', cookie: authResult.cookie, tokens: authResult.tokens };
+          }
+        } catch (_) {}
+      }
+
+      if (authResult.mode !== 'cookie') {
+        // Cookie not set yet — navigate to 360.smg.com and let helper try
+        console.log('Cookie not found in iFrame — navigating to 360.smg.com...');
+        authResult = await getSmg360Auth(page, context, { timeoutMs: 15000 });
+      }
       console.log('Auth result after reporting login: mode=' + authResult.mode);
     }
 
