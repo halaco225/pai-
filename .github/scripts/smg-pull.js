@@ -2,14 +2,16 @@
 /**
  * smg-pull.js — GitHub Actions daily SMG comments pull.
  *
- * Auth flow (mirrors what a real browser does):
- *   1. Log in to reporting.smg.com → .ASPXAUTH cookie set for .smg.com
- *   2. Navigate to 360.smg.com — Angular app loads, route guard runs
- *   3. Guard calls startAuthentication() → navigates to auth.smg.com/connect/authorize
- *   4. auth.smg.com sees .ASPXAUTH cookie → issues token without showing login form
- *   5. Redirect back to 360.smg.com with #access_token=xxx
- *   6. Use Bearer token to call export API
- *   7. Upload xlsx to PAi
+ * Auth flow (from reverse-engineering 360.smg.com Angular app):
+ *   1. Navigate to auth.smg.com/connect/authorize with:
+ *        response_type=token id_token code  (hybrid flow)
+ *        redirect_uri=https://360.smg.com  (the app origin)
+ *        client_id=smg360
+ *   2. Fill login form → redirect back to https://360.smg.com with code+token in fragment
+ *   3. Angular app exchanges code → stores result in cookie "authorizationData" (JSON)
+ *   4. Read access_token from that cookie
+ *   5. Call export API with Bearer token
+ *   6. Upload xlsx to PAi
  */
 const { chromium } = require('playwright');
 const fs    = require('fs');
@@ -44,112 +46,120 @@ const CARD_ID        = '5b621d617485e95d90e0a370';
 const FILTER_SOURCES = ['6684c1735040640c94fe34da','5b522bf87485e96d80b2dfaf','60ada0b4de7df021c003f620','65807135e6485f00fc5c9fb4'];
 const ALL_SOURCES    = ['5b73cc62f820781a3c28152c','6684c1735040640c94fe34da','644a8e03de7dee17c04fe327','5b522bf87485e96d80b2dfaf','661d4b6df820780f14f6fcf1','65a0028a504064228089de85','60ada0b4de7df021c003f620','642dca8350406420fc9bb262','6983e2725040640e14f8ebcf','65807135e6485f00fc5c9fb4','5d42044ef8207820d81c1169','64ec730ce6485f17e494aa4d','61e7494350406421a4ea9608','5ed7b8d6f820782450e5d26f','5b522969f8207835f04a3106','5ad79fc0f82078451850a66b','63f39d717485e921f0f4a405','5f2ca93d7485e90bec6c7bda'];
 
-function extractToken(url) {
-  const fragment = (url.split('#')[1] || '');
-  const query    = (url.split('?')[1] || '').split('#')[0];
-  for (const part of [fragment, query]) {
-    if (!part || !part.includes('access_token')) continue;
-    const params = {};
-    part.split('&').forEach(p => { const eq = p.indexOf('='); if (eq > 0) params[decodeURIComponent(p.slice(0,eq))] = decodeURIComponent(p.slice(eq+1)); });
-    if (params.access_token) return params.access_token;
-  }
-  return null;
-}
-
 async function main() {
   const browser = await chromium.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox'] });
   try {
-    const context = await browser.newContext({ ignoreHTTPSErrors: true });
+    const context = await browser.newContext();
     const page    = await context.newPage();
 
-    // Log navigations
     page.on('framenavigated', f => { if (f === page.mainFrame()) console.log('NAV→ ' + f.url().slice(0, 100)); });
 
-    let bearerToken = null;
+    // ── Step 1: OAuth2 authorize with correct hybrid flow parameters ──────────
+    const nonce = Math.random().toString(36).slice(2);
+    const state = Math.random().toString(36).slice(2);
+    // response_type=token id_token code is what the 360.smg.com app uses
+    // redirect_uri=https://360.smg.com (the app origin, no trailing slash or path)
+    const authorizeUrl = 'https://auth.smg.com/connect/authorize?' + [
+      'response_type=token%20id_token%20code',
+      'client_id=smg360',
+      'scope=' + encodeURIComponent('feedback openid email smg360 offline_access'),
+      'redirect_uri=' + encodeURIComponent('https://360.smg.com'),
+      'nonce=' + nonce,
+      'state=' + state,
+    ].join('&');
 
-    // Capture token from any URL fragment navigation
-    page.on('framenavigated', (frame) => {
-      if (frame !== page.mainFrame()) return;
-      const url = frame.url();
-      if (url.includes('access_token=')) {
-        const t = extractToken(url);
-        if (t) { bearerToken = t; console.log('Bearer captured from nav URL, length=' + t.length); }
+    console.log('Navigating to auth.smg.com (hybrid flow)...');
+    await page.goto(authorizeUrl, { waitUntil: 'networkidle', timeout: 60000 });
+    console.log('Auth page: ' + page.url().slice(0, 80));
+
+    // ── Step 2: Wait for login form (up to 30s) then fill credentials ─────────
+    await page.locator('input[type="password"]').waitFor({ timeout: 30000 }).catch(() => {});
+    const pwInput = await page.$('input[type="password"]');
+    if (pwInput) {
+      console.log('Login form found — filling credentials');
+      const userInput = await page.$('input[name="username"]') || await page.$('input[name="email"]')
+                     || await page.$('input[type="email"]')    || await page.$('input[type="text"]');
+      if (userInput) await userInput.fill(SMG_USER);
+      await pwInput.fill(SMG_PASS);
+      const btn = await page.$('button[type="submit"]') || await page.$('input[type="submit"]');
+      if (btn) {
+        console.log('Submitting...');
+        await Promise.all([
+          page.waitForURL(u => u.startsWith('https://360.smg.com'), { timeout: 30000 }).catch(() => {}),
+          btn.click(),
+        ]);
       }
-    });
+    } else {
+      const body = (await page.evaluate(() => document.body.innerText || '').catch(() => '')).slice(0, 200);
+      console.log('No login form. Body: ' + body);
+    }
+    console.log('After auth: ' + page.url().slice(0, 100));
 
-    // ── Step 1: Log in to reporting.smg.com ────────────────────────────────────
-    console.log('Logging in to reporting.smg.com...');
-    await page.goto('https://reporting.smg.com/Index.aspx', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    // ── Step 3: Wait for Angular to exchange code and set authorizationData ───
+    // After redirect to 360.smg.com, the Angular app should call
+    // /api/authentication/token/refresh or exchange endpoint, then set cookie
+    await page.waitForTimeout(5000);
 
-    // Fill and submit the login form natively (Playwright handles cookies correctly)
-    await page.fill('#cphMain_txtUserName', SMG_USER).catch(() => page.fill('input[name="ctl00$cphMain$txtUserName"]', SMG_USER));
-    await page.fill('#cphMain_txtPassword', SMG_PASS).catch(() => page.fill('input[name="ctl00$cphMain$txtPassword"]', SMG_PASS));
-    console.log('Submitting login form...');
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 }).catch(() => {}),
-      page.click('input[type=submit], button[type=submit]').catch(() => page.keyboard.press('Enter')),
-    ]);
-    console.log('After login URL: ' + page.url().slice(0, 80));
+    // Read the authorizationData cookie (stores access_token, refresh_token)
+    const cookies = await context.cookies('https://360.smg.com');
+    console.log('360.smg.com cookies: ' + cookies.map(c => c.name).join(', '));
+    const authDataCookie = cookies.find(c => c.name === 'authorizationData');
+    let accessToken = null;
 
-    // Check if logged in
-    const allCookies = await context.cookies();
-    const authCookie = allCookies.find(c => c.name === '.ASPXAUTH');
-    console.log('.ASPXAUTH cookie: ' + (authCookie ? 'SET (domain=' + authCookie.domain + ')' : 'NOT SET — trying to continue anyway'));
-    console.log('Total cookies: ' + allCookies.length + ' — ' + allCookies.map(c => c.name).join(', ').slice(0, 200));
-
-    // ── Step 2: Navigate to 360.smg.com — Angular will redirect to auth.smg.com ─
-    console.log('Navigating to 360.smg.com (session cookie should trigger OAuth)...');
-    await page.goto('https://360.smg.com', { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForTimeout(3000); // give Angular time to process route guard
-    console.log('After 360.smg.com load: ' + page.url().slice(0, 100));
-
-    // Wait for either auth.smg.com redirect OR token appearing in URL
-    if (!bearerToken && !page.url().startsWith('https://auth.smg.com')) {
-      console.log('Waiting for auth redirect or token (30s)...');
-      await Promise.race([
-        page.waitForURL(u => u.startsWith('https://auth.smg.com'), { timeout: 30000 }),
-        page.waitForURL(u => u.includes('access_token='), { timeout: 30000 }),
-      ]).catch(() => {});
-      console.log('After wait: ' + page.url().slice(0, 100));
+    if (authDataCookie) {
+      try {
+        const authData = JSON.parse(decodeURIComponent(authDataCookie.value));
+        accessToken = authData.access_token || authData.accessToken;
+        console.log('accessToken from cookie, length=' + (accessToken ? accessToken.length : 0));
+      } catch(e) {
+        console.log('Cookie parse error: ' + e.message + ' raw: ' + authDataCookie.value.slice(0, 100));
+      }
     }
 
-    // If redirected to auth.smg.com, wait for it to redirect back with token
-    if (!bearerToken && page.url().startsWith('https://auth.smg.com')) {
-      console.log('On auth.smg.com — waiting for redirect with token (30s)...');
-      await page.waitForURL(u => u.includes('access_token='), { timeout: 30000 }).catch(() => {});
-      console.log('After auth: ' + page.url().slice(0, 100));
-      const t = extractToken(page.url());
-      if (t) { bearerToken = t; console.log('Token from URL, length=' + t.length); }
-    }
-
-    // Fallback: check localStorage
-    if (!bearerToken) {
-      bearerToken = await page.evaluate(() => {
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          const v = localStorage.getItem(k) || '';
+    // Fallback: check all .smg.com cookies
+    if (!accessToken) {
+      const allCookies = await context.cookies();
+      console.log('All cookies: ' + allCookies.map(c => c.name + '@' + c.domain).join(', ').slice(0, 300));
+      for (const c of allCookies) {
+        if (c.value.includes('access_token') || c.value.includes('accessToken')) {
           try {
-            if (v.startsWith('{')) {
-              const o = JSON.parse(v);
-              if (o.access_token) return o.access_token;
-            }
-            if (v.length > 100 && v.split('.').length === 3 && !v.includes(' ')) return v;
+            const obj = JSON.parse(decodeURIComponent(c.value));
+            accessToken = obj.access_token || obj.accessToken;
+            if (accessToken) { console.log('Token from cookie: ' + c.name); break; }
           } catch(_) {}
         }
-        return null;
-      }).catch(() => null);
-      if (bearerToken) console.log('Token from localStorage, length=' + bearerToken.length);
+      }
     }
 
-    if (!bearerToken) {
-      // Last log: what is the current page state?
-      const finalBody = (await page.evaluate(() => document.body.innerText || '').catch(() => '')).slice(0, 300);
-      throw new Error('No Bearer token. Final URL: ' + page.url().slice(0,100) + ' body: ' + finalBody.replace(/\s+/g,' ').slice(0,200));
+    // Fallback: try intercepting an authenticated API call
+    if (!accessToken) {
+      console.log('No token in cookies — trying to intercept API call...');
+      let capturedAuth = null;
+      const cdpSession = await context.newCDPSession(page);
+      await cdpSession.send('Fetch.enable', { patterns: [{ urlPattern: 'https://360.smg.com/api/*', requestStage: 'Request' }] });
+      cdpSession.on('Fetch.requestPaused', async ({ requestId, request }) => {
+        const auth = request.headers['Authorization'] || request.headers['authorization'];
+        if (auth && auth.startsWith('Bearer ')) capturedAuth = auth.replace(/^Bearer\s+/i, '');
+        await cdpSession.send('Fetch.continueRequest', { requestId }).catch(() => {});
+      });
+      // Navigate to a page that triggers API calls
+      await page.goto('https://360.smg.com', { waitUntil: 'networkidle', timeout: 20000 }).catch(() => {});
+      await page.waitForTimeout(3000);
+      await cdpSession.send('Fetch.disable').catch(() => {});
+      if (capturedAuth) {
+        accessToken = capturedAuth;
+        console.log('Token captured via CDP, length=' + accessToken.length);
+      }
+    }
+
+    if (!accessToken) {
+      throw new Error('No access token. Final URL: ' + page.url().slice(0,100) +
+        ' Auth page body: ' + (await page.evaluate(() => document.body.innerText || '').catch(()=>'')).slice(0,200).replace(/\s+/g,' '));
     }
 
     await browser.close();
 
-    // ── Step 3: Download SMG export ───────────────────────────────────────────
+    // ── Step 4: Download SMG export ───────────────────────────────────────────
     console.log('Downloading SMG export...');
     const payload = {
       reportId: REPORT_ID, cardId: CARD_ID, sortBy: 1,
@@ -161,7 +171,7 @@ async function main() {
     const body = JSON.stringify(payload);
     const xlsxBuf = await new Promise((resolve, reject) => {
       const options = { method: 'POST', hostname: '360.smg.com', port: 443, path: '/api/export/v2/commentreport',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'accept': 'application/xlsx', 'AccountId': ACCOUNT_ID, 'Authorization': 'Bearer ' + bearerToken, 'SMG-LanguageIso': 'en-US', 'TimeZone': 'America/New_York', 'Origin': 'https://360.smg.com', 'Referer': 'https://360.smg.com/', 'X-Requested-With': 'XMLHttpRequest' } };
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'accept': 'application/xlsx', 'AccountId': ACCOUNT_ID, 'Authorization': 'Bearer ' + accessToken, 'SMG-LanguageIso': 'en-US', 'TimeZone': 'America/New_York', 'Origin': 'https://360.smg.com', 'Referer': 'https://360.smg.com/', 'X-Requested-With': 'XMLHttpRequest' } };
       const req = https.request(options, (res) => {
         const chunks = [];
         res.on('data', c => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
@@ -172,13 +182,11 @@ async function main() {
           resolve(buf);
         });
       });
-      req.on('error', reject);
-      req.write(body);
-      req.end();
+      req.on('error', reject); req.write(body); req.end();
     });
     if (xlsxBuf[0] !== 0x50 || xlsxBuf[1] !== 0x4b) throw new Error('Not xlsx: ' + xlsxBuf.toString('utf8').slice(0, 200));
 
-    // ── Step 4: Upload to PAi ─────────────────────────────────────────────────
+    // ── Step 5: Upload to PAi ─────────────────────────────────────────────────
     const tmpFile = '/tmp/smg-' + TARGET_DATE + '.xlsx';
     fs.writeFileSync(tmpFile, xlsxBuf);
     console.log('Uploading to PAi...');
@@ -187,17 +195,14 @@ async function main() {
     const formBody = Buffer.concat([
       Buffer.from('--' + boundary + '\r\nContent-Disposition: form-data; name="date"\r\n\r\n' + TARGET_DATE + '\r\n'),
       Buffer.from('--' + boundary + '\r\nContent-Disposition: form-data; name="file"; filename="smg-' + TARGET_DATE + '.xlsx"\r\nContent-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n'),
-      fileContent,
-      Buffer.from('\r\n--' + boundary + '--\r\n'),
+      fileContent, Buffer.from('\r\n--' + boundary + '--\r\n'),
     ]);
     const uploadResult = await new Promise((resolve, reject) => {
-      const parsed  = new URL(PAI_URL + '/api/intel/upload/smg');
-      const lib     = parsed.protocol === 'https:' ? https : http;
+      const parsed = new URL(PAI_URL + '/api/intel/upload/smg');
+      const lib = parsed.protocol === 'https:' ? https : http;
       const options = { method: 'POST', hostname: parsed.hostname, port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80), path: parsed.pathname, headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary, 'Content-Length': formBody.length, 'X-Automation-Token': AUTH_TOKEN } };
       const req = lib.request(options, (res) => { let d = ''; res.on('data', c => d += c); res.on('end', () => resolve({ status: res.statusCode, body: d })); });
-      req.on('error', reject);
-      req.write(formBody);
-      req.end();
+      req.on('error', reject); req.write(formBody); req.end();
     });
     console.log('Upload HTTP ' + uploadResult.status + ': ' + uploadResult.body);
     if (uploadResult.status < 200 || uploadResult.status >= 300) throw new Error('Upload failed HTTP ' + uploadResult.status);
