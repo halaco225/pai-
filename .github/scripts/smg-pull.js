@@ -82,7 +82,7 @@ async function main() {
     await page.goto('https://reporting.smg.com/Index.aspx', { waitUntil: 'domcontentloaded', timeout: 30000 });
 
     // Extract hidden form fields and submit
-    const loginResult = await page.evaluate(async (user, pass) => {
+    const loginResult = await page.evaluate(async ({ user, pass }) => {
       const form = document.querySelector('form');
       if (!form) return 'no form';
       const inputs = {};
@@ -98,7 +98,7 @@ async function main() {
         body,
       });
       return 'HTTP ' + resp.status + ' url=' + resp.url;
-    }, SMG_USER, SMG_PASS);
+    }, { user: SMG_USER, pass: SMG_PASS });
     console.log('reporting.smg.com login result: ' + loginResult);
 
     // Check if logged in (cookie should now be set)
