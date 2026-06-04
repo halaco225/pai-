@@ -67,7 +67,17 @@ async function main() {
   const context = await browser.newContext();
   const page    = await context.newPage();
 
-  // ── Step 1: Navigate to 360.smg.com — handles OAuth2 natively ──────────────
+  // ── Step 1: Navigate to 360.smg.com, capture Bearer token from page requests ─
+  let bearerToken = null;
+
+  // Intercept all requests the Angular app makes — capture its Bearer token
+  context.on('request', (request) => {
+    const auth = request.headers()['authorization'] || request.headers()['Authorization'];
+    if (auth && auth.startsWith('Bearer ') && request.url().includes('360.smg.com')) {
+      bearerToken = auth.replace('Bearer ', '');
+    }
+  });
+
   console.log('Navigating to 360.smg.com...');
   await page.goto('https://360.smg.com', { waitUntil: 'networkidle', timeout: 60000 });
 
@@ -100,8 +110,47 @@ async function main() {
 
   console.log(`Logged in. Final URL: ${page.url().slice(0, 80)}`);
 
-  // ── Step 2: Download export FROM WITHIN the browser (already authenticated) ─
-  console.log('Downloading SMG comments export via browser fetch...');
+  // Wait for Angular to make its initial API calls so we can capture the token
+  if (!bearerToken) {
+    console.log('Waiting for Bearer token from page API calls...');
+    await page.waitForTimeout(5000);
+  }
+
+  // Fallback: try extracting token from localStorage/sessionStorage
+  if (!bearerToken) {
+    bearerToken = await page.evaluate(() => {
+      for (const storage of [localStorage, sessionStorage]) {
+        for (let i = 0; i < storage.length; i++) {
+          const key = storage.key(i);
+          try {
+            const val = storage.getItem(key);
+            if (!val) continue;
+            // oidc-client stores as JSON with access_token field
+            if (val.startsWith('{')) {
+              const obj = JSON.parse(val);
+              if (obj.access_token) return obj.access_token;
+            }
+            // Some apps store the raw token directly
+            if (val.length > 100 && val.split('.').length === 3) return val;
+          } catch (_) {}
+        }
+      }
+      // Check URL fragment (implicit flow)
+      const hash = window.location.hash || '';
+      const params = new URLSearchParams(hash.replace('#', ''));
+      return params.get('access_token') || null;
+    }).catch(() => null);
+  }
+
+  if (!bearerToken) throw new Error('Could not capture Bearer token from page. Login may have failed.');
+  console.log(`Bearer token captured (length=${bearerToken.length})`);
+
+
+  await browser.close();
+  browser = null;
+
+  // ── Step 2: Download export via Node.js HTTP with captured Bearer token ──────
+  console.log('Downloading SMG comments export...');
   const exportPayload = {
     reportId:              REPORT_ID,
     cardId:                CARD_ID,
@@ -123,32 +172,34 @@ async function main() {
     separateComments: true,
   };
 
-  const fileBase64 = await page.evaluate(async ({ url, accountId, payload }) => {
-    const resp = await fetch(url, {
-      method:  'POST',
+  const body = JSON.stringify(exportPayload);
+  const xlsxBuf = await new Promise((resolve, reject) => {
+    const options = {
+      method: 'POST', hostname: '360.smg.com', port: 443,
+      path: '/api/export/v2/commentreport',
       headers: {
-        'Content-Type':     'application/json',
-        'accept':           'application/xlsx',
-        'AccountId':        accountId,
-        'SMG-LanguageIso':  'en-US',
-        'TimeZone':         'America/New_York',
-        'Origin':           'https://360.smg.com',
-        'Referer':          'https://360.smg.com/',
+        'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body),
+        'accept': 'application/xlsx', 'AccountId': ACCOUNT_ID,
+        'Authorization': `Bearer ${bearerToken}`,
+        'SMG-LanguageIso': 'en-US', 'TimeZone': 'America/New_York',
+        'Origin': 'https://360.smg.com', 'Referer': 'https://360.smg.com/',
         'X-Requested-With': 'XMLHttpRequest',
       },
-      body: JSON.stringify(payload),
+    };
+    const req = https.request(options, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+      res.on('end', () => {
+        const buf = Buffer.concat(chunks);
+        console.log(`Export HTTP ${res.statusCode}, ${buf.length} bytes`);
+        if (res.statusCode !== 200) return reject(new Error(`Export HTTP ${res.statusCode}: ${buf.toString('utf8').slice(0, 200)}`));
+        resolve(buf);
+      });
     });
-    if (!resp.ok) throw new Error(`Export HTTP ${resp.status}: ${await resp.text().then(t => t.slice(0, 200))}`);
-    const buf   = await resp.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    let bin = '';
-    for (const b of bytes) bin += String.fromCharCode(b);
-    return btoa(bin);
-  }, { url: 'https://360.smg.com/api/export/v2/commentreport', accountId: ACCOUNT_ID, payload: exportPayload });
-
-  await browser.close();
-
-  const xlsxBuf = Buffer.from(fileBase64, 'base64');
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
   console.log(`Export downloaded: ${xlsxBuf.length} bytes`);
 
   if (xlsxBuf[0] !== 0x50 || xlsxBuf[1] !== 0x4b) {
