@@ -1897,4 +1897,93 @@ router.get('/hutbot-wtd', requireAuth, async (req, res) => {
   }
 });
 
+// ── GET /api/intel/automation/fourth-diag — diagnose Fourth API connectivity ───
+// Token-protected. Returns step-by-step auth + report discovery results.
+router.get('/automation/fourth-diag', async (req, res) => {
+  const token = req.query.token || req.headers['x-automation-token'];
+  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, process.env.INTEL_REGEN_TOKEN].filter(Boolean);
+  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+
+  const user = process.env.FOURTH_USER     || '';
+  const pass = process.env.FOURTH_PASSWORD || '';
+  const diag = { env: { FOURTH_USER: user ? '✓ set' : '✗ missing', FOURTH_PASSWORD: pass ? '✓ set' : '✗ missing' }, steps: {} };
+
+  if (!user || !pass) {
+    return res.json({ ...diag, error: 'FOURTH_USER / FOURTH_PASSWORD not set in environment' });
+  }
+
+  try {
+    // Step 1: Auth
+    const https  = require('https');
+    const FOURTH_HOST = 'analytics.na1.fourth.com';
+    const PROJECT_ID  = 'q0t16mq5dgsreqiq8macw3ghv3k1iuqc';
+
+    function httpReq(method, urlPath, { headers={}, body, cookieJar=[] }={}) {
+      return new Promise((resolve, reject) => {
+        const data = body ? JSON.stringify(body) : null;
+        const req  = https.request({
+          hostname: FOURTH_HOST, path: urlPath, method,
+          headers: {
+            Accept: 'application/json', 'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0',
+            ...(cookieJar.length ? { Cookie: cookieJar.join('; ') } : {}),
+            ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}),
+            ...headers,
+          }
+        }, res2 => {
+          const chunks = [];
+          res2.on('data', c => chunks.push(c));
+          res2.on('end', () => resolve({
+            status: res2.statusCode,
+            headers: res2.headers,
+            newCookies: (res2.headers['set-cookie']||[]).map(c=>c.split(';')[0]),
+            body: Buffer.concat(chunks).toString('utf8'),
+          }));
+        });
+        req.setTimeout(30000, () => req.destroy(new Error('timeout')));
+        req.on('error', reject);
+        if (data) req.write(data);
+        req.end();
+      });
+    }
+
+    // Auth step
+    const loginResp = await httpReq('POST', '/gdc/account/login', {
+      body: { postUserLogin: { login: user, password: pass, remember: 1, captcha: '', verifyCaptcha: '' } }
+    });
+    diag.steps.login = { status: loginResp.status, cookies: loginResp.newCookies.map(c=>c.split('=')[0]) };
+    if (loginResp.status !== 200 && loginResp.status !== 201) {
+      diag.steps.login.error = loginResp.body.slice(0, 500);
+      return res.json(diag);
+    }
+
+    const jar = loginResp.newCookies.filter(c => c.startsWith('GDCAuthSST'));
+    const tokenResp = await httpReq('GET', '/gdc/account/token', { cookieJar: jar });
+    diag.steps.token = { status: tokenResp.status };
+    if (tokenResp.newCookies.length) jar.push(...tokenResp.newCookies.filter(c=>c.startsWith('GDCAuthTT')));
+
+    // List reports
+    const rptResp = await httpReq('GET', `/gdc/md/${PROJECT_ID}/query/reports`, { cookieJar: jar });
+    diag.steps.reportList = { status: rptResp.status };
+    if (rptResp.status === 200) {
+      try {
+        const data = JSON.parse(rptResp.body);
+        const entries = data.query?.entries || [];
+        diag.steps.reportList.total = entries.length;
+        diag.steps.reportList.titles = entries.slice(0, 20).map(e => ({ title: e.title, link: e.link }));
+      } catch (e) {
+        diag.steps.reportList.parseError = e.message;
+        diag.steps.reportList.rawPreview = rptResp.body.slice(0, 500);
+      }
+    } else {
+      diag.steps.reportList.body = rptResp.body.slice(0, 500);
+    }
+
+    res.json(diag);
+  } catch (err) {
+    diag.error = err.message;
+    res.json(diag);
+  }
+});
+
 module.exports = router;
