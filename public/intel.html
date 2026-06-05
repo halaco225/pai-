@@ -466,14 +466,14 @@ button{font-family:inherit;cursor:pointer}
         <!-- Area Coach (hidden for area_coach role) -->
         <div class="smg-filter-group" id="smgACGroup" style="display:none">
           <div class="smg-filter-label">Area Coach</div>
-          <select class="smg-select" id="smgACSelect" onchange="applySMGDropdowns()">
+          <select class="smg-select" id="smgACSelect" onchange="onSMGACChange()">
             <option value="">All ACs</option>
           </select>
         </div>
         <!-- Store -->
         <div class="smg-filter-group" id="smgStoreGroup">
           <div class="smg-filter-label">Store</div>
-          <select class="smg-select" id="smgStoreSelect" onchange="applySMGDropdowns()">
+          <select class="smg-select" id="smgStoreSelect" onchange="onSMGStoreChange()">
             <option value="">All Stores</option>
           </select>
         </div>
@@ -1747,19 +1747,22 @@ function populateSMGDropdowns(){
   }
 }
 
-function applySMGDropdowns(){
+function onSMGACChange(){
   smgACFilter=document.getElementById('smgACSelect')?.value||'';
-  smgStoreFilter=document.getElementById('smgStoreSelect')?.value||'';
-  // When AC changes, repopulate store dropdown
-  if(smgACFilter){
-    const all=[...(smgData.positive||[]),...(smgData.negative||[])];
-    const stores=[...new Set(all.filter(x=>x.area_coach===smgACFilter).map(x=>x.store_name||x.store_id).filter(Boolean))].sort();
-    const stSel=document.getElementById('smgStoreSelect');
-    if(stSel){
-      stSel.innerHTML='<option value="">All Stores</option>'+stores.map(s=>'<option value="'+escH(s)+'">'+escH(s)+'</option>').join('');
-      smgStoreFilter='';
-    }
+  smgStoreFilter='';
+  // Repopulate store dropdown scoped to selected AC (or all stores if no AC)
+  const all=[...(smgData.positive||[]),...(smgData.negative||[])];
+  const filtered=smgACFilter?all.filter(x=>x.area_coach===smgACFilter):all;
+  const stores=[...new Set(filtered.map(x=>x.store_name||x.store_id).filter(Boolean))].sort();
+  const stSel=document.getElementById('smgStoreSelect');
+  if(stSel){
+    stSel.innerHTML='<option value="">All Stores</option>'+stores.map(s=>'<option value="'+escH(s)+'">'+escH(s)+'</option>').join('');
   }
+  renderSMGComments();
+}
+
+function onSMGStoreChange(){
+  smgStoreFilter=document.getElementById('smgStoreSelect')?.value||'';
   renderSMGComments();
 }
 
@@ -1793,6 +1796,8 @@ function renderSMGComments(){
     stores[k].neg.push(r);
   });
   const catFmt={rude_staff:'Rude Staff',poor_food:'Poor Food',poor_service:'Poor Service',wait_time:'Wait Time',wrong_order:'Wrong Order',cleanliness:'Cleanliness',positive_staff:'Positive Staff',great_food:'Great Food',other:'Other'};
+  const srcColor={SMG:'#3b82f6',GES:'#3b82f6',Google:'#34d399','Google Maps':'#34d399',Yelp:'#f59e0b',Facebook:'#60a5fa',Twitter:'#38bdf8','Third Party':'#a78bfa'};
+  function srcBadge(s){if(!s)return'';const col=srcColor[s]||'#64748b';return'<span style="font-size:10px;font-weight:700;letter-spacing:.5px;padding:1px 7px;border-radius:10px;border:1px solid '+col+';color:'+col+';margin-left:6px">'+escH(s)+'</span>';}
   const html=Object.values(stores).sort((a,b)=>b.neg.length-a.neg.length).map(s=>{
     const negCards=s.neg.map(r=>{
       const cats=(r.categories||[]).filter(x=>catFmt[x]).map(x=>'<span style="background:#1e2d4d;color:#94a3b8;font-size:10px;padding:1px 6px;border-radius:4px;margin-right:3px">'+escH(catFmt[x])+'</span>').join('');
@@ -1801,7 +1806,7 @@ function renderSMGComments(){
       const dateTag=r.comment_date&&smgRange!=='yesterday'?'<span style="font-size:10px;color:#475569;float:right">'+escH(String(r.comment_date).slice(0,10))+'</span>':'';
       return '<div style="border-left:3px solid #ef4444;padding:8px 10px;background:#0c1425;border-radius:6px;margin-bottom:8px">'
         +nameWarn+dateTag
-        +'<div style="font-size:12px;font-weight:600;color:#fbbf24;margin-bottom:3px">'+escH(r.summary||'Complaint')+sat+'</div>'
+        +'<div style="font-size:12px;font-weight:600;color:#fbbf24;margin-bottom:3px">'+escH(r.summary||'Complaint')+sat+srcBadge(r.source)+'</div>'
         +(cats?'<div style="margin-bottom:4px">'+cats+'</div>':'')
         +'<div style="font-size:11px;color:#94a3b8;font-style:italic">"'+escH((r.comment_text||'').substring(0,300))+'"</div>'
         +'</div>';
@@ -1810,7 +1815,7 @@ function renderSMGComments(){
       const dateTag=r.comment_date&&smgRange!=='yesterday'?'<span style="font-size:10px;color:#475569;float:right">'+escH(String(r.comment_date).slice(0,10))+'</span>':'';
       return '<div style="border-left:3px solid #22c55e;padding:8px 10px;background:#0c1425;border-radius:6px;margin-bottom:8px">'
         +dateTag
-        +'<div style="font-size:12px;font-weight:600;color:#86efac;margin-bottom:3px">★ '+escH(r.summary||'Positive')+'</div>'
+        +'<div style="font-size:12px;font-weight:600;color:#86efac;margin-bottom:3px">★ '+escH(r.summary||'Positive')+srcBadge(r.source)+'</div>'
         +'<div style="font-size:11px;color:#94a3b8;font-style:italic">"'+escH((r.comment_text||'').substring(0,300))+'"</div>'
         +'</div>';
     }).join('');
