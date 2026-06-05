@@ -1463,7 +1463,7 @@ Rules:
 
 // ─── Morning Brief Generator ────────────────────────────────────────────────
 
-async function generateMorningBrief({ date, userName, userRole, fiscalContext, regionMetrics, byAC, flags, shoutouts, followUps }) {
+async function generateMorningBrief({ date, userName, userRole, fiscalContext, regionMetrics, byAC, velocity, flags, shoutouts, followUps }) {
   const fmtDollar = n => n != null ? '$' + Math.round(n).toLocaleString('en-US') : 'N/A';
   const fmtGrowth = n => n != null ? (n >= 0 ? '+' : '') + Number(n).toFixed(1) + '% vs LY' : 'no LY data';
 
@@ -1494,6 +1494,12 @@ async function generateMorningBrief({ date, userName, userRole, fiscalContext, r
       }).join('\n')
     : '  No outstanding follow-up items.';
 
+  const velLines = (velocity || []).length
+    ? (velocity || []).map(v =>
+        `  • ${v.area_coach}: OTD ${v.avg_otd_pct != null ? v.avg_otd_pct + '%' : 'N/A'} | <4min ${v.avg_pct_lt4 != null ? v.avg_pct_lt4 + '%' : 'N/A'}`
+      ).join('\n')
+    : '  No velocity data for this date.';
+
   const prompt = `You are writing a morning executive brief memo for ${userName} (${userRole}) at Ayvaz Pizza LLC, a Pizza Hut franchisee.
 
 DATE: ${date}
@@ -1504,6 +1510,9 @@ ${regionLine}
 
 BY AREA COACH:
 ${acLines}
+
+SPEED OF SERVICE (Yesterday):
+${velLines}
 
 ACTIVE FLAGS (all severities, sorted high → low):
 ${flagLines}
@@ -1528,6 +1537,9 @@ HIGHLIGHTS
 
 WATCHOUTS
 [Bullet points: high-severity flags, stores with negative growth, recurring issues. Name the store, the metric, consecutive days. Be direct.]
+
+SPEED OF SERVICE
+[OTD % and <4min % highlights — call out any AC below 85% OTD or below 70% <4min. Skip if no velocity data.]
 
 FOLLOW-UP ITEMS
 [Bullet points: pending commitments from prior acknowledgments, patterns that recurred after an AC said they'd fix it. Skip section if empty.]

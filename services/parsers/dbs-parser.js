@@ -259,12 +259,16 @@ function parseDBS(filePath, targetDate) {
         if (!storeMetrics[store_id]) storeMetrics[store_id] = { store_id, store_name, area_coach: currentArea, region_coach: resolvedRC, territory_vp: resolvedVP, metric_date: targetDate };
         Object.assign(storeMetrics[store_id], { net_sales_day: netSalesDay, net_sales_wtd: netSalesWtd, net_sales_ptd: netSalesPtd });
 
-        // ── Tier 2 Soft: Sales Growth % ───────────────────────────────────
+        // ── Sales Growth % vs LY: daily, WTD, PTD ────────────────────────
         const growthDay = cellVal(row, S1.GROWTH_DAY);
         if (growthDay != null) storeMetrics[store_id].growth_pct_day = growthDay;
         if (growthDay != null && growthDay < 0) {
           softIndicators.push({ store_id, metric_date: targetDate, indicator: 'growth_pct_day', value: growthDay, target: 0, source: 'DBS' });
         }
+        const growthWtd = cellVal(row, S1.GROWTH_WTD);
+        if (growthWtd != null) storeMetrics[store_id].growth_pct_wtd = growthWtd;
+        const growthPtd = cellVal(row, S1.GROWTH_PTD);
+        if (growthPtd != null) storeMetrics[store_id].growth_pct_ptd = growthPtd;
         // ── Tier 2 Soft: Production < 15% score ───────────────────────────
         const prodLt15 = cellVal(row, S1.PROD_LT15_DAY);
         if (prodLt15 != null) storeMetrics[store_id].production_lt15_day = prodLt15;

@@ -47,6 +47,8 @@ button{font-family:inherit;cursor:pointer}
 .digest-tbl tr:hover td{background:#0c1425}
 .digest-row-pos td{color:#d1fae5}
 .digest-row-neg td{color:#fee2e2}
+.digest-ac-row:hover td{background:#0f1d38 !important}
+.digest-expand-icon{font-size:9px;color:#475569;margin-right:6px;display:inline-block;transition:transform .15s}
 .digest-top-stores{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
 .dts-card{background:#0c1425;border:1px solid #1e2d4d;border-radius:8px;padding:12px 14px;min-width:140px}
 .dts-name{font-size:12px;font-weight:700;color:#e2e8f0;margin-bottom:4px}
@@ -1067,6 +1069,16 @@ function renderShoutouts(list){
   c.innerHTML=list.map(s=>'<div class="shoutout-card"><div class="sh-store">★ '+escH(s.store_name||s.store_id||'')+'</div><div class="sh-body">'+escH(s.summary||s.comment_text||'')+'</div><div class="sh-meta">'+(s.area_coach?escH(s.area_coach)+' · ':'')+fmtDate(s.shoutout_date||s.report_date)+'</div></div>').join('');
 }
 
+function toggleACDrillDown(row){
+  const ac=row.dataset.ac;
+  const storeRow=document.getElementById('stores_'+ac);
+  const icon=document.getElementById('exp_'+ac);
+  if(!storeRow)return;
+  const open=storeRow.style.display==='none'||storeRow.style.display==='';
+  storeRow.style.display=open?'table-row':'none';
+  if(icon)icon.textContent=open?'▼':'▶';
+}
+
 async function loadDigest(){
   const dash=document.getElementById('digestDashboard');
   try{
@@ -1122,15 +1134,53 @@ function buildDigestDashboard(d){
     html+='<div class="digest-legend"><span class="dl-dot dl-red"></span>High&nbsp;&nbsp;<span class="dl-dot dl-amber"></span>Medium</div>';
   }
 
-  // Per-AC table
+  // Per-AC table with drill-down
   const byAC=d.by_ac||[];
+  const storesByAC=d.stores_by_ac||{};
   if(byAC.length){
-    html+='<div class="digest-section-hdr">Area Coach WTD</div>';
-    html+='<table class="digest-tbl"><thead><tr><th>Area Coach</th><th>Stores</th><th>WTD Sales</th><th>WTD Growth vs LY</th></tr></thead><tbody>';
+    html+='<div class="digest-section-hdr">Area Coach WTD <span style="font-weight:400;font-size:10px;color:#475569;text-transform:none;letter-spacing:0"> — click a row to see stores</span></div>';
+    html+='<table class="digest-tbl" id="digestACTable"><thead><tr><th>Area Coach</th><th>Stores</th><th>WTD Sales</th><th>WTD Growth vs LY</th><th>OTD %</th><th>&lt;4 Min %</th></tr></thead><tbody>';
     for(const a of byAC){
       const growthVal=a.avg_growth_wtd!=null?Number(a.avg_growth_wtd):null;
       const rowCls=growthVal!=null&&growthVal<0?'digest-row-neg':growthVal!=null&&growthVal>=2?'digest-row-pos':'';
-      html+='<tr class="'+rowCls+'"><td>'+escH(a.area_coach||'—')+'</td><td>'+(a.store_count||'—')+'</td><td>'+fmtD(a.net_sales_wtd)+'</td><td>'+fmtGrowth(a.avg_growth_wtd)+'</td></tr>';
+      const acKey=escH(a.area_coach||'');
+      const vel=a.velocity||{};
+      const otd=vel.avg_otd_pct!=null?vel.avg_otd_pct+'%':'—';
+      const lt4=vel.avg_pct_lt4!=null?vel.avg_pct_lt4+'%':'—';
+      html+='<tr class="digest-ac-row '+rowCls+'" data-ac="'+acKey+'" onclick="toggleACDrillDown(this)" style="cursor:pointer">'
+        +'<td><span class="digest-expand-icon" id="exp_'+acKey+'">▶</span> '+acKey+'</td>'
+        +'<td>'+(a.store_count||'—')+'</td>'
+        +'<td>'+fmtD(a.net_sales_wtd)+'</td>'
+        +'<td>'+fmtGrowth(a.avg_growth_wtd)+'</td>'
+        +'<td style="color:'+(vel.avg_otd_pct!=null&&vel.avg_otd_pct<85?'#f87171':'#94a3b8')+'">'+otd+'</td>'
+        +'<td style="color:'+(vel.avg_pct_lt4!=null&&vel.avg_pct_lt4<70?'#f87171':'#94a3b8')+'">'+lt4+'</td>'
+        +'</tr>';
+      // Pre-render store rows (hidden)
+      const stores=storesByAC[a.area_coach]||[];
+      html+='<tr class="digest-store-rows" id="stores_'+acKey+'" style="display:none"><td colspan="6" style="padding:0">';
+      if(stores.length){
+        html+='<table style="width:100%;border-collapse:collapse;background:#060b18">'
+          +'<thead><tr style="border-bottom:1px solid #1e2d4d">'
+          +'<th style="padding:6px 12px 6px 28px;font-size:10px;color:#475569;font-weight:700;text-align:left">Store</th>'
+          +'<th style="padding:6px 10px;font-size:10px;color:#475569;font-weight:700;text-align:left">WTD Sales</th>'
+          +'<th style="padding:6px 10px;font-size:10px;color:#475569;font-weight:700;text-align:left">WTD Growth vs LY</th>'
+          +'<th style="padding:6px 10px;font-size:10px;color:#475569;font-weight:700;text-align:left">Yesterday Sales</th>'
+          +'<th style="padding:6px 10px;font-size:10px;color:#475569;font-weight:700;text-align:left">Yesterday Growth</th>'
+          +'</tr></thead><tbody>';
+        for(const s of stores){
+          html+='<tr style="border-bottom:1px solid #0c1425">'
+            +'<td style="padding:7px 10px 7px 28px;font-size:12px;color:#e2e8f0;font-weight:600">'+escH(s.store_name||s.store_id||'')+'</td>'
+            +'<td style="padding:7px 10px;font-size:12px;color:#94a3b8">'+fmtD(s.net_sales_wtd)+'</td>'
+            +'<td style="padding:7px 10px;font-size:12px">'+fmtGrowth(s.growth_pct_wtd)+'</td>'
+            +'<td style="padding:7px 10px;font-size:12px;color:#94a3b8">'+fmtD(s.net_sales_day)+'</td>'
+            +'<td style="padding:7px 10px;font-size:12px">'+fmtGrowth(s.growth_pct_day)+'</td>'
+            +'</tr>';
+        }
+        html+='</tbody></table>';
+      } else {
+        html+='<div style="padding:10px 28px;font-size:12px;color:#475569">No store data available.</div>';
+      }
+      html+='</td></tr>';
     }
     html+='</tbody></table>';
   }

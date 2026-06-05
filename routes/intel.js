@@ -1252,12 +1252,59 @@ router.get('/weekly-digest', async (req, res) => {
       )
     ]);
 
+    // Velocity WTD averages — scoped to user's hierarchy via store_assignments
+    const velParams = [weekStartStr, yesterdayStr];
+    let velScopeJoin = 'JOIN store_assignments sa ON v.store_id=sa.store_id';
+    if (user.scope?.type === 'rdo') {
+      const acs = user.scope.area_coaches || [];
+      if (acs.length) { velParams.push(acs); velScopeJoin += ` AND sa.area_coach = ANY($${velParams.length}::text[])`; }
+      else { velParams.push(user.scope.rc_name || user.name); velScopeJoin += ` AND sa.region_coach=$${velParams.length}`; }
+    } else if (user.scope?.type === 'area_coach') {
+      velParams.push(user.scope.ac_name || user.name); velScopeJoin += ` AND sa.area_coach=$${velParams.length}`;
+    } else if (user.role === 'vp') {
+      velParams.push(user.scope?.vp_name || user.name); velScopeJoin += ` AND sa.vp=$${velParams.length}`;
+    }
+
+    const [velByACRes, storeDetailRes] = await Promise.all([
+      p.query(`
+        SELECT sa.area_coach,
+               ROUND(AVG(v.on_time_pct)::numeric, 1)::float      AS avg_otd_pct,
+               ROUND(AVG(v.pct_lt4)::numeric, 1)::float           AS avg_pct_lt4,
+               COUNT(DISTINCT v.store_id)::int                    AS store_count
+        FROM velocity_daily_records v
+        ${velScopeJoin}
+        WHERE v.record_date BETWEEN $1 AND $2
+          AND v.on_time_pct IS NOT NULL
+        GROUP BY sa.area_coach ORDER BY sa.area_coach`, velParams
+      ),
+      p.query(`
+        SELECT store_id, store_name, area_coach,
+               net_sales_wtd::float, growth_pct_wtd::float,
+               net_sales_day::float, growth_pct_day::float
+        FROM intel_dbs_metrics
+        WHERE metric_date = ${latestInWeek} AND ${metricsWhere}
+        ORDER BY area_coach, store_name`, mp
+      )
+    ]);
+
+    const velMap = {};
+    for (const r of velByACRes.rows) velMap[r.area_coach] = r;
+    const byACWithVel = acRes.rows.map(a => ({ ...a, velocity: velMap[a.area_coach] || null }));
+
+    const storesByAC = {};
+    for (const s of storeDetailRes.rows) {
+      const ac = s.area_coach || 'Unknown';
+      if (!storesByAC[ac]) storesByAC[ac] = [];
+      storesByAC[ac].push(s);
+    }
+
     res.json({
       week_start:        weekStartStr,
       week_end:          yesterdayStr,
       fiscal_context:    getFiscalContextString ? getFiscalContextString() : '',
       region:            regionRes.rows[0] || {},
-      by_ac:             acRes.rows,
+      by_ac:             byACWithVel,
+      stores_by_ac:      storesByAC,
       flags_by_day:      flagsByDayRes.rows,
       top_stores:        topStoresRes.rows,
     });
@@ -1581,7 +1628,7 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
     }
 
     // Parallel data fetch
-    const [flagsRes, metricsRes, acMetricsRes, shoutoutsRes, followUpRes] = await Promise.all([
+    const [flagsRes, metricsRes, acMetricsRes, shoutoutsRes, velocityRes, followUpRes] = await Promise.all([
       // All active flags for the date, sorted by severity + consecutive days
       p.query(
         `SELECT store_id, store_name, area_coach, metric_type, value, target, variance,
@@ -1624,6 +1671,26 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
         }
         sq.push('ORDER BY s.shoutout_date DESC LIMIT 20');
         return p.query(sq.join(' '), sp);
+      })(),
+      // Velocity for the date — avg OTD% and make time per AC
+      (() => {
+        const vp = [date];
+        let vj = 'JOIN store_assignments sa ON v.store_id=sa.store_id';
+        if (user.scope?.type === 'rdo') {
+          const acs = user.scope.area_coaches || [];
+          if (acs.length) { vp.push(acs); vj += ` AND sa.area_coach = ANY($${vp.length}::text[])`; }
+          else { vp.push(user.scope.rc_name || user.name); vj += ` AND sa.region_coach=$${vp.length}`; }
+        } else if (user.scope?.type === 'area_coach') {
+          vp.push(user.scope.ac_name || user.name); vj += ` AND sa.area_coach=$${vp.length}`;
+        }
+        return p.query(`
+          SELECT sa.area_coach,
+                 ROUND(AVG(v.on_time_pct)::numeric,1)::float AS avg_otd_pct,
+                 ROUND(AVG(v.pct_lt4)::numeric,1)::float      AS avg_pct_lt4,
+                 COUNT(DISTINCT v.store_id)::int              AS store_count
+          FROM velocity_daily_records v ${vj}
+          WHERE v.record_date=$1 AND v.on_time_pct IS NOT NULL
+          GROUP BY sa.area_coach ORDER BY sa.area_coach`, vp);
       })(),
       // Follow-up items: acknowledged flags from last 7 days scoped to this user, still open or recurred
       (() => {
@@ -1671,6 +1738,7 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
         fiscalContext: getFiscalContextString ? getFiscalContextString() : '',
         regionMetrics: metricsRes.rows[0] || {},
         byAC,
+        velocity:   velocityRes.rows,
         flags:      flagsRes.rows,
         shoutouts:  shoutoutsRes.rows,
         followUps:  followUpRes.rows,
