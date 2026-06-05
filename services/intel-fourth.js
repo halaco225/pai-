@@ -113,7 +113,7 @@ async function findReportUris(jar, reportKey) {
   // Target the exact tabular "by Location" reports the parsers expect.
   // Priority: exact name match → prefix match → keyword fallback.
   const exactNames = reportKey === 'LABOR'
-    ? ['Labor Details by Locations', 'Labor Breakdown by Location', 'Overview Report By Location']
+    ? ['Overview Report By Location', 'Labor Details by Locations', 'Labor Breakdown by Location']
     : ['Overtime / Double Time / Special By Location', 'Actual/Scheduled Overtime Hours By Org Level 3'];
 
   // Try exact matches first
