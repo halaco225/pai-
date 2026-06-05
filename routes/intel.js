@@ -1970,13 +1970,42 @@ router.get('/automation/fourth-diag', async (req, res) => {
         const data = JSON.parse(rptResp.body);
         const entries = data.query?.entries || [];
         diag.steps.reportList.total = entries.length;
-        diag.steps.reportList.titles = entries.slice(0, 20).map(e => ({ title: e.title, link: e.link }));
+        // Show all reports with labor/overtime/schedule/hours keywords
+        const laborKw  = ['labor','labour','scheduled','actual labor','lab cost','labor cost','overview by location'];
+        const otKw     = ['overtime','over time',' ot ','double time'];
+        diag.steps.reportList.labor_matches  = entries.filter(e=>laborKw.some(k=>(e.title||'').toLowerCase().includes(k))).map(e=>({title:e.title,link:e.link}));
+        diag.steps.reportList.ot_matches     = entries.filter(e=>otKw.some(k=>(e.title||'').toLowerCase().includes(k))).map(e=>({title:e.title,link:e.link}));
+        diag.steps.reportList.all_titles     = entries.map(e=>e.title).sort();
       } catch (e) {
         diag.steps.reportList.parseError = e.message;
         diag.steps.reportList.rawPreview = rptResp.body.slice(0, 500);
       }
     } else {
       diag.steps.reportList.body = rptResp.body.slice(0, 500);
+    }
+
+    // Try executing first labor match to see what comes back
+    if (diag.steps.reportList.labor_matches?.length) {
+      const testUri = diag.steps.reportList.labor_matches[0].link;
+      diag.steps.testExecute = { report: diag.steps.reportList.labor_matches[0].title, uri: testUri };
+      try {
+        const execResp = await httpReq('POST', `/gdc/app/projects/${PROJECT_ID}/execute/raw/`,
+          { cookieJar: jar, body: { report_req: { report: testUri } } });
+        diag.steps.testExecute.execStatus = execResp.status;
+        if (execResp.status === 200 || execResp.status === 201) {
+          const resultUri = JSON.parse(execResp.body).uri;
+          diag.steps.testExecute.resultUri = resultUri;
+          // Poll once
+          await new Promise(r=>setTimeout(r,3000));
+          const pollResp = await httpReq('GET', resultUri, { cookieJar: jar });
+          diag.steps.testExecute.pollStatus = pollResp.status;
+          diag.steps.testExecute.pollBytes  = pollResp.body.length;
+          diag.steps.testExecute.contentType = pollResp.headers['content-type'];
+          diag.steps.testExecute.bodyPreview = pollResp.body.slice(0,200);
+        } else {
+          diag.steps.testExecute.execBody = execResp.body.slice(0,300);
+        }
+      } catch(e){ diag.steps.testExecute.error = e.message; }
     }
 
     res.json(diag);
