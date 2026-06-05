@@ -10,6 +10,49 @@ button{font-family:inherit;cursor:pointer}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:#1e2d4d;border-radius:3px}
+/* ── Morning Brief memo styles ─────────────────────────────────────────── */
+.memo-card{background:#0c1425;border:1px solid #1e2d4d;border-radius:10px;padding:20px 24px;font-size:13px;line-height:1.8;max-height:600px;overflow-y:auto}
+.memo-title{font-size:15px;font-weight:800;color:#f1f5f9;margin-bottom:4px;letter-spacing:.5px}
+.memo-sec{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:6px 10px;border-radius:5px;margin:14px 0 6px}
+.memo-sec-blue{background:rgba(59,130,246,.12);border-left:3px solid #3b82f6;color:#60a5fa}
+.memo-sec-green{background:rgba(52,211,153,.1);border-left:3px solid #34d399;color:#34d399}
+.memo-sec-red{background:rgba(239,68,68,.1);border-left:3px solid #ef4444;color:#f87171}
+.memo-sec-amber{background:rgba(251,191,36,.1);border-left:3px solid #fbbf24;color:#fbbf24}
+.memo-sec-purple{background:rgba(167,139,250,.1);border-left:3px solid #a78bfa;color:#a78bfa}
+.memo-para{color:#94a3b8;padding:2px 4px}
+.memo-bullet{color:#cbd5e1;padding:3px 4px 3px 14px;position:relative}
+.memo-bullet::before{content:'';position:absolute;left:4px;top:10px;width:4px;height:4px;border-radius:50%;background:#475569}
+/* ── Weekly Digest dashboard styles ───────────────────────────────────── */
+.digest-kpi-row{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px}
+.digest-kpi{background:#0c1425;border:1px solid #1e2d4d;border-radius:10px;padding:14px 18px;min-width:140px;flex:1}
+.dkpi-lbl{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#475569;margin-bottom:6px}
+.dkpi-val{font-size:22px;font-weight:800;color:#f1f5f9}
+.digest-pos{color:#34d399;font-weight:700}
+.digest-neg{color:#f87171;font-weight:700}
+.digest-section-hdr{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#475569;margin:20px 0 10px;padding-bottom:6px;border-bottom:1px solid #1e2d4d}
+.digest-flag-chart{display:flex;align-items:flex-end;gap:6px;height:120px;padding:8px 0 0;margin-bottom:4px}
+.dfc-col{display:flex;flex-direction:column;align-items:center;flex:1;min-width:0}
+.dfc-bar-wrap{display:flex;flex-direction:column;justify-content:flex-end;align-items:center;width:100%;height:80px;gap:1px}
+.dfc-bar{width:70%;border-radius:3px 3px 0 0;min-height:2px;transition:height .3s}
+.dfc-bar-h{background:#ef4444}
+.dfc-bar-m{background:#f59e0b}
+.dfc-total{font-size:11px;font-weight:700;color:#94a3b8;margin-top:3px}
+.dfc-lbl{font-size:10px;color:#475569;margin-top:2px;white-space:nowrap}
+.digest-legend{display:flex;align-items:center;gap:6px;font-size:11px;color:#475569;margin-bottom:12px}
+.dl-dot{display:inline-block;width:8px;height:8px;border-radius:50%}
+.dl-red{background:#ef4444}.dl-amber{background:#f59e0b}
+.digest-tbl{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px}
+.digest-tbl th{text-align:left;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#475569;padding:6px 10px;border-bottom:1px solid #1e2d4d}
+.digest-tbl td{padding:9px 10px;border-bottom:1px solid #111d35;color:#94a3b8}
+.digest-tbl tr:hover td{background:#0c1425}
+.digest-row-pos td{color:#d1fae5}
+.digest-row-neg td{color:#fee2e2}
+.digest-top-stores{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+.dts-card{background:#0c1425;border:1px solid #1e2d4d;border-radius:8px;padding:12px 14px;min-width:140px}
+.dts-name{font-size:12px;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+.dts-growth{font-size:18px;font-weight:800;margin-bottom:2px}
+.dts-sales{font-size:11px;color:#64748b}
+.dts-ac{font-size:10px;color:#475569;margin-top:4px}
 .sidebar{width:230px;min-width:230px;background:#0c1425;border-right:1px solid #1e2d4d;display:flex;flex-direction:column;overflow-y:auto}
 .sb-top{padding:18px 16px;border-bottom:1px solid #1e2d4d}
 .sb-logo{display:flex;align-items:center;gap:10px;margin-bottom:18px}
@@ -328,11 +371,17 @@ button{font-family:inherit;cursor:pointer}
     <div class="tab-panel" id="panel-brief">
       <div class="two-col">
         <div>
-          <div class="section-hdr"><div class="section-ttl">Morning Brief</div></div>
-          <div class="brief-card" id="briefNarrative" style="font-size:13px;color:#64748b;line-height:1.7">
-            <div class="loading"><span class="spin">⟳</span></div>
+          <div class="section-hdr">
+            <div class="section-ttl">Morning Brief</div>
+            <div style="display:flex;gap:8px">
+              <button class="copy-btn" id="briefCopyBtn" onclick="copyMemo()">Copy Memo</button>
+              <button class="copy-btn" id="briefRefreshBtn" onclick="refreshBrief()">Refresh</button>
+            </div>
           </div>
-          <div class="section-hdr" style="margin-top:16px"><div class="section-ttl">Shoutouts</div></div>
+          <div class="memo-card" id="briefNarrative">
+            <div class="loading"><span class="spin">⟳</span> Generating morning brief…</div>
+          </div>
+          <div class="section-hdr" style="margin-top:16px"><div class="section-ttl">Guest Shoutouts</div></div>
           <div id="shoutoutsContainer"><div class="loading"><span class="spin">⟳</span></div></div>
         </div>
         <div>
@@ -370,10 +419,10 @@ button{font-family:inherit;cursor:pointer}
 
     <div class="tab-panel" id="panel-digest">
       <div class="section-hdr">
-        <div class="section-ttl">Weekly Digest</div>
-        <button class="copy-btn" onclick="copyDigest()">Copy</button>
+        <div class="section-ttl">Weekly Digest — WTD</div>
+        <div id="digestFiscalCtx" style="font-size:11px;color:#64748b;font-weight:600"></div>
       </div>
-      <div class="digest-area" id="digestText">Loading digest…</div>
+      <div id="digestDashboard"><div class="loading"><span class="spin">⟳</span></div></div>
     </div>
 
     <div class="tab-panel" id="panel-smg">
@@ -778,10 +827,14 @@ function applyFlagFilter(filter,btn){
   renderFlagList(sorted,document.getElementById('flagsContainer'));
 }
 
+let briefMemoText='';
+
 async function loadBrief(){
   try{
+    document.getElementById('briefNarrative').innerHTML='<div class="loading"><span class="spin">⟳</span> Generating morning brief…</div>';
     const data=await fetch('/api/intel/morning-brief').then(r=>r.json());
-    document.getElementById('briefNarrative').textContent=data.narrative||'No brief available yet.';
+    briefMemoText=data.memo_text||'';
+    renderMemo(briefMemoText);
     const flags=data.priority_flags||[];
     briefData.urgent=flags.filter(f=>f.severity==='high');
     briefData.watch=flags.filter(f=>f.severity==='medium');
@@ -791,7 +844,50 @@ async function loadBrief(){
     document.getElementById('gcnt').textContent=briefData.wins.length;
     renderBriefItems(curBriefTab);
     renderShoutouts(data.shoutouts||[]);
-  }catch(e){document.getElementById('briefNarrative').textContent='Error loading brief.';}
+  }catch(e){document.getElementById('briefNarrative').innerHTML='<div style="color:#ef4444;padding:16px">Error loading brief.</div>';}
+}
+
+function renderMemo(text){
+  if(!text){document.getElementById('briefNarrative').innerHTML='<div style="color:#64748b;padding:16px">No brief available yet. Data loads after the daily pipeline runs.</div>';return;}
+  const lines=text.split('\n');
+  let html='';
+  for(const raw of lines){
+    const line=raw.trim();
+    if(!line){html+='<div style="height:6px"></div>';continue;}
+    if(/^(MORNING BRIEF)/i.test(line)){
+      html+='<div class="memo-title">'+escH(line)+'</div>';
+    } else if(/^(YESTERDAY|OVERALL PERFORMANCE)/i.test(line)){
+      html+='<div class="memo-sec memo-sec-blue">'+escH(line)+'</div>';
+    } else if(/^HIGHLIGHT/i.test(line)){
+      html+='<div class="memo-sec memo-sec-green">'+escH(line)+'</div>';
+    } else if(/^WATCHOUT/i.test(line)){
+      html+='<div class="memo-sec memo-sec-red">'+escH(line)+'</div>';
+    } else if(/^FOLLOW.UP/i.test(line)){
+      html+='<div class="memo-sec memo-sec-amber">'+escH(line)+'</div>';
+    } else if(/^PRIORIT/i.test(line)){
+      html+='<div class="memo-sec memo-sec-purple">'+escH(line)+'</div>';
+    } else if(line.startsWith('•')||line.startsWith('-')||/^\d+\./.test(line)){
+      html+='<div class="memo-bullet">'+escH(line)+'</div>';
+    } else {
+      html+='<div class="memo-para">'+escH(line)+'</div>';
+    }
+  }
+  document.getElementById('briefNarrative').innerHTML=html;
+}
+
+function copyMemo(){
+  if(!briefMemoText)return;
+  navigator.clipboard.writeText(briefMemoText).then(()=>{
+    const b=document.getElementById('briefCopyBtn');
+    const orig=b.textContent;b.textContent='Copied!';
+    setTimeout(()=>b.textContent=orig,2000);
+  });
+}
+
+async function refreshBrief(){
+  briefMemoText='';
+  document.getElementById('briefNarrative').innerHTML='<div class="loading"><span class="spin">⟳</span> Regenerating…</div>';
+  await loadBrief();
 }
 
 function switchBriefTab(tab,btn){
@@ -972,11 +1068,91 @@ function renderShoutouts(list){
 }
 
 async function loadDigest(){
-  try{const d=await fetch('/api/intel/weekly-digest').then(r=>r.json());document.getElementById('digestText').textContent=d.digest||'No digest available yet.';}
-  catch(e){document.getElementById('digestText').textContent='Error loading digest.';}
+  const dash=document.getElementById('digestDashboard');
+  try{
+    const d=await fetch('/api/intel/weekly-digest').then(r=>r.json());
+    if(d.error){dash.innerHTML='<div style="color:#ef4444;padding:16px">'+escH(d.error)+'</div>';return;}
+    if(d.fiscal_context)document.getElementById('digestFiscalCtx').textContent=d.fiscal_context;
+    dash.innerHTML=buildDigestDashboard(d);
+  }catch(e){dash.innerHTML='<div style="color:#ef4444;padding:16px">Error loading digest.</div>';}
 }
-function copyDigest(){
-  navigator.clipboard.writeText(document.getElementById('digestText').textContent).then(()=>{const b=document.querySelector('.copy-btn');b.textContent='Copied!';setTimeout(()=>b.textContent='Copy',2000);});
+
+function fmtGrowth(v){
+  if(v==null)return'—';
+  const n=Number(v);
+  const cls=n>=0?'digest-pos':'digest-neg';
+  return'<span class="'+cls+'">'+(n>=0?'+':'')+n.toFixed(1)+'%</span>';
+}
+
+function buildDigestDashboard(d){
+  const r=d.region||{};
+  const fmtM=n=>n!=null?'$'+(Math.round(n)/1000).toFixed(0)+'K':'—';
+  const fmtD=n=>n!=null?'$'+Math.round(n).toLocaleString('en-US'):'—';
+
+  // Region summary KPI cards
+  let html='<div class="digest-kpi-row">';
+  html+='<div class="digest-kpi"><div class="dkpi-lbl">WTD Net Sales</div><div class="dkpi-val">'+fmtM(r.net_sales_wtd)+'</div></div>';
+  html+='<div class="digest-kpi"><div class="dkpi-lbl">WTD Growth vs LY</div><div class="dkpi-val">'+fmtGrowth(r.avg_growth_wtd)+'</div></div>';
+  html+='<div class="digest-kpi"><div class="dkpi-lbl">Yesterday Sales</div><div class="dkpi-val">'+fmtM(r.net_sales_yesterday)+'</div></div>';
+  html+='<div class="digest-kpi"><div class="dkpi-lbl">Yesterday Growth vs LY</div><div class="dkpi-val">'+fmtGrowth(r.avg_growth_yesterday)+'</div></div>';
+  html+='<div class="digest-kpi"><div class="dkpi-lbl">Stores Reporting</div><div class="dkpi-val">'+(r.store_count||'—')+'</div></div>';
+  html+='</div>';
+
+  // Flag trend bar chart
+  const days=d.flags_by_day||[];
+  if(days.length){
+    const maxFlags=Math.max(...days.map(x=>(x.high||0)+(x.medium||0)+(x.low||0)),1);
+    html+='<div class="digest-section-hdr">Flag Trend This Week</div>';
+    html+='<div class="digest-flag-chart">';
+    for(const day of days){
+      const total=(day.high||0)+(day.medium||0)+(day.low||0);
+      const pctH=Math.round(((day.high||0)/maxFlags)*100);
+      const pctM=Math.round(((day.medium||0)/maxFlags)*100);
+      const label=day.day?day.day.slice(5):'';
+      html+='<div class="dfc-col">'
+        +'<div class="dfc-bar-wrap">'
+        +'<div class="dfc-bar dfc-bar-h" style="height:'+pctH+'%" title="High: '+(day.high||0)+'"></div>'
+        +'<div class="dfc-bar dfc-bar-m" style="height:'+pctM+'%" title="Med: '+(day.medium||0)+'"></div>'
+        +'</div>'
+        +'<div class="dfc-total">'+(total||'0')+'</div>'
+        +'<div class="dfc-lbl">'+escH(label)+'</div>'
+        +'</div>';
+    }
+    html+='</div>';
+    html+='<div class="digest-legend"><span class="dl-dot dl-red"></span>High&nbsp;&nbsp;<span class="dl-dot dl-amber"></span>Medium</div>';
+  }
+
+  // Per-AC table
+  const byAC=d.by_ac||[];
+  if(byAC.length){
+    html+='<div class="digest-section-hdr">Area Coach WTD</div>';
+    html+='<table class="digest-tbl"><thead><tr><th>Area Coach</th><th>Stores</th><th>WTD Sales</th><th>WTD Growth vs LY</th></tr></thead><tbody>';
+    for(const a of byAC){
+      const growthVal=a.avg_growth_wtd!=null?Number(a.avg_growth_wtd):null;
+      const rowCls=growthVal!=null&&growthVal<0?'digest-row-neg':growthVal!=null&&growthVal>=2?'digest-row-pos':'';
+      html+='<tr class="'+rowCls+'"><td>'+escH(a.area_coach||'—')+'</td><td>'+(a.store_count||'—')+'</td><td>'+fmtD(a.net_sales_wtd)+'</td><td>'+fmtGrowth(a.avg_growth_wtd)+'</td></tr>';
+    }
+    html+='</tbody></table>';
+  }
+
+  // Top stores
+  const top=d.top_stores||[];
+  if(top.length){
+    html+='<div class="digest-section-hdr">Top Stores WTD Growth</div>';
+    html+='<div class="digest-top-stores">';
+    for(const s of top){
+      html+='<div class="dts-card">'
+        +'<div class="dts-name">'+escH(s.store_name||s.store_id||'')+'</div>'
+        +'<div class="dts-growth">'+fmtGrowth(s.growth_pct_wtd)+'</div>'
+        +'<div class="dts-sales">'+fmtD(s.net_sales_wtd)+'</div>'
+        +'<div class="dts-ac">'+escH(s.area_coach||'')+'</div>'
+        +'</div>';
+    }
+    html+='</div>';
+  }
+
+  if(!byAC.length&&!days.length)html='<div style="color:#64748b;padding:32px;text-align:center">No WTD data available yet. Data loads after the daily pipeline runs.</div>';
+  return html;
 }
 
 async function loadAccountability(){

@@ -1461,4 +1461,88 @@ Rules:
 
 // ─── Exports ──────────────────────────────────────────────────────────────────────
 
-module.exports = { analyzePL, analyzePLForAC, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail, generateDailyIntelEmail, analyzeAdditionalContent };
+// ─── Morning Brief Generator ────────────────────────────────────────────────
+
+async function generateMorningBrief({ date, userName, userRole, fiscalContext, regionMetrics, byAC, flags, shoutouts, followUps }) {
+  const fmtDollar = n => n != null ? '$' + Math.round(n).toLocaleString('en-US') : 'N/A';
+  const fmtGrowth = n => n != null ? (n >= 0 ? '+' : '') + Number(n).toFixed(1) + '% vs LY' : 'no LY data';
+
+  const regionLine = regionMetrics.store_count > 0
+    ? `${regionMetrics.store_count} stores | Net Sales: ${fmtDollar(regionMetrics.net_sales_day)} | Growth: ${fmtGrowth(regionMetrics.avg_growth_day)}`
+    : 'No DBS data loaded for this date.';
+
+  const acLines = (byAC || []).map(a =>
+    `  • ${a.area_coach}: ${fmtDollar(a.net_sales_day)} | ${fmtGrowth(a.avg_growth_day)} | ${a.high_flags} high flag(s)`
+  ).join('\n') || '  (No area coach data)';
+
+  const flagLines = flags.length
+    ? flags.slice(0, 25).map(f => {
+        const days = f.consecutive_days_out > 1 ? ` | ${f.consecutive_days_out}-day pattern` : '';
+        return `  • [${f.severity.toUpperCase()}] ${f.store_name || f.store_id} (${f.area_coach || '?'}) — ${f.metric_type}${days}`;
+      }).join('\n')
+    : '  No active flags.';
+
+  const shoutLines = shoutouts.length
+    ? shoutouts.slice(0, 6).map(s => `  • ${s.store_name || s.store_id} (${s.area_coach || ''}): "${(s.summary || s.comment_text || '').slice(0, 120)}"`)
+      .join('\n')
+    : '  No shoutouts today.';
+
+  const followLines = followUps.length
+    ? followUps.map(f => {
+        const ackDate = f.acknowledged_at ? String(f.acknowledged_at).slice(0, 10) : '?';
+        return `  • ${f.store_name || f.store_id} | ${f.metric_type} | ${f.acknowledged_by} committed on ${ackDate}: "${(f.action_taken || '').slice(0, 100)}" | Flag status: ${f.flag_status || f.status}`;
+      }).join('\n')
+    : '  No outstanding follow-up items.';
+
+  const prompt = `You are writing a morning executive brief memo for ${userName} (${userRole}) at Ayvaz Pizza LLC, a Pizza Hut franchisee.
+
+DATE: ${date}
+${fiscalContext ? 'FISCAL CONTEXT: ' + fiscalContext : ''}
+
+YESTERDAY'S REGIONAL PERFORMANCE:
+${regionLine}
+
+BY AREA COACH:
+${acLines}
+
+ACTIVE FLAGS (all severities, sorted high → low):
+${flagLines}
+
+GUEST SHOUTOUTS (positive reviews):
+${shoutLines}
+
+FOLLOW-UP ITEMS FROM PRIOR DAYS:
+${followLines}
+
+---
+Write a professional executive morning brief memo. Use this exact format:
+
+MORNING BRIEF — ${date}
+${fiscalContext || ''}
+
+YESTERDAY'S PERFORMANCE
+[2-3 sentences: total sales, growth vs last year, how many stores, high-level read on the day]
+
+HIGHLIGHTS
+[Bullet points: positive growth stores with specific %, shoutouts with store names. Skip if nothing positive.]
+
+WATCHOUTS
+[Bullet points: high-severity flags, stores with negative growth, recurring issues. Name the store, the metric, consecutive days. Be direct.]
+
+FOLLOW-UP ITEMS
+[Bullet points: pending commitments from prior acknowledgments, patterns that recurred after an AC said they'd fix it. Skip section if empty.]
+
+PRIORITIES FOR TODAY
+[Numbered list of 2-4 specific, actionable priorities based on the data above]
+
+Rules: Direct and factual. Use exact numbers. Skip a section entirely if there's nothing to say — no "N/A" or "none". Aim for 300-500 words. Use Pizza Hut operations language (area coach, not district manager; net sales, not revenue).`;
+
+  const resp = await client.messages.create({
+    model: MODEL,
+    max_tokens: 1800,
+    messages: [{ role: 'user', content: prompt }]
+  });
+  return resp.content[0].text.trim();
+}
+
+module.exports = { analyzePL, analyzePLForAC, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail, generateDailyIntelEmail, analyzeAdditionalContent, generateMorningBrief };

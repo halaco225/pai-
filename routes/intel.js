@@ -668,24 +668,13 @@ router.get('/kpis', async (req, res) => {
     // Fetch all metrics for the date — storeMap (seeded from store_assignments) scopes in JS.
     // Avoids type-mismatch issues with store_id = ANY() across different DB column types.
     const [metricsRes, flagCountRes, fcOtRes, surveyRes, routinesRes, laborRes, winScoreRes, actLabRes, schLabRes] = await Promise.all([
-      p.query(`SELECT t.area_coach, t.store_id, t.store_name,
-        t.net_sales_day,
-        COALESCE(
-          t.growth_pct_day,
-          CASE
-            WHEN p.net_sales_day IS NOT NULL AND p.net_sales_day <> 0
-              THEN ROUND(((t.net_sales_day - p.net_sales_day) / p.net_sales_day * 100)::numeric, 2)
-            ELSE NULL
-          END
-        ) AS growth_pct_day,
-        t.cancel_unmade_day, t.paidouts_day, t.cash_variance_day,
-        t.sched_labor_pct_day, t.act_labor_pct_day
-        FROM intel_dbs_metrics t
-        LEFT JOIN intel_dbs_metrics p
-          ON p.store_id = t.store_id
-          AND p.metric_date = t.metric_date - INTERVAL '1 day'
-        WHERE t.metric_date=$1
-        ORDER BY t.area_coach, t.store_id`, [date]),
+      p.query(`SELECT area_coach, store_id, store_name,
+        net_sales_day, growth_pct_day,
+        cancel_unmade_day, paidouts_day, cash_variance_day,
+        sched_labor_pct_day, act_labor_pct_day
+        FROM intel_dbs_metrics
+        WHERE metric_date=$1
+        ORDER BY area_coach, store_id`, [date]),
       p.query(`SELECT area_coach, store_id, severity, COUNT(*) as cnt
         FROM intel_flags WHERE ${flagWhere} GROUP BY area_coach, store_id, severity`, fp),
       p.query(`SELECT area_coach, store_id,
@@ -1170,48 +1159,110 @@ router.get('/smg-comments', async (req, res) => {
   }
 });
 
-// ── GET /api/intel/weekly-digest — Monday digest for user's scope ─────────────
+// ── GET /api/intel/weekly-digest — WTD visual dashboard data for user's scope ──
 router.get('/weekly-digest', async (req, res) => {
   try {
     const user = req.session.user;
     const p    = db.getPool();
     if (!p) return res.status(503).json({ error: 'Database unavailable' });
 
-    // Get this week's flags (Mon-Sun ending with yesterday)
-    const today     = new Date();
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - today.getDay() + 1); // Monday
-    const weekStartStr = weekStart.toISOString().split('T')[0];
-    const yesterday    = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    const { getFiscalContextString } = require('../services/fiscal-calendar');
 
-    let flags = [], acks = [];
-    if (user.role === 'rdo') {
-      const r1 = await p.query(
-        `SELECT * FROM intel_flags WHERE region_coach=$1 AND metric_date BETWEEN $2 AND $3 ORDER BY severity DESC`,
-        [user.scope?.rc_name||user.name, weekStartStr, yesterdayStr]
-      );
-      flags = r1.rows;
-      acks  = await db.getAcknowledgments({ region_coach: user.scope?.rc_name||user.name });
-    } else if (user.role === 'area_coach') {
-      const r1 = await p.query(
-        `SELECT * FROM intel_flags WHERE area_coach=$1 AND metric_date BETWEEN $2 AND $3 ORDER BY severity DESC`,
-        [user.scope?.ac_name||user.name, weekStartStr, yesterdayStr]
-      );
-      flags = r1.rows;
+    // Week bounds: Monday → yesterday (EST)
+    const nowEST = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const dayOfWeek = nowEST.getDay(); // 0=Sun,1=Mon...
+    const daysFromMon = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const weekStart = new Date(nowEST);
+    weekStart.setDate(nowEST.getDate() - daysFromMon);
+    weekStart.setHours(0, 0, 0, 0);
+    const yesterday = new Date(nowEST);
+    yesterday.setDate(nowEST.getDate() - 1);
+    const weekStartStr  = weekStart.toISOString().split('T')[0];
+    const yesterdayStr  = yesterday.toISOString().split('T')[0];
+
+    // Build scope WHERE for flags and metrics
+    let flagWhere    = `metric_date BETWEEN $1 AND $2 AND status != 'archived'`;
+    let metricsWhere = `metric_date BETWEEN $1 AND $2`;
+    const fp = [weekStartStr, yesterdayStr];
+    const mp = [weekStartStr, yesterdayStr];
+
+    if (user.scope?.type === 'rdo') {
+      const acs = user.scope.area_coaches || [];
+      if (acs.length) {
+        fp.push(acs); flagWhere    += ` AND area_coach = ANY($${fp.length}::text[])`;
+        mp.push(acs); metricsWhere += ` AND area_coach = ANY($${mp.length}::text[])`;
+      } else {
+        const rc = user.scope.rc_name || user.name;
+        fp.push(rc); flagWhere    += ` AND region_coach = $${fp.length}`;
+        mp.push(rc); metricsWhere += ` AND region_coach = $${mp.length}`;
+      }
+    } else if (user.scope?.type === 'area_coach') {
+      const ac = user.scope.ac_name || user.name;
+      fp.push(ac); flagWhere    += ` AND area_coach = $${fp.length}`;
+      mp.push(ac); metricsWhere += ` AND area_coach = $${mp.length}`;
     } else if (user.role === 'vp') {
-      const r1 = await p.query(
-        `SELECT * FROM intel_flags WHERE territory_vp=$1 AND metric_date BETWEEN $2 AND $3 ORDER BY severity DESC`,
-        [user.scope?.vp_name||user.name, weekStartStr, yesterdayStr]
-      );
-      flags = r1.rows;
+      const vp = user.scope?.vp_name || user.name;
+      fp.push(vp); flagWhere    += ` AND territory_vp = $${fp.length}`;
+      mp.push(vp); metricsWhere += ` AND territory_vp = $${mp.length}`;
     }
 
-    // Build digest text
-    const digest = buildDigestText({ user, flags, acks, weekStartStr, yesterdayStr });
-    res.json({ digest, flag_count: flags.length, ack_count: acks.length, week_start: weekStartStr });
+    // Use most recent day's WTD columns (they accumulate Mon→today)
+    // Also fetch daily flag trend counts for the chart
+    // Latest date with data in this week's range (for WTD snapshot)
+    const latestInWeek = `(SELECT MAX(metric_date) FROM intel_dbs_metrics WHERE ${metricsWhere})`;
+
+    const [regionRes, acRes, flagsByDayRes, topStoresRes] = await Promise.all([
+      // Region WTD totals — use most recent day's WTD columns
+      p.query(
+        `SELECT COUNT(DISTINCT store_id)::int as store_count,
+                COALESCE(SUM(net_sales_wtd), 0)::float as net_sales_wtd,
+                AVG(NULLIF(growth_pct_wtd, 0))::float as avg_growth_wtd,
+                COALESCE(SUM(net_sales_day), 0)::float as net_sales_yesterday,
+                AVG(NULLIF(growth_pct_day, 0))::float as avg_growth_yesterday
+         FROM intel_dbs_metrics
+         WHERE metric_date = ${latestInWeek} AND ${metricsWhere}`, mp
+      ),
+      // Per-AC WTD
+      p.query(
+        `SELECT area_coach,
+                COUNT(DISTINCT store_id)::int as store_count,
+                COALESCE(SUM(net_sales_wtd), 0)::float as net_sales_wtd,
+                AVG(NULLIF(growth_pct_wtd, 0))::float as avg_growth_wtd
+         FROM intel_dbs_metrics
+         WHERE metric_date = ${latestInWeek} AND ${metricsWhere}
+         GROUP BY area_coach ORDER BY net_sales_wtd DESC`, mp
+      ),
+      // Flag counts by day for trend chart
+      p.query(
+        `SELECT TO_CHAR(metric_date,'YYYY-MM-DD') as day,
+                COUNT(CASE WHEN severity='high'   THEN 1 END)::int as high,
+                COUNT(CASE WHEN severity='medium' THEN 1 END)::int as medium,
+                COUNT(CASE WHEN severity='low'    THEN 1 END)::int as low
+         FROM intel_flags WHERE ${flagWhere}
+         GROUP BY metric_date ORDER BY metric_date`, fp
+      ),
+      // Top 5 stores by WTD growth
+      p.query(
+        `SELECT store_id, store_name, area_coach,
+                net_sales_wtd::float, growth_pct_wtd::float
+         FROM intel_dbs_metrics
+         WHERE metric_date = ${latestInWeek} AND ${metricsWhere}
+           AND growth_pct_wtd IS NOT NULL
+         ORDER BY growth_pct_wtd DESC LIMIT 5`, mp
+      )
+    ]);
+
+    res.json({
+      week_start:        weekStartStr,
+      week_end:          yesterdayStr,
+      fiscal_context:    getFiscalContextString ? getFiscalContextString() : '',
+      region:            regionRes.rows[0] || {},
+      by_ac:             acRes.rows,
+      flags_by_day:      flagsByDayRes.rows,
+      top_stores:        topStoresRes.rows,
+    });
   } catch (err) {
+    console.error('[Intel] /weekly-digest error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1482,14 +1533,18 @@ router.get('/hutbot/status', requireAuth, async (req, res) => {
 });
 
 
-// ── GET /api/intel/morning-brief — narrative + priority flags + shoutouts ──────
+// ── In-memory cache for AI-generated morning brief memos ─────────────────────
+const briefMemoCache = new Map(); // key: `${username}_${date}` → { memo, ts }
+const BRIEF_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+// ── GET /api/intel/morning-brief — AI executive memo + priority flags + shoutouts ──
 router.get('/morning-brief', requireAuth, async (req, res) => {
   try {
     const user = req.session.user;
     const p    = db.getPool();
-    if (!p) return res.json({ narrative: 'Database unavailable.', priority_flags: [], shoutouts: [] });
+    if (!p) return res.json({ memo_text: 'Database unavailable.', priority_flags: [], shoutouts: [], follow_up_items: [] });
 
-    // Resolve date: most recent date with DBS data, falling back to yesterday
+    // Resolve most recent date with DBS data
     const yesterday = (() => {
       const d = new Date(); d.setDate(d.getDate() - 1);
       return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
@@ -1500,96 +1555,140 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
     );
     const date = dateRes.rows[0]?.latest || yesterday;
 
-    // Build scope filter
-    let flagWhere = `metric_date = $1 AND status != 'archived'`;
-    const fp = [date];
+    // Build scope WHERE fragments
+    let flagWhere    = `metric_date = $1 AND status != 'archived'`;
     let metricsWhere = `metric_date = $1`;
-    const mp = [date];
+    let acWhere      = '1=1';
+    const fp = [date], mp = [date], ap = [];
 
     if (user.scope?.type === 'rdo') {
       const acs = user.scope.area_coaches || [];
       if (acs.length) {
-        fp.push(acs);  flagWhere    += ` AND area_coach = ANY($${fp.length}::text[])`;
-        mp.push(acs);  metricsWhere += ` AND area_coach = ANY($${mp.length}::text[])`;
-      } else if (user.scope.rc_name || user.name) {
+        fp.push(acs); flagWhere    += ` AND area_coach = ANY($${fp.length}::text[])`;
+        mp.push(acs); metricsWhere += ` AND area_coach = ANY($${mp.length}::text[])`;
+        ap.push(acs); acWhere       = `area_coach = ANY($${ap.length}::text[])`;
+      } else {
         const rc = user.scope.rc_name || user.name;
-        fp.push(rc);  flagWhere    += ` AND region_coach = $${fp.length}`;
-        mp.push(rc);  metricsWhere += ` AND region_coach = $${mp.length}`;
+        fp.push(rc); flagWhere    += ` AND region_coach = $${fp.length}`;
+        mp.push(rc); metricsWhere += ` AND region_coach = $${mp.length}`;
+        ap.push(rc); acWhere       = `region_coach = $${ap.length}`;
       }
     } else if (user.scope?.type === 'area_coach') {
       const ac = user.scope.ac_name || user.name;
       fp.push(ac); flagWhere    += ` AND area_coach = $${fp.length}`;
       mp.push(ac); metricsWhere += ` AND area_coach = $${mp.length}`;
+      ap.push(ac); acWhere       = `area_coach = $${ap.length}`;
     }
 
-    // Fetch high/medium priority flags for the date
-    const flagsRes = await p.query(
-      `SELECT store_id, store_name, area_coach, metric_type, value, target, variance,
-              severity, consecutive_days_out, status, created_at AS flag_date, details
-       FROM intel_flags WHERE ${flagWhere}
-       ORDER BY CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
-                consecutive_days_out DESC
-       LIMIT 100`, fp
-    );
+    // Parallel data fetch
+    const [flagsRes, metricsRes, acMetricsRes, shoutoutsRes, followUpRes] = await Promise.all([
+      // All active flags for the date, sorted by severity + consecutive days
+      p.query(
+        `SELECT store_id, store_name, area_coach, metric_type, value, target, variance,
+                severity, consecutive_days_out, status, created_at AS flag_date, details
+         FROM intel_flags WHERE ${flagWhere}
+         ORDER BY CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+                  consecutive_days_out DESC LIMIT 100`, fp
+      ),
+      // Region-level DBS summary
+      p.query(
+        `SELECT COUNT(DISTINCT store_id)::int as store_count,
+                COALESCE(SUM(net_sales_day), 0)::float as net_sales_day,
+                AVG(growth_pct_day)::float as avg_growth_day,
+                COALESCE(SUM(net_sales_wtd), 0)::float as net_sales_wtd,
+                AVG(growth_pct_wtd)::float as avg_growth_wtd
+         FROM intel_dbs_metrics WHERE ${metricsWhere}`, mp
+      ),
+      // Per-AC DBS summary for memo context
+      p.query(
+        `SELECT area_coach,
+                COUNT(DISTINCT store_id)::int as store_count,
+                COALESCE(SUM(net_sales_day), 0)::float as net_sales_day,
+                AVG(growth_pct_day)::float as avg_growth_day
+         FROM intel_dbs_metrics WHERE ${metricsWhere}
+         GROUP BY area_coach ORDER BY area_coach`, mp
+      ),
+      // Shoutouts for the date — build separate param array to avoid offset arithmetic
+      (() => {
+        const sq = [`SELECT s.id, s.store_id, COALESCE(a.store_name, s.store_id) as store_name, s.summary,
+                s.full_comment AS comment_text, s.shoutout_date, a.area_coach
+         FROM intel_shoutouts s
+         LEFT JOIN store_assignments a ON s.store_id = a.store_id
+         WHERE s.shoutout_date = $1`];
+        const sp = [date];
+        if (user.scope?.type === 'area_coach') { sp.push(user.scope.ac_name || user.name); sq.push(`AND a.area_coach = $${sp.length}`); }
+        else if (user.scope?.type === 'rdo') {
+          const acs = user.scope.area_coaches || [];
+          if (acs.length) { sp.push(acs); sq.push(`AND a.area_coach = ANY($${sp.length}::text[])`); }
+          else if (user.scope.rc_name || user.name) { sp.push(user.scope.rc_name || user.name); sq.push(`AND a.region_coach = $${sp.length}`); }
+        }
+        sq.push('ORDER BY s.shoutout_date DESC LIMIT 20');
+        return p.query(sq.join(' '), sp);
+      })(),
+      // Follow-up items: acknowledged flags from last 7 days scoped to this user, still open or recurred
+      (() => {
+        const fup = [`SELECT ack.flag_id, ack.acknowledged_by, ack.action_taken,
+                ack.acknowledged_at, f.store_id, f.store_name, f.area_coach,
+                f.metric_type, f.metric_date, f.status as flag_status, f.consecutive_days_out
+         FROM intel_acknowledgments ack
+         JOIN intel_flags f ON f.id = ack.flag_id
+         WHERE ack.acknowledged_at >= NOW() - INTERVAL '7 days'
+           AND (f.status != 'resolved' OR f.consecutive_days_out >= 3)`];
+        const fpp = [];
+        if (user.scope?.type === 'rdo') {
+          const acs = user.scope.area_coaches || [];
+          if (acs.length) { fpp.push(acs); fup.push(`AND f.area_coach = ANY($${fpp.length}::text[])`); }
+          else { fpp.push(user.scope.rc_name || user.name); fup.push(`AND f.region_coach = $${fpp.length}`); }
+        } else if (user.scope?.type === 'area_coach') {
+          fpp.push(user.scope.ac_name || user.name); fup.push(`AND f.area_coach = $${fpp.length}`);
+        }
+        fup.push('ORDER BY ack.acknowledged_at DESC LIMIT 20');
+        return p.query(fup.join(' '), fpp);
+      })()
+    ]);
 
-    // Fetch DBS summary for narrative
-    const metricsRes = await p.query(
-      `SELECT COUNT(DISTINCT store_id)::int as store_count,
-              COALESCE(SUM(net_sales_day), 0)::float as total_sales,
-              AVG(growth_pct_day)::float as avg_growth
-       FROM intel_dbs_metrics WHERE ${metricsWhere}`, mp
-    );
-
-    // Fetch shoutouts
-    let shoutoutQ = `SELECT s.id, s.store_id, a.store_name, s.summary,
-                            s.full_comment AS comment_text, s.shoutout_date, a.area_coach
-                     FROM intel_shoutouts s
-                     LEFT JOIN store_assignments a ON s.store_id = a.store_id
-                     WHERE 1=1`;
-    const sp = [];
-    sp.push(date); shoutoutQ += ` AND s.shoutout_date = $${sp.length}`;
-    if (user.scope?.type === 'area_coach') {
-      sp.push(user.scope.ac_name || user.name); shoutoutQ += ` AND a.area_coach = $${sp.length}`;
-    } else if (user.scope?.type === 'rdo') {
-      const acs = user.scope.area_coaches || [];
-      if (acs.length) { sp.push(acs); shoutoutQ += ` AND a.area_coach = ANY($${sp.length}::text[])`; }
-      else if (user.scope.rc_name || user.name) { sp.push(user.scope.rc_name || user.name); shoutoutQ += ` AND a.region_coach = $${sp.length}`; }
+    // Attach high_flag count to each AC row
+    const acFlagCounts = {};
+    for (const fl of flagsRes.rows) {
+      if (fl.severity === 'high') acFlagCounts[fl.area_coach] = (acFlagCounts[fl.area_coach] || 0) + 1;
     }
-    shoutoutQ += ' ORDER BY s.shoutout_date DESC LIMIT 20';
-    const shoutoutsRes = await p.query(shoutoutQ, sp);
+    const byAC = acMetricsRes.rows.map(a => ({ ...a, high_flags: acFlagCounts[a.area_coach] || 0 }));
 
-    // Build narrative
-    const m = metricsRes.rows[0] || {};
-    const highCount   = flagsRes.rows.filter(f => f.severity === 'high').length;
-    const medCount    = flagsRes.rows.filter(f => f.severity === 'medium').length;
-    const storeCount  = m.store_count || 0;
-    const totalSales  = m.total_sales || 0;
-    const avgGrowth   = m.avg_growth;
+    // Check memo cache
+    const cacheKey = `${user.username}_${date}`;
+    const cached   = briefMemoCache.get(cacheKey);
+    let memo_text;
 
-    let narrative = `Daily Intel for ${date}. `;
-    if (storeCount > 0) {
-      narrative += `${storeCount} store${storeCount !== 1 ? 's' : ''} reporting. `;
-      narrative += `Total net sales: $${totalSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. `;
-      if (avgGrowth != null) {
-        const sign = avgGrowth >= 0 ? '+' : '';
-        narrative += `Average growth: ${sign}${avgGrowth.toFixed(1)}%. `;
-      }
+    if (cached && (Date.now() - cached.ts) < BRIEF_CACHE_TTL) {
+      memo_text = cached.memo;
     } else {
-      narrative += 'No DBS sales data loaded for this date yet. ';
+      const { generateMorningBrief } = require('../services/claude');
+      const { getFiscalContextString } = require('../services/fiscal-calendar');
+      memo_text = await generateMorningBrief({
+        date,
+        userName:      user.name,
+        userRole:      user.role,
+        fiscalContext: getFiscalContextString ? getFiscalContextString() : '',
+        regionMetrics: metricsRes.rows[0] || {},
+        byAC,
+        flags:      flagsRes.rows,
+        shoutouts:  shoutoutsRes.rows,
+        followUps:  followUpRes.rows,
+      });
+      briefMemoCache.set(cacheKey, { memo: memo_text, ts: Date.now() });
     }
-    if (highCount > 0) narrative += `${highCount} high-severity flag${highCount !== 1 ? 's' : ''} require immediate attention. `;
-    if (medCount  > 0) narrative += `${medCount} watch-level item${medCount !== 1 ? 's' : ''}. `;
-    if (highCount === 0 && medCount === 0) narrative += 'No active flags — clean day across the board.';
 
     res.json({
       date,
-      narrative: narrative.trim(),
-      priority_flags: flagsRes.rows,
-      shoutouts: shoutoutsRes.rows
+      memo_text,
+      priority_flags:   flagsRes.rows,
+      shoutouts:        shoutoutsRes.rows,
+      follow_up_items:  followUpRes.rows,
+      metrics_summary:  metricsRes.rows[0] || {},
     });
   } catch (err) {
     console.error('[Intel] /morning-brief error:', err.message);
-    res.status(500).json({ error: err.message, narrative: 'Error loading brief.', priority_flags: [], shoutouts: [] });
+    res.status(500).json({ error: err.message, memo_text: 'Error loading brief.', priority_flags: [], shoutouts: [], follow_up_items: [] });
   }
 });
 
