@@ -889,7 +889,20 @@ function copyMemo(){
 async function refreshBrief(){
   briefMemoText='';
   document.getElementById('briefNarrative').innerHTML='<div class="loading"><span class="spin">⟳</span> Regenerating…</div>';
-  await loadBrief();
+  try{
+    const data=await fetch('/api/intel/morning-brief?refresh=1').then(r=>r.json());
+    briefMemoText=data.memo_text||'';
+    renderMemo(briefMemoText);
+    const flags=data.priority_flags||[];
+    briefData.urgent=flags.filter(f=>f.severity==='high');
+    briefData.watch=flags.filter(f=>f.severity==='medium');
+    briefData.wins=data.shoutouts||[];
+    document.getElementById('ucnt').textContent=briefData.urgent.length;
+    document.getElementById('wcnt').textContent=briefData.watch.length;
+    document.getElementById('gcnt').textContent=briefData.wins.length;
+    renderBriefItems(curBriefTab);
+    renderShoutouts(data.shoutouts||[]);
+  }catch(e){document.getElementById('briefNarrative').innerHTML='<div style="color:#ef4444;padding:16px">Error regenerating brief.</div>';}
 }
 
 function switchBriefTab(tab,btn){
@@ -1110,29 +1123,6 @@ function buildDigestDashboard(d){
   html+='<div class="digest-kpi"><div class="dkpi-lbl">Stores Reporting</div><div class="dkpi-val">'+(r.store_count||'—')+'</div></div>';
   html+='</div>';
 
-  // Flag trend bar chart
-  const days=d.flags_by_day||[];
-  if(days.length){
-    const maxFlags=Math.max(...days.map(x=>(x.high||0)+(x.medium||0)+(x.low||0)),1);
-    html+='<div class="digest-section-hdr">Flag Trend This Week</div>';
-    html+='<div class="digest-flag-chart">';
-    for(const day of days){
-      const total=(day.high||0)+(day.medium||0)+(day.low||0);
-      const pctH=Math.round(((day.high||0)/maxFlags)*100);
-      const pctM=Math.round(((day.medium||0)/maxFlags)*100);
-      const label=day.day?day.day.slice(5):'';
-      html+='<div class="dfc-col">'
-        +'<div class="dfc-bar-wrap">'
-        +'<div class="dfc-bar dfc-bar-h" style="height:'+pctH+'%" title="High: '+(day.high||0)+'"></div>'
-        +'<div class="dfc-bar dfc-bar-m" style="height:'+pctM+'%" title="Med: '+(day.medium||0)+'"></div>'
-        +'</div>'
-        +'<div class="dfc-total">'+(total||'0')+'</div>'
-        +'<div class="dfc-lbl">'+escH(label)+'</div>'
-        +'</div>';
-    }
-    html+='</div>';
-    html+='<div class="digest-legend"><span class="dl-dot dl-red"></span>High&nbsp;&nbsp;<span class="dl-dot dl-amber"></span>Medium</div>';
-  }
 
   // Per-AC table with drill-down
   const byAC=d.by_ac||[];

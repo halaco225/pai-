@@ -1721,28 +1721,42 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
     }
     const byAC = acMetricsRes.rows.map(a => ({ ...a, high_flags: acFlagCounts[a.area_coach] || 0 }));
 
-    // Check memo cache
+    // Check cache: in-memory first, then DB (pipeline pre-generates), then on-demand
     const cacheKey = `${user.username}_${date}`;
-    const cached   = briefMemoCache.get(cacheKey);
+    const forceRefresh = req.query.refresh === '1';
+    if (forceRefresh) briefMemoCache.delete(cacheKey);
+    const inmem = briefMemoCache.get(cacheKey);
     let memo_text;
 
-    if (cached && (Date.now() - cached.ts) < BRIEF_CACHE_TTL) {
-      memo_text = cached.memo;
+    if (!forceRefresh && inmem && (Date.now() - inmem.ts) < BRIEF_CACHE_TTL) {
+      memo_text = inmem.memo;
     } else {
-      const { generateMorningBrief } = require('../services/claude');
-      const { getFiscalContextString } = require('../services/fiscal-calendar');
-      memo_text = await generateMorningBrief({
-        date,
-        userName:      user.name,
-        userRole:      user.role,
-        fiscalContext: getFiscalContextString ? getFiscalContextString() : '',
-        regionMetrics: metricsRes.rows[0] || {},
-        byAC,
-        velocity:   velocityRes.rows,
-        flags:      flagsRes.rows,
-        shoutouts:  shoutoutsRes.rows,
-        followUps:  followUpRes.rows,
-      });
+      // Check DB cache written by the daily pipeline
+      const dbCached = await db.getIntelCache({ userId: user.username + '::brief', cacheDate: date });
+      if (dbCached?.data?.memo_text) {
+        memo_text = dbCached.data.memo_text;
+      } else {
+        // Generate on-demand (first load of the day before pipeline has run, or Refresh)
+        const { generateMorningBrief } = require('../services/claude');
+        const { getFiscalContextString } = require('../services/fiscal-calendar');
+        memo_text = await generateMorningBrief({
+          date,
+          userName:      user.name,
+          userRole:      user.role,
+          fiscalContext: getFiscalContextString ? getFiscalContextString() : '',
+          regionMetrics: metricsRes.rows[0] || {},
+          byAC,
+          velocity:   velocityRes.rows,
+          flags:      flagsRes.rows,
+          shoutouts:  shoutoutsRes.rows,
+          followUps:  followUpRes.rows,
+        });
+        // Save to DB so it survives server restarts
+        await db.upsertIntelCache({
+          user_id: user.username + '::brief', cache_date: date,
+          role: 'morning_brief', payload: { memo_text, generated_at: new Date().toISOString() }
+        }).catch(() => {});
+      }
       briefMemoCache.set(cacheKey, { memo: memo_text, ts: Date.now() });
     }
 

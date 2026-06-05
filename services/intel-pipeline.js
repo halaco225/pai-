@@ -177,6 +177,17 @@ async function runIntelPipeline(targetDate) {
     console.error('[Intel Pipeline] Cache generation failed:', err.message);
   }
 
+  // ── Step 10: Pre-generate morning briefs for all users ────────────────────
+  console.log('[Intel Pipeline] Step 10: Pre-generating morning briefs');
+  try {
+    await generateMorningBriefs(targetDate);
+    results.steps.morning_briefs = { success: true };
+  } catch (err) {
+    results.errors.push(`Morning briefs: ${err.message}`);
+    results.steps.morning_briefs = { success: false, error: err.message };
+    console.error('[Intel Pipeline] Morning brief generation failed:', err.message);
+  }
+
   const successCount = Object.values(results.steps).filter(s => s.success || s.skipped).length;
   const totalSteps = Object.keys(results.steps).length;
   console.log(`\n[Intel Pipeline] Complete — ${successCount}/${totalSteps} steps OK, ${results.errors.length} errors`);
@@ -291,4 +302,108 @@ async function generateIntelCache(targetDate) {
   console.log(`[Intel Pipeline] Cache generated for ${USER_ROSTER.length} users`);
 }
 
-module.exports = { runIntelPipeline, generateIntelCache };
+// ── Generate and cache morning briefs for all users ──────────────────────────
+async function generateMorningBriefs(targetDate) {
+  const p = db.getPool();
+  if (!p) { console.log('[Intel Pipeline] Morning briefs skipped — no DB pool'); return; }
+
+  const { generateMorningBrief } = require('./claude');
+  const { getFiscalContextString } = require('./fiscal-calendar');
+  const fiscal = getFiscalContextString ? getFiscalContextString() : '';
+
+  for (const user of USER_ROSTER) {
+    const { username, name, role, scope } = user;
+    try {
+      // Scope filters (mirrors /morning-brief route logic)
+      let flagWhere    = `metric_date=$1 AND status!='archived'`;
+      let metricsWhere = `metric_date=$1`;
+      const fp = [targetDate], mp = [targetDate];
+
+      if (role === 'rdo') {
+        const acs = scope?.area_coaches || [];
+        if (acs.length) {
+          fp.push(acs); flagWhere    += ` AND area_coach=ANY($${fp.length}::text[])`;
+          mp.push(acs); metricsWhere += ` AND area_coach=ANY($${mp.length}::text[])`;
+        } else {
+          const rc = scope?.rc_name || name;
+          fp.push(rc); flagWhere    += ` AND region_coach=$${fp.length}`;
+          mp.push(rc); metricsWhere += ` AND region_coach=$${mp.length}`;
+        }
+      } else if (role === 'area_coach') {
+        const ac = scope?.ac_name || name;
+        fp.push(ac); flagWhere    += ` AND area_coach=$${fp.length}`;
+        mp.push(ac); metricsWhere += ` AND area_coach=$${mp.length}`;
+      } else if (role === 'vp') {
+        const vp = scope?.vp_name || name;
+        fp.push(vp); flagWhere    += ` AND territory_vp=$${fp.length}`;
+        mp.push(vp); metricsWhere += ` AND territory_vp=$${mp.length}`;
+      }
+
+      // Velocity scope
+      const vp2 = [targetDate];
+      let vj = 'JOIN store_assignments sa ON v.store_id=sa.store_id';
+      if (role === 'rdo') {
+        const acs = scope?.area_coaches || [];
+        if (acs.length) { vp2.push(acs); vj += ` AND sa.area_coach=ANY($${vp2.length}::text[])`; }
+        else { vp2.push(scope?.rc_name || name); vj += ` AND sa.region_coach=$${vp2.length}`; }
+      } else if (role === 'area_coach') {
+        vp2.push(scope?.ac_name || name); vj += ` AND sa.area_coach=$${vp2.length}`;
+      }
+
+      const [flagsRes, metricsRes, acRes, shoutRes, velRes, followRes] = await Promise.all([
+        p.query(`SELECT store_id,store_name,area_coach,metric_type,value,severity,consecutive_days_out,status,details
+                 FROM intel_flags WHERE ${flagWhere}
+                 ORDER BY CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,consecutive_days_out DESC LIMIT 100`, fp),
+        p.query(`SELECT COUNT(DISTINCT store_id)::int as store_count,
+                        COALESCE(SUM(net_sales_day),0)::float as net_sales_day,
+                        AVG(growth_pct_day)::float as avg_growth_day
+                 FROM intel_dbs_metrics WHERE ${metricsWhere}`, mp),
+        p.query(`SELECT area_coach,COUNT(DISTINCT store_id)::int as store_count,
+                        COALESCE(SUM(net_sales_day),0)::float as net_sales_day,
+                        AVG(growth_pct_day)::float as avg_growth_day
+                 FROM intel_dbs_metrics WHERE ${metricsWhere}
+                 GROUP BY area_coach ORDER BY area_coach`, mp),
+        p.query(`SELECT s.store_id,COALESCE(a.store_name,s.store_id) as store_name,
+                        s.summary,s.full_comment AS comment_text,a.area_coach
+                 FROM intel_shoutouts s LEFT JOIN store_assignments a ON s.store_id=a.store_id
+                 WHERE s.shoutout_date=$1 LIMIT 10`, [targetDate]),
+        p.query(`SELECT sa.area_coach,
+                        ROUND(AVG(v.on_time_pct)::numeric,1)::float AS avg_otd_pct,
+                        ROUND(AVG(v.pct_lt4)::numeric,1)::float      AS avg_pct_lt4
+                 FROM velocity_daily_records v ${vj}
+                 WHERE v.record_date=$1 AND v.on_time_pct IS NOT NULL
+                 GROUP BY sa.area_coach`, vp2),
+        p.query(`SELECT ack.acknowledged_by,ack.action_taken,ack.acknowledged_at,
+                        f.store_id,f.store_name,f.area_coach,f.metric_type,
+                        f.status as flag_status,f.consecutive_days_out
+                 FROM intel_acknowledgments ack JOIN intel_flags f ON f.id=ack.flag_id
+                 WHERE ack.acknowledged_at>=NOW()-INTERVAL '7 days'
+                   AND (f.status!='resolved' OR f.consecutive_days_out>=3)
+                 LIMIT 15`)
+      ]);
+
+      const acFlagCounts = {};
+      for (const fl of flagsRes.rows) if (fl.severity === 'high') acFlagCounts[fl.area_coach] = (acFlagCounts[fl.area_coach] || 0) + 1;
+      const byAC = acRes.rows.map(a => ({ ...a, high_flags: acFlagCounts[a.area_coach] || 0 }));
+
+      const memo_text = await generateMorningBrief({
+        date: targetDate, userName: name, userRole: role, fiscalContext: fiscal,
+        regionMetrics: metricsRes.rows[0] || {}, byAC,
+        velocity: velRes.rows, flags: flagsRes.rows,
+        shoutouts: shoutRes.rows, followUps: followRes.rows,
+      });
+
+      await db.upsertIntelCache({
+        user_id:    username + '::brief',
+        cache_date: targetDate,
+        role:       'morning_brief',
+        payload:    { memo_text, generated_at: new Date().toISOString() }
+      });
+      console.log(`[Intel Pipeline] Morning brief cached for ${username}`);
+    } catch (err) {
+      console.error(`[Intel Pipeline] Brief generation failed for ${username}:`, err.message);
+    }
+  }
+}
+
+module.exports = { runIntelPipeline, generateIntelCache, generateMorningBriefs };
