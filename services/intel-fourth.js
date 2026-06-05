@@ -110,20 +110,37 @@ async function findReportUris(jar, reportKey) {
   const entries = data.query?.entries || [];
   console.log(`[Fourth] Total reports in project: ${entries.length}`);
 
-  const keywords = reportKey === 'LABOR'
-    ? ['labor', 'labour']
-    : ['overtime', 'over time', ' ot '];
+  // Target the exact tabular "by Location" reports the parsers expect.
+  // Priority: exact name match → prefix match → keyword fallback.
+  const exactNames = reportKey === 'LABOR'
+    ? ['Labor Details by Locations', 'Labor Breakdown by Location', 'Overview Report By Location']
+    : ['Overtime / Double Time / Special By Location', 'Actual/Scheduled Overtime Hours By Org Level 3'];
 
+  // Try exact matches first
   let uris = entries
-    .filter(e => keywords.some(kw => (e.title || '').toLowerCase().includes(kw)))
+    .filter(e => exactNames.some(n => (e.title || '').trim() === n))
     .map(e => e.link);
 
+  // Fall back to "by Location" tabular reports containing keyword
   if (!uris.length) {
-    console.log('[Fourth] No keyword matches — trying all reports');
-    uris = entries.map(e => e.link);
+    const kw = reportKey === 'LABOR' ? 'labor' : 'overtime';
+    uris = entries
+      .filter(e => {
+        const t = (e.title || '').toLowerCase();
+        return t.includes(kw) && (t.includes('by location') || t.includes('by locations'));
+      })
+      .map(e => e.link);
   }
 
-  console.log(`[Fourth] Using ${uris.length} report URI(s) for ${reportKey}`);
+  // Last resort: any report containing keyword (excludes KPI tiles which are single numbers)
+  if (!uris.length) {
+    const kw = reportKey === 'LABOR' ? 'labor details' : 'overtime';
+    uris = entries
+      .filter(e => (e.title || '').toLowerCase().includes(kw) && !(e.title || '').startsWith('KPI'))
+      .map(e => e.link);
+  }
+
+  console.log(`[Fourth] Using ${uris.length} report URI(s) for ${reportKey}: ${uris.slice(0,3).join(', ')}`);
   return uris;
 }
 

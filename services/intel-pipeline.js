@@ -114,9 +114,35 @@ async function runIntelPipeline(targetDate) {
   }
   await logStep('sos', results.steps.sos, targetDate);
 
-  // Steps 3 & 4 (Fourth Labor / OT) disabled — API returns no usable data
-  results.steps.fourthLabor = { skipped: true, reason: 'Disabled' };
-  results.steps.fourthOT    = { skipped: true, reason: 'Disabled' };
+  // ── Step 3: Fourth Labor (scheduled vs actual by location) ───────────────
+  console.log('[Intel Pipeline] Step 3: Fourth Labor');
+  try {
+    const pull = await downloadFourthReport('LABOR', targetDate);
+    if (!pull.success) throw new Error(pull.error);
+    const r = await processFourthLabor(pull.filePath, targetDate);
+    cleanupFile(pull.filePath);
+    results.steps.fourthLabor = r;
+  } catch (err) {
+    results.errors.push(`FourthLabor: ${err.message}`);
+    results.steps.fourthLabor = { success: false, error: err.message };
+    console.error('[Intel Pipeline] Fourth Labor failed:', err.message);
+  }
+  await logStep('fourthLabor', results.steps.fourthLabor, targetDate);
+
+  // ── Step 4: Fourth OT (Sun/Mon only) ──────────────────────────────────────
+  console.log('[Intel Pipeline] Step 4: Fourth OT');
+  try {
+    const pull = await downloadFourthReport('OT', targetDate);
+    if (!pull.success) throw new Error(pull.error);
+    const r = await processFourthOT(pull.filePath, targetDate);
+    cleanupFile(pull.filePath);
+    results.steps.fourthOT = r;
+  } catch (err) {
+    results.errors.push(`FourthOT: ${err.message}`);
+    results.steps.fourthOT = { success: false, error: err.message };
+    console.error('[Intel Pipeline] Fourth OT failed:', err.message);
+  }
+  await logStep('fourthOT', results.steps.fourthOT, targetDate);
 
   // ── Step 5: Forgot to Clock Out ────────────────────────────────────────────
   console.log('[Intel Pipeline] Step 5: Forgot to Clock Out');
