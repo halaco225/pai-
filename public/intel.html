@@ -47,6 +47,16 @@ button{font-family:inherit;cursor:pointer}
 .digest-tbl tr:hover td{background:#0c1425}
 .digest-row-pos td{color:#d1fae5}
 .digest-row-neg td{color:#fee2e2}
+/* ── SMG filter bar ──────────────────────────────────────────────────── */
+.smg-filter-bar{display:flex;flex-wrap:wrap;gap:16px;padding:12px 0 16px;border-bottom:1px solid #1e2d4d;margin-bottom:16px;align-items:flex-end}
+.smg-filter-group{display:flex;flex-direction:column;gap:5px}
+.smg-filter-label{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#475569}
+.smg-pill-group{display:flex;gap:4px}
+.smg-pill{padding:5px 12px;border:1px solid #1e2d4d;border-radius:20px;background:transparent;color:#64748b;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
+.smg-pill:hover{border-color:#3b82f6;color:#60a5fa}
+.smg-pill.active{border-color:#3b82f6;color:#60a5fa;background:rgba(59,130,246,.1)}
+.smg-select{background:#111d35;border:1px solid #1e2d4d;border-radius:8px;color:#94a3b8;font-size:12px;padding:5px 10px;cursor:pointer;outline:none;font-family:inherit;min-width:160px}
+.smg-select:focus{border-color:#3b82f6}
 .digest-ac-row:hover td{background:#0f1d38 !important}
 .digest-expand-icon{font-size:9px;color:#475569;margin-right:6px;display:inline-block;transition:transform .15s}
 .digest-top-stores{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
@@ -430,12 +440,45 @@ button{font-family:inherit;cursor:pointer}
     <div class="tab-panel" id="panel-smg">
       <div class="section-hdr">
         <div class="section-ttl">Guest Comments</div>
-        <div style="display:flex;gap:8px">
-          <button class="copy-btn" id="smgFilterAll" onclick="setSMGFilter('all',this)" style="color:#60a5fa;border-color:#3b82f6">All</button>
-          <button class="copy-btn" id="smgFilterPos" onclick="setSMGFilter('positive',this)">Positive</button>
-          <button class="copy-btn" id="smgFilterNeg" onclick="setSMGFilter('negative',this)">Negative</button>
+        <div id="smgDateLabel" style="font-size:11px;color:#64748b;font-weight:600"></div>
+      </div>
+
+      <!-- Filter bar -->
+      <div class="smg-filter-bar">
+        <!-- Sentiment -->
+        <div class="smg-filter-group">
+          <div class="smg-filter-label">Type</div>
+          <div class="smg-pill-group">
+            <button class="smg-pill active" id="smgFilterAll" onclick="setSMGFilter('all',this)">All</button>
+            <button class="smg-pill" id="smgFilterPos" onclick="setSMGFilter('positive',this)">Positive</button>
+            <button class="smg-pill" id="smgFilterNeg" onclick="setSMGFilter('negative',this)">Negative</button>
+          </div>
+        </div>
+        <!-- Date range -->
+        <div class="smg-filter-group">
+          <div class="smg-filter-label">Date Range</div>
+          <div class="smg-pill-group">
+            <button class="smg-pill active" id="smgRangeYest" onclick="setSMGRange('yesterday',this)">Yesterday</button>
+            <button class="smg-pill" id="smgRangeWtd" onclick="setSMGRange('wtd',this)">WTD</button>
+            <button class="smg-pill" id="smgRangePtd" onclick="setSMGRange('ptd',this)">PTD</button>
+          </div>
+        </div>
+        <!-- Area Coach (hidden for area_coach role) -->
+        <div class="smg-filter-group" id="smgACGroup" style="display:none">
+          <div class="smg-filter-label">Area Coach</div>
+          <select class="smg-select" id="smgACSelect" onchange="applySMGDropdowns()">
+            <option value="">All ACs</option>
+          </select>
+        </div>
+        <!-- Store -->
+        <div class="smg-filter-group" id="smgStoreGroup">
+          <div class="smg-filter-label">Store</div>
+          <select class="smg-select" id="smgStoreSelect" onchange="applySMGDropdowns()">
+            <option value="">All Stores</option>
+          </select>
         </div>
       </div>
+
       <div id="smgContainer"><div class="loading"><span class="spin">⟳</span></div></div>
     </div>
 
@@ -1635,67 +1678,142 @@ function jumpToFlagsForStore(storeId,storeName){
 // ── Guest Comments (SMG) ──────────────────────────────────────────────────────
 let smgData={positive:[],negative:[]};
 let smgFilter='all';
+let smgRange='yesterday';
+let smgACFilter='';
+let smgStoreFilter='';
 let smgLoaded=false;
 
-async function loadSMGComments(){
-  if(smgLoaded)return;
+async function loadSMGComments(force){
+  if(smgLoaded&&!force)return;
+  smgLoaded=false;
   const c=document.getElementById('smgContainer');
   c.innerHTML='<div class="loading"><span class="spin">⟳</span></div>';
   try{
-    const data=await fetch('/api/intel/smg-comments?date='+selectedDate+vpFilterParam()).then(r=>r.json());
+    let url='/api/intel/smg-comments?range='+smgRange+vpFilterParam();
+    if(smgRange==='yesterday'&&selectedDate) url='/api/intel/smg-comments?date='+selectedDate+vpFilterParam();
+    const data=await fetch(url).then(r=>r.json());
     if(data.error)throw new Error(data.error);
     smgData=data;
     smgLoaded=true;
+    populateSMGDropdowns();
     renderSMGComments();
+    // Update date label
+    const lbl=document.getElementById('smgDateLabel');
+    if(lbl){
+      if(data.date_start===data.date_end) lbl.textContent=data.date_start||'';
+      else lbl.textContent=(data.date_start||'')+' → '+(data.date_end||'');
+    }
   }catch(e){c.innerHTML='<div class="empty"><p>Error loading comments: '+escH(e.message)+'</p></div>';}
 }
 
 function setSMGFilter(f,btn){
   smgFilter=f;
-  document.querySelectorAll('#smgFilterAll,#smgFilterPos,#smgFilterNeg').forEach(b=>{
-    b.style.color='#64748b';b.style.borderColor='#1e2d4d';
-  });
-  btn.style.color='#60a5fa';btn.style.borderColor='#3b82f6';
+  document.querySelectorAll('.smg-pill[id^="smgFilter"]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderSMGComments();
+}
+
+function setSMGRange(r,btn){
+  smgRange=r;
+  document.querySelectorAll('.smg-pill[id^="smgRange"]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  smgACFilter=''; smgStoreFilter='';
+  const acSel=document.getElementById('smgACSelect');
+  const stSel=document.getElementById('smgStoreSelect');
+  if(acSel)acSel.value='';
+  if(stSel)stSel.value='';
+  loadSMGComments(true);
+}
+
+function populateSMGDropdowns(){
+  const all=[...(smgData.positive||[]),...(smgData.negative||[])];
+  // AC dropdown (only for rdo/vp)
+  const acGroup=document.getElementById('smgACGroup');
+  if(acGroup&&currentUser&&currentUser.role!=='area_coach'){
+    acGroup.style.display='';
+    const acs=[...new Set(all.map(x=>x.area_coach).filter(Boolean))].sort();
+    const acSel=document.getElementById('smgACSelect');
+    const prevAC=acSel.value;
+    acSel.innerHTML='<option value="">All ACs</option>'+acs.map(a=>'<option value="'+escH(a)+'">'+escH(a)+'</option>').join('');
+    if(prevAC)acSel.value=prevAC;
+  }
+  // Store dropdown
+  const stores=[...new Set(all.map(x=>x.store_name||x.store_id).filter(Boolean))].sort();
+  const stSel=document.getElementById('smgStoreSelect');
+  const prevSt=stSel?stSel.value:'';
+  if(stSel){
+    stSel.innerHTML='<option value="">All Stores</option>'+stores.map(s=>'<option value="'+escH(s)+'">'+escH(s)+'</option>').join('');
+    if(prevSt)stSel.value=prevSt;
+  }
+}
+
+function applySMGDropdowns(){
+  smgACFilter=document.getElementById('smgACSelect')?.value||'';
+  smgStoreFilter=document.getElementById('smgStoreSelect')?.value||'';
+  // When AC changes, repopulate store dropdown
+  if(smgACFilter){
+    const all=[...(smgData.positive||[]),...(smgData.negative||[])];
+    const stores=[...new Set(all.filter(x=>x.area_coach===smgACFilter).map(x=>x.store_name||x.store_id).filter(Boolean))].sort();
+    const stSel=document.getElementById('smgStoreSelect');
+    if(stSel){
+      stSel.innerHTML='<option value="">All Stores</option>'+stores.map(s=>'<option value="'+escH(s)+'">'+escH(s)+'</option>').join('');
+      smgStoreFilter='';
+    }
+  }
   renderSMGComments();
 }
 
 function renderSMGComments(){
   const c=document.getElementById('smgContainer');
-  const pos=smgFilter!=='negative'?smgData.positive||[]:[];
-  const neg=smgFilter!=='positive'?smgData.negative||[]:[];
+  let pos=smgFilter!=='negative'?[...(smgData.positive||[])]:[];
+  let neg=smgFilter!=='positive'?[...(smgData.negative||[])]:[];
+  // Apply AC/Store filters
+  if(smgACFilter){
+    pos=pos.filter(x=>x.area_coach===smgACFilter);
+    neg=neg.filter(x=>x.area_coach===smgACFilter);
+  }
+  if(smgStoreFilter){
+    pos=pos.filter(x=>(x.store_name||x.store_id)===smgStoreFilter);
+    neg=neg.filter(x=>(x.store_name||x.store_id)===smgStoreFilter);
+  }
   if(!pos.length&&!neg.length){
-    c.innerHTML='<div class="empty"><div class="empty-icon">💬</div><p>No SMG comments found for this date.</p></div>';
+    c.innerHTML='<div class="empty"><div class="empty-icon">💬</div><p>No SMG comments found for this selection.</p></div>';
     return;
   }
   // Group by store
   const stores={};
-  pos.forEach(c=>{
-    const k=c.store_id||c.store_name;
-    if(!stores[k])stores[k]={store_name:c.store_name||c.store_id,area_coach:c.area_coach,pos:[],neg:[]};
-    stores[k].pos.push(c);
+  pos.forEach(r=>{
+    const k=r.store_id||r.store_name;
+    if(!stores[k])stores[k]={store_name:r.store_name||r.store_id,area_coach:r.area_coach,pos:[],neg:[]};
+    stores[k].pos.push(r);
   });
-  neg.forEach(c=>{
-    const k=c.store_id||c.store_name;
-    if(!stores[k])stores[k]={store_name:c.store_name||c.store_id,area_coach:c.area_coach,pos:[],neg:[]};
-    stores[k].neg.push(c);
+  neg.forEach(r=>{
+    const k=r.store_id||r.store_name;
+    if(!stores[k])stores[k]={store_name:r.store_name||r.store_id,area_coach:r.area_coach,pos:[],neg:[]};
+    stores[k].neg.push(r);
   });
   const catFmt={rude_staff:'Rude Staff',poor_food:'Poor Food',poor_service:'Poor Service',wait_time:'Wait Time',wrong_order:'Wrong Order',cleanliness:'Cleanliness',positive_staff:'Positive Staff',great_food:'Great Food',other:'Other'};
   const html=Object.values(stores).sort((a,b)=>b.neg.length-a.neg.length).map(s=>{
-    const negCards=s.neg.map(c=>{
-      const cats=(c.categories||[]).filter(x=>catFmt[x]).map(x=>'<span style="background:#1e2d4d;color:#94a3b8;font-size:10px;padding:1px 6px;border-radius:4px;margin-right:3px">'+escH(catFmt[x])+'</span>').join('');
-      const nameWarn=c.name_mentioned?'<div style="color:#f87171;font-size:11px;font-weight:700;margin-bottom:3px">⚠ Employee named: '+escH(c.name_mentioned)+'</div>':'';
-      const sat=c.overall_satisfaction!=null?'<span style="color:#64748b;font-size:11px"> · '+c.overall_satisfaction+'/5</span>':'';
+    const negCards=s.neg.map(r=>{
+      const cats=(r.categories||[]).filter(x=>catFmt[x]).map(x=>'<span style="background:#1e2d4d;color:#94a3b8;font-size:10px;padding:1px 6px;border-radius:4px;margin-right:3px">'+escH(catFmt[x])+'</span>').join('');
+      const nameWarn=r.name_mentioned?'<div style="color:#f87171;font-size:11px;font-weight:700;margin-bottom:3px">⚠ Employee named: '+escH(r.name_mentioned)+'</div>':'';
+      const sat=r.overall_satisfaction!=null?'<span style="color:#64748b;font-size:11px"> · '+r.overall_satisfaction+'/5</span>':'';
+      const dateTag=r.comment_date&&smgRange!=='yesterday'?'<span style="font-size:10px;color:#475569;float:right">'+escH(String(r.comment_date).slice(0,10))+'</span>':'';
       return '<div style="border-left:3px solid #ef4444;padding:8px 10px;background:#0c1425;border-radius:6px;margin-bottom:8px">'
-        +nameWarn
-        +'<div style="font-size:12px;font-weight:600;color:#fbbf24;margin-bottom:3px">'+escH(c.summary||'Complaint')+sat+'</div>'
+        +nameWarn+dateTag
+        +'<div style="font-size:12px;font-weight:600;color:#fbbf24;margin-bottom:3px">'+escH(r.summary||'Complaint')+sat+'</div>'
         +(cats?'<div style="margin-bottom:4px">'+cats+'</div>':'')
-        +'<div style="font-size:11px;color:#94a3b8;font-style:italic">"'+escH((c.comment_text||'').substring(0,300))+'"</div>'
+        +'<div style="font-size:11px;color:#94a3b8;font-style:italic">"'+escH((r.comment_text||'').substring(0,300))+'"</div>'
         +'</div>';
     }).join('');
-    const posCards=s.pos.map(c=>'<div style="border-left:3px solid #22c55e;padding:8px 10px;background:#0c1425;border-radius:6px;margin-bottom:8px">'
-      +'<div style="font-size:12px;font-weight:600;color:#86efac;margin-bottom:3px">★ '+escH(c.summary||'Positive')+'</div>'
-      +'<div style="font-size:11px;color:#94a3b8;font-style:italic">"'+escH((c.comment_text||'').substring(0,300))+'"</div>'
-      +'</div>').join('');
+    const posCards=s.pos.map(r=>{
+      const dateTag=r.comment_date&&smgRange!=='yesterday'?'<span style="font-size:10px;color:#475569;float:right">'+escH(String(r.comment_date).slice(0,10))+'</span>':'';
+      return '<div style="border-left:3px solid #22c55e;padding:8px 10px;background:#0c1425;border-radius:6px;margin-bottom:8px">'
+        +dateTag
+        +'<div style="font-size:12px;font-weight:600;color:#86efac;margin-bottom:3px">★ '+escH(r.summary||'Positive')+'</div>'
+        +'<div style="font-size:11px;color:#94a3b8;font-style:italic">"'+escH((r.comment_text||'').substring(0,300))+'"</div>'
+        +'</div>';
+    }).join('');
     return '<div class="flag-card" style="margin-bottom:14px">'
       +'<div class="flag-top"><div><div class="flag-sname">'+escH(s.store_name||'Unknown')+'</div>'
       +'<div class="flag-ac">'+escH(s.area_coach||'')+'</div></div>'

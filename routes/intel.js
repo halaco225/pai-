@@ -1055,21 +1055,47 @@ router.get('/shoutouts', async (req, res) => {
 });
 
 // ── GET /api/intel/smg-comments — all SMG comments (pos + neg) for user scope ──
+// ?range=yesterday|wtd|ptd  (default: yesterday)
+// ?date=YYYY-MM-DD           (explicit single date, overrides range)
 router.get('/smg-comments', async (req, res) => {
   try {
     const user = req.session.user;
-    const date = req.query.date || (() => {
-      const d = new Date(); d.setDate(d.getDate() - 1);
-      return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-    })();
-    const p = db.getPool();
-    if (!p) return res.json({ date, positive: [], negative: [] });
+    const p    = db.getPool();
+    if (!p) return res.json({ date_start: null, date_end: null, positive: [], negative: [] });
+
+    const { getCurrentFiscalPeriod } = require('../services/fiscal-calendar');
+
+    // Resolve date range
+    const nowEST = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const toEST  = d => d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const yesterdayD = new Date(nowEST); yesterdayD.setDate(nowEST.getDate() - 1);
+    const yesterdayStr = toEST(yesterdayD);
+
+    let dateStart, dateEnd;
+    if (req.query.date) {
+      dateStart = dateEnd = req.query.date;
+    } else {
+      const range = req.query.range || 'yesterday';
+      if (range === 'wtd') {
+        const dow = nowEST.getDay(); // 0=Sun
+        const daysFromMon = dow === 0 ? 6 : dow - 1;
+        const monday = new Date(nowEST); monday.setDate(nowEST.getDate() - daysFromMon);
+        dateStart = toEST(monday);
+        dateEnd   = yesterdayStr;
+      } else if (range === 'ptd') {
+        const fp = getCurrentFiscalPeriod();
+        dateStart = fp ? fp.start : yesterdayStr;
+        dateEnd   = yesterdayStr;
+      } else {
+        dateStart = dateEnd = yesterdayStr;
+      }
+    }
 
     // VP scope filter from query params
     const vpRcFilter2 = user.role === 'vp' ? (req.query.rc_name || null) : null;
     const vpAcFilter2 = user.role === 'vp' ? (req.query.ac_name || null) : null;
 
-    // Scope params
+    // Build scope WHERE (for shoutouts joined to store_assignments)
     let scopeWhere = '1=1'; const sp = [];
     if (user.role === 'area_coach') { sp.push(user.scope?.ac_name||user.name); scopeWhere = `a.area_coach=$${sp.length}`; }
     else if (user.role === 'rdo') {
@@ -1082,19 +1108,27 @@ router.get('/smg-comments', async (req, res) => {
       sp.push(vpAcFilter2); scopeWhere = `a.area_coach=$${sp.length}`;
     }
 
-    // Positive: shoutouts
-    const posQ = `SELECT s.store_id, a.store_name, a.area_coach, s.summary,
-                         s.full_comment AS comment_text, s.source, s.shoutout_date AS comment_date
-                  FROM intel_shoutouts s
-                  LEFT JOIN store_assignments a ON s.store_id = a.store_id
-                  WHERE ${scopeWhere} AND s.shoutout_date = $${sp.length+1}
-                  ORDER BY a.area_coach, a.store_name`;
-    sp.push(date);
-    const posRes = await p.query(posQ, sp);
+    // Date filter: single day or range
+    const isSingleDay = dateStart === dateEnd;
+    const dateCond    = isSingleDay ? `= $${sp.length+1}` : `BETWEEN $${sp.length+1} AND $${sp.length+2}`;
+    sp.push(dateStart);
+    if (!isSingleDay) sp.push(dateEnd);
 
-    // Negative: pull from GUEST_COMPLAINT flag details
-    const negSp = [date];
-    let negWhere = `metric_date=$1 AND metric_type='GUEST_COMPLAINT' AND status != 'archived'`;
+    // Positive: shoutouts
+    const posRes = await p.query(
+      `SELECT s.store_id, a.store_name, a.area_coach, s.summary,
+              s.full_comment AS comment_text, s.source, s.shoutout_date AS comment_date
+       FROM intel_shoutouts s
+       LEFT JOIN store_assignments a ON s.store_id = a.store_id
+       WHERE ${scopeWhere} AND s.shoutout_date ${dateCond}
+       ORDER BY s.shoutout_date DESC, a.area_coach, a.store_name`, sp
+    );
+
+    // Negative: GUEST_COMPLAINT flags with date range
+    const negSp = [dateStart];
+    if (!isSingleDay) negSp.push(dateEnd);
+    const negDateCond = isSingleDay ? `metric_date=$1` : `metric_date BETWEEN $1 AND $2`;
+    let negWhere = `${negDateCond} AND metric_type='GUEST_COMPLAINT' AND status != 'archived'`;
     if (user.role === 'area_coach') { negSp.push(user.scope?.ac_name||user.name); negWhere += ` AND area_coach=$${negSp.length}`; }
     else if (user.role === 'rdo') {
       const acs = user.scope?.area_coaches || [];
@@ -1106,7 +1140,8 @@ router.get('/smg-comments', async (req, res) => {
       negSp.push(vpAcFilter2); negWhere += ` AND area_coach=$${negSp.length}`;
     }
     const negRes = await p.query(
-      `SELECT store_id, store_name, area_coach, details FROM intel_flags WHERE ${negWhere} ORDER BY area_coach, store_name`,
+      `SELECT store_id, store_name, area_coach, metric_date, details
+       FROM intel_flags WHERE ${negWhere} ORDER BY metric_date DESC, area_coach, store_name`,
       negSp
     );
 
@@ -1152,7 +1187,7 @@ router.get('/smg-comments', async (req, res) => {
       }
     }
 
-    res.json({ date, positive: posRes.rows, negative });
+    res.json({ date_start: dateStart, date_end: dateEnd, positive: posRes.rows, negative });
   } catch (err) {
     console.error('[Intel] /smg-comments error:', err.message);
     res.status(500).json({ error: err.message });
