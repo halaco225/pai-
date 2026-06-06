@@ -130,9 +130,10 @@ async function processChangeDown(filePath, targetDate) {
   // Load store assignments for hierarchy
   const assignments = await db.getStoreAssignments();
 
-  // Group by store
+  // Group by store — Ayvaz stores only (skip any store not in store_assignments)
   const byStore = {};
   for (const r of records) {
+    if (!assignments[r.storeId]) continue; // not an Ayvaz store
     if (!byStore[r.storeId]) byStore[r.storeId] = { storeId: r.storeId, storeName: r.storeName, tickets: [] };
     byStore[r.storeId].tickets.push(r);
   }

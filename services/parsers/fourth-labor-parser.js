@@ -83,8 +83,10 @@ async function processFourthLabor(filePath, targetDate) {
   const assignments = await db.getStoreAssignments();
   let flagsWritten = 0;
 
+  let skipped = 0;
   for (const s of stores) {
-    const asgn = assignments[s.store_id] || {};
+    const asgn = assignments[s.store_id];
+    if (!asgn || !asgn.area_coach) { skipped++; continue; } // not an Ayvaz store
     const base = {
       store_id:     s.store_id,
       store_name:   s.store_name || asgn.store_name,
@@ -133,8 +135,9 @@ async function processFourthLabor(filePath, targetDate) {
     }
   }
 
-  console.log(`[FourthLabor] Done — ${flagsWritten} flags written`);
-  return { success: true, storesProcessed: stores.length, flagsWritten };
+  const ayvazStores = stores.length - skipped;
+  console.log(`[FourthLabor] Done — ${flagsWritten} flags written for ${ayvazStores} Ayvaz stores (${skipped} non-Ayvaz skipped)`);
+  return { success: true, storesProcessed: ayvazStores, flagsWritten };
 }
 
 module.exports = { processFourthLabor, parseFourthLaborFile };
