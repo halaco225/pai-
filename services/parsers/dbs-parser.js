@@ -225,10 +225,8 @@ function parseDBS(filePath, targetDate) {
           const sev = refunds > 50 ? 'high' : 'medium';
           storeFlags.push({ ...base, metric_type: 'REFUNDS', value: refunds, target: 20, variance: refunds - 20, severity: sev });
         }
-        if (cancelUnmade != null && cancelUnmade >= 100) {
-          const sev = cancelUnmade >= 150 ? 'high' : 'medium';
-          storeFlags.push({ ...base, metric_type: 'CANCEL_UNMADE', value: cancelUnmade, target: 100, variance: cancelUnmade - 100, severity: sev });
-        }
+        // CANCEL_UNMADE: metric retained for KPI dashboard drill-down but no longer flagged.
+        // Richer cancel data will come from the ODS Cancel After Tender report.
 
         // ── Tier 2 Soft: Discount % ────────────────────────────────────────
         const discount = cellVal(row, S2.DISCOUNT);

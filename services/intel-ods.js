@@ -13,9 +13,10 @@ const ODS_USER = process.env.ODS_USER || 'hlacoste';
 const ODS_PASS = process.env.ODS_PASSWORD || '';
 
 const REPORTS = {
-  DBS:     '/Reports/Pizza_Hut/Operations/PH_DGIDBS_1',
-  SOS:     '/Reports/Pizza_Hut/Operations/PH_Speed_Of_Service',
-  PAYROLL: '/Reports/Pizza_Hut/Payroll/PH_ForgotToClockOut',
+  DBS:         '/Reports/Pizza_Hut/Operations/PH_DGIDBS_1',
+  SOS:         '/Reports/Pizza_Hut/Operations/PH_Speed_Of_Service',
+  PAYROLL:     '/Reports/Pizza_Hut/Payroll/PH_ForgotToClockOut',
+  CHANGE_DOWN: '/Reports/Pizza_Hut/Operations/PH_ChangeDownReport',
 };
 
 const POLL_INTERVAL_MS  = 5000;

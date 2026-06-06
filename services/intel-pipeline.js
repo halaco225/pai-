@@ -144,6 +144,22 @@ async function runIntelPipeline(targetDate) {
   }
   await logStep('fourthOT', results.steps.fourthOT, targetDate);
 
+  // ── Step 4b: Change Down Report (ODS) ─────────────────────────────────────
+  console.log('[Intel Pipeline] Step 4b: Change Down Report');
+  try {
+    const pull = await pullReport('CHANGE_DOWN', targetDate);
+    if (!pull.success) throw new Error(pull.error);
+    const { processChangeDown } = require('./parsers/change-down-parser');
+    const r = await processChangeDown(pull.filePath, targetDate);
+    cleanupFile(pull.filePath);
+    results.steps.changeDown = r;
+  } catch (err) {
+    results.errors.push(`ChangeDown: ${err.message}`);
+    results.steps.changeDown = { success: false, error: err.message };
+    console.error('[Intel Pipeline] Change Down failed:', err.message);
+  }
+  await logStep('changeDown', results.steps.changeDown, targetDate);
+
   // ── Step 5: Forgot to Clock Out ────────────────────────────────────────────
   console.log('[Intel Pipeline] Step 5: Forgot to Clock Out');
   try {
