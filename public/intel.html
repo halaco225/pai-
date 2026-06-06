@@ -476,8 +476,8 @@ button{font-family:inherit;cursor:pointer}
         <div class="smg-filter-group">
           <div class="smg-filter-label">Date Range</div>
           <div class="smg-pill-group">
-            <button class="smg-pill active" id="smgRangeYest" onclick="setSMGRange('yesterday',this)">Yesterday</button>
-            <button class="smg-pill" id="smgRangeWtd" onclick="setSMGRange('wtd',this)">WTD</button>
+            <button class="smg-pill" id="smgRangeYest" onclick="setSMGRange('yesterday',this)">Yesterday</button>
+            <button class="smg-pill active" id="smgRangeWtd" onclick="setSMGRange('wtd',this)">WTD</button>
             <button class="smg-pill" id="smgRangePtd" onclick="setSMGRange('ptd',this)">PTD</button>
           </div>
         </div>
@@ -1835,7 +1835,7 @@ function jumpToFlagsForStore(storeId,storeName){
 // ── Guest Comments (SMG) ──────────────────────────────────────────────────────
 let smgData={positive:[],negative:[]};
 let smgFilter='all';
-let smgRange='yesterday';
+let smgRange='wtd'; // default to current week
 let smgACFilter='';
 let smgStoreFilter='';
 let smgLoaded=false;
@@ -1940,6 +1940,25 @@ function renderSMGComments(){
     c.innerHTML='<div class="empty"><div class="empty-icon">💬</div><p>No SMG comments found for this selection.</p></div>';
     return;
   }
+  // Trend alerts — stores with multiple negative days or repeated employee names
+  let trendHtml='';
+  const trends=(smgData.trends||[]).filter(t=>{
+    if(smgACFilter&&t.store_name!==smgACFilter&&!(smgData.negative||[]).some(n=>n.store_id===t.store_id&&n.area_coach===smgACFilter)) return false;
+    if(smgStoreFilter&&t.store_name!==smgStoreFilter) return false;
+    return true;
+  });
+  if(trends.length){
+    trendHtml='<div style="margin-bottom:14px;padding:12px 14px;background:#1a0a00;border:1px solid #92400e;border-radius:10px">'
+      +'<div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#f59e0b;margin-bottom:8px">⚠ Guest Experience Trends This Week</div>'
+      +trends.map(t=>{
+        let line='<div style="margin-bottom:6px;font-size:12px;color:#94a3b8">'
+          +'<span style="color:#e2e8f0;font-weight:600">'+escH(t.store_name||t.store_id)+'</span>';
+        if(t.negative_days>=2) line+=' · <span style="color:#f87171">'+t.negative_days+' days with negative reviews this week</span>';
+        if(t.repeated_names.length) line+=' · <span style="color:#fbbf24">Employee mentioned '+t.repeated_names.map(n=>escH(n.name)+' (×'+n.count+')').join(', ')+'</span>';
+        return line+'</div>';
+      }).join('')
+      +'</div>';
+  }
   // Group by store
   const stores={};
   pos.forEach(r=>{
@@ -1986,7 +2005,7 @@ function renderSMGComments(){
       +(negCards||posCards?'<div style="margin-top:10px">'+negCards+posCards+'</div>':'')
       +'</div>';
   }).join('');
-  c.innerHTML=html;
+  c.innerHTML=trendHtml+html;
 }
 
 init();

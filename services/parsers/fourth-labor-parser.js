@@ -120,12 +120,11 @@ async function processFourthLabor(filePath, targetDate) {
         indicator: 'sch_lab_dollar', value: s.sch_lab_dollar, target: null, source: 'FOURTH' });
     }
 
-    // Flag only when Act Lab$ > Sch Lab$ (positive variance = over budget)
-    // Negative variance = under budget = good, no flag
-    if (s.lab_dollar_var != null && s.lab_dollar_var > 0) {
-      const severity = s.lab_dollar_var > 200 ? 'high' : s.lab_dollar_var > 50 ? 'medium' : 'low';
+    // Flag only when Act Lab$ >= $200 over scheduled (eliminates low-noise small variances)
+    if (s.lab_dollar_var != null && s.lab_dollar_var >= 200) {
+      const severity = s.lab_dollar_var >= 500 ? 'high' : 'medium';
       const prevDays = await db.getConsecutiveDays(s.store_id, 'LABOR_OVER_BUDGET', targetDate);
-      await db.insertIntelFlag({
+      await db.upsertIntelFlag({
         ...base, metric_type: 'LABOR_OVER_BUDGET',
         value: s.lab_dollar_var, target: 0, variance: s.lab_dollar_var,
         consecutive_days_out: prevDays + 1, severity, is_new: prevDays === 0, details,

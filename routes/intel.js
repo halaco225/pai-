@@ -1216,7 +1216,36 @@ router.get('/smg-comments', async (req, res) => {
       }
     }
 
-    res.json({ date_start: dateStart, date_end: dateEnd, positive: posRes.rows, negative });
+    // Build trend data: stores with multiple negative days + repeated name mentions
+    const storeNegDays = {};
+    const storeNames   = {};
+    for (const c of negative) {
+      const sid = c.store_id;
+      if (!sid) continue;
+      storeNames[sid] = c.store_name || sid;
+      if (!storeNegDays[sid]) storeNegDays[sid] = new Set();
+      const day = String(c.comment_date || '').slice(0, 10);
+      if (day) storeNegDays[sid].add(day);
+    }
+    // Repeated employee names across complaints at same store
+    const storeNameMentions = {};
+    for (const c of negative) {
+      if (!c.store_id || !c.name_mentioned) continue;
+      if (!storeNameMentions[c.store_id]) storeNameMentions[c.store_id] = {};
+      const n = c.name_mentioned;
+      storeNameMentions[c.store_id][n] = (storeNameMentions[c.store_id][n] || 0) + 1;
+    }
+    const trends = Object.entries(storeNegDays)
+      .map(([sid, days]) => {
+        const repeatedNames = Object.entries(storeNameMentions[sid] || {})
+          .filter(([, cnt]) => cnt >= 2)
+          .map(([n, cnt]) => ({ name: n, count: cnt }));
+        return { store_id: sid, store_name: storeNames[sid], negative_days: days.size, repeated_names: repeatedNames };
+      })
+      .filter(t => t.negative_days >= 2 || t.repeated_names.length > 0)
+      .sort((a, b) => b.negative_days - a.negative_days);
+
+    res.json({ date_start: dateStart, date_end: dateEnd, positive: posRes.rows, negative, trends });
   } catch (err) {
     console.error('[Intel] /smg-comments error:', err.message);
     res.status(500).json({ error: err.message });
@@ -1338,7 +1367,6 @@ router.get('/weekly-digest', async (req, res) => {
         FROM velocity_daily_records v
         ${velScopeJoin}
         WHERE v.record_date BETWEEN $1 AND $2
-          AND v.on_time_pct IS NOT NULL
         GROUP BY sa.area_coach ORDER BY sa.area_coach`, velParams
       ),
       p.query(`
