@@ -100,6 +100,8 @@ button{font-family:inherit;cursor:pointer}
 .run-batch-btn.running{border-color:#f59e0b;color:#f59e0b}
 .vp-filter-bar{padding:10px 24px;background:#070d1c;border-bottom:1px solid #1e2d4d;display:none;align-items:center;gap:12px;flex-shrink:0}
 .vp-filter-bar.visible{display:flex}
+.global-filter-bar{padding:8px 24px;background:#060b18;border-bottom:1px solid #1e2d4d;display:none;align-items:center;gap:10px;flex-shrink:0}
+.global-filter-bar.visible{display:flex}
 .vp-filter-label{font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.12em;white-space:nowrap}
 .vp-filter-select{background:#111d35;border:1px solid #1e2d4d;border-radius:8px;color:#60a5fa;font-size:13px;font-weight:600;padding:6px 14px;cursor:pointer;outline:none;font-family:inherit;min-width:240px}
 .vp-filter-select:focus{border-color:#3b82f6}
@@ -342,6 +344,18 @@ button{font-family:inherit;cursor:pointer}
     </select>
   </div>
 
+  <!-- Global AC + Store filter — visible for RDO and VP -->
+  <div class="global-filter-bar hidden" id="globalFilterBar">
+    <span class="vp-filter-label">Filter:</span>
+    <select id="globalACSelect" class="vp-filter-select" style="min-width:180px" onchange="onGlobalACChange()">
+      <option value="">All Area Coaches</option>
+    </select>
+    <select id="globalStoreSelect" class="vp-filter-select" style="min-width:180px" onchange="onGlobalStoreChange()">
+      <option value="">All Stores</option>
+    </select>
+    <button class="copy-btn" onclick="clearGlobalFilter()" id="globalClearBtn" style="display:none">✕ Clear</button>
+  </div>
+
   <div class="urgent-banner" id="urgentBanner">
     <div class="ub-icon">🚨</div>
     <div>
@@ -505,11 +519,73 @@ let curFilter='all',curBriefTab='urgent',openDrillAC=null,currentFlagId=null;
 let selectedDate='';
 let vpScopeFilter={rc_name:null,ac_name:null};
 let vpScopeOptions=[];
+let globalACFilter='';
+let globalStoreFilter='';
+let globalStoreData={area_coaches:[],stores_by_ac:{}};
 
 function vpFilterParam(){
   if(vpScopeFilter.ac_name) return '&ac_name='+encodeURIComponent(vpScopeFilter.ac_name);
   if(vpScopeFilter.rc_name) return '&rc_name='+encodeURIComponent(vpScopeFilter.rc_name);
   return '';
+}
+
+function globalFilterParam(){
+  let p='';
+  if(globalACFilter)    p+='&filter_ac='+encodeURIComponent(globalACFilter);
+  if(globalStoreFilter) p+='&filter_store='+encodeURIComponent(globalStoreFilter);
+  return p;
+}
+
+async function setupGlobalFilter(u){
+  if(!['rdo','vp'].includes(u.role)) return;
+  try{
+    const data=await fetch('/api/intel/scope-stores'+vpFilterParam()).then(r=>r.json());
+    globalStoreData=data;
+    const acSel=document.getElementById('globalACSelect');
+    acSel.innerHTML='<option value="">All Area Coaches</option>'
+      +data.area_coaches.map(a=>`<option value="${escH(a)}">${escH(a)}</option>`).join('');
+    document.getElementById('globalFilterBar').classList.add('visible');
+    document.getElementById('globalFilterBar').classList.remove('hidden');
+  }catch(e){console.error('globalFilter:',e);}
+}
+
+function onGlobalACChange(){
+  globalACFilter=document.getElementById('globalACSelect').value;
+  globalStoreFilter='';
+  // Repopulate store dropdown
+  const stores=globalACFilter?(globalStoreData.stores_by_ac[globalACFilter]||[])
+    :Object.values(globalStoreData.stores_by_ac).flat();
+  const stSel=document.getElementById('globalStoreSelect');
+  stSel.innerHTML='<option value="">All Stores</option>'
+    +stores.map(s=>`<option value="${escH(s.store_name)}">${escH(s.store_name)}</option>`).join('');
+  stSel.value='';
+  document.getElementById('globalClearBtn').style.display=globalACFilter?'':'none';
+  reloadActiveTab();
+}
+
+function onGlobalStoreChange(){
+  globalStoreFilter=document.getElementById('globalStoreSelect').value;
+  document.getElementById('globalClearBtn').style.display=(globalACFilter||globalStoreFilter)?'':'none';
+  reloadActiveTab();
+}
+
+function clearGlobalFilter(){
+  globalACFilter=''; globalStoreFilter='';
+  document.getElementById('globalACSelect').value='';
+  document.getElementById('globalStoreSelect').innerHTML='<option value="">All Stores</option>';
+  document.getElementById('globalClearBtn').style.display='none';
+  reloadActiveTab();
+}
+
+let activeTab='dashboard';
+function reloadActiveTab(){
+  smgLoaded=false;
+  if(activeTab==='dashboard') loadKPIs();
+  else if(activeTab==='brief') loadBrief();
+  else if(activeTab==='flags') loadFlags();
+  else if(activeTab==='digest') loadDigest();
+  else if(activeTab==='smg') loadSMGComments(true);
+  else if(activeTab==='accountability') loadAccountability();
 }
 
 function onVpSelectChange(val){
@@ -538,6 +614,13 @@ async function setVpFilter(rcName,acName){
   // Update page title
   const titleSuffix=acName?acName:rcName?(rcName+' Region'):'All Regions';
   document.getElementById('pageTitle').textContent='Daily Intel — '+titleSuffix;
+  // Reset global AC/store filter and reload store list for new scope
+  globalACFilter=''; globalStoreFilter='';
+  const acSel=document.getElementById('globalACSelect');
+  const stSel=document.getElementById('globalStoreSelect');
+  if(acSel)acSel.value='';
+  if(stSel)stSel.innerHTML='<option value="">All Stores</option>';
+  if(currentUser)await setupGlobalFilter(currentUser);
   // Reload all data
   const smgWasLoaded=smgLoaded;
   smgLoaded=false;
@@ -568,6 +651,7 @@ async function init(){
     currentUser=auth.user;
     setupUser(auth.user);
     await setupVpFilter(auth.user);
+    await setupGlobalFilter(auth.user);
     await Promise.all([loadKPIs(),loadFlags(),loadBrief()]);
     loadDigest();
     if(['rdo','vp'].includes(auth.user.role))loadAccountability();
@@ -598,7 +682,7 @@ function setupUser(u){
 
 async function loadKPIs(){
   try{
-    const data=await fetch('/api/intel/kpis?date='+selectedDate+vpFilterParam()).then(r=>r.json());
+    const data=await fetch('/api/intel/kpis?date='+selectedDate+vpFilterParam()+globalFilterParam()).then(r=>r.json());
     if(data.error)throw new Error(data.error);
     kpiData=data;
     document.getElementById('lastSync').textContent=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
@@ -846,7 +930,7 @@ function fPill(cnt){const c=cnt||0;if(!c)return'<span class="n">0</span>';const 
 
 async function loadFlags(){
   try{
-    const data=await fetch('/api/intel/flags?date='+selectedDate+vpFilterParam()).then(r=>r.json());
+    const data=await fetch('/api/intel/flags?date='+selectedDate+vpFilterParam()+globalFilterParam()).then(r=>r.json());
     allFlags=Array.isArray(data)?data:(data.flags||[]);
     const open=allFlags.filter(f=>f.status!=='addressed'&&f.status!=='archived').length;
     if(open>0){
@@ -1390,13 +1474,14 @@ async function quickAck(cb,flagId){
   }catch(err){alert('Error: '+err.message);cb.disabled=false;cb.checked=false;}
 }
 function switchTab(tab,btn){
+  activeTab=tab;
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab-btn,.nav-item').forEach(b=>b.classList.remove('active'));
   document.getElementById('panel-'+tab).classList.add('active');
   const map={dashboard:'tbd',brief:'tbb',flags:'tbf',accountability:'tba',digest:'tbdg',smg:'tbsmg'};
   if(map[tab])document.getElementById(map[tab])?.classList.add('active');
   if(btn)btn.classList.add('active');
-  if(tab==='digest'&&document.getElementById('digestText').textContent==='Loading digest…')loadDigest();
+  if(tab==='digest')loadDigest();
   if(tab==='smg')loadSMGComments();
 }
 

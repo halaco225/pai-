@@ -607,9 +607,13 @@ router.get('/kpis', async (req, res) => {
     );
     const date = dateCheckRes.rows[0]?.latest || requestedDate;
 
+    // Global sub-filter (RDO/VP drilling into AC or store)
+    const filterAC    = req.query.filter_ac    || null;
+    const filterStore = req.query.filter_store || null;
+
     // VP scope filter from query params
     const vpRcFilter = user.role === 'vp' ? (req.query.rc_name || null) : null;
-    const vpAcFilter = user.role === 'vp' ? (req.query.ac_name || null) : null;
+    const vpAcFilter = user.role === 'vp' ? (req.query.ac_name || filterAC || null) : null;
     let vpAcSet = null;
     if (vpRcFilter) {
       const rdo = USER_ROSTER.find(u => u.role === 'rdo' && u.scope?.rc_name === vpRcFilter);
@@ -620,11 +624,15 @@ router.get('/kpis', async (req, res) => {
     const fp = [date]; let flagWhere = "metric_date = $1 AND status != 'archived'";
 
     if (user.scope?.type === 'rdo') {
-      const acs = user.scope.area_coaches || [];
-      if (acs.length) {
-        fp.push(acs); flagWhere += ` AND (area_coach = ANY($${fp.length}::text[]) OR area_coach IS NULL)`;
+      if (filterAC) {
+        fp.push(filterAC); flagWhere += ` AND area_coach = $${fp.length}`;
       } else {
-        fp.push(user.scope.rc_name || user.name); flagWhere += ` AND (region_coach = $${fp.length} OR region_coach IS NULL)`;
+        const acs = user.scope.area_coaches || [];
+        if (acs.length) {
+          fp.push(acs); flagWhere += ` AND (area_coach = ANY($${fp.length}::text[]) OR area_coach IS NULL)`;
+        } else {
+          fp.push(user.scope.rc_name || user.name); flagWhere += ` AND (region_coach = $${fp.length} OR region_coach IS NULL)`;
+        }
       }
     } else if (user.scope?.type === 'area_coach') {
       const ac = user.scope.ac_name || user.name;
@@ -638,9 +646,14 @@ router.get('/kpis', async (req, res) => {
     // Build scope filter for store_assignments
     const sp = []; let assignWhere = '1=1';
     if (user.scope?.type === 'rdo') {
-      const acs = user.scope.area_coaches || [];
-      if (acs.length) { sp.push(acs); assignWhere += ` AND area_coach = ANY($${sp.length}::text[])`; }
-      else if (user.scope.rc_name || user.name) { sp.push(user.scope.rc_name || user.name); assignWhere += ` AND region_coach = $${sp.length}`; }
+      if (filterAC) {
+        sp.push(filterAC); assignWhere += ` AND area_coach = $${sp.length}`;
+        if (filterStore) { sp.push(filterStore); assignWhere += ` AND store_name = $${sp.length}`; }
+      } else {
+        const acs = user.scope.area_coaches || [];
+        if (acs.length) { sp.push(acs); assignWhere += ` AND area_coach = ANY($${sp.length}::text[])`; }
+        else if (user.scope.rc_name || user.name) { sp.push(user.scope.rc_name || user.name); assignWhere += ` AND region_coach = $${sp.length}`; }
+      }
     } else if (user.scope?.type === 'area_coach') {
       sp.push(user.scope.ac_name || user.name); assignWhere += ` AND area_coach = $${sp.length}`;
     } else if (user.role === 'vp' && vpRcFilter) {
@@ -926,29 +939,45 @@ router.get('/flags', async (req, res) => {
     const user  = req.session.user;
     const date  = req.query.date || null;
     const statusFilter = req.query.status || null;
+    // Global AC/Store sub-filter (RDO and VP drilling into their scope)
+    const filterAC    = req.query.filter_ac    || null;
+    const filterStore = req.query.filter_store || null;
 
     let flags = [];
     if (user.role === 'rdo') {
+      const p = db.getPool();
+      if (!p) return res.json({ flags: [] });
       const areaCoaches = user.scope?.area_coaches || [];
-      flags = await db.getIntelFlags({
-        metric_date: date,
-        area_coach_in: areaCoaches.length > 0 ? areaCoaches : undefined,
-        region_coach: areaCoaches.length === 0 ? (user.scope?.rc_name || user.name) : undefined,
-        status: statusFilter
-      });
+      const params = [];
+      let q = 'SELECT * FROM intel_flags WHERE 1=1';
+      if (date) { params.push(date); q += ` AND metric_date=$${params.length}`; }
+      if (statusFilter) { params.push(statusFilter); q += ` AND status=$${params.length}`; }
+      // Drill-down overrides broad scope
+      if (filterAC) {
+        params.push(filterAC); q += ` AND area_coach=$${params.length}`;
+        if (filterStore) { params.push(filterStore); q += ` AND store_name=$${params.length}`; }
+      } else if (areaCoaches.length) {
+        params.push(areaCoaches); q += ` AND area_coach=ANY($${params.length}::text[])`;
+      } else {
+        params.push(user.scope?.rc_name || user.name); q += ` AND region_coach=$${params.length}`;
+      }
+      q += ' ORDER BY severity DESC, consecutive_days_out DESC';
+      const r = await p.query(q, params);
+      flags = r.rows;
     } else if (user.role === 'area_coach') {
       flags = await db.getIntelFlags({ metric_date: date, area_coach: user.scope?.ac_name || user.name, status: statusFilter });
     } else if (user.role === 'vp') {
       const p = db.getPool();
       if (!p) return res.json({ flags: [] });
       const vpRcFilter = req.query.rc_name || null;
-      const vpAcFilter = req.query.ac_name || null;
+      const vpAcFilter = req.query.ac_name || filterAC || null;
       let q = 'SELECT * FROM intel_flags WHERE territory_vp=$1';
       const params = [user.scope?.vp_name || user.name];
       if (date) { params.push(date); q += ` AND metric_date=$${params.length}`; }
       if (statusFilter) { params.push(statusFilter); q += ` AND status=$${params.length}`; }
       if (vpRcFilter) { params.push(vpRcFilter); q += ` AND region_coach=$${params.length}`; }
       else if (vpAcFilter) { params.push(vpAcFilter); q += ` AND area_coach=$${params.length}`; }
+      if (filterStore) { params.push(filterStore); q += ` AND store_name=$${params.length}`; }
       q += ' ORDER BY severity DESC, consecutive_days_out DESC';
       const r = await p.query(q, params);
       flags = r.rows;
@@ -2012,6 +2041,44 @@ router.get('/automation/fourth-diag', async (req, res) => {
   } catch (err) {
     diag.error = err.message;
     res.json(diag);
+  }
+});
+
+// ── GET /api/intel/scope-stores — AC list + stores for global filter dropdowns ─
+router.get('/scope-stores', requireAuth, async (req, res) => {
+  try {
+    const user = req.session.user;
+    const p    = db.getPool();
+    if (!p) return res.json({ area_coaches: [], stores_by_ac: {} });
+
+    let acWhere = '1=1'; const params = [];
+    if (user.scope?.type === 'rdo') {
+      const acs = user.scope.area_coaches || [];
+      if (acs.length) { params.push(acs); acWhere = `area_coach = ANY($${params.length}::text[])`; }
+      else { params.push(user.scope.rc_name || user.name); acWhere = `region_coach = $${params.length}`; }
+    } else if (user.scope?.type === 'area_coach') {
+      params.push(user.scope.ac_name || user.name); acWhere = `area_coach = $${params.length}`;
+    } else if (user.role === 'vp') {
+      const rcFilter = req.query.rc_name || null;
+      if (rcFilter) { params.push(rcFilter); acWhere = `region_coach = $${params.length}`; }
+    }
+
+    const r = await p.query(
+      `SELECT area_coach, store_id, store_name FROM store_assignments WHERE ${acWhere} ORDER BY area_coach, store_name`,
+      params
+    );
+
+    const area_coaches = [...new Set(r.rows.map(x => x.area_coach).filter(Boolean))].sort();
+    const stores_by_ac = {};
+    for (const row of r.rows) {
+      const ac = row.area_coach || 'Unknown';
+      if (!stores_by_ac[ac]) stores_by_ac[ac] = [];
+      stores_by_ac[ac].push({ store_id: row.store_id, store_name: row.store_name });
+    }
+
+    res.json({ area_coaches, stores_by_ac });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
