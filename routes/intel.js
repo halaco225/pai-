@@ -1656,32 +1656,76 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
     if (!p) return res.json({ memo_text: 'Database unavailable.', priority_flags: [], shoutouts: [], follow_up_items: [] });
 
     // "View as AC" — manager sees the brief of a specific area coach
-    const viewAsAC = req.query.view_as_ac || null;
+    const viewAsAC      = req.query.view_as_ac || null;
+    const forceRefreshV = req.query.refresh === '1';
     if (viewAsAC && ['rdo','vp'].includes(user.role)) {
-      // Find that AC in USER_ROSTER
+      // Match by name OR ac_name in scope (case-insensitive fallback)
       const acUser = USER_ROSTER.find(u =>
-        u.role === 'area_coach' && (u.name === viewAsAC || u.scope?.ac_name === viewAsAC)
+        u.role === 'area_coach' &&
+        (u.name === viewAsAC || u.scope?.ac_name === viewAsAC ||
+         u.name?.toLowerCase() === viewAsAC.toLowerCase() ||
+         u.scope?.ac_name?.toLowerCase() === viewAsAC.toLowerCase())
       );
-      if (acUser) {
-        const yesterday2 = (() => { const d=new Date(); d.setDate(d.getDate()-1); return d.toLocaleDateString('en-CA',{timeZone:'America/New_York'}); })();
-        const dr = await p.query(`SELECT TO_CHAR(MAX(metric_date),'YYYY-MM-DD') AS latest FROM intel_dbs_metrics WHERE metric_date<=$1`,[yesterday2]);
-        const date2 = dr.rows[0]?.latest || yesterday2;
+
+      const acName = acUser?.scope?.ac_name || acUser?.name || viewAsAC;
+      const yesterday2 = (() => { const d=new Date(); d.setDate(d.getDate()-1); return d.toLocaleDateString('en-CA',{timeZone:'America/New_York'}); })();
+      const dr2 = await p.query(`SELECT TO_CHAR(MAX(metric_date),'YYYY-MM-DD') AS latest FROM intel_dbs_metrics WHERE metric_date<=$1`,[yesterday2]);
+      const date2 = dr2.rows[0]?.latest || yesterday2;
+
+      // Fetch flags for this AC's stores (always needed for sidebar)
+      const fr = await p.query(
+        `SELECT store_id,store_name,area_coach,metric_type,value,severity,consecutive_days_out,status,created_at AS flag_date,details
+         FROM intel_flags WHERE metric_date=$1 AND area_coach=$2 AND status!='archived'
+         ORDER BY CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,consecutive_days_out DESC LIMIT 50`,
+        [date2, acName]
+      );
+
+      // Check DB cache first (unless forced refresh)
+      let acMemo = null;
+      if (!forceRefreshV && acUser) {
         const dbCached = await db.getIntelCache({ userId: acUser.username + '::brief', cacheDate: date2 });
-        if (dbCached?.data?.memo_text) {
-          // Fetch flags for sidebar scoped to this AC
-          const fr = await p.query(
-            `SELECT store_id,store_name,area_coach,metric_type,value,severity,consecutive_days_out,status,created_at AS flag_date,details
-             FROM intel_flags WHERE metric_date=$1 AND area_coach=$2 AND status!='archived'
-             ORDER BY CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,consecutive_days_out DESC LIMIT 50`,
-            [date2, acUser.scope?.ac_name || acUser.name]
-          );
-          return res.json({
-            date: date2, memo_text: dbCached.data.memo_text,
-            viewing_as: acUser.name, viewing_as_role: 'Area Coach',
-            priority_flags: fr.rows, shoutouts: [], follow_up_items: [],
-          });
+        if (dbCached?.data?.memo_text) acMemo = dbCached.data.memo_text;
+      }
+
+      // Generate on-demand if no cache (scoped to this AC)
+      if (!acMemo) {
+        const [acMetRes, acSalesRes, acVelRes, acFlagsRes, acShoutRes, acFollowRes] = await Promise.all([
+          p.query(`SELECT COUNT(DISTINCT store_id)::int as store_count, COALESCE(SUM(net_sales_day),0)::float as net_sales_day, AVG(growth_pct_day)::float as avg_growth_day FROM intel_dbs_metrics WHERE metric_date=$1 AND area_coach=$2`, [date2, acName]),
+          p.query(`SELECT store_id, store_name, area_coach, net_sales_day::float, growth_pct_day::float FROM intel_dbs_metrics WHERE metric_date=$1 AND area_coach=$2 ORDER BY net_sales_day DESC NULLS LAST`, [date2, acName]),
+          p.query(`SELECT v.store_id, COALESCE(sa.store_name,v.store_id::text) as store_name, ROUND(AVG(v.on_time_pct)::numeric,1)::float AS avg_otd_pct, ROUND(AVG(v.pct_lt4)::numeric,1)::float AS avg_pct_lt4 FROM velocity_daily_records v JOIN store_assignments sa ON v.store_id=sa.store_id WHERE v.record_date=$1 AND sa.area_coach=$2 AND v.on_time_pct IS NOT NULL GROUP BY v.store_id, sa.store_name`, [date2, acName]),
+          p.query(`SELECT store_id,store_name,area_coach,metric_type,value,severity,consecutive_days_out,status,details FROM intel_flags WHERE metric_date=$1 AND area_coach=$2 AND status!='archived' ORDER BY CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, consecutive_days_out DESC LIMIT 50`, [date2, acName]),
+          p.query(`SELECT s.store_id, COALESCE(a.store_name,s.store_id) as store_name, s.summary, s.full_comment AS comment_text, a.area_coach FROM intel_shoutouts s LEFT JOIN store_assignments a ON s.store_id=a.store_id WHERE s.shoutout_date=$1 AND a.area_coach=$2 LIMIT 10`, [date2, acName]),
+          p.query(`SELECT ack.acknowledged_by, ack.action_taken, ack.acknowledged_at, f.store_id, f.store_name, f.metric_type, f.status as flag_status, f.consecutive_days_out FROM intel_acknowledgments ack JOIN intel_flags f ON f.id=ack.flag_id WHERE ack.acknowledged_at>=NOW()-INTERVAL '7 days' AND (f.status!='resolved' OR f.consecutive_days_out>=3) AND f.area_coach=$1 LIMIT 15`, [acName]),
+        ]);
+        const { generateMorningBrief } = require('../services/claude');
+        const { getFiscalContextString } = require('../services/fiscal-calendar');
+        acMemo = await generateMorningBrief({
+          date: date2,
+          userName:      acUser?.name || viewAsAC,
+          userRole:      'area_coach',
+          fiscalContext: getFiscalContextString ? getFiscalContextString() : '',
+          regionMetrics: acMetRes.rows[0] || {},
+          byAC:          [],
+          byStore:       acSalesRes.rows,
+          velocity:      acVelRes.rows,
+          flags:         acFlagsRes.rows,
+          shoutouts:     acShoutRes.rows,
+          followUps:     acFollowRes.rows,
+        });
+        // Cache it so next load is instant
+        if (acUser) {
+          await db.upsertIntelCache({
+            user_id: acUser.username + '::brief', cache_date: date2,
+            role: 'morning_brief', payload: { memo_text: acMemo, generated_at: new Date().toISOString() }
+          }).catch(() => {});
         }
       }
+
+      return res.json({
+        date: date2, memo_text: acMemo,
+        viewing_as: acUser?.name || viewAsAC, viewing_as_role: 'Area Coach',
+        priority_flags: fr.rows, shoutouts: [], follow_up_items: [],
+      });
     }
 
     // Resolve most recent date with DBS data
