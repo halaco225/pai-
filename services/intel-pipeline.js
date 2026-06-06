@@ -376,7 +376,7 @@ async function generateMorningBriefs(targetDate) {
         vp2.push(scope?.ac_name || name); vj += ` AND sa.area_coach=$${vp2.length}`;
       }
 
-      const [flagsRes, metricsRes, acRes, shoutRes, velRes, followRes] = await Promise.all([
+      const [flagsRes, metricsRes, acRes, storeRes, shoutRes, velRes, followRes] = await Promise.all([
         p.query(`SELECT store_id,store_name,area_coach,metric_type,value,severity,consecutive_days_out,status,details
                  FROM intel_flags WHERE ${flagWhere}
                  ORDER BY CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,consecutive_days_out DESC LIMIT 100`, fp),
@@ -388,7 +388,12 @@ async function generateMorningBriefs(targetDate) {
                         COALESCE(SUM(net_sales_day),0)::float as net_sales_day,
                         AVG(growth_pct_day)::float as avg_growth_day
                  FROM intel_dbs_metrics WHERE ${metricsWhere}
-                 GROUP BY area_coach ORDER BY area_coach`, mp),
+                 GROUP BY area_coach ORDER BY net_sales_day DESC`, mp),
+        // Per-store for hierarchy-aware brief
+        p.query(`SELECT store_id, store_name, area_coach,
+                        net_sales_day::float, growth_pct_day::float
+                 FROM intel_dbs_metrics WHERE ${metricsWhere}
+                 ORDER BY area_coach, net_sales_day DESC NULLS LAST`, mp),
         p.query(`SELECT s.store_id,COALESCE(a.store_name,s.store_id) as store_name,
                         s.summary,s.full_comment AS comment_text,a.area_coach
                  FROM intel_shoutouts s LEFT JOIN store_assignments a ON s.store_id=a.store_id
@@ -414,7 +419,7 @@ async function generateMorningBriefs(targetDate) {
 
       const memo_text = await generateMorningBrief({
         date: targetDate, userName: name, userRole: role, fiscalContext: fiscal,
-        regionMetrics: metricsRes.rows[0] || {}, byAC,
+        regionMetrics: metricsRes.rows[0] || {}, byAC, byStore: storeRes.rows,
         velocity: velRes.rows, flags: flagsRes.rows,
         shoutouts: shoutRes.rows, followUps: followRes.rows,
       });

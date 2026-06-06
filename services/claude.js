@@ -1463,95 +1463,171 @@ Rules:
 
 // ─── Morning Brief Generator ────────────────────────────────────────────────
 
-async function generateMorningBrief({ date, userName, userRole, fiscalContext, regionMetrics, byAC, velocity, flags, shoutouts, followUps }) {
+async function generateMorningBrief({ date, userName, userRole, fiscalContext, regionMetrics, byAC, byStore, velocity, flags, shoutouts, followUps }) {
   const fmtDollar = n => n != null ? '$' + Math.round(n).toLocaleString('en-US') : 'N/A';
   const fmtGrowth = n => n != null ? (n >= 0 ? '+' : '') + Number(n).toFixed(1) + '% vs LY' : 'no LY data';
 
-  const regionLine = regionMetrics.store_count > 0
-    ? `${regionMetrics.store_count} stores | Net Sales: ${fmtDollar(regionMetrics.net_sales_day)} | Growth: ${fmtGrowth(regionMetrics.avg_growth_day)}`
+  const isAC = userRole === 'area_coach';
+  const isVP = userRole === 'vp';
+
+  const totalLine = regionMetrics.store_count > 0
+    ? `${regionMetrics.store_count} store${regionMetrics.store_count !== 1 ? 's' : ''} | Net Sales: ${fmtDollar(regionMetrics.net_sales_day)} | Growth: ${fmtGrowth(regionMetrics.avg_growth_day)}`
     : 'No DBS data loaded for this date.';
 
-  const acLines = (byAC || []).map(a =>
-    `  • ${a.area_coach}: ${fmtDollar(a.net_sales_day)} | ${fmtGrowth(a.avg_growth_day)} | ${a.high_flags} high flag(s)`
-  ).join('\n') || '  (No area coach data)';
+  // Role-specific breakdown section
+  let breakdownSection = '';
+  if (isAC && byStore?.length) {
+    // Area Coach: show each store
+    breakdownSection = 'BY STORE:\n' + byStore.map(s =>
+      `  • ${s.store_name || s.store_id}: ${fmtDollar(s.net_sales_day)} | ${fmtGrowth(s.growth_pct_day)}`
+    ).join('\n');
+  } else if (byAC?.length) {
+    // RDO/VP: show each AC with their stores if available
+    breakdownSection = (isVP ? 'BY REGION / AREA COACH:\n' : 'BY AREA COACH:\n')
+      + byAC.map(a => {
+          let line = `  • ${a.area_coach}: ${fmtDollar(a.net_sales_day)} | ${fmtGrowth(a.avg_growth_day)} | ${a.high_flags} high flag(s)`;
+          // For RDO, show notable stores under each AC
+          if (!isVP && byStore?.length) {
+            const acStores = byStore.filter(s => s.area_coach === a.area_coach);
+            if (acStores.length) {
+              const top = acStores.sort((x,y) => (y.growth_pct_day||0) - (x.growth_pct_day||0));
+              line += '\n' + top.map(s => `      - ${s.store_name || s.store_id}: ${fmtDollar(s.net_sales_day)} | ${fmtGrowth(s.growth_pct_day)}`).join('\n');
+            }
+          }
+          return line;
+        }).join('\n');
+  }
 
   const flagLines = flags.length
-    ? flags.slice(0, 25).map(f => {
-        const days = f.consecutive_days_out > 1 ? ` | ${f.consecutive_days_out}-day pattern` : '';
-        return `  • [${f.severity.toUpperCase()}] ${f.store_name || f.store_id} (${f.area_coach || '?'}) — ${f.metric_type}${days}`;
+    ? flags.slice(0, 30).map(f => {
+        const days = (f.consecutive_days_out||0) > 1 ? ` | ${f.consecutive_days_out}-day pattern` : '';
+        const ac   = !isAC && f.area_coach ? ` (${f.area_coach})` : '';
+        return `  • [${f.severity.toUpperCase()}] ${f.store_name || f.store_id}${ac} — ${f.metric_type}${days}`;
       }).join('\n')
     : '  No active flags.';
 
   const shoutLines = shoutouts.length
-    ? shoutouts.slice(0, 6).map(s => `  • ${s.store_name || s.store_id} (${s.area_coach || ''}): "${(s.summary || s.comment_text || '').slice(0, 120)}"`)
-      .join('\n')
+    ? shoutouts.slice(0, 8).map(s => {
+        const ac = !isAC && s.area_coach ? ` (${s.area_coach})` : '';
+        return `  • ${s.store_name || s.store_id}${ac}: "${(s.summary || s.comment_text || '').slice(0, 120)}"`;
+      }).join('\n')
     : '  No shoutouts today.';
 
   const followLines = followUps.length
     ? followUps.map(f => {
         const ackDate = f.acknowledged_at ? String(f.acknowledged_at).slice(0, 10) : '?';
-        return `  • ${f.store_name || f.store_id} | ${f.metric_type} | ${f.acknowledged_by} committed on ${ackDate}: "${(f.action_taken || '').slice(0, 100)}" | Flag status: ${f.flag_status || f.status}`;
+        return `  • ${f.store_name || f.store_id} | ${f.metric_type} | ${f.acknowledged_by} committed on ${ackDate}: "${(f.action_taken || '').slice(0, 100)}" | Status: ${f.flag_status || f.status}`;
       }).join('\n')
     : '  No outstanding follow-up items.';
 
   const velLines = (velocity || []).length
-    ? (velocity || []).map(v =>
-        `  • ${v.area_coach}: OTD ${v.avg_otd_pct != null ? v.avg_otd_pct + '%' : 'N/A'} | <4min ${v.avg_pct_lt4 != null ? v.avg_pct_lt4 + '%' : 'N/A'}`
+    ? velocity.map(v =>
+        `  • ${v.area_coach || v.store_name || '?'}: OTD ${v.avg_otd_pct != null ? v.avg_otd_pct + '%' : 'N/A'} | <4min ${v.avg_pct_lt4 != null ? v.avg_pct_lt4 + '%' : 'N/A'}`
       ).join('\n')
     : '  No velocity data for this date.';
 
-  const prompt = `You are writing a morning executive brief memo for ${userName} (${userRole}) at Ayvaz Pizza LLC, a Pizza Hut franchisee.
+  // Role label for prompt
+  const roleLabel = isAC ? 'Area Coach' : isVP ? 'VP of Operations' : 'Region Coach / RDO';
+
+  // Role-specific output instructions
+  const outputInstructions = isAC
+    ? `YESTERDAY'S PERFORMANCE
+[2-3 sentences covering your total area: combined sales, growth vs LY, overall read on the day]
+
+STORE BREAKDOWN
+[One bullet per store. Include sales, growth vs LY, any flags or standout moments. Be specific — this is what you'll reference in 1:1s.]
+
+HIGHLIGHTS
+[Stores or moments worth calling out positively — strong growth, great guest reviews, clean operations.]
+
+WATCHOUTS
+[Store-level issues: flags, negative growth, patterns. Name the specific store, metric, and how many consecutive days. Be direct.]
+
+SPEED OF SERVICE
+[OTD % and <4min % — flag any store below 85% OTD or below 70% <4min. Skip if no data.]
+
+FOLLOW-UP ITEMS
+[Commitments made in prior days that are still open or where the issue recurred. Skip if empty.]
+
+PRIORITIES FOR TODAY
+[2-3 specific actions for today based on the data above]`
+    : isVP
+    ? `YESTERDAY'S PERFORMANCE
+[2-3 sentences on territory-wide performance: total sales, growth vs LY, overall read]
+
+BY REGION / AREA COACH
+[Bullet per AC or region. Call out who stood out positively and who needs attention, with numbers.]
+
+HIGHLIGHTS
+[Strongest performers — ACs, regions, or specific stores. Be specific with numbers.]
+
+WATCHOUTS
+[Underperforming ACs or regions, high-severity patterns, anything needing VP attention. Be direct.]
+
+SPEED OF SERVICE
+[Territory OTD summary. Call out any AC below 85% OTD. Skip if no data.]
+
+FOLLOW-UP ITEMS
+[Open commitments from prior days. Skip if empty.]
+
+PRIORITIES FOR TODAY
+[2-4 territory-level priorities]`
+    : `YESTERDAY'S PERFORMANCE
+[2-3 sentences: total region sales, growth vs LY, overall read]
+
+BY AREA COACH
+[Bullet per AC with sales, growth vs LY, high flags. Under each AC, list notable stores — best and worst performers with specific numbers.]
+
+HIGHLIGHTS
+[Standout AC or store performances — growth %, guest shoutouts. Be specific.]
+
+WATCHOUTS
+[High-severity flags, negative growth areas, multi-day patterns. Name the store, AC, metric, and consecutive days.]
+
+SPEED OF SERVICE
+[OTD and <4min by AC. Flag anyone below 85% OTD or 70% <4min. Skip if no data.]
+
+FOLLOW-UP ITEMS
+[Commitments from prior days that are still open or recurred. Skip if empty.]
+
+PRIORITIES FOR TODAY
+[2-4 specific priorities for the region today]`;
+
+  const prompt = `You are writing a morning executive brief memo for ${userName} (${roleLabel}) at Ayvaz Pizza LLC, a Pizza Hut franchisee.
 
 DATE: ${date}
 ${fiscalContext ? 'FISCAL CONTEXT: ' + fiscalContext : ''}
 
-YESTERDAY'S REGIONAL PERFORMANCE:
-${regionLine}
+OVERALL PERFORMANCE:
+${totalLine}
 
-BY AREA COACH:
-${acLines}
+${breakdownSection}
 
 SPEED OF SERVICE (Yesterday):
 ${velLines}
 
-ACTIVE FLAGS (all severities, sorted high → low):
+ACTIVE FLAGS (sorted high → low severity):
 ${flagLines}
 
-GUEST SHOUTOUTS (positive reviews):
+GUEST SHOUTOUTS:
 ${shoutLines}
 
 FOLLOW-UP ITEMS FROM PRIOR DAYS:
 ${followLines}
 
 ---
-Write a professional executive morning brief memo. Use this exact format:
+Write a professional morning brief memo at the ${roleLabel} level. Use this exact format:
 
 MORNING BRIEF — ${date}
 ${fiscalContext || ''}
 
-YESTERDAY'S PERFORMANCE
-[2-3 sentences: total sales, growth vs last year, how many stores, high-level read on the day]
+${outputInstructions}
 
-HIGHLIGHTS
-[Bullet points: positive growth stores with specific %, shoutouts with store names. Skip if nothing positive.]
-
-WATCHOUTS
-[Bullet points: high-severity flags, stores with negative growth, recurring issues. Name the store, the metric, consecutive days. Be direct.]
-
-SPEED OF SERVICE
-[OTD % and <4min % highlights — call out any AC below 85% OTD or below 70% <4min. Skip if no velocity data.]
-
-FOLLOW-UP ITEMS
-[Bullet points: pending commitments from prior acknowledgments, patterns that recurred after an AC said they'd fix it. Skip section if empty.]
-
-PRIORITIES FOR TODAY
-[Numbered list of 2-4 specific, actionable priorities based on the data above]
-
-Rules: Direct and factual. Use exact numbers. Skip a section entirely if there's nothing to say — no "N/A" or "none". Aim for 300-500 words. Use Pizza Hut operations language (area coach, not district manager; net sales, not revenue).`;
+Rules: Direct and factual. Use exact numbers from the data. Skip a section entirely if there's nothing to say. ${isAC ? 'Aim for 350-500 words.' : 'Aim for 400-600 words.'} Use Pizza Hut operations language (area coach not district manager, net sales not revenue, store not restaurant).`;
 
   const resp = await client.messages.create({
     model: MODEL,
-    max_tokens: 1800,
+    max_tokens: 2200,
     messages: [{ role: 'user', content: prompt }]
   });
   return resp.content[0].text.trim();

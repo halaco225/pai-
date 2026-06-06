@@ -404,6 +404,7 @@ button{font-family:inherit;cursor:pointer}
               <button class="copy-btn" id="briefRefreshBtn" onclick="refreshBrief()">Refresh</button>
             </div>
           </div>
+          <div id="briefViewingAs" style="display:none;background:rgba(96,165,250,.1);border:1px solid #3b82f6;border-radius:8px;padding:8px 14px;font-size:12px;color:#60a5fa;font-weight:600;margin-bottom:10px"></div>
           <div class="memo-card" id="briefNarrative">
             <div class="loading"><span class="spin">⟳</span> Generating morning brief…</div>
           </div>
@@ -961,8 +962,18 @@ let briefMemoText='';
 async function loadBrief(){
   try{
     document.getElementById('briefNarrative').innerHTML='<div class="loading"><span class="spin">⟳</span> Generating morning brief…</div>';
-    const data=await fetch('/api/intel/morning-brief').then(r=>r.json());
+    let briefUrl='/api/intel/morning-brief';
+    // If an AC filter is active and user is RDO/VP, load that AC's brief
+    if(globalACFilter&&currentUser&&['rdo','vp'].includes(currentUser.role)){
+      briefUrl+='?view_as_ac='+encodeURIComponent(globalACFilter);
+    }
+    const data=await fetch(briefUrl).then(r=>r.json());
     briefMemoText=data.memo_text||'';
+    const banner=document.getElementById('briefViewingAs');
+    if(banner){
+      if(data.viewing_as){banner.textContent='👁 Viewing '+data.viewing_as+'’s brief ('+data.viewing_as_role+')';banner.style.display='';}
+      else banner.style.display='none';
+    }
     renderMemo(briefMemoText);
     const flags=data.priority_flags||[];
     briefData.urgent=flags.filter(f=>f.severity==='high');

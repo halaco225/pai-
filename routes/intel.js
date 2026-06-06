@@ -1655,6 +1655,35 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
     const p    = db.getPool();
     if (!p) return res.json({ memo_text: 'Database unavailable.', priority_flags: [], shoutouts: [], follow_up_items: [] });
 
+    // "View as AC" — manager sees the brief of a specific area coach
+    const viewAsAC = req.query.view_as_ac || null;
+    if (viewAsAC && ['rdo','vp'].includes(user.role)) {
+      // Find that AC in USER_ROSTER
+      const acUser = USER_ROSTER.find(u =>
+        u.role === 'area_coach' && (u.name === viewAsAC || u.scope?.ac_name === viewAsAC)
+      );
+      if (acUser) {
+        const yesterday2 = (() => { const d=new Date(); d.setDate(d.getDate()-1); return d.toLocaleDateString('en-CA',{timeZone:'America/New_York'}); })();
+        const dr = await p.query(`SELECT TO_CHAR(MAX(metric_date),'YYYY-MM-DD') AS latest FROM intel_dbs_metrics WHERE metric_date<=$1`,[yesterday2]);
+        const date2 = dr.rows[0]?.latest || yesterday2;
+        const dbCached = await db.getIntelCache({ userId: acUser.username + '::brief', cacheDate: date2 });
+        if (dbCached?.data?.memo_text) {
+          // Fetch flags for sidebar scoped to this AC
+          const fr = await p.query(
+            `SELECT store_id,store_name,area_coach,metric_type,value,severity,consecutive_days_out,status,created_at AS flag_date,details
+             FROM intel_flags WHERE metric_date=$1 AND area_coach=$2 AND status!='archived'
+             ORDER BY CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,consecutive_days_out DESC LIMIT 50`,
+            [date2, acUser.scope?.ac_name || acUser.name]
+          );
+          return res.json({
+            date: date2, memo_text: dbCached.data.memo_text,
+            viewing_as: acUser.name, viewing_as_role: 'Area Coach',
+            priority_flags: fr.rows, shoutouts: [], follow_up_items: [],
+          });
+        }
+      }
+    }
+
     // Resolve most recent date with DBS data
     const yesterday = (() => {
       const d = new Date(); d.setDate(d.getDate() - 1);
@@ -1669,31 +1698,30 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
     // Build scope WHERE fragments
     let flagWhere    = `metric_date = $1 AND status != 'archived'`;
     let metricsWhere = `metric_date = $1`;
-    let acWhere      = '1=1';
-    const fp = [date], mp = [date], ap = [];
+    const fp = [date], mp = [date];
 
     if (user.scope?.type === 'rdo') {
       const acs = user.scope.area_coaches || [];
       if (acs.length) {
         fp.push(acs); flagWhere    += ` AND area_coach = ANY($${fp.length}::text[])`;
         mp.push(acs); metricsWhere += ` AND area_coach = ANY($${mp.length}::text[])`;
-        ap.push(acs); acWhere       = `area_coach = ANY($${ap.length}::text[])`;
       } else {
         const rc = user.scope.rc_name || user.name;
         fp.push(rc); flagWhere    += ` AND region_coach = $${fp.length}`;
         mp.push(rc); metricsWhere += ` AND region_coach = $${mp.length}`;
-        ap.push(rc); acWhere       = `region_coach = $${ap.length}`;
       }
     } else if (user.scope?.type === 'area_coach') {
       const ac = user.scope.ac_name || user.name;
       fp.push(ac); flagWhere    += ` AND area_coach = $${fp.length}`;
       mp.push(ac); metricsWhere += ` AND area_coach = $${mp.length}`;
-      ap.push(ac); acWhere       = `area_coach = $${ap.length}`;
+    } else if (user.role === 'vp') {
+      const vp = user.scope?.vp_name || user.name;
+      fp.push(vp); flagWhere    += ` AND territory_vp = $${fp.length}`;
+      mp.push(vp); metricsWhere += ` AND territory_vp = $${mp.length}`;
     }
 
-    // Parallel data fetch
-    const [flagsRes, metricsRes, acMetricsRes, shoutoutsRes, velocityRes, followUpRes] = await Promise.all([
-      // All active flags for the date, sorted by severity + consecutive days
+    // Parallel data fetch — including per-store breakdown for hierarchy-aware brief
+    const [flagsRes, metricsRes, acMetricsRes, storeMetricsRes, shoutoutsRes, velocityRes, followUpRes] = await Promise.all([
       p.query(
         `SELECT store_id, store_name, area_coach, metric_type, value, target, variance,
                 severity, consecutive_days_out, status, created_at AS flag_date, details
@@ -1701,7 +1729,6 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
          ORDER BY CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
                   consecutive_days_out DESC LIMIT 100`, fp
       ),
-      // Region-level DBS summary
       p.query(
         `SELECT COUNT(DISTINCT store_id)::int as store_count,
                 COALESCE(SUM(net_sales_day), 0)::float as net_sales_day,
@@ -1710,16 +1737,22 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
                 AVG(growth_pct_wtd)::float as avg_growth_wtd
          FROM intel_dbs_metrics WHERE ${metricsWhere}`, mp
       ),
-      // Per-AC DBS summary for memo context
+      // Per-AC summary (for RDO/VP briefs)
       p.query(
         `SELECT area_coach,
                 COUNT(DISTINCT store_id)::int as store_count,
                 COALESCE(SUM(net_sales_day), 0)::float as net_sales_day,
                 AVG(growth_pct_day)::float as avg_growth_day
          FROM intel_dbs_metrics WHERE ${metricsWhere}
-         GROUP BY area_coach ORDER BY area_coach`, mp
+         GROUP BY area_coach ORDER BY net_sales_day DESC`, mp
       ),
-      // Shoutouts for the date — build separate param array to avoid offset arithmetic
+      // Per-store breakdown (for AC briefs + store callouts in RDO briefs)
+      p.query(
+        `SELECT store_id, store_name, area_coach,
+                net_sales_day::float, growth_pct_day::float
+         FROM intel_dbs_metrics WHERE ${metricsWhere}
+         ORDER BY area_coach, net_sales_day DESC NULLS LAST`, mp
+      ),
       (() => {
         const sq = [`SELECT s.id, s.store_id, COALESCE(a.store_name, s.store_id) as store_name, s.summary,
                 s.full_comment AS comment_text, s.shoutout_date, a.area_coach
@@ -1731,12 +1764,11 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
         else if (user.scope?.type === 'rdo') {
           const acs = user.scope.area_coaches || [];
           if (acs.length) { sp.push(acs); sq.push(`AND a.area_coach = ANY($${sp.length}::text[])`); }
-          else if (user.scope.rc_name || user.name) { sp.push(user.scope.rc_name || user.name); sq.push(`AND a.region_coach = $${sp.length}`); }
+          else { sp.push(user.scope.rc_name || user.name); sq.push(`AND a.region_coach = $${sp.length}`); }
         }
         sq.push('ORDER BY s.shoutout_date DESC LIMIT 20');
         return p.query(sq.join(' '), sp);
       })(),
-      // Velocity for the date — avg OTD% and make time per AC
       (() => {
         const vp = [date];
         let vj = 'JOIN store_assignments sa ON v.store_id=sa.store_id';
@@ -1748,21 +1780,18 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
           vp.push(user.scope.ac_name || user.name); vj += ` AND sa.area_coach=$${vp.length}`;
         }
         return p.query(`
-          SELECT sa.area_coach,
+          SELECT sa.area_coach, v.store_id, COALESCE(sa.store_name, v.store_id::text) as store_name,
                  ROUND(AVG(v.on_time_pct)::numeric,1)::float AS avg_otd_pct,
-                 ROUND(AVG(v.pct_lt4)::numeric,1)::float      AS avg_pct_lt4,
-                 COUNT(DISTINCT v.store_id)::int              AS store_count
+                 ROUND(AVG(v.pct_lt4)::numeric,1)::float      AS avg_pct_lt4
           FROM velocity_daily_records v ${vj}
           WHERE v.record_date=$1 AND v.on_time_pct IS NOT NULL
-          GROUP BY sa.area_coach ORDER BY sa.area_coach`, vp);
+          GROUP BY sa.area_coach, v.store_id, sa.store_name ORDER BY sa.area_coach`, vp);
       })(),
-      // Follow-up items: acknowledged flags from last 7 days scoped to this user, still open or recurred
       (() => {
         const fup = [`SELECT ack.flag_id, ack.acknowledged_by, ack.action_taken,
                 ack.acknowledged_at, f.store_id, f.store_name, f.area_coach,
                 f.metric_type, f.metric_date, f.status as flag_status, f.consecutive_days_out
-         FROM intel_acknowledgments ack
-         JOIN intel_flags f ON f.id = ack.flag_id
+         FROM intel_acknowledgments ack JOIN intel_flags f ON f.id = ack.flag_id
          WHERE ack.acknowledged_at >= NOW() - INTERVAL '7 days'
            AND (f.status != 'resolved' OR f.consecutive_days_out >= 3)`];
         const fpp = [];
@@ -1778,15 +1807,15 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
       })()
     ]);
 
-    // Attach high_flag count to each AC row
     const acFlagCounts = {};
     for (const fl of flagsRes.rows) {
       if (fl.severity === 'high') acFlagCounts[fl.area_coach] = (acFlagCounts[fl.area_coach] || 0) + 1;
     }
-    const byAC = acMetricsRes.rows.map(a => ({ ...a, high_flags: acFlagCounts[a.area_coach] || 0 }));
+    const byAC    = acMetricsRes.rows.map(a => ({ ...a, high_flags: acFlagCounts[a.area_coach] || 0 }));
+    const byStore = storeMetricsRes.rows;
 
-    // Check cache: in-memory first, then DB (pipeline pre-generates), then on-demand
-    const cacheKey = `${user.username}_${date}`;
+    // Cache: in-memory → DB (pipeline) → on-demand
+    const cacheKey    = `${user.username}_${date}`;
     const forceRefresh = req.query.refresh === '1';
     if (forceRefresh) briefMemoCache.delete(cacheKey);
     const inmem = briefMemoCache.get(cacheKey);
@@ -1795,27 +1824,19 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
     if (!forceRefresh && inmem && (Date.now() - inmem.ts) < BRIEF_CACHE_TTL) {
       memo_text = inmem.memo;
     } else {
-      // Check DB cache written by the daily pipeline
       const dbCached = await db.getIntelCache({ userId: user.username + '::brief', cacheDate: date });
-      if (dbCached?.data?.memo_text) {
+      if (!forceRefresh && dbCached?.data?.memo_text) {
         memo_text = dbCached.data.memo_text;
       } else {
-        // Generate on-demand (first load of the day before pipeline has run, or Refresh)
         const { generateMorningBrief } = require('../services/claude');
         const { getFiscalContextString } = require('../services/fiscal-calendar');
         memo_text = await generateMorningBrief({
-          date,
-          userName:      user.name,
-          userRole:      user.role,
+          date, userName: user.name, userRole: user.role,
           fiscalContext: getFiscalContextString ? getFiscalContextString() : '',
           regionMetrics: metricsRes.rows[0] || {},
-          byAC,
-          velocity:   velocityRes.rows,
-          flags:      flagsRes.rows,
-          shoutouts:  shoutoutsRes.rows,
-          followUps:  followUpRes.rows,
+          byAC, byStore, velocity: velocityRes.rows,
+          flags: flagsRes.rows, shoutouts: shoutoutsRes.rows, followUps: followUpRes.rows,
         });
-        // Save to DB so it survives server restarts
         await db.upsertIntelCache({
           user_id: user.username + '::brief', cache_date: date,
           role: 'morning_brief', payload: { memo_text, generated_at: new Date().toISOString() }
@@ -1825,12 +1846,11 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
     }
 
     res.json({
-      date,
-      memo_text,
-      priority_flags:   flagsRes.rows,
-      shoutouts:        shoutoutsRes.rows,
-      follow_up_items:  followUpRes.rows,
-      metrics_summary:  metricsRes.rows[0] || {},
+      date, memo_text,
+      priority_flags:  flagsRes.rows,
+      shoutouts:       shoutoutsRes.rows,
+      follow_up_items: followUpRes.rows,
+      metrics_summary: metricsRes.rows[0] || {},
     });
   } catch (err) {
     console.error('[Intel] /morning-brief error:', err.message);
