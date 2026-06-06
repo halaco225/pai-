@@ -1104,12 +1104,13 @@ router.get('/smg-comments', async (req, res) => {
     if (req.query.date) {
       dateStart = dateEnd = req.query.date;
     } else {
-      const range = req.query.range || 'yesterday';
+      const range = req.query.range || 'wtd'; // default: current fiscal week (Tue–Mon)
       if (range === 'wtd') {
-        const dow = nowEST.getDay(); // 0=Sun
-        const daysFromMon = dow === 0 ? 6 : dow - 1;
-        const monday = new Date(nowEST); monday.setDate(nowEST.getDate() - daysFromMon);
-        dateStart = toEST(monday);
+        // PH fiscal week runs Tuesday–Monday
+        const dow = nowEST.getDay(); // 0=Sun,1=Mon,2=Tue,...
+        const daysFromTue = dow === 0 ? 5 : dow === 1 ? 6 : dow - 2;
+        const tuesday = new Date(nowEST); tuesday.setDate(nowEST.getDate() - daysFromTue);
+        dateStart = toEST(tuesday);
         dateEnd   = yesterdayStr;
       } else if (range === 'ptd') {
         const fp = getCurrentFiscalPeriod();
@@ -1185,7 +1186,7 @@ router.get('/smg-comments', async (req, res) => {
             store_id:   row.store_id,
             store_name: row.store_name,
             area_coach: row.area_coach,
-            comment_date: c.event_date || date,
+            comment_date: c.event_date || dateStart,
             source:     c.source,
             summary:    c.summary,
             comment_text: c.comment,
@@ -1202,7 +1203,7 @@ router.get('/smg-comments', async (req, res) => {
           store_id:   row.store_id,
           store_name: row.store_name,
           area_coach: row.area_coach,
-          comment_date: date,
+          comment_date: dateStart,
           source:     'SMG',
           summary:    count + ' negative review' + (count !== 1 ? 's' : '') + ' — run batch to load full details',
           comment_text: det.names_mentioned?.length
@@ -1263,10 +1264,11 @@ router.get('/weekly-digest', async (req, res) => {
 
     // Week bounds: Monday → yesterday (EST)
     const nowEST = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
-    const dayOfWeek = nowEST.getDay(); // 0=Sun,1=Mon...
-    const daysFromMon = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const dayOfWeek = nowEST.getDay(); // 0=Sun,1=Mon,2=Tue...
+    // PH fiscal week: Tuesday–Monday
+    const daysFromTue = dayOfWeek === 0 ? 5 : dayOfWeek === 1 ? 6 : dayOfWeek - 2;
     const weekStart = new Date(nowEST);
-    weekStart.setDate(nowEST.getDate() - daysFromMon);
+    weekStart.setDate(nowEST.getDate() - daysFromTue);
     weekStart.setHours(0, 0, 0, 0);
     const yesterday = new Date(nowEST);
     yesterday.setDate(nowEST.getDate() - 1);
