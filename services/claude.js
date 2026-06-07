@@ -1593,10 +1593,15 @@ FOLLOW-UP ITEMS
 PRIORITIES FOR TODAY
 [2-4 specific priorities for the region today]`;
 
+  // Day of week for the brief date
+  const briefDow = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(date + 'T12:00:00Z').getUTCDay()];
+  const isThursday = briefDow === 'Thursday';
+
   const prompt = `You are writing a morning executive brief memo for ${userName} (${roleLabel}) at Ayvaz Pizza LLC, a Pizza Hut franchisee.
 
-DATE: ${date}
+DATE: ${date} (${briefDow})
 ${fiscalContext ? 'FISCAL CONTEXT: ' + fiscalContext : ''}
+IMPORTANT: Do NOT reference "the weekly recap" or "Thursday recap" unless today is actually Thursday. Today is ${briefDow}.
 
 OVERALL PERFORMANCE:
 ${totalLine}

@@ -1317,7 +1317,7 @@ router.get('/weekly-digest', async (req, res) => {
          FROM intel_dbs_metrics
          WHERE metric_date = ${latestInWeek} AND ${metricsWhere}`, mp
       ),
-      // Per-AC WTD
+      // Per-AC WTD (exclude unaligned stores)
       p.query(
         `SELECT area_coach,
                 COUNT(DISTINCT store_id)::int as store_count,
@@ -1325,6 +1325,7 @@ router.get('/weekly-digest', async (req, res) => {
                 AVG(NULLIF(growth_pct_wtd, 0))::float as avg_growth_wtd
          FROM intel_dbs_metrics
          WHERE metric_date = ${latestInWeek} AND ${metricsWhere}
+           AND area_coach IS NOT NULL AND area_coach != 'Unknown'
          GROUP BY area_coach ORDER BY net_sales_wtd DESC`, mp
       ),
       // Flag counts by day for trend chart
@@ -1397,7 +1398,7 @@ router.get('/weekly-digest', async (req, res) => {
       SELECT sa.area_coach,
              ROUND(AVG(CASE WHEN si.indicator='labor_pct'     THEN si.value END)::numeric, 1)::float AS act_labor_pct,
              ROUND(AVG(CASE WHEN si.indicator='sch_labor_pct' THEN si.value END)::numeric, 1)::float AS sched_labor_pct
-      FROM soft_indicators si
+      FROM dbs_soft_indicators si
       JOIN store_assignments sa ON si.store_id = sa.store_id
       WHERE si.metric_date BETWEEN $1 AND $2
         AND si.indicator IN ('labor_pct', 'sch_labor_pct')
@@ -1848,6 +1849,7 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
                 COALESCE(SUM(net_sales_day), 0)::float as net_sales_day,
                 AVG(growth_pct_day)::float as avg_growth_day
          FROM intel_dbs_metrics WHERE ${metricsWhere}
+           AND area_coach IS NOT NULL AND area_coach != 'Unknown'
          GROUP BY area_coach ORDER BY net_sales_day DESC`, mp
       ),
       // Per-store breakdown (for AC briefs + store callouts in RDO briefs)
