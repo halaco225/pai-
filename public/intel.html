@@ -1462,39 +1462,132 @@ function buildFlagAccordion(f){
   const det=(typeof f.details==='object'&&f.details)||{};
   const thStyle='text-align:left;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#475569;padding:5px 8px;border-bottom:1px solid #1e2d4d';
   const tdStyle='padding:5px 8px;font-size:12px;color:#94a3b8;border-bottom:1px solid #0c1425';
-  const tbl=(headers,rows)=>'<table style="width:100%;border-collapse:collapse;margin-top:8px"><thead><tr>'
-    +headers.map(h=>'<th style="'+thStyle+'">'+h+'</th>').join('')+'</tr></thead><tbody>'
-    +rows.map(r=>'<tr>'+r.map(c=>'<td style="'+tdStyle+'">'+escH(String(c??'—'))+'</td>').join('')+'</tr>').join('')
-    +'</tbody></table>';
+  const tbl=(headers,rows)=>{
+    if(!rows.length)return'';
+    return'<table style="width:100%;border-collapse:collapse;margin-top:8px"><thead><tr>'
+      +headers.map(h=>'<th style="'+thStyle+'">'+h+'</th>').join('')+'</tr></thead><tbody>'
+      +rows.map(r=>'<tr>'+r.map(c=>'<td style="'+tdStyle+'">'+escH(String(c??'—'))+'</td>').join('')+'</tr>').join('')
+      +'</tbody></table>';
+  };
+  const kv=(label,val,color)=>'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1e2d4d">'
+    +'<span style="font-size:11px;color:#64748b">'+label+'</span>'
+    +'<span style="font-size:12px;font-weight:700;color:'+(color||'#94a3b8')+'">'+escH(String(val??'—'))+'</span></div>';
+  const section=(title,html)=>'<div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#475569;margin:10px 0 4px">'+title+'</div>'+html;
+  const fmtMny=v=>v!=null?'$'+Math.abs(Number(v)).toFixed(2):'—';
+  const fmtPct=v=>v!=null?Number(v).toFixed(1)+'%':'—';
+  const fmtHrs=v=>v!=null?Number(v).toFixed(1)+'h':'—';
 
-  if(f.metric_type==='CHANGE_DOWN_CASH'||f.metric_type==='CHANGE_DOWN_LARGE'){
+  let out='';
+
+  // ── LABOR_OVER_BUDGET ────────────────────────────────────────────────────
+  if(f.metric_type==='LABOR_OVER_BUDGET'){
+    const varColor=det.labor_dollar_var>0?'#ef4444':'#22c55e';
+    out+=section('Fourth Analytics — Labor Detail',
+      kv('Actual Labor $',fmtMny(det.act_lab_dollar))
+      +kv('Scheduled Labor $',fmtMny(det.sch_lab_dollar))
+      +kv('Labor $ Variance',det.labor_dollar_var!=null?(det.labor_dollar_var>0?'+':'')+fmtMny(det.labor_dollar_var):'—',varColor)
+      +kv('Actual Labor %',fmtPct(det.act_labor_pct),det.act_labor_pct>det.sch_labor_pct?'#ef4444':'#22c55e')
+      +kv('Scheduled Labor %',fmtPct(det.sch_labor_pct))
+      +kv('Hours Over Schedule',fmtHrs(det.hours_var),det.hours_var>0?'#f59e0b':'#22c55e')
+      +kv('Sales vs Forecast',det.sales_var!=null?(det.sales_var>=0?'+':'')+fmtMny(det.sales_var):'—',det.sales_var>=0?'#22c55e':'#ef4444')
+      +kv('Consecutive Days Over',(f.consecutive_days_out||1)+' day'+(f.consecutive_days_out>1?'s':''),f.consecutive_days_out>=3?'#ef4444':'#f59e0b')
+    );
+  }
+
+  // ── CHANGE_DOWN_CASH / CHANGE_DOWN_LARGE ────────────────────────────────
+  else if(f.metric_type==='CHANGE_DOWN_CASH'||f.metric_type==='CHANGE_DOWN_LARGE'){
+    if(det.summary)out+='<div style="font-size:12px;color:#f59e0b;margin-bottom:8px">'+escH(det.summary)+'</div>';
     const tickets=det.tickets||[];
-    if(!tickets.length)return'<div style="color:#475569;font-size:12px">No ticket detail available.</div>';
-    return tbl(['Ticket','Amount','Cashier ID','Cashier Name','Payment','Time'],
-      tickets.map(t=>[t.ticket_id,'$'+(+t.amount).toFixed(2),t.cashier_id,t.cashier_name,t.payment_type,t.time]));
+    out+=section('ODS Change Down Report — Tickets',
+      tickets.length?tbl(['Ticket','Amount','Cashier ID','Cashier Name','Payment','Time'],
+        tickets.map(t=>[t.ticket_id,fmtMny(t.amount),t.cashier_id,t.cashier_name,t.payment_type,t.time]))
+      :'<div style="color:#475569;font-size:12px">No ticket detail available.</div>');
   }
-  if(f.metric_type==='CHANGE_DOWN_PATTERN'){
+
+  // ── CHANGE_DOWN_PATTERN ──────────────────────────────────────────────────
+  else if(f.metric_type==='CHANGE_DOWN_PATTERN'){
+    if(det.summary)out+='<div style="font-size:12px;color:#f59e0b;margin-bottom:8px">'+escH(det.summary)+'</div>';
     const cs=det.cashier_summary||[];
-    if(!cs.length)return'<div style="color:#475569;font-size:12px">No cashier detail available.</div>';
-    let out='';
-    for(const c of cs){
-      out+='<div style="margin-bottom:12px"><div style="font-size:12px;font-weight:700;color:#e2e8f0;margin-bottom:4px">'
-        +escH(c.cashier_name||c.cashier_id||'Unknown')
-        +' <span style="color:#64748b;font-size:11px">ID: '+escH(String(c.cashier_id||''))+'</span>'
-        +' <span style="color:#f59e0b;font-size:11px;margin-left:8px">'+c.count+' change downs · '+c.cash_count+' cash · $'+Number(c.total_amount||0).toFixed(2)+' total</span></div>'
-        +(c.tickets&&c.tickets.length?tbl(['Ticket','Amount','Payment','Time'],c.tickets.map(t=>[t.ticket_id,'$'+(+t.amount).toFixed(2),t.payment_type,t.time])):'')
-        +'</div>';
+    out+=section('ODS Change Down Report — Cashier Pattern',cs.length?cs.map(c=>'<div style="margin-bottom:12px;padding:8px;background:#0c1425;border-radius:6px">'
+      +'<div style="font-size:12px;font-weight:700;color:#e2e8f0;margin-bottom:4px">'+escH(c.cashier_name||c.cashier_id||'Unknown')
+      +(c.cashier_id?' <span style="color:#64748b;font-size:11px">ID: '+escH(String(c.cashier_id))+'</span>':'')+'</div>'
+      +'<div style="font-size:11px;color:#f59e0b;margin-bottom:6px">'+c.count+' change downs · '+c.cash_count+' cash · $'+Number(c.total_amount||0).toFixed(2)+' total</div>'
+      +(c.tickets&&c.tickets.length?tbl(['Ticket','Amount','Payment','Time'],c.tickets.map(t=>[t.ticket_id,fmtMny(t.amount),t.payment_type,t.time])):'')
+      +'</div>').join(''):'<div style="color:#475569;font-size:12px">No cashier detail available.</div>');
+  }
+
+  // ── FORGOT_CLOCKOUT ──────────────────────────────────────────────────────
+  else if(f.metric_type==='FORGOT_CLOCKOUT'){
+    const emps=det.employees||[];
+    out+=section('ODS Clock Out Report — Employees',
+      emps.length?tbl(['Employee','Job Code','Est. Hours Missing'],
+        emps.map(e=>[e.name||'?',e.job_code||'—',e.hours_est!=null?e.hours_est+'h':'—']))
+      :'<div style="color:#475569;font-size:12px">No employee detail available.</div>');
+  }
+
+  // ── GUEST_COMPLAINT ──────────────────────────────────────────────────────
+  else if(f.metric_type==='GUEST_COMPLAINT'){
+    const complaints=det.complaints||[];
+    out+=section('SMG Guest Feedback',
+      kv('Total Comments',det.total_comments||0)
+      +kv('Negative Reviews',det.negative_count||0,'#ef4444')
+      +(det.names_mentioned&&det.names_mentioned.length?kv('Staff Mentioned',det.names_mentioned.join(', '),'#f59e0b'):'')
+      +(det.top_categories&&det.top_categories.length?kv('Categories',det.top_categories.join(', ')):'')
+      +(det.trend_note?kv('Trend',det.trend_note,'#f59e0b'):'')
+    );
+    if(complaints.length){
+      out+=section('Individual Complaints',complaints.map(c=>'<div style="margin-bottom:10px;padding:8px;background:#0c1425;border-radius:6px;border-left:2px solid #ef4444">'
+        +'<div style="display:flex;justify-content:space-between;margin-bottom:4px">'
+        +'<span style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase">'+escH(c.source||'SMG')+'</span>'
+        +(c.event_date?'<span style="font-size:10px;color:#475569">'+escH(String(c.event_date).slice(0,10))+'</span>':'')+'</div>'
+        +(c.name_mentioned?'<div style="font-size:11px;color:#f59e0b;margin-bottom:4px">👤 '+escH(c.name_mentioned)+' mentioned</div>':'')
+        +(c.summary?'<div style="font-size:12px;color:#e2e8f0;margin-bottom:4px"><b>'+escH(c.summary)+'</b></div>':'')
+        +(c.comment?'<div style="font-size:11px;color:#94a3b8;font-style:italic">"'+escH(c.comment.substring(0,300))+(c.comment.length>300?'…':'')+'"</div>':'')
+        +(c.categories&&c.categories.length?'<div style="margin-top:4px">'+c.categories.map(cat=>'<span style="display:inline-block;font-size:10px;background:#1e2d4d;color:#94a3b8;padding:1px 6px;border-radius:4px;margin:2px">'+escH(cat)+'</span>').join('')+'</div>':'')
+        +'</div>').join(''));
     }
-    return out;
   }
-  if(f.metric_type==='FORGOT_CLOCKOUT'&&det.employees&&det.employees.length){
-    return tbl(['Employee','Job Code','Est. Hours'],
-      det.employees.map(e=>[e.name||'?',e.job_code||'—',e.hours_est!=null?e.hours_est+'h':'—']));
+
+  // ── ROUTINE_MISSED / ROUTINE_LATE ────────────────────────────────────────
+  else if(f.metric_type==='ROUTINE_MISSED'||f.metric_type==='ROUTINE_LATE'){
+    out+=section('HutBot Routine Status',
+      kv('Routine',det.routine_name||det.routine||f.metric_type.replace('_',' ').toLowerCase())
+      +kv('Status',f.metric_type==='ROUTINE_MISSED'?'Not Completed':'Completed Late','#f59e0b')
+      +(det.scheduled_time?kv('Scheduled Time',det.scheduled_time):'')
+      +(det.completed_time?kv('Completed Time',det.completed_time):'')
+      +kv('Consecutive Days',(f.consecutive_days_out||1)+' day'+(f.consecutive_days_out>1?'s':''),f.consecutive_days_out>=3?'#ef4444':'#f59e0b')
+    );
   }
-  // Generic fallback — show summary from details if available
-  if(det.summary)return'<div style="font-size:12px;color:#94a3b8">'+escH(det.summary)+'</div>';
-  return'<div style="font-size:12px;color:#475569">No additional detail available.</div>';
+
+  // ── DBS FLAGS (CASH_VARIANCE, REFUNDS, PAIDOUT, etc.) ───────────────────
+  else {
+    const hasDbsDetail=det.value!=null||det.target!=null||det.net_sales!=null||det.summary;
+    if(hasDbsDetail){
+      out+=section('DBS Report Data',
+        (det.summary?'<div style="font-size:12px;color:#94a3b8;margin-bottom:8px">'+escH(det.summary)+'</div>':'')
+        +(det.net_sales!=null?kv('Net Sales',fmtMny(det.net_sales)):'')
+        +(f.value!=null?kv('Flagged Value',f.metric_type.includes('PCT')||f.metric_type.includes('GROWTH')?fmtPct(f.value):fmtMny(f.value),'#ef4444'):'')
+        +(f.target!=null?kv('Threshold',f.metric_type.includes('PCT')||f.metric_type.includes('GROWTH')?fmtPct(f.target):fmtMny(f.target)):'')
+        +(f.variance!=null?kv('Variance',f.metric_type.includes('PCT')||f.metric_type.includes('GROWTH')?fmtPct(f.variance):fmtMny(f.variance),f.variance>0?'#ef4444':'#22c55e'):'')
+        +kv('Source',f.source||'DBS')
+        +kv('Consecutive Days',(f.consecutive_days_out||1)+' day'+(f.consecutive_days_out>1?'s':''),f.consecutive_days_out>=3?'#ef4444':'#f59e0b')
+      );
+    } else {
+      out+='<div style="font-size:12px;color:#475569">No additional detail available for this flag type.</div>';
+    }
+  }
+
+  // ── RAW DATA (always shown at bottom) ────────────────────────────────────
+  const rawId='raw_'+f.id+'_'+f.metric_type;
+  out+='<div style="margin-top:12px">'
+    +'<button onclick="toggleRawData(\''+rawId+'\')" style="font-size:10px;color:#475569;background:none;border:1px solid #1e2d4d;border-radius:4px;padding:2px 8px;cursor:pointer">⬡ Raw Source Data</button>'
+    +'<pre id="'+rawId+'" style="display:none;margin-top:6px;font-size:10px;color:#64748b;background:#080f1e;border-radius:6px;padding:10px;overflow:auto;max-height:200px;white-space:pre-wrap;word-break:break-all">'
+    +escH(JSON.stringify({metric_type:f.metric_type,value:f.value,target:f.target,variance:f.variance,severity:f.severity,source:f.source,metric_date:f.metric_date,consecutive_days_out:f.consecutive_days_out,details:det},null,2))
+    +'</pre></div>';
+
+  return out;
 }
+function toggleRawData(id){const el=document.getElementById(id);if(el)el.style.display=el.style.display==='none'?'block':'none';}
 
 function toggleFlagAcc(id,btn){
   const panel=document.getElementById(id);
