@@ -21,10 +21,10 @@ const { processSOS }           = require('./parsers/sos-parser');
 const { processFourthLabor }   = require('./parsers/fourth-labor-parser');
 const { processFourthOT }      = require('./parsers/fourth-ot-parser');
 const { processForgotClockOut }= require('./parsers/forgot-clockout-parser');
-const { processSMG }           = require('./parsers/smg-parser');
+const { processSMG, processSMGFromComments } = require('./parsers/smg-parser');
 const { processHutBot }        = require('./intel-hutbot');
 const { downloadFourthReport } = require('./intel-fourth');
-const { downloadSMGComments }  = require('./intel-smg');
+const { downloadSMGCommentsAPI } = require('./intel-smg-api');
 const { processWinScore }      = require('./intel-smg-winscore');
 const db   = require('./db');
 const { USER_ROSTER } = require('../routes/auth');
@@ -175,9 +175,22 @@ async function runIntelPipeline(targetDate) {
   }
   await logStep('clockOut', results.steps.clockOut, targetDate);
 
-  // ── Step 6: SMG Comments — manual upload only (Playwright not available on Render) ──
-  console.log('[Intel Pipeline] Step 6: SMG Comments — skipped (manual upload only)');
-  results.steps.smg = { skipped: true, reason: 'SMG requires manual upload via Upload SMG button — Playwright browser not available on Render' };
+  // ── Step 6: SMG Comments — REST API (no Playwright needed) ──────────────────
+  console.log('[Intel Pipeline] Step 6: SMG Comments (API)');
+  try {
+    const dl = await downloadSMGCommentsAPI(targetDate);
+    if (!dl.success) throw new Error(dl.error);
+    if (dl.comments && dl.comments.length > 0) {
+      const r = await processSMGFromComments(dl.comments, targetDate);
+      results.steps.smg = r;
+    } else {
+      results.steps.smg = { success: true, commentsProcessed: 0, message: 'No comments for date' };
+    }
+  } catch (err) {
+    results.errors.push(`SMG: ${err.message}`);
+    results.steps.smg = { success: false, error: err.message };
+    console.error('[Intel Pipeline] SMG API failed:', err.message);
+  }
   await logStep('smg', results.steps.smg, targetDate);
 
   // Step 6b (SMG Win Score) disabled — SMG session auth broken, fix later

@@ -257,4 +257,113 @@ async function processSMG(filePath, targetDate) {
   return { success: true, commentsProcessed: comments.length, flagsWritten, shoutoutsWritten };
 }
 
-module.exports = { processSMG, parseSMGFile };
+/**
+ * Map a raw SMG API comment object → our internal comment shape.
+ * SMG API returns varied field names — handle gracefully.
+ */
+function mapAPIComment(raw) {
+  // Store ID: look for location field with a 6-digit number
+  const locStr = raw.locationName || raw.location || raw.locationId || raw.storeName || '';
+  const storeMatch = String(locStr).match(/(\d{6})/);
+  const store_id = storeMatch ? storeMatch[1] : null;
+
+  // Comment text
+  const comment = raw.comment || raw.commentText || raw.text || raw.verbatim || raw.responseText || '';
+
+  // Source
+  const srcRaw = raw.sourceName || raw.source || raw.surveyType || raw.channel || 'SMG';
+  let source = 'SMG';
+  if (/ges|guest exp/i.test(srcRaw))         source = 'GES';
+  else if (/social|google|yelp/i.test(srcRaw)) source = 'Social';
+  else if (/doordash/i.test(srcRaw))          source = 'DoorDash';
+  else if (/uber/i.test(srcRaw))              source = 'Uber Eats';
+  else if (/grubhub/i.test(srcRaw))           source = 'GrubHub';
+  else if (srcRaw)                             source = srcRaw;
+
+  // Date
+  const event_date = (raw.visitDate || raw.eventDate || raw.feedbackDate || raw.createdDate || '').slice(0, 10);
+
+  // Rating
+  const overall_satisfaction = raw.overallSatisfaction ?? raw.rating ?? raw.score ?? null;
+
+  return { store_id, comment: comment.trim(), source, event_date, overall_satisfaction };
+}
+
+/**
+ * Process SMG comments fetched from the API (no file needed).
+ * Accepts the raw array from downloadSMGCommentsAPI().
+ */
+async function processSMGFromComments(apiComments, targetDate) {
+  console.log(`[SMG] Processing ${apiComments.length} API comments for ${targetDate}`);
+
+  // Map to internal format and filter out entries missing store/comment
+  const comments = apiComments
+    .map(mapAPIComment)
+    .filter(c => c.store_id && c.comment.length > 3);
+
+  console.log(`[SMG] ${comments.length} valid comments after mapping`);
+  if (!comments.length) return { success: true, commentsProcessed: 0, flagsWritten: 0, shoutoutsWritten: 0 };
+
+  const assignments = await db.getStoreAssignments();
+  const client = new Anthropic();
+
+  const storeCounts = {};
+  let flagsWritten = 0, shoutoutsWritten = 0;
+
+  for (const c of comments) {
+    // Skip non-Ayvaz stores
+    if (!assignments[c.store_id]) continue;
+
+    if (!storeCounts[c.store_id]) storeCounts[c.store_id] = { total: 0, positive: 0, negative: 0, complaints: [] };
+    storeCounts[c.store_id].total++;
+
+    const { sentiment, summary, categories, name_mentioned, severity } = await classifyComment(client, c.comment);
+
+    if (sentiment === 'POSITIVE') {
+      storeCounts[c.store_id].positive++;
+      await db.insertShoutout({ store_id: c.store_id, shoutout_date: targetDate, summary, full_comment: c.comment, source: c.source });
+      shoutoutsWritten++;
+    } else if (sentiment === 'NEGATIVE') {
+      storeCounts[c.store_id].negative++;
+      storeCounts[c.store_id].complaints.push({
+        summary, categories, name_mentioned, severity,
+        event_date: c.event_date || targetDate,
+        source: c.source,
+        overall_satisfaction: c.overall_satisfaction,
+        comment: c.comment.substring(0, 400),
+      });
+    }
+  }
+
+  // Survey log + flags — reuse same logic as processSMG
+  for (const [store_id, counts] of Object.entries(storeCounts)) {
+    await db.upsertSurveyLog({ store_id, survey_date: targetDate, comment_count: counts.total, positive_count: counts.positive, negative_count: counts.negative });
+  }
+  for (const [store_id, counts] of Object.entries(storeCounts)) {
+    if (!counts.negative) continue;
+    const asgn = assignments[store_id] || {};
+    const complaints = counts.complaints;
+    const hasHigh = complaints.some(c => c.name_mentioned || c.categories.includes('rude_staff') || c.severity === 'high');
+    const flagSeverity = hasHigh ? 'high' : counts.negative >= 3 ? 'high' : 'medium';
+    const prevDays = await db.getConsecutiveDays(store_id, 'GUEST_COMPLAINT', targetDate);
+    await db.insertIntelFlag({
+      store_id, store_name: asgn.store_name, area_coach: asgn.area_coach,
+      region_coach: asgn.region_coach, territory_vp: asgn.vp,
+      metric_type: 'GUEST_COMPLAINT', metric_date: targetDate,
+      value: counts.negative, target: 0, variance: counts.negative,
+      source: 'SMG', tier: 1,
+      details: { negative_count: counts.negative, total_comments: counts.total,
+        names_mentioned: complaints.filter(c => c.name_mentioned).map(c => c.name_mentioned),
+        top_categories: [...new Set(complaints.flatMap(c => c.categories))],
+        complaints, trend_days: prevDays + 1,
+        trend_note: prevDays >= 1 ? `${prevDays + 1}-day trend of complaints` : null },
+      consecutive_days_out: prevDays + 1, severity: flagSeverity, is_new: prevDays === 0,
+    });
+    flagsWritten++;
+  }
+
+  console.log(`[SMG API] Done — ${flagsWritten} flags, ${shoutoutsWritten} shoutouts`);
+  return { success: true, commentsProcessed: comments.length, flagsWritten, shoutoutsWritten };
+}
+
+module.exports = { processSMG, parseSMGFile, processSMGFromComments };
