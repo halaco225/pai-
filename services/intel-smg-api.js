@@ -61,49 +61,71 @@ function httpsGet(url, headers) {
  * Get a fresh access token using the stored refresh token.
  * Saves the new refresh token to the DB (intel_cache key = 'smg::refresh_token').
  */
-async function getAccessToken() {
-  // Load refresh token: prefer DB (updated daily) over env var (initial seed)
-  const p = db.getPool();
-  let refreshToken = process.env.SMG_REFRESH_TOKEN;
+async function saveRefreshToken(p, token) {
+  if (!p || !token) return;
+  try {
+    await p.query(`
+      INSERT INTO intel_cache(key, value, generated_at)
+      VALUES('smg::refresh_token', $1, NOW())
+      ON CONFLICT(key) DO UPDATE SET value=$1, generated_at=NOW()
+    `, [token]);
+    console.log('[SMG API] Refresh token saved');
+  } catch (e) { console.warn('[SMG API] Could not save refresh token:', e.message); }
+}
 
+async function tokenFromPassword(p) {
+  const user = process.env.SMG_USER;
+  const pass = process.env.SMG_PASSWORD;
+  if (!user || !pass) throw new Error('SMG_USER / SMG_PASSWORD not set');
+  console.log('[SMG API] Trying password grant...');
+  const body = new URLSearchParams({
+    grant_type: 'password',
+    username:   user,
+    password:   pass,
+    client_id:  SMG_CLIENT_ID,
+    scope:      'email feedback offline_access openid smg360',
+  }).toString();
+  const res = await httpsPost(SMG_AUTH_URL, { 'Content-Type': 'application/x-www-form-urlencoded' }, body);
+  if (res.status !== 200) throw new Error(`SMG password grant failed: ${res.status} ${res.body.slice(0,200)}`);
+  const data = JSON.parse(res.body);
+  await saveRefreshToken(p, data.refresh_token);
+  return data.access_token;
+}
+
+async function getAccessToken() {
+  const p = db.getPool();
+
+  // 1. Try refresh token from DB first (rotated daily), then env var
+  let refreshToken = process.env.SMG_REFRESH_TOKEN;
   if (p) {
     try {
       const r = await p.query("SELECT value FROM intel_cache WHERE key='smg::refresh_token' LIMIT 1");
       if (r.rows.length && r.rows[0].value) refreshToken = r.rows[0].value;
-    } catch (_) { /* use env var */ }
+    } catch (_) {}
   }
 
-  if (!refreshToken) throw new Error('SMG_REFRESH_TOKEN not set — add to Render env vars');
-
-  const body = new URLSearchParams({
-    grant_type:    'refresh_token',
-    refresh_token: refreshToken,
-    client_id:     SMG_CLIENT_ID,
-  }).toString();
-
-  const res = await httpsPost(SMG_AUTH_URL,
-    { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body
-  );
-
-  if (res.status !== 200) throw new Error(`SMG token refresh failed: ${res.status} ${res.body}`);
-
-  const data = JSON.parse(res.body);
-  const { access_token, refresh_token: newRefresh } = data;
-
-  // Persist new refresh token so it stays valid
-  if (p && newRefresh && newRefresh !== refreshToken) {
+  if (refreshToken) {
     try {
-      await p.query(`
-        INSERT INTO intel_cache(key, value, generated_at)
-        VALUES('smg::refresh_token', $1, NOW())
-        ON CONFLICT(key) DO UPDATE SET value=$1, generated_at=NOW()
-      `, [newRefresh]);
-      console.log('[SMG API] Refresh token rotated and saved');
-    } catch (e) { console.warn('[SMG API] Could not save refresh token:', e.message); }
+      const body = new URLSearchParams({
+        grant_type:    'refresh_token',
+        refresh_token: refreshToken,
+        client_id:     SMG_CLIENT_ID,
+      }).toString();
+      const res = await httpsPost(SMG_AUTH_URL, { 'Content-Type': 'application/x-www-form-urlencoded' }, body);
+      if (res.status === 200) {
+        const data = JSON.parse(res.body);
+        await saveRefreshToken(p, data.refresh_token);
+        console.log('[SMG API] Token acquired via refresh grant');
+        return data.access_token;
+      }
+      console.warn(`[SMG API] Refresh grant failed (${res.status}) — falling back to password`);
+    } catch (e) {
+      console.warn('[SMG API] Refresh grant error:', e.message, '— falling back to password');
+    }
   }
 
-  return access_token;
+  // 2. Fall back to username/password
+  return tokenFromPassword(p);
 }
 
 // ── comment fetching ─────────────────────────────────────────────────────────
