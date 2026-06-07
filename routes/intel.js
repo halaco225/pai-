@@ -1381,9 +1381,39 @@ router.get('/weekly-digest', async (req, res) => {
       )
     ]);
 
+    // Labor % from Fourth soft_indicators — avg actual & scheduled per AC for the week
+    const laborParams = [weekStartStr, yesterdayStr];
+    let laborScopeWhere = '1=1';
+    if (user.scope?.type === 'rdo') {
+      const acs = user.scope.area_coaches || [];
+      if (acs.length) { laborParams.push(acs); laborScopeWhere = `sa.area_coach = ANY($${laborParams.length}::text[])`; }
+      else { laborParams.push(user.scope.rc_name || user.name); laborScopeWhere = `sa.region_coach=$${laborParams.length}`; }
+    } else if (user.scope?.type === 'area_coach') {
+      laborParams.push(user.scope.ac_name || user.name); laborScopeWhere = `sa.area_coach=$${laborParams.length}`;
+    } else if (user.role === 'vp') {
+      laborParams.push(user.scope?.vp_name || user.name); laborScopeWhere = `sa.vp=$${laborParams.length}`;
+    }
+    const laborByACRes = await p.query(`
+      SELECT sa.area_coach,
+             ROUND(AVG(CASE WHEN si.indicator='labor_pct'     THEN si.value END)::numeric, 1)::float AS act_labor_pct,
+             ROUND(AVG(CASE WHEN si.indicator='sch_labor_pct' THEN si.value END)::numeric, 1)::float AS sched_labor_pct
+      FROM soft_indicators si
+      JOIN store_assignments sa ON si.store_id = sa.store_id
+      WHERE si.metric_date BETWEEN $1 AND $2
+        AND si.indicator IN ('labor_pct', 'sch_labor_pct')
+        AND ${laborScopeWhere}
+      GROUP BY sa.area_coach`, laborParams);
+    const laborMap = {};
+    for (const r of laborByACRes.rows) laborMap[r.area_coach] = r;
+
     const velMap = {};
     for (const r of velByACRes.rows) velMap[r.area_coach] = r;
-    const byACWithVel = acRes.rows.map(a => ({ ...a, velocity: velMap[a.area_coach] || null }));
+    const byACWithVel = acRes.rows.map(a => ({
+      ...a,
+      velocity:        velMap[a.area_coach]   || null,
+      act_labor_pct:   laborMap[a.area_coach]?.act_labor_pct   ?? null,
+      sched_labor_pct: laborMap[a.area_coach]?.sched_labor_pct ?? null,
+    }));
 
     const storesByAC = {};
     for (const s of storeDetailRes.rows) {

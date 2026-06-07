@@ -113,6 +113,10 @@ async function processFourthLabor(filePath, targetDate) {
       await db.upsertSoftIndicator({ store_id: s.store_id, metric_date: targetDate,
         indicator: 'labor_pct', value: s.act_lab_pct, target: 28, source: 'FOURTH' });
     }
+    if (s.sch_lab_pct != null) {
+      await db.upsertSoftIndicator({ store_id: s.store_id, metric_date: targetDate,
+        indicator: 'sch_labor_pct', value: s.sch_lab_pct, target: null, source: 'FOURTH' });
+    }
     if (s.act_lab_dollar != null) {
       await db.upsertSoftIndicator({ store_id: s.store_id, metric_date: targetDate,
         indicator: 'act_lab_dollar', value: s.act_lab_dollar, target: null, source: 'FOURTH' });
