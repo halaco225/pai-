@@ -109,13 +109,16 @@ async function processFourthLabor(filePath, targetDate) {
       day_of_week:      dow,
     };
 
+    // Fourth exports percentages as Excel decimals (0.1724 = 17.24%) when raw:true
+    // Normalize: if value < 1.5 assume decimal format, multiply by 100
+    const normPct = v => (v != null && v < 1.5) ? Math.round(v * 1000) / 10 : v;
     if (s.act_lab_pct != null) {
       await db.upsertSoftIndicator({ store_id: s.store_id, metric_date: targetDate,
-        indicator: 'labor_pct', value: s.act_lab_pct, target: 28, source: 'FOURTH' });
+        indicator: 'labor_pct', value: normPct(s.act_lab_pct), target: 28, source: 'FOURTH' });
     }
     if (s.sch_lab_pct != null) {
       await db.upsertSoftIndicator({ store_id: s.store_id, metric_date: targetDate,
-        indicator: 'sch_labor_pct', value: s.sch_lab_pct, target: null, source: 'FOURTH' });
+        indicator: 'sch_labor_pct', value: normPct(s.sch_lab_pct), target: null, source: 'FOURTH' });
     }
     if (s.act_lab_dollar != null) {
       await db.upsertSoftIndicator({ store_id: s.store_id, metric_date: targetDate,
