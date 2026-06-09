@@ -262,6 +262,26 @@
         </div>
       </div>
 
+      <!-- Questions panel (shown when Claude needs clarification) -->
+      <div id="questionsSection" style="display:none;margin-top:20px;">
+        <div class="card" style="border:1px solid var(--accent);background:rgba(204,0,0,0.04);">
+          <div class="step-header">
+            <div class="step-number" style="background:#F59E0B;">?</div>
+            <h3 style="color:var(--text-primary);">P.AI Has a Few Questions</h3>
+          </div>
+          <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">Before building the deck, P.AI needs a couple of clarifications to make sure the data lands in the right slides. Answer what you can — anything you leave blank will be handled with best-judgment.</p>
+          <div id="questionsFileInventory" style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:12px;color:var(--text-muted);white-space:pre-wrap;line-height:1.6;"></div>
+          <div id="questionsList"></div>
+          <div style="display:flex;gap:10px;margin-top:20px;">
+            <button class="btn btn-primary" id="submitAnswersBtn" onclick="submitAnswers()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              Submit Answers & Build Deck
+            </button>
+            <button class="btn btn-ghost" onclick="skipQuestions()">Skip — Use Best Judgment</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Step 3: Building -->
       <div id="buildSection">
         <div class="card" style="margin-top:20px;">
@@ -378,6 +398,7 @@
   let selectedFormat = 'pptx';
   let analyzedData = null;
   let selectedRecapLevel = 'region';
+  let pendingFormData = null; // saved FormData for re-submission after Q&A
 
   const RECAP_LEVEL_HINTS = {
     region:    'Full 13-slide region recap — all area coaches, all stores, WIN, HUT Bot, customer voice.',
@@ -572,15 +593,124 @@
   }
 
   function clearAll() {
-    fileList = []; analyzedData = null; emailResult = null; pendingAppendSlide = null;
+    fileList = []; analyzedData = null; emailResult = null; pendingAppendSlide = null; pendingFormData = null;
     renderChips();
     document.getElementById('buildSection').style.display = 'none';
+    document.getElementById('questionsSection').style.display = 'none';
     document.getElementById('previewSection').style.display = 'none';
     document.getElementById('appendSection').style.display = 'none';
     document.getElementById('appendPreviewArea').style.display = 'none';
     document.getElementById('appendedList').style.display = 'none';
     document.getElementById('appendedItems').innerHTML = '';
     document.getElementById('progressLog').innerHTML = '';
+  }
+
+  // ── Questions panel ───────────────────────────────────────────────────────
+  function showQuestionsPanel(data) {
+    document.getElementById('questionsSection').style.display = 'block';
+    document.getElementById('questionsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // File inventory
+    const invEl = document.getElementById('questionsFileInventory');
+    invEl.textContent = data.fileInventory || 'Files received — see questions below.';
+
+    // Render questions
+    const listEl = document.getElementById('questionsList');
+    const questions = data.questions || [];
+    listEl.innerHTML = questions.map((q, i) => `
+      <div style="margin-bottom:20px;padding:16px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;">
+        <div style="font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:4px;">Q${i+1}: ${escHtml(q.q)}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;font-style:italic;">${escHtml(q.why||'')}</div>
+        ${(q.options||[]).length ? `
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;" id="qopts_${i}">
+            ${q.options.map((opt,j) => `
+              <button class="opt-pill" data-qi="${i}" data-oj="${j}" onclick="selectQOption(this,${i})"
+                style="font-size:12px;padding:6px 14px;">${escHtml(opt)}</button>
+            `).join('')}
+          </div>` : ''}
+        <input type="text" id="qanswer_${i}" placeholder="Your answer (or leave blank to let P.AI decide)…"
+          style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:9px 12px;font-size:13px;color:var(--text-primary);font-family:inherit;" />
+      </div>
+    `).join('');
+  }
+
+  function selectQOption(btn, qi) {
+    // Highlight selected option and fill text input
+    document.querySelectorAll(`[data-qi="${qi}"]`).forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    document.getElementById(`qanswer_${qi}`).value = btn.textContent.trim();
+  }
+
+  async function submitAnswers() {
+    if (!pendingFormData) return;
+    const questions = document.querySelectorAll('[id^="qanswer_"]');
+    const answers = Array.from(questions).map((el, i) => {
+      const q = document.getElementById('questionsList').querySelectorAll('[id^="qanswer_"]')[i];
+      const qLabel = document.getElementById('questionsList').querySelectorAll('[style*="font-weight:700"]')[i]?.textContent || `Q${i+1}`;
+      return q.value.trim() ? `${qLabel}: ${q.value.trim()}` : null;
+    }).filter(Boolean);
+
+    // Hide questions panel
+    document.getElementById('questionsSection').style.display = 'none';
+
+    // Rebuild formData with answers appended to instructions
+    const newFd = new FormData();
+    for (const [key, val] of pendingFormData.entries()) {
+      if (key !== 'instructions') newFd.append(key, val);
+    }
+    const existingInstructions = pendingFormData.get('instructions') || '';
+    const answersBlock = answers.length
+      ? `\n\nANSWERS TO CLARIFYING QUESTIONS:\n${answers.join('\n')}`
+      : '\n\nNo clarifying answers provided — use best judgment on all questions.';
+    newFd.append('instructions', existingInstructions + answersBlock);
+
+    // Re-run analysis
+    const buildSection = document.getElementById('buildSection');
+    const buildStatus = document.getElementById('buildStatus');
+    const buildBtn = document.getElementById('buildBtn');
+    buildSection.style.display = 'block';
+    buildStatus.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>BUILDING DECK WITH YOUR ANSWERS...</p></div>`;
+    buildSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    buildBtn.disabled = true;
+    log('Re-analyzing with your answers...', 'info');
+
+    try {
+      const res = await fetch('/api/recap/analyze', { method: 'POST', body: newFd });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Analysis failed'); }
+      const result = await res.json();
+      analyzedData = result.data;
+      log('✓ Analysis complete. Building deck...', 'ok');
+      buildStatus.innerHTML = `<div style="text-align:center;padding:12px;background:rgba(16,185,129,0.08);border-radius:8px;border:1px solid rgba(16,185,129,0.2);"><div style="color:var(--success);font-weight:700;">✓ Analysis Complete</div><div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Reviewed ${result.fileCount} file(s)</div></div>`;
+      renderPptxPreview(analyzedData);
+      document.getElementById('pptxPreview').style.display = 'block';
+      document.getElementById('emailPreview').style.display = 'none';
+      document.getElementById('previewTitle').textContent = 'Deck Preview';
+      document.getElementById('downloadBtn').style.display = 'inline-flex';
+      document.getElementById('previewSection').style.display = 'block';
+      document.getElementById('previewSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      log('Auto-generating PPTX...', 'info');
+      await downloadOutput();
+    } catch (err) {
+      log(`ERROR: ${err.message}`, 'err');
+      buildStatus.innerHTML = `<div style="color:var(--danger);padding:14px;background:rgba(239,68,68,0.08);border-radius:8px;">${err.message}</div>`;
+    } finally {
+      buildBtn.disabled = false;
+      buildBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Analyze &amp; Preview`;
+    }
+  }
+
+  function skipQuestions() {
+    document.getElementById('questionsSection').style.display = 'none';
+    // Re-run with "use best judgment" instruction
+    const newFd = new FormData();
+    for (const [key, val] of pendingFormData.entries()) {
+      if (key !== 'instructions') newFd.append(key, val);
+    }
+    const existing = pendingFormData.get('instructions') || '';
+    newFd.append('instructions', existing + '\n\nINSTRUCTION: Proceed with best judgment on all ambiguous items. Do not ask any more questions — just build the deck.');
+    pendingFormData = newFd;
+    // Trigger re-analysis by faking a submit
+    submitAnswers();
   }
 
   // ── Append content ─────────────────────────────────────────────────────────
@@ -710,13 +840,13 @@
     const instructions = document.getElementById('analysisInstructions').value.trim();
     if (instructions) formData.append('instructions', instructions);
     formData.append('level', selectedRecapLevel);
+    pendingFormData = formData; // save for potential Q&A re-submission
 
     try {
       const res = await fetch('/api/recap/analyze', { method: 'POST', body: formData });
       if (!res.ok) {
         const ct = res.headers.get('content-type') || '';
         if (!ct.includes('application/json')) {
-          // Cloudflare/Render returned an HTML error page (usually 524 timeout)
           if (res.status === 524 || res.status === 504 || res.status === 0) {
             throw new Error('Analysis timed out (server took >100s). Try uploading fewer or smaller files, then retry.');
           }
@@ -727,8 +857,16 @@
       }
 
       const result = await res.json();
-      analyzedData = result.data;
 
+      // Claude has clarifying questions — show Q&A panel instead of building
+      if (result.needsInput === true) {
+        log('P.AI has a few questions before building the deck...', 'info');
+        buildStatus.innerHTML = `<div style="padding:12px;background:rgba(245,158,11,0.08);border-radius:8px;border:1px solid rgba(245,158,11,0.3);color:#F59E0B;font-weight:700;">⚠ P.AI needs a couple of clarifications — see below</div>`;
+        showQuestionsPanel(result.data);
+        return;
+      }
+
+      analyzedData = result.data;
       log('✓ Analysis complete. Building preview...', 'ok');
 
       buildStatus.innerHTML = `<div style="text-align:center;padding:12px;background:rgba(16,185,129,0.08);border-radius:8px;border:1px solid rgba(16,185,129,0.2);"><div style="color:var(--success);font-weight:700;">✓ Analysis Complete</div><div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Reviewed ${result.fileCount} file(s)</div></div>`;

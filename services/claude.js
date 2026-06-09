@@ -637,7 +637,35 @@ Build: AC of the Week recognition + footer stats strip.
 The same AC cannot win two weeks in a row — check lastAcOfWeek field before choosing.
 Always include if any performance data was uploaded.
 
-UNEXPECTED OR UNRECOGNIZED FILES: If an uploaded file does not match any trigger type above, analyze it anyway. Include its findings in the most relevant existing slide, or add a new entry in the "additionalSlides" array. Never skip an uploaded file — every file gets analyzed.
+EVERY FILE GETS ANALYZED — NO EXCEPTIONS:
+- Read every single uploaded file, regardless of whether it matches a known report type.
+- If a file matches a known type (FRS, Velocity, HUT Bot, WIN, SMG, etc.) → use it for its designated slide(s).
+- If a file is unrecognized or unexpected → extract whatever data it contains and add an "additionalSlides" entry. Summarize what you found in bullets. Label it with the file name.
+- NEVER say "file not recognized" or skip a file. Every file produces output in the deck.
+- If a file errors or is unreadable → add an additionalSlides entry noting the file name and the read error.
+- The "additionalSlides" array in the JSON can hold unlimited entries — one per unrecognized file if needed.
+
+WHEN TO ASK QUESTIONS (read carefully — ask questions rarely):
+Ask clarifying questions ONLY when you hit a situation where the answer would materially change which data goes into which slide AND you genuinely cannot make a reasonable inference. Examples of valid questions:
+  - Two files both appear to be WIN/comparison reports for different time periods — which is the current week?
+  - A file has store numbers that don't match any store in the alignment — are these new stores or a different region?
+  - Instructions say "area coach level" but files contain region-wide data — should I filter to one AC or show all?
+DO NOT ask questions for:
+  - Missing files (just skip that slide)
+  - Ambiguous field names you can infer from context
+  - Any situation where a reasonable default exists
+
+IF YOU HAVE QUESTIONS: Return this JSON format INSTEAD of the normal deck JSON:
+{
+  "needsInput": true,
+  "fileInventory": "Brief bullet list of every file you received and what data it contains",
+  "questions": [
+    { "q": "The specific question", "why": "One sentence on why this changes the output", "options": ["Option A", "Option B", "Not sure — use your best judgment"] }
+  ]
+}
+Keep questions to 1–3 maximum. If you can proceed with reasonable assumptions, do so and note them in a slide — do not ask.
+
+IF YOU HAVE NO QUESTIONS: Proceed directly to the full deck JSON. Do not mention questions.
 
 DATA FILE MAPPINGS (permanent — do not change these):
 
@@ -973,12 +1001,13 @@ Here are the file contents:
 ${combinedText}${alignBlock}
 
 CRITICAL INSTRUCTIONS FOR JSON OUTPUT:
-1. First, list every file uploaded and what data it contains.
-2. Build slides ONLY for the data you actually found. If a source file was not uploaded, do not include that slide's key in the JSON — omit it entirely.
-3. NEVER use placeholder text, empty arrays as filler, or "[Data not available]" strings. A missing key is always correct. A slide with fake or empty data is always wrong.
-4. If only 3 files were uploaded, you may return as few as 4-5 slides. That is correct behavior.
-5. If an unexpected file is uploaded that does not match the standard report types, analyze it anyway and include its findings in the most appropriate slide or as an additional slide.
-Return a structured JSON object with content only for the slides you have real data to populate.`;
+1. First, inventory every file uploaded — name, type, and what data it contains.
+2. EVERY FILE GETS ANALYZED. Known report types → designated slides. Unknown files → additionalSlides entries. No file is ever skipped.
+3. Build deck slides ONLY for data you actually found. If a source file was not uploaded, omit that key entirely.
+4. NEVER use placeholder text, empty arrays as filler, or "[Data not available]" strings. A missing key is always correct. A slide with fake data is always wrong.
+5. If you have genuine questions that would materially change the output, return the needsInput JSON format instead of the deck JSON.
+6. If no questions, return the full deck JSON directly. Do not hedge or explain — just return the JSON.
+Return either the needsInput JSON (if you have real questions) or the full deck JSON (if you can proceed).`;
 
   const message = await client.messages.create({
     model: MODEL,
@@ -991,13 +1020,21 @@ Return a structured JSON object with content only for the slides you have real d
 
   // Try to parse JSON from response
   try {
+    let parsed;
     const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) return JSON.parse(jsonMatch[1]);
-    // Try direct parse
-    const start = responseText.indexOf('{');
-    const end = responseText.lastIndexOf('}');
-    if (start !== -1 && end !== -1) {
-      return JSON.parse(responseText.slice(start, end + 1));
+    if (jsonMatch) {
+      parsed = JSON.parse(jsonMatch[1]);
+    } else {
+      const start = responseText.indexOf('{');
+      const end = responseText.lastIndexOf('}');
+      if (start !== -1 && end !== -1) {
+        parsed = JSON.parse(responseText.slice(start, end + 1));
+      }
+    }
+    if (parsed) {
+      // needsInput: Claude has clarifying questions — pass through to frontend
+      if (parsed.needsInput === true) return parsed;
+      return parsed;
     }
     return { rawContent: responseText };
   } catch {

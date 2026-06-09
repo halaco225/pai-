@@ -92,6 +92,11 @@ router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res)
 
     const data = await withRetry(() => analyzeRecap(req.files, '', recapDay, lastAcOfWeek, alignmentText, historicalContext, instructions, level));
 
+    // If Claude has clarifying questions, return them immediately — don't save as session
+    if (data && data.needsInput === true) {
+      return res.json({ data, needsInput: true, fileCount: req.files.length, fileNames: req.files.map(f => f.originalname).join(', ') });
+    }
+
     // Persist session to DB (non-blocking — don't fail the request if this errors)
     saveRecapSession({
       username: req.session.user.username,
