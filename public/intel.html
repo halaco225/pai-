@@ -476,8 +476,8 @@ button{font-family:inherit;cursor:pointer}
         <div class="smg-filter-group">
           <div class="smg-filter-label">Date Range</div>
           <div class="smg-pill-group">
-            <button class="smg-pill" id="smgRangeYest" onclick="setSMGRange('yesterday',this)">Yesterday</button>
-            <button class="smg-pill active" id="smgRangeWtd" onclick="setSMGRange('wtd',this)">WTD</button>
+            <button class="smg-pill active" id="smgRangeYest" onclick="setSMGRange('yesterday',this)">Yesterday</button>
+            <button class="smg-pill" id="smgRangeWtd" onclick="setSMGRange('wtd',this)">WTD</button>
             <button class="smg-pill" id="smgRangePtd" onclick="setSMGRange('ptd',this)">PTD</button>
           </div>
         </div>
@@ -1933,7 +1933,7 @@ function jumpToFlagsForStore(storeId,storeName){
 // ── Guest Comments (SMG) ──────────────────────────────────────────────────────
 let smgData={positive:[],negative:[]};
 let smgFilter='all';
-let smgRange='wtd'; // default to current week
+let smgRange='yesterday'; // default to yesterday only
 let smgACFilter='';
 let smgStoreFilter='';
 let smgLoaded=false;

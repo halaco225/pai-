@@ -1111,7 +1111,7 @@ router.get('/smg-comments', async (req, res) => {
     if (req.query.date) {
       dateStart = dateEnd = req.query.date;
     } else {
-      const range = req.query.range || 'wtd'; // default: current fiscal week (Tue–Mon)
+      const range = req.query.range || 'yesterday'; // default: yesterday only
       if (range === 'wtd') {
         // PH fiscal week runs Tuesday–Monday
         const dow = nowEST.getDay(); // 0=Sun,1=Mon,2=Tue,...
