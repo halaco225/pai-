@@ -937,11 +937,18 @@ router.get('/performance', async (req, res) => {
 router.get('/flags', async (req, res) => {
   try {
     const user  = req.session.user;
-    const date  = req.query.date || null;
     const statusFilter = req.query.status || null;
-    // Global AC/Store sub-filter (RDO and VP drilling into their scope)
     const filterAC    = req.query.filter_ac    || null;
     const filterStore = req.query.filter_store || null;
+    // Default to most recent available date — don't show all-time flags by default
+    let date = req.query.date || null;
+    if (!date && !req.query.all) {
+      const p2 = db.getPool();
+      if (p2) {
+        const dr = await p2.query("SELECT MAX(metric_date)::text as d FROM intel_flags WHERE status != 'archived'");
+        if (dr.rows[0]?.d) date = dr.rows[0].d;
+      }
+    }
 
     let flags = [];
     if (user.role === 'rdo') {

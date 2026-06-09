@@ -789,8 +789,10 @@ function renderPerfTable(data){
     const acHasLab=acStores.some(x=>x.act_lab_dollar!=null);
     const acLabVar=acActLab-acSchLab;
     // labor_pct = Fourth actual (preferred); sched_labor_pct = DBS scheduled
-    const actLab=ac.labor_pct!=null?ac.labor_pct:ac.act_labor_pct; // Fourth > DBS
-    const schLab=ac.sched_labor_pct;
+    // Sanity check: valid labor % is 5–60%; anything outside = bad data, hide it
+    const sanitizePct=v=>(v!=null&&v>=5&&v<=60)?v:null;
+    const actLab=sanitizePct(ac.labor_pct!=null?ac.labor_pct:ac.act_labor_pct);
+    const schLab=sanitizePct(ac.sched_labor_pct);
     const acHasLaborPct=schLab!=null||actLab!=null;
     const acLaborPctVar=actLab!=null&&schLab!=null?+(actLab-schLab).toFixed(2):null;
     const laborCell=acHasLaborPct

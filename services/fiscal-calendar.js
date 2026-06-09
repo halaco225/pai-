@@ -132,7 +132,7 @@ function getFiscalContextString(today) {
     'Fiscal weeks ' + p.weeks + ' of the year. ' +
     'This period runs ' + startFmt + ' through ' + endFmt + '. ' +
     'The fiscal year has 13 periods of 4 weeks each (52 weeks total). ' +
-    'Periods run Tuesday-to-Monday. Weekly recap day is Thursday.'
+    'Periods run Tuesday-to-Monday.'
   );
 }
 
