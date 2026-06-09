@@ -73,59 +73,38 @@ async function saveRefreshToken(p, token) {
   } catch (e) { console.warn('[SMG API] Could not save refresh token:', e.message); }
 }
 
-async function tokenFromPassword(p) {
-  const user = process.env.SMG_USER;
-  const pass = process.env.SMG_PASSWORD;
-  if (!user || !pass) throw new Error('SMG_USER / SMG_PASSWORD not set');
-  console.log('[SMG API] Trying password grant...');
-  const body = new URLSearchParams({
-    grant_type: 'password',
-    username:   user,
-    password:   pass,
-    client_id:  SMG_CLIENT_ID,
-    scope:      'email feedback offline_access openid smg360',
-  }).toString();
-  const res = await httpsPost(SMG_AUTH_URL, { 'Content-Type': 'application/x-www-form-urlencoded' }, body);
-  if (res.status !== 200) throw new Error(`SMG password grant failed: ${res.status} ${res.body.slice(0,200)}`);
-  const data = JSON.parse(res.body);
-  await saveRefreshToken(p, data.refresh_token);
-  return data.access_token;
-}
-
 async function getAccessToken() {
   const p = db.getPool();
 
-  // 1. Try refresh token from DB first (rotated daily), then env var
+  // Try refresh token: DB (rotated daily) takes priority over env var
   let refreshToken = process.env.SMG_REFRESH_TOKEN;
   if (p) {
     try {
       const r = await p.query("SELECT value FROM intel_cache WHERE key='smg::refresh_token' LIMIT 1");
-      if (r.rows.length && r.rows[0].value) refreshToken = r.rows[0].value;
+      if (r.rows.length && r.rows[0].value) {
+        refreshToken = r.rows[0].value;
+        console.log('[SMG API] Using refresh token from DB');
+      }
     } catch (_) {}
   }
 
-  if (refreshToken) {
-    try {
-      const body = new URLSearchParams({
-        grant_type:    'refresh_token',
-        refresh_token: refreshToken,
-        client_id:     SMG_CLIENT_ID,
-      }).toString();
-      const res = await httpsPost(SMG_AUTH_URL, { 'Content-Type': 'application/x-www-form-urlencoded' }, body);
-      if (res.status === 200) {
-        const data = JSON.parse(res.body);
-        await saveRefreshToken(p, data.refresh_token);
-        console.log('[SMG API] Token acquired via refresh grant');
-        return data.access_token;
-      }
-      console.warn(`[SMG API] Refresh grant failed (${res.status}) — falling back to password`);
-    } catch (e) {
-      console.warn('[SMG API] Refresh grant error:', e.message, '— falling back to password');
-    }
+  if (!refreshToken) throw new Error('SMG_REFRESH_TOKEN not configured — add to Render env vars');
+
+  const body = new URLSearchParams({
+    grant_type:    'refresh_token',
+    refresh_token: refreshToken,
+    client_id:     SMG_CLIENT_ID,
+  }).toString();
+
+  const res = await httpsPost(SMG_AUTH_URL, { 'Content-Type': 'application/x-www-form-urlencoded' }, body);
+  if (res.status !== 200) {
+    throw new Error(`SMG refresh token failed: ${res.status} ${res.body.slice(0,300)} — token may have expired, re-seed SMG_REFRESH_TOKEN in Render env vars`);
   }
 
-  // 2. Fall back to username/password
-  return tokenFromPassword(p);
+  const data = JSON.parse(res.body);
+  await saveRefreshToken(p, data.refresh_token);
+  console.log('[SMG API] Token acquired via refresh grant');
+  return data.access_token;
 }
 
 // ── comment fetching ─────────────────────────────────────────────────────────

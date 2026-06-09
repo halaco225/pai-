@@ -263,6 +263,25 @@ async function initVelocityDB() {
 async function upsertVelocityRecord(record) {
   const p = getPool();
   if (!p) return null;
+  // NaN ?? 0 doesn't catch NaN — sanitize all numeric fields before DB insert
+  const safeInt  = v => (v == null || (typeof v === 'number' && isNaN(v))) ? null : Math.round(v);
+  const safeDec  = v => (v == null || (typeof v === 'number' && isNaN(v))) ? null : v;
+  record = {
+    ...record,
+    ist_avg:        safeDec(record.ist_avg),
+    ist_lt10:       safeInt(record.ist_lt10),
+    ist_1014:       safeInt(record.ist_1014),
+    ist_1518:       safeInt(record.ist_1518),
+    ist_1925:       safeInt(record.ist_1925),
+    ist_gt25:       safeInt(record.ist_gt25),
+    ist_lt19_pct:   safeDec(record.ist_lt19_pct),
+    total_orders:   safeInt(record.total_orders),
+    make_time:      safeDec(record.make_time),
+    pct_lt4:        safeDec(record.pct_lt4),
+    production_time:safeDec(record.production_time),
+    pct_lt15:       safeDec(record.pct_lt15),
+    on_time_pct:    safeDec(record.on_time_pct),
+  };
   try {
     const res = await p.query(`
       INSERT INTO velocity_daily_records
