@@ -185,19 +185,36 @@ async function generateRecapPPTX(data, options = {}) {
   const PER_TABLE = 9;
   const PER_LABOR = 8;
   const PER_GOAL  = 2;
+  const PER_VOICE = 3;     // comments per column per page (pos left, neg right)
+  const PER_SPOT  = 3;     // store entries per column per page (top left, bot right)
 
   // Count total slides including pagination and any appended slides
   const additionalSlides = safeArr(data.additionalSlides);
+
+  // Scorecard may spill to 2 slides if both bottom5 and nonCompleters are present
+  const scorecardHb = s.scorecard?.hutBotBreakdown || s.scorecard?.hutBot || {};
+  const scorecardB5 = safeArr(scorecardHb.bottom5Stores || scorecardHb.worstStores);
+  const scorecardNC = safeArr(scorecardHb.nonCompleters || scorecardHb.non_completers || scorecardHb.flaggedUsers);
+  const scorecardSlides = has.scorecard ? (scorecardB5.length && scorecardNC.length ? 2 : 1) : 0;
+
+  const cvPos = safeArr(s.customerVoice?.positives || s.customerVoice?.positive);
+  const cvNeg = safeArr(s.customerVoice?.negatives || s.customerVoice?.negative);
+  const cvPages = has.customerVoice ? Math.max(1, Math.max(pagesFor(cvPos, PER_VOICE), pagesFor(cvNeg, PER_VOICE))) : 0;
+
+  const spTop = safeArr((s.winStoreSpotlight || s.smgSpotlight)?.top5 || (s.winStoreSpotlight || s.smgSpotlight)?.top);
+  const spBot = safeArr((s.winStoreSpotlight || s.smgSpotlight)?.bottom5 || (s.winStoreSpotlight || s.smgSpotlight)?.bottom);
+  const spPages = has.winSpotlight ? Math.max(1, Math.max(pagesFor(spTop, PER_SPOT), pagesFor(spBot, PER_SPOT))) : 0;
+
   const TOTAL = 3 + // cover + key dates + closing
-    (has.scorecard    ? 1 : 0) +
+    scorecardSlides +
     (has.acTable      ? pagesFor(safeArr(s.acTable?.rows), PER_TABLE) : 0) +
     (has.wins         ? pagesFor(safeArr(s.wins?.items), PER_WIN) : 0) +
     (has.focusAreas   ? pagesFor(safeArr(s.focusAreas?.items), PER_WIN) : 0) +
     (has.labor        ? pagesFor(safeArr(s.laborDeepDive?.acRows || s.laborDeepDive?.rows), PER_LABOR) : 0) +
     (has.speed        ? 1 : 0) +
     (has.winByAC      ? pagesFor(safeArr((s.winByAC || s.smgByAC)?.rows), PER_TABLE) : 0) +
-    (has.winSpotlight ? 1 : 0) +
-    (has.customerVoice? 1 : 0) +
+    spPages +
+    cvPages +
     (has.smartGoals   ? pagesFor(safeArr(s.smartGoals?.goals), PER_GOAL) : 0) +
     additionalSlides.length;
 
@@ -215,8 +232,8 @@ async function generateRecapPPTX(data, options = {}) {
   if (has.labor)        makeLaborDeepDive(pptx, s.laborDeepDive || {}, weekLabel, sn, TOTAL, PER_LABOR);
   if (has.speed)        makeSpeedOutlier(pptx, s.speedOutlier || {}, weekLabel, sn, TOTAL);
   if (has.winByAC)      makeWINbyAC(pptx, s.winByAC || s.smgByAC || {}, weekLabel, sn, TOTAL, PER_TABLE);
-  if (has.winSpotlight) makeWINStoreSpotlight(pptx, s.winStoreSpotlight || s.smgSpotlight || {}, weekLabel, sn, TOTAL);
-  if (has.customerVoice)makeCustomerVoice(pptx, s.customerVoice || {}, weekLabel, sn, TOTAL);
+  if (has.winSpotlight) makeWINStoreSpotlight(pptx, s.winStoreSpotlight || s.smgSpotlight || {}, weekLabel, sn, TOTAL, PER_SPOT);
+  if (has.customerVoice)makeCustomerVoice(pptx, s.customerVoice || {}, weekLabel, sn, TOTAL, PER_VOICE);
   if (has.smartGoals)   makeSmartGoals(pptx, s.smartGoals || {}, weekLabel, sn, TOTAL, PER_GOAL);
 
   // Appended slides from "Add More Content"
@@ -314,7 +331,12 @@ function makeScorecard(pptx, d, weekLabel, sn, total) {
 
   // ── Bottom 5 Worst HUT Bot Stores ──────────────────────────────────────────
   const bottom5 = safeArr(hb.bottom5Stores || hb.worstStores || []);
-  const nonCompletersStartY = bottom5.length ? 5.2 : 3.95;
+  const nonCompleters = safeArr(
+    hb.nonCompleters || hb.non_completers || hb.flaggedUsers || hb.users || hb.flagged
+  );
+
+  // If both bottom5 and nonCompleters exist, put them on separate slides
+  const needsSplit = bottom5.length > 0 && nonCompleters.length > 0;
 
   if (bottom5.length) {
     slide.addShape(pptx.ShapeType.rect, { x: 0.25, y: 3.65, w: 9.2, h: 0.25, fill: { color: '#8B0000' } });
@@ -331,7 +353,7 @@ function makeScorecard(pptx, d, weekLabel, sn, total) {
       { text: 'ON TIME %',   options: { bold: true, color: B.white, fill: B.dark, fontSize: 8, align: 'center' } },
     ]];
 
-    bottom5.slice(0, 5).forEach((s, idx) => {
+    bottom5.slice(0, 8).forEach((s, idx) => {
       const fill = idx % 2 === 0 ? B.white : '#FFF5F5';
       const ot = safe(s.onTime || s.onTimePercent || s.hutBot || '—');
       const otNum = parseFloat(ot);
@@ -352,15 +374,25 @@ function makeScorecard(pptx, d, weekLabel, sn, total) {
   }
 
   // ── Routine Non-Completers ─────────────────────────────────────────────────
-  const nonCompleters = safeArr(
-    hb.nonCompleters || hb.non_completers || hb.flaggedUsers || hb.users || hb.flagged
-  );
+  // If both sections present, use a fresh slide so nothing gets clipped
+  const ncSlide = needsSplit ? pptx.addSlide() : slide;
+  if (needsSplit) {
+    ncSlide.background = { color: B.light };
+    chrome(ncSlide, pptx, `SCORECARD — ROUTINE NON-COMPLETERS  |  Week of ${weekLabel}`, sn, total);
+  }
+
+  const ncStartY = needsSplit ? 0.75 : (bottom5.length ? 5.25 : 3.95);
+
   if (nonCompleters.length) {
-    slide.addShape(pptx.ShapeType.rect, { x: 0.25, y: nonCompletersStartY, w: 9.2, h: 0.28, fill: { color: B.danger } });
-    slide.addText('⚠  ROUTINE NON-COMPLETERS THIS WEEK — WHO DROPPED THE BALL', {
-      x: 0.35, y: nonCompletersStartY + 0.01, w: 9.0, h: 0.26,
+    ncSlide.addShape(pptx.ShapeType.rect, { x: 0.25, y: ncStartY, w: 9.2, h: 0.28, fill: { color: B.danger } });
+    ncSlide.addText('⚠  ROUTINE NON-COMPLETERS THIS WEEK — WHO DROPPED THE BALL', {
+      x: 0.35, y: ncStartY + 0.01, w: 9.0, h: 0.26,
       color: B.white, fontSize: 9, bold: true, charSpacing: 1
     });
+
+    // How many rows fit? ~0.34" per row. Available height from ncStartY+0.3 to 6.7"
+    const availH = 6.7 - ncStartY - 0.3;
+    const maxRows = Math.max(5, Math.floor(availH / 0.34));
 
     const tableRows = [[
       { text: 'EMPLOYEE',      options: { bold: true, color: B.white, fill: B.dark, fontSize: 8 } },
@@ -370,7 +402,7 @@ function makeScorecard(pptx, d, weekLabel, sn, total) {
       { text: 'STATUS',        options: { bold: true, color: B.white, fill: B.dark, fontSize: 8, align: 'center' } },
     ]];
 
-    nonCompleters.slice(0, 5).forEach((u, idx) => {
+    nonCompleters.slice(0, maxRows).forEach((u, idx) => {
       const fill = idx % 2 === 0 ? B.white : '#F5F5F5';
       const status = safe(u.status || u.completion || u.completionStatus || '—');
       const isNotStarted = status.toLowerCase().includes('not') || status.toLowerCase().includes('never');
@@ -386,13 +418,13 @@ function makeScorecard(pptx, d, weekLabel, sn, total) {
       ]);
     });
 
-    slide.addTable(tableRows, {
-      x: 0.25, y: nonCompletersStartY + 0.3, w: 9.2, rowH: 0.34,
+    ncSlide.addTable(tableRows, {
+      x: 0.25, y: ncStartY + 0.3, w: 9.2, rowH: 0.34,
       border: { type: 'solid', color: '#DDDDDD', pt: 1 }
     });
-  } else {
+  } else if (!needsSplit) {
     slide.addText('Upload "Routines Status by User" file to see individual accountability data', {
-      x: 0.25, y: nonCompletersStartY + 0.15, w: 9.2, h: 0.3, color: B.gray, fontSize: 9, italic: true
+      x: 0.25, y: ncStartY + 0.15, w: 9.2, h: 0.3, color: B.gray, fontSize: 9, italic: true
     });
   }
 }
@@ -701,164 +733,161 @@ function makeWINbyAC(pptx, d, weekLabel, sn, total, perPage) {
   }); // end chunks.forEach
 }
 
-function makeWINStoreSpotlight(pptx, d, weekLabel, sn, total) {
-  const slide = pptx.addSlide();
-  slide.background = { color: B.light };
-  chrome(slide, pptx, `WIN STORE SPOTLIGHT  |  Top & Bottom 5  |  ${weekLabel}`, sn, total);
-
+function makeWINStoreSpotlight(pptx, d, weekLabel, sn, total, perPage) {
   const top = safeArr(d.top5 || d.top);
   const bot = safeArr(d.bottom5 || d.bottom);
+  const pages = Math.max(1, Math.max(pagesFor(top, perPage), pagesFor(bot, perPage)));
 
-  // Column headers
-  slide.addShape(pptx.ShapeType.rect, { x: 0.25, y: 0.72, w: 4.4, h: 0.3, fill: { color: B.green } });
-  slide.addText('★  HIGHEST WIN SCORE', { x: 0.35, y: 0.74, w: 4.1, h: 0.26, color: B.white, fontSize: 10, bold: true });
-  slide.addShape(pptx.ShapeType.rect, { x: 5.0, y: 0.72, w: 4.75, h: 0.3, fill: { color: B.danger } });
-  slide.addText('⚠  LOWEST WIN SCORE', { x: 5.1, y: 0.74, w: 4.5, h: 0.26, color: B.white, fontSize: 10, bold: true });
+  for (let pageIdx = 0; pageIdx < pages; pageIdx++) {
+    const slide = pptx.addSlide();
+    slide.background = { color: B.light };
+    const suffix = pages > 1 ? `  (${pageIdx + 1}/${pages})` : '';
+    chrome(slide, pptx, `WIN STORE SPOTLIGHT  |  Top & Bottom${suffix}  |  ${weekLabel}`, sn, total);
 
-  const renderWINList = (items, x, colW, isTop) => {
-    const accentColor = isTop ? B.green : B.danger;
-    items.slice(0, 5).forEach((item, i) => {
-      const y = 1.1 + i * 1.1;
-      const winScore = safe(item.winScore || item.win_score || item.win || '—');
-      const name     = safe(item.name || item.storeName || item.store, 'Store');
-      const num      = safe(item.num || item.storeNum || item.store_num);
-      const ac       = extractName(item) || safe(item.ac || item.acName);
-      const insight  = safe(item.smgInsight || item.insight || item.note || '');
-      const winNum   = parseFloat(winScore);
-      const winColor = isNaN(winNum) ? accentColor : winNum >= 60 ? B.green : winNum >= 40 ? B.yellow : B.danger;
+    const topChunk = top.slice(pageIdx * perPage, (pageIdx + 1) * perPage);
+    const botChunk = bot.slice(pageIdx * perPage, (pageIdx + 1) * perPage);
 
-      // WIN score pill
-      slide.addShape(pptx.ShapeType.rect, { x: x + colW - 1.2, y, w: 1.15, h: 0.46, fill: { color: winColor } });
-      slide.addText(winScore, { x: x + colW - 1.2, y: y + 0.02, w: 1.15, h: 0.42, color: B.white, fontSize: 16, bold: true, align: 'center', valign: 'middle' });
+    // Column headers
+    slide.addShape(pptx.ShapeType.rect, { x: 0.25, y: 0.72, w: 4.4, h: 0.3, fill: { color: B.green } });
+    slide.addText('★  HIGHEST WIN SCORE', { x: 0.35, y: 0.74, w: 4.1, h: 0.26, color: B.white, fontSize: 10, bold: true });
+    slide.addShape(pptx.ShapeType.rect, { x: 5.0, y: 0.72, w: 4.75, h: 0.3, fill: { color: B.danger } });
+    slide.addText('⚠  LOWEST WIN SCORE', { x: 5.1, y: 0.74, w: 4.5, h: 0.26, color: B.white, fontSize: 10, bold: true });
 
-      // Store name
-      slide.addText(`${name}${num ? '  #' + num : ''}`, {
-        x, y, w: colW - 1.3, h: 0.28, color: B.dark, fontSize: 11, bold: true
+    const ITEM_H = 1.65; // generous spacing per item
+    const renderWINList = (items, x, colW, isTop) => {
+      const accentColor = isTop ? B.green : B.danger;
+      items.forEach((item, i) => {
+        const y = 1.1 + i * ITEM_H;
+        const winScore = safe(item.winScore || item.win_score || item.win || '—');
+        const name     = safe(item.name || item.storeName || item.store, 'Store');
+        const num      = safe(item.num || item.storeNum || item.store_num);
+        const ac       = extractName(item) || safe(item.ac || item.acName);
+        const insight  = safe(item.smgInsight || item.insight || item.note || '');
+        const winNum   = parseFloat(winScore);
+        const winColor = isNaN(winNum) ? accentColor : winNum >= 60 ? B.green : winNum >= 40 ? B.yellow : B.danger;
+
+        slide.addShape(pptx.ShapeType.rect, { x: x + colW - 1.2, y, w: 1.15, h: 0.46, fill: { color: winColor } });
+        slide.addText(winScore, { x: x + colW - 1.2, y: y + 0.02, w: 1.15, h: 0.42, color: B.white, fontSize: 16, bold: true, align: 'center', valign: 'middle' });
+
+        slide.addText(`${name}${num ? '  #' + num : ''}`, {
+          x, y, w: colW - 1.3, h: 0.28, color: B.dark, fontSize: 11, bold: true
+        });
+        if (ac) {
+          slide.addText(`AC: ${ac}`, { x, y: y + 0.3, w: colW - 1.3, h: 0.2, color: B.gray, fontSize: 9 });
+        }
+        if (insight) {
+          slide.addText(insight, { x, y: y + 0.52, w: colW - 1.3, h: 0.55, color: isTop ? '#2E7D32' : B.danger, fontSize: 8.5, italic: true, wrap: true });
+        }
+        if (i < items.length - 1) {
+          slide.addShape(pptx.ShapeType.line, { x, y: y + ITEM_H - 0.1, w: colW, h: 0, line: { color: '#DDDDDD', width: 0.5 } });
+        }
       });
+    };
 
-      // AC line
-      if (ac) {
-        slide.addText(`AC: ${ac}`, { x, y: y + 0.3, w: colW - 1.3, h: 0.2, color: B.gray, fontSize: 9 });
-      }
-
-      // SMG insight
-      if (insight) {
-        slide.addText(insight, { x, y: y + 0.52, w: colW - 1.3, h: 0.35, color: isTop ? '#2E7D32' : B.danger, fontSize: 8.5, italic: true, wrap: true });
-      }
-
-      // Divider
-      if (i < Math.min(items.length, 5) - 1) {
-        slide.addShape(pptx.ShapeType.line, { x, y: y + 0.9, w: colW, h: 0, line: { color: '#DDDDDD', width: 0.5 } });
-      }
-    });
-  };
-
-  if (top.length || bot.length) {
-    renderWINList(top, 0.25, 4.5, true);
-    renderWINList(bot, 5.0, 4.75, false);
-  } else {
-    slide.addText('WIN store data not available — upload ComparisonReport.xls for full analysis', {
-      x: 0.25, y: 1.5, w: 9.5, h: 0.5, color: B.gray, fontSize: 11, italic: true
-    });
+    if (topChunk.length || botChunk.length) {
+      renderWINList(topChunk, 0.25, 4.5, true);
+      renderWINList(botChunk, 5.0, 4.75, false);
+    } else {
+      slide.addText('WIN store data not available — upload ComparisonReport.xls for full analysis', {
+        x: 0.25, y: 1.5, w: 9.5, h: 0.5, color: B.gray, fontSize: 11, italic: true
+      });
+    }
   }
 }
 
-function makeCustomerVoice(pptx, d, weekLabel, sn, total) {
-  const slide = pptx.addSlide();
-  slide.background = { color: B.dark };
-  chrome(slide, pptx, `CUSTOMER VOICE  |  Actual Comments This Week`, sn, total);
-
+function makeCustomerVoice(pptx, d, weekLabel, sn, total, perPage) {
   const pos = safeArr(d.positives || d.positive);
   const neg = safeArr(d.negatives || d.negative);
+  const pages = Math.max(1, Math.max(pagesFor(pos, perPage), pagesFor(neg, perPage)));
 
-  // Section header bars
-  slide.addShape(pptx.ShapeType.rect, { x: 0.25, y: 0.72, w: 4.35, h: 0.28, fill: { color: '#1B5E20' } });
-  slide.addText(`★  DESERVES RECOGNITION  (${pos.length || 0})`, {
-    x: 0.32, y: 0.73, w: 4.18, h: 0.26, color: '#FFFFFF', fontSize: 9, bold: true
-  });
-  slide.addShape(pptx.ShapeType.rect, { x: 4.9, y: 0.72, w: 4.85, h: 0.28, fill: { color: B.danger } });
-  slide.addText(`⚠  NEEDS FOLLOW-UP  (${neg.length || 0})`, {
-    x: 4.97, y: 0.73, w: 4.68, h: 0.26, color: '#FFFFFF', fontSize: 9, bold: true
-  });
+  const ITEM_H = 1.75; // generous vertical space per comment item
 
-  const renderVoice = (items, x, colW) => {
-    items.slice(0, 5).forEach((item, i) => {
-      const y = 1.1 + i * 1.1;
-      const store = safe(item.store || item.storeName || item.name);
-      const winScore = safe(item.winScore || item.win_score || item.win || '');
-      const quote = safe(
-        item.quote || item.comment || item.feedback || item.review ||
-        item.verbatim || item.text || item.description || item.content ||
-        item.customerComment || item.customer_comment || item.customerFeedback
-      );
-      const ac = extractName(item) || safe(item.ac || item.acName);
+  for (let pageIdx = 0; pageIdx < pages; pageIdx++) {
+    const slide = pptx.addSlide();
+    slide.background = { color: B.dark };
+    const suffix = pages > 1 ? `  (${pageIdx + 1}/${pages})` : '';
+    chrome(slide, pptx, `CUSTOMER VOICE  |  Actual Comments This Week${suffix}`, sn, total);
 
-      // Store name — leave room for WIN badge if present
-      const storeW = winScore ? colW - 1.15 : colW;
-      slide.addText(store, {
-        x, y, w: storeW, h: 0.22,
-        color: B.light, fontSize: 10, bold: true
-      });
+    const posChunk = pos.slice(pageIdx * perPage, (pageIdx + 1) * perPage);
+    const negChunk = neg.slice(pageIdx * perPage, (pageIdx + 1) * perPage);
 
-      // WIN score badge (right side of row)
-      if (winScore) {
-        slide.addShape(pptx.ShapeType.rect, {
-          x: x + colW - 1.08, y: y + 0.01, w: 1.03, h: 0.21,
-          fill: { color: B.mid }, line: { color: B.red, width: 1 }
-        });
-        slide.addText(`WIN  ${winScore}`, {
-          x: x + colW - 1.08, y: y + 0.02, w: 1.03, h: 0.19,
-          color: B.red, fontSize: 8, bold: true, align: 'center'
-        });
-      }
-
-      // AC name
-      if (ac) {
-        slide.addText(ac, {
-          x, y: y + 0.23, w: colW, h: 0.16,
-          color: '#777777', fontSize: 8, italic: true
-        });
-      }
-
-      // Verbatim customer quote
-      if (quote) {
-        slide.addText(`"${quote}"`, {
-          x, y: y + (ac ? 0.40 : 0.26), w: colW, h: 0.63,
-          color: '#CCCCCC', fontSize: 9, wrap: true, italic: true
-        });
-      }
-
-      // Thin divider between items
-      if (i < Math.min(items.length, 5) - 1) {
-        slide.addShape(pptx.ShapeType.line, {
-          x, y: y + 1.04, w: colW, h: 0,
-          line: { color: '#2D2D2D', width: 0.5 }
-        });
-      }
+    // Section header bars
+    slide.addShape(pptx.ShapeType.rect, { x: 0.25, y: 0.72, w: 4.35, h: 0.28, fill: { color: '#1B5E20' } });
+    slide.addText(`★  DESERVES RECOGNITION  (${pos.length || 0})`, {
+      x: 0.32, y: 0.73, w: 4.18, h: 0.26, color: '#FFFFFF', fontSize: 9, bold: true
     });
-  };
+    slide.addShape(pptx.ShapeType.rect, { x: 4.9, y: 0.72, w: 4.85, h: 0.28, fill: { color: B.danger } });
+    slide.addText(`⚠  NEEDS FOLLOW-UP  (${neg.length || 0})`, {
+      x: 4.97, y: 0.73, w: 4.68, h: 0.26, color: '#FFFFFF', fontSize: 9, bold: true
+    });
 
-  renderVoice(pos, 0.25, 4.45);
-  renderVoice(neg, 4.9, 4.85);
+    const renderVoice = (items, x, colW) => {
+      items.forEach((item, i) => {
+        const y = 1.1 + i * ITEM_H;
+        const store = safe(item.store || item.storeName || item.name);
+        const winScore = safe(item.winScore || item.win_score || item.win || '');
+        const quote = safe(
+          item.quote || item.comment || item.feedback || item.review ||
+          item.verbatim || item.text || item.description || item.content ||
+          item.customerComment || item.customer_comment || item.customerFeedback
+        );
+        const ac = extractName(item) || safe(item.ac || item.acName);
 
-  // Complaint themes — compact footer
-  const themesRaw = d.themes || d.topThemes || d.complaintThemes;
-  if (themesRaw) {
-    let themes = '';
-    if (Array.isArray(themesRaw)) {
-      themes = themesRaw.map(t => {
-        if (typeof t === 'string') return t;
-        const label = safe(t.theme || t.name || t.label || t.topic);
-        const count = safe(t.count || t.mentions || t.total || '');
-        return count ? `${label} [${count}]` : label;
-      }).filter(Boolean).join('   ·   ');
-    } else {
-      themes = safe(themesRaw);
-    }
-    if (themes) {
-      slide.addText(`TOP COMPLAINT THEMES:   ${themes}`, {
-        x: 0.25, y: 6.65, w: 9.2, h: 0.22, color: '#555555', fontSize: 8, wrap: true
+        const storeW = winScore ? colW - 1.15 : colW;
+        slide.addText(store, { x, y, w: storeW, h: 0.22, color: B.light, fontSize: 10, bold: true });
+
+        if (winScore) {
+          slide.addShape(pptx.ShapeType.rect, {
+            x: x + colW - 1.08, y: y + 0.01, w: 1.03, h: 0.21,
+            fill: { color: B.mid }, line: { color: B.red, width: 1 }
+          });
+          slide.addText(`WIN  ${winScore}`, {
+            x: x + colW - 1.08, y: y + 0.02, w: 1.03, h: 0.19,
+            color: B.red, fontSize: 8, bold: true, align: 'center'
+          });
+        }
+        if (ac) {
+          slide.addText(ac, { x, y: y + 0.23, w: colW, h: 0.16, color: '#777777', fontSize: 8, italic: true });
+        }
+        if (quote) {
+          slide.addText(`"${quote}"`, {
+            x, y: y + (ac ? 0.42 : 0.28), w: colW, h: 1.1,
+            color: '#CCCCCC', fontSize: 9, wrap: true, italic: true
+          });
+        }
+        if (i < items.length - 1) {
+          slide.addShape(pptx.ShapeType.line, {
+            x, y: y + ITEM_H - 0.12, w: colW, h: 0,
+            line: { color: '#2D2D2D', width: 0.5 }
+          });
+        }
       });
+    };
+
+    renderVoice(posChunk, 0.25, 4.45);
+    renderVoice(negChunk, 4.9, 4.85);
+
+    // Complaint themes footer — only on last page
+    if (pageIdx === pages - 1) {
+      const themesRaw = d.themes || d.topThemes || d.complaintThemes;
+      if (themesRaw) {
+        let themes = '';
+        if (Array.isArray(themesRaw)) {
+          themes = themesRaw.map(t => {
+            if (typeof t === 'string') return t;
+            const label = safe(t.theme || t.name || t.label || t.topic);
+            const count = safe(t.count || t.mentions || t.total || '');
+            return count ? `${label} [${count}]` : label;
+          }).filter(Boolean).join('   ·   ');
+        } else {
+          themes = safe(themesRaw);
+        }
+        if (themes) {
+          slide.addText(`TOP COMPLAINT THEMES:   ${themes}`, {
+            x: 0.25, y: 6.65, w: 9.2, h: 0.22, color: '#555555', fontSize: 8, wrap: true
+          });
+        }
+      }
     }
   }
 }
