@@ -1957,8 +1957,10 @@ async function loadSMGComments(force){
     // Update date label
     const lbl=document.getElementById('smgDateLabel');
     if(lbl){
-      if(data.date_start===data.date_end) lbl.textContent=data.date_start||'';
-      else lbl.textContent=(data.date_start||'')+' → '+(data.date_end||'');
+      function fmtD(s){if(!s)return'';const dt=new Date(s+'T12:00:00Z');return isNaN(dt.getTime())?s:dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});}
+      const rangeLabel={'yesterday':'Yesterday','wtd':'Week to Date','ptd':'Period to Date'}[smgRange]||smgRange;
+      if(data.date_start===data.date_end) lbl.textContent='Showing: '+rangeLabel+' · '+fmtD(data.date_start);
+      else lbl.textContent='Showing: '+rangeLabel+' · '+fmtD(data.date_start)+' – '+fmtD(data.date_end);
     }
   }catch(e){c.innerHTML='<div class="empty"><p>Error loading comments: '+escH(e.message)+'</p></div>';}
 }
@@ -2064,7 +2066,7 @@ function renderSMGComments(){
   const srcColor={SMG:'#3b82f6',GES:'#3b82f6',Google:'#34d399','Google Maps':'#34d399',Yelp:'#f59e0b',Facebook:'#60a5fa',Twitter:'#38bdf8','Third Party':'#a78bfa'};
   function srcBadge(s){if(!s)return'';const col=srcColor[s]||'#64748b';return'<span style="font-size:10px;font-weight:700;letter-spacing:.5px;padding:1px 7px;border-radius:10px;border:1px solid '+col+';color:'+col+';margin-left:6px">'+escH(s)+'</span>';}
   const html=Object.values(stores).sort((a,b)=>b.neg.length-a.neg.length).map(s=>{
-    function fmtCommentDate(d){if(!d)return'';const s=String(d).slice(0,10);try{const dt=new Date(s+'T12:00:00Z');return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}catch(e){return s;}}
+    function fmtCommentDate(d){if(!d)return'';const s=String(d).slice(0,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return s;const dt=new Date(s+'T12:00:00Z');if(isNaN(dt.getTime()))return s;return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
     function satStars(n){if(n==null)return'';const full=Math.round(n);return'<span style="color:#f59e0b;font-size:11px">'+'★'.repeat(full)+'☆'.repeat(5-full)+'</span> <span style="color:#64748b;font-size:11px">'+n+'/5</span>';}
     const negCards=s.neg.map(r=>{
       const cats=(r.categories||[]).filter(x=>catFmt[x]).map(x=>'<span style="background:#1e2d4d;color:#94a3b8;font-size:10px;padding:2px 7px;border-radius:4px;margin-right:3px">'+escH(catFmt[x])+'</span>').join('');
