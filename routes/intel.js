@@ -1193,7 +1193,8 @@ router.get('/smg-comments', async (req, res) => {
             store_id:   row.store_id,
             store_name: row.store_name,
             area_coach: row.area_coach,
-            comment_date: c.event_date || dateStart,
+            comment_date: row.metric_date,   // date PAi received it
+            event_date:   c.event_date || null, // actual survey/visit date
             source:     c.source,
             summary:    c.summary,
             comment_text: c.comment,
