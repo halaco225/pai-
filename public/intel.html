@@ -1855,28 +1855,94 @@ function openLaborDrill(acName){
 }
 function closeLaborDrill(){document.getElementById('laborDrillModal').style.display='none';}
 
-function openCancelDrill(acName){
+let _cancelDetailData=null;
+async function openCancelDrill(acName){
+  const dateStr=kpiData?.date||new Date().toISOString().slice(0,10);
+  document.getElementById('cancelDrillTitle').textContent=acName+' — Cancel & Discount Detail';
+  document.getElementById('cancelDrillBody').innerHTML='<tr><td colspan="6" style="color:#64748b;text-align:center;padding:16px">Loading…</td></tr>';
+  document.getElementById('cancelTicketPanel').style.display='none';
+  document.getElementById('cancelDrillModal').style.display='flex';
+  try{
+    const r=await fetch('/api/intel/cancel-detail?ac='+encodeURIComponent(acName)+'&date='+dateStr);
+    const data=await r.json();
+    _cancelDetailData=data.stores||[];
+    renderCancelStores(acName,_cancelDetailData);
+  }catch(e){
+    document.getElementById('cancelDrillBody').innerHTML='<tr><td colspan="6" style="color:#ef4444;text-align:center;padding:16px">Error loading detail</td></tr>';
+  }
+}
+function renderCancelStores(acName,stores){
+  // Merge with cache counts for unmade/made
   const ac=(kpiData?.by_ac||[]).find(a=>a.area_coach===acName);
-  const stores=(ac?.stores||[]).filter(s=>(s.cancels||0)>0).sort((a,b)=>(b.cancels||0)-(a.cancels||0));
   const unmadeByStore={};
   allFlags.filter(f=>f.metric_type==='CANCEL_UNMADE'&&f.area_coach===acName)
     .forEach(f=>{unmadeByStore[f.store_id]=Math.round(f.value||0);});
-  const rows=stores.map(s=>{
-    const total=Math.round(s.cancels||0);
-    const unmade=unmadeByStore[s.store_id]||0;
-    const made=Math.max(0,total-unmade);
+  // Build store list from cache + detail data merged
+  const cacheStores=(ac?.stores||[]).filter(s=>(s.cancels||0)>0);
+  const storeMap={};
+  for(const s of cacheStores) storeMap[s.store_id]={store_name:s.store_name||s.store_id,cancels:Math.round(s.cancels||0),unmade:unmadeByStore[s.store_id]||0};
+  for(const s of stores){
+    if(!storeMap[s.store_id]) storeMap[s.store_id]={store_name:s.store_name||s.store_id,cancels:0,unmade:0};
+    storeMap[s.store_id].detail=s;
+  }
+  const rows=Object.entries(storeMap).map(([sid,s])=>{
+    const made=Math.max(0,s.cancels-s.unmade);
+    const cancelAmt=s.detail?.cancel_unmade_amt!=null?'$'+Number(s.detail.cancel_unmade_amt).toFixed(2):'—';
+    const discPct=s.detail?.discount_pct!=null?Number(s.detail.discount_pct).toFixed(1)+'%':'—';
+    const ticketCount=s.detail?.tickets?.length||0;
+    const hasDetail=ticketCount>0||s.detail?.flags?.length>0;
+    const nameCell=hasDetail
+      ?'<span style="color:#60a5fa;cursor:pointer;text-decoration:underline dotted" onclick="openCancelTickets(\''+escH(sid)+'\',\''+escH(s.store_name||sid)+'\')">'+escH(s.store_name||sid)+'</span>'
+      :'<span style="color:#e2e8f0;font-weight:600">'+escH(s.store_name||sid)+'</span>';
     return'<tr>'
-      +'<td style="color:#e2e8f0;font-weight:600">'+escH(s.store_name||s.store_id)+'</td>'
-      +'<td style="color:#94a3b8;text-align:center">'+total+'</td>'
-      +'<td style="text-align:center"><span class="'+(unmade>0?'r':'n')+'">'+unmade+'</span></td>'
-      +'<td style="color:#94a3b8;text-align:center">'+made+'</td>'
+      +'<td>'+nameCell+'</td>'
+      +'<td style="text-align:center;color:#94a3b8">'+s.cancels+'</td>'
+      +'<td style="text-align:center"><span class="'+(s.unmade>0?'r':'n')+'">'+s.unmade+'</span></td>'
+      +'<td style="text-align:center;color:#94a3b8">'+made+'</td>'
+      +'<td style="text-align:center;color:'+(cancelAmt!=='—'?'#ef4444':'#64748b')+'">'+cancelAmt+'</td>'
+      +'<td style="text-align:center;color:'+(discPct!=='—'&&parseFloat(discPct)>1.5?'#f59e0b':'#64748b')+'">'+discPct+'</td>'
       +'</tr>';
   }).join('');
-  document.getElementById('cancelDrillTitle').textContent=acName+' — Cancel Detail';
-  document.getElementById('cancelDrillBody').innerHTML=rows||'<tr><td colspan="4" style="color:#64748b;text-align:center;padding:16px">No cancels found</td></tr>';
-  document.getElementById('cancelDrillModal').style.display='flex';
+  document.getElementById('cancelDrillBody').innerHTML=rows||'<tr><td colspan="6" style="color:#64748b;text-align:center;padding:16px">No cancels found</td></tr>';
 }
-function closeCancelDrill(){document.getElementById('cancelDrillModal').style.display='none';}
+function openCancelTickets(storeId,storeName){
+  const s=(_cancelDetailData||[]).find(x=>x.store_id===storeId);
+  if(!s) return;
+  const tickets=s.tickets||[];
+  const flags=s.flags||[];
+  let html='<div style="font-size:13px;font-weight:700;color:#e2e8f0;margin-bottom:8px">'+escH(storeName)+'</div>';
+  if(flags.length){
+    html+='<div style="margin-bottom:10px">';
+    for(const f of flags){
+      const color=f.type==='CHANGE_DOWN_CASH'?'#ef4444':f.type==='CHANGE_DOWN_PATTERN'?'#f59e0b':'#94a3b8';
+      html+='<div style="color:'+color+';font-size:12px;margin-bottom:3px">⚑ '+escH(f.summary||f.type)+'</div>';
+    }
+    html+='</div>';
+  }
+  if(tickets.length){
+    html+='<div style="overflow-x:auto"><table class="ack-tbl" style="width:100%;font-size:12px">'
+      +'<thead><tr><th>Ticket #</th><th>Cashier</th><th style="text-align:right">Amount</th><th>Payment</th><th>Cancel Type</th><th>Discount Type</th><th>Time</th><th>Flag</th></tr></thead><tbody>';
+    for(const t of tickets){
+      const flagColor=t.flag_type==='CHANGE_DOWN_CASH'?'#ef4444':t.flag_type==='CHANGE_DOWN_PATTERN'?'#f59e0b':'#94a3b8';
+      html+='<tr>'
+        +'<td style="color:#60a5fa;font-family:monospace">'+escH(t.ticket_id||'—')+'</td>'
+        +'<td>'+escH(t.cashier_name||t.cashier_id||'—')+'</td>'
+        +'<td style="text-align:right;color:#e2e8f0">$'+Number(t.amount||0).toFixed(2)+'</td>'
+        +'<td style="color:#94a3b8">'+escH(t.payment_type||'—')+'</td>'
+        +'<td style="color:'+(t.cancel_type?'#f59e0b':'#64748b')+'">'+escH(t.cancel_type||'—')+'</td>'
+        +'<td style="color:'+(t.discount_type?'#a78bfa':'#64748b')+'">'+escH(t.discount_type||'—')+'</td>'
+        +'<td style="color:#64748b;font-family:monospace">'+escH(t.time||'—')+'</td>'
+        +'<td style="color:'+flagColor+';font-size:11px">'+escH((t.flag_type||'').replace(/_/g,' '))+'</td>'
+        +'</tr>';
+    }
+    html+='</tbody></table></div>';
+  } else {
+    html+='<p style="color:#64748b;font-size:13px">No ticket-level detail available for this store.</p>';
+  }
+  document.getElementById('cancelTicketContent').innerHTML=html;
+  document.getElementById('cancelTicketPanel').style.display='block';
+}
+function closeCancelDrill(){document.getElementById('cancelDrillModal').style.display='none';_cancelDetailData=null;}
 
 function openClockoutDrill(acName){
   const flags=allFlags.filter(f=>f.metric_type==='FORGOT_CLOCKOUT'&&f.area_coach===acName&&f.status!=='addressed'&&f.status!=='archived');
@@ -2165,13 +2231,23 @@ init();
 </div>
 
 <div id="cancelDrillModal" class="modal-bg" style="display:none" onclick="if(event.target===this)closeCancelDrill()">
-  <div class="drill-modal-box">
-    <div class="modal-hdr"><span id="cancelDrillTitle">Cancel Detail</span><button class="modal-close" onclick="closeCancelDrill()">✕</button></div>
-    <p style="color:#94a3b8;font-size:13px;margin:0 0 12px">Cancel Unmades require follow-up. Cancel Mades are recoveries that offset the miss.</p>
+  <div class="drill-modal-box" style="max-width:820px">
+    <div class="modal-hdr"><span id="cancelDrillTitle">Cancel & Discount Detail</span><button class="modal-close" onclick="closeCancelDrill()">✕</button></div>
+    <p style="color:#94a3b8;font-size:13px;margin:0 0 12px">Unmades require follow-up. Mades are recoveries. Click a store name to see individual tickets.</p>
     <div style="overflow-x:auto"><table class="ack-tbl" style="width:100%">
-      <thead><tr><th>Store</th><th style="text-align:center">Total</th><th style="text-align:center;color:#ef4444">Unmades</th><th style="text-align:center;color:#94a3b8">Mades</th></tr></thead>
+      <thead><tr>
+        <th>Store</th>
+        <th style="text-align:center">Count</th>
+        <th style="text-align:center;color:#ef4444">Unmades</th>
+        <th style="text-align:center;color:#94a3b8">Mades</th>
+        <th style="text-align:center;color:#ef4444">Cancel $</th>
+        <th style="text-align:center;color:#f59e0b">Discount %</th>
+      </tr></thead>
       <tbody id="cancelDrillBody"></tbody>
     </table></div>
+    <div id="cancelTicketPanel" style="display:none;margin-top:16px;border-top:1px solid #1e2d4d;padding-top:16px">
+      <div id="cancelTicketContent"></div>
+    </div>
   </div>
 </div>
 

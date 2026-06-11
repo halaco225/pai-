@@ -2216,4 +2216,92 @@ router.get('/scope-stores', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/intel/cancel-detail?ac=NAME&date=YYYY-MM-DD
+// Returns per-store cancel/discount summary + ticket-level detail from intel_flags
+router.get('/cancel-detail', requireAuth, async (req, res) => {
+  try {
+    const { ac, date } = req.query;
+    if (!ac || !date) return res.status(400).json({ error: 'ac and date required' });
+
+    // Pull CHANGE_DOWN flags for this AC/date — they carry ticket arrays
+    const flagRows = await db.pool.query(
+      `SELECT store_id, store_name, metric_type, value, details
+       FROM intel_flags
+       WHERE area_coach = $1 AND metric_date = $2
+         AND metric_type IN ('CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE','CHANGE_DOWN_PATTERN','CANCEL_UNMADE')
+       ORDER BY store_name, metric_type`,
+      [ac, date]
+    );
+
+    // Pull DBS aggregate metrics for cancel $ and discount %
+    const dbsRows = await db.pool.query(
+      `SELECT m.store_id, m.cancel_unmade_day, m.discount_pct_day
+       FROM intel_dbs_metrics m
+       JOIN store_assignments sa ON sa.store_id = m.store_id
+       WHERE sa.area_coach = $1 AND m.metric_date = $2`,
+      [ac, date]
+    );
+
+    const dbsByStore = {};
+    for (const r of dbsRows.rows) {
+      dbsByStore[r.store_id] = { cancel_unmade_day: r.cancel_unmade_day, discount_pct_day: r.discount_pct_day };
+    }
+
+    // Group by store, collect all tickets
+    const byStore = {};
+    for (const row of flagRows.rows) {
+      if (!byStore[row.store_id]) {
+        byStore[row.store_id] = {
+          store_id: row.store_id,
+          store_name: row.store_name,
+          cancel_unmade_amt: dbsByStore[row.store_id]?.cancel_unmade_day ?? null,
+          discount_pct: dbsByStore[row.store_id]?.discount_pct_day ?? null,
+          flags: [],
+          tickets: [],
+        };
+      }
+      const d = row.details || {};
+      byStore[row.store_id].flags.push({ type: row.metric_type, value: row.value, summary: d.summary });
+      // Flatten ticket arrays from CHANGE_DOWN flags
+      if (d.tickets) {
+        for (const t of d.tickets) {
+          byStore[row.store_id].tickets.push({ ...t, flag_type: row.metric_type });
+        }
+      }
+      // CHANGE_DOWN_PATTERN has cashier_summary with nested tickets
+      if (d.cashier_summary) {
+        for (const c of d.cashier_summary) {
+          for (const t of (c.tickets || [])) {
+            byStore[row.store_id].tickets.push({
+              ...t,
+              cashier_id: c.cashier_id,
+              cashier_name: c.cashier_name,
+              flag_type: row.metric_type,
+            });
+          }
+        }
+      }
+    }
+
+    // Also add stores that only have DBS data (cancel_unmade or discount) but no flags
+    for (const [sid, dbs] of Object.entries(dbsByStore)) {
+      if (!byStore[sid] && (dbs.cancel_unmade_day > 0 || dbs.discount_pct_day > 1.5)) {
+        byStore[sid] = {
+          store_id: sid,
+          store_name: sid,
+          cancel_unmade_amt: dbs.cancel_unmade_day,
+          discount_pct: dbs.discount_pct_day,
+          flags: [],
+          tickets: [],
+        };
+      }
+    }
+
+    res.json({ stores: Object.values(byStore).sort((a, b) => (b.tickets.length - a.tickets.length)) });
+  } catch (err) {
+    console.error('[cancel-detail]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
