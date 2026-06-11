@@ -193,8 +193,16 @@ async function runIntelPipeline(targetDate) {
   }
   await logStep('smg', results.steps.smg, targetDate);
 
-  // Step 6b (SMG Win Score) disabled — SMG session auth broken, fix later
-  results.steps.winScore = { skipped: true, reason: 'Disabled' };
+  // Step 6b: SMG WIN Score (auto-pull daily)
+  console.log('[Intel Pipeline] Step 6b: SMG WIN Score');
+  try {
+    const wr = await processWinScore(targetDate);
+    results.steps.winScore = wr;
+  } catch (err) {
+    console.error('[Intel Pipeline] WIN score error:', err.message);
+    results.steps.winScore = { success: false, error: err.message };
+  }
+  await logStep('winScore', results.steps.winScore, targetDate);
 
   // ── Step 7: Hut Bot ────────────────────────────────────────────────────────
   console.log('[Intel Pipeline] Step 7: Hut Bot');
