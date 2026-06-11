@@ -2064,24 +2064,38 @@ function renderSMGComments(){
   const srcColor={SMG:'#3b82f6',GES:'#3b82f6',Google:'#34d399','Google Maps':'#34d399',Yelp:'#f59e0b',Facebook:'#60a5fa',Twitter:'#38bdf8','Third Party':'#a78bfa'};
   function srcBadge(s){if(!s)return'';const col=srcColor[s]||'#64748b';return'<span style="font-size:10px;font-weight:700;letter-spacing:.5px;padding:1px 7px;border-radius:10px;border:1px solid '+col+';color:'+col+';margin-left:6px">'+escH(s)+'</span>';}
   const html=Object.values(stores).sort((a,b)=>b.neg.length-a.neg.length).map(s=>{
+    function fmtCommentDate(d){if(!d)return'';const s=String(d).slice(0,10);try{const dt=new Date(s+'T12:00:00Z');return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}catch(e){return s;}}
+    function satStars(n){if(n==null)return'';const full=Math.round(n);return'<span style="color:#f59e0b;font-size:11px">'+'★'.repeat(full)+'☆'.repeat(5-full)+'</span> <span style="color:#64748b;font-size:11px">'+n+'/5</span>';}
     const negCards=s.neg.map(r=>{
-      const cats=(r.categories||[]).filter(x=>catFmt[x]).map(x=>'<span style="background:#1e2d4d;color:#94a3b8;font-size:10px;padding:1px 6px;border-radius:4px;margin-right:3px">'+escH(catFmt[x])+'</span>').join('');
-      const nameWarn=r.name_mentioned?'<div style="color:#f87171;font-size:11px;font-weight:700;margin-bottom:3px">⚠ Employee named: '+escH(r.name_mentioned)+'</div>':'';
-      const sat=r.overall_satisfaction!=null?'<span style="color:#64748b;font-size:11px"> · '+r.overall_satisfaction+'/5</span>':'';
-      const dateTag=r.comment_date&&smgRange!=='yesterday'?'<span style="font-size:10px;color:#475569;float:right">'+escH(String(r.comment_date).slice(0,10))+'</span>':'';
-      return '<div style="border-left:3px solid #ef4444;padding:8px 10px;background:#0c1425;border-radius:6px;margin-bottom:8px">'
-        +nameWarn+dateTag
-        +'<div style="font-size:12px;font-weight:600;color:#fbbf24;margin-bottom:3px">'+escH(r.summary||'Complaint')+sat+srcBadge(r.source)+'</div>'
-        +(cats?'<div style="margin-bottom:4px">'+cats+'</div>':'')
-        +'<div style="font-size:11px;color:#94a3b8;font-style:italic">"'+escH((r.comment_text||'').substring(0,300))+'"</div>'
+      const cats=(r.categories||[]).filter(x=>catFmt[x]).map(x=>'<span style="background:#1e2d4d;color:#94a3b8;font-size:10px;padding:2px 7px;border-radius:4px;margin-right:3px">'+escH(catFmt[x])+'</span>').join('');
+      const nameWarn=r.name_mentioned?'<div style="color:#f87171;font-size:11px;font-weight:700;margin-bottom:4px">⚠ Employee named: '+escH(r.name_mentioned)+'</div>':'';
+      const dateStr=fmtCommentDate(r.comment_date||r.event_date);
+      const channel=r.channel||r.order_type||r.visit_type||'';
+      const meta=['<span style="color:#475569">'+dateStr+'</span>',channel?'<span style="color:#475569">'+escH(channel)+'</span>':'',srcBadge(r.source)].filter(Boolean).join(' · ');
+      return '<div style="border-left:3px solid #ef4444;padding:10px 12px;background:#0c1425;border-radius:6px;margin-bottom:8px">'
+        +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">'
+        +'<div style="font-size:12px;font-weight:700;color:#fbbf24;flex:1">'+escH(r.summary||'Complaint')+'</div>'
+        +'<div style="font-size:11px;text-align:right;white-space:nowrap;margin-left:10px">'+satStars(r.overall_satisfaction)+'</div>'
+        +'</div>'
+        +(meta?'<div style="font-size:10px;margin-bottom:5px">'+meta+'</div>':'')
+        +nameWarn
+        +(cats?'<div style="margin-bottom:6px">'+cats+'</div>':'')
+        +'<div style="font-size:12px;color:#94a3b8;font-style:italic;line-height:1.6">"'+escH(r.comment_text||'')+'"</div>'
         +'</div>';
     }).join('');
     const posCards=s.pos.map(r=>{
-      const dateTag=r.comment_date&&smgRange!=='yesterday'?'<span style="font-size:10px;color:#475569;float:right">'+escH(String(r.comment_date).slice(0,10))+'</span>':'';
-      return '<div style="border-left:3px solid #22c55e;padding:8px 10px;background:#0c1425;border-radius:6px;margin-bottom:8px">'
-        +dateTag
-        +'<div style="font-size:12px;font-weight:600;color:#86efac;margin-bottom:3px">★ '+escH(r.summary||'Positive')+srcBadge(r.source)+'</div>'
-        +'<div style="font-size:11px;color:#94a3b8;font-style:italic">"'+escH((r.comment_text||'').substring(0,300))+'"</div>'
+      const cats=(r.categories||[]).filter(x=>catFmt[x]).map(x=>'<span style="background:#052e16;color:#86efac;font-size:10px;padding:2px 7px;border-radius:4px;margin-right:3px">'+escH(catFmt[x])+'</span>').join('');
+      const dateStr=fmtCommentDate(r.comment_date||r.event_date);
+      const channel=r.channel||r.order_type||r.visit_type||'';
+      const meta=['<span style="color:#475569">'+dateStr+'</span>',channel?'<span style="color:#475569">'+escH(channel)+'</span>':'',srcBadge(r.source)].filter(Boolean).join(' · ');
+      return '<div style="border-left:3px solid #22c55e;padding:10px 12px;background:#0c1425;border-radius:6px;margin-bottom:8px">'
+        +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">'
+        +'<div style="font-size:12px;font-weight:700;color:#86efac;flex:1">★ '+escH(r.summary||'Positive')+'</div>'
+        +'<div style="font-size:11px;text-align:right;white-space:nowrap;margin-left:10px">'+satStars(r.overall_satisfaction)+'</div>'
+        +'</div>'
+        +(meta?'<div style="font-size:10px;margin-bottom:5px">'+meta+'</div>':'')
+        +(cats?'<div style="margin-bottom:6px">'+cats+'</div>':'')
+        +'<div style="font-size:12px;color:#94a3b8;font-style:italic;line-height:1.6">"'+escH(r.comment_text||'')+'"</div>'
         +'</div>';
     }).join('');
     return '<div class="flag-card" style="margin-bottom:14px">'
