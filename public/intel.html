@@ -503,6 +503,8 @@ button{font-family:inherit;cursor:pointer}
   </div>
 </div>
 
+<input type="file" id="winScoreFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="if(this.files[0])uploadWinScore(this.files[0]);this.value='';">
+
 <div class="modal-bg" id="ackModal">
   <div class="modal-box">
     <div class="modal-ttl">Acknowledge Flag</div>
@@ -648,6 +650,21 @@ async function setupVpFilter(u){
   }catch(e){console.error('vpFilter:',e);}
 }
 
+// ── WIN Score upload ─────────────────────────────────────────────────────────
+async function uploadWinScore(file){
+  const fd=new FormData(); fd.append('file',file);
+  const btn=document.querySelector('[onclick*="winScoreFileInput"]');
+  if(btn){btn.textContent='Uploading…';btn.disabled=true;}
+  try{
+    const res=await fetch('/api/intel/upload/winscore',{method:'POST',body:fd});
+    const d=await res.json();
+    if(!res.ok)throw new Error(d.error||'Upload failed');
+    alert(`✓ WIN scores loaded — ${d.storesProcessed} stores, period end ${d.periodEnd}`);
+    loadKPIs(); // refresh dashboard
+  }catch(e){alert('WIN score upload failed: '+e.message);}
+  finally{if(btn){btn.textContent='↑ Upload Report';btn.disabled=false;}}
+}
+
 async function init(){
   try{
     const auth=await fetch('/api/auth/me').then(r=>r.json());
@@ -739,7 +756,7 @@ function renderKPIs(data){
       <div class="kpi-delta ${lateCount===0&&missedCount===0?'up':'dn'}">${lateCount===0&&missedCount===0?'✓ All audits on time':lateCount+' late · '+missedCount+' missed'}</div>
       <div class="kpi-bench" style="color:#3b82f6;font-size:11px">Click to view details</div>
     </div>
-    <div class="kpi-card">
+    <div class="kpi-card" style="position:relative">
       <div class="kpi-label">Win Score PTD</div>
       ${(()=>{
         const ws=data.region?.avg_win_score;
@@ -748,7 +765,8 @@ function renderKPIs(data){
         const storesWithWs=acs.flatMap(a=>a.stores||[]).filter(s=>s.win_score!=null).length;
         return `<div class="kpi-val ${cls}">${ws!=null?ws.toFixed(1)+'%':'—'}</div>
         <div class="kpi-delta ${ws==null?'':ws>=80?'up':'dn'}">${ws!=null?(ws>=80?'✓ On target':'⚠ Below 80% target'):'No data yet'}</div>
-        <div class="kpi-bench">${storesWithWs} store${storesWithWs!==1?'s':''} reporting</div>`;
+        <div class="kpi-bench">${storesWithWs} store${storesWithWs!==1?'s':''} reporting</div>
+        <div style="margin-top:8px"><button onclick="document.getElementById('winScoreFileInput').click()" style="font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 10px;border:1px solid #334155;border-radius:4px;background:transparent;color:#64748b;cursor:pointer;font-family:inherit">↑ Upload Report</button></div>`;
       })()}
     </div>`;
 }
