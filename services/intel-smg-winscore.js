@@ -380,46 +380,44 @@ async function processWinScore(targetDate) {
 }
 
 async function debugWinScore() {
-  const user = process.env.SMG_USER || '';
-  const pass = process.env.SMG_PASSWORD || '';
-  if (!user || !pass) return { error: 'SMG_USER / SMG_PASSWORD not set' };
-  const jar = makeCookieJar();
   const out = {};
-  try { await login(jar, user, pass); out.login = 'ok'; } catch (e) { return { login: 'FAILED', error: e.message }; }
 
-  // Check what the ReportBuilder.aspx page actually looks like post-login
+  // Try 360.smg.com API using OAuth token (same token used for comments)
   try {
-    const rb = await httpReq(jar, 'GET', `${BASE}/ReportBuilder.aspx`, { headers: { Referer: LOGIN } });
-    out.reportBuilderStatus = rb.status;
-    // Does it show a report list or redirect to login?
-    out.reportBuilderSnippet = rb.body.slice(0, 2000);
-    out.isLoggedIn = !rb.body.includes('txtPassword') && rb.status === 200;
+    const { getAccessToken } = require('./intel-smg-api');
+    const token = await getAccessToken();
+    out.oauthToken = 'ok';
 
-    // Try fetching the available report list
-    const rl = await httpReq(jar, 'GET', `${RB_URL}?function=getreportlist&r=${rand()}`, {
-      headers: { Accept: 'application/json, text/javascript, */*', Referer: `${BASE}/ReportBuilder.aspx` },
-    });
-    out.reportListStatus = rl.status;
-    out.reportListRaw = rl.body.slice(0, 3000);
+    const ACCOUNT_ID = process.env.SMG_ACCOUNT_ID || '5b6205b27485e95d90e0a366';
+    const hdrs = {
+      'Authorization':   `Bearer ${token}`,
+      'accountid':       ACCOUNT_ID,
+      'accept':          'application/json, text/plain, */*',
+      'smg-languageiso': 'en-US',
+      'timezone':        'America/New_York',
+      'origin':          'https://360.smg.com',
+      'referer':         'https://360.smg.com/',
+      'user-agent':      'Mozilla/5.0 (compatible; PAi/1.0)',
+    };
 
-    // Try reporttype=27
-    const qs = `function=getreportcontroller&reporttype=27&reportsubtype=0&r=${rand()}&periodId=`;
-    const rc = await httpReq(jar, 'GET', `${RB_URL}?${qs}`, {
-      headers: { Accept: 'application/json, text/javascript, */*', Referer: `${BASE}/ReportBuilder.aspx` },
-    });
-    out.controllerStatus = rc.status;
-    out.controllerRaw = rc.body.slice(0, 2000);
-  } catch (e) { out.controllerError = e.message; }
+    const endpoints = [
+      '/api/scores',
+      '/api/winscore',
+      '/api/dashboard/scores',
+      '/api/reports/scores',
+      '/api/units/scores',
+      '/api/hierarchy/scores',
+    ];
 
-  try {
-    const fp = await getFiscalPeriod(jar);
-    out.fiscalPeriod = fp;
-    const raw = await fetchReportData(jar, fp.startDate, fp.endDate, fp.quickDateValue);
-    out.rawLength = raw.length;
-    out.rawSnippet = raw.slice(0, 3000);
-    out.parsedScores = parseReportResponse(raw).length;
-    try { const d = JSON.parse(raw); out.jsonTopKeys = Object.keys(d).slice(0, 20); } catch (_) {}
-  } catch (e) { out.fetchError = e.message; }
+    out.probes = {};
+    for (const ep of endpoints) {
+      try {
+        const r = await httpsGet(`https://360.smg.com${ep}`, hdrs);
+        out.probes[ep] = { status: r.status, body: r.body.slice(0, 300) };
+      } catch (e) { out.probes[ep] = { error: e.message }; }
+    }
+  } catch (e) { out.oauthError = e.message; }
+
   return out;
 }
 
