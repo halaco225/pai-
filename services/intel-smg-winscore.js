@@ -381,58 +381,52 @@ async function processWinScore(targetDate) {
 
 async function debugWinScore() {
   const out = {};
+  const user = process.env.SMG_USER || '';
+  const pass = process.env.SMG_PASSWORD || '';
+  if (!user || !pass) return { error: 'SMG_USER / SMG_PASSWORD not set' };
 
-  // Try using OAuth Bearer token directly against reporting.smg.com
+  // Form login only — no OAuth needed for reporting.smg.com
+  const jar = makeCookieJar();
+  try { await login(jar, user, pass); out.formLogin = 'ok'; }
+  catch (e) { return { formLogin: 'FAILED', error: e.message }; }
+
+  // Load ReportBuilder page
+  const rb = await httpReq(jar, 'GET', `${BASE}/ReportBuilder.aspx`, { headers: { Referer: LOGIN } });
+  out.reportBuilderStatus = rb.status;
+  out.isLoggedIn = rb.status === 200 && !rb.body.includes('txtPassword');
+
+  // Fetch saved favorites — the browser auto-loads the last favorite on page load
   try {
-    const { getAccessToken } = require('./intel-smg-api');
-    const token = await getAccessToken();
-    out.oauthToken = 'ok';
-
-    const bearerHdrs = {
-      'Authorization':    `Bearer ${token}`,
-      'Accept':           'application/json, text/javascript, */*',
-      'X-Requested-With': 'XMLHttpRequest',
-      'Referer':          `${BASE}/ReportBuilder.aspx`,
-      'User-Agent':       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    };
-
-    // Try getreportcontroller with OAuth token (no cookie session)
-    const r1 = await httpsGet(
-      `${RB_URL}?function=getreportcontroller&reporttype=27&reportsubtype=0&r=${rand()}&periodId=`,
-      bearerHdrs
+    const fav = await httpReq(jar, 'GET',
+      `${BASE}/handlers/FavoritesComponent.ashx?Action=Initialize&r=${rand()}`,
+      { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/ReportBuilder.aspx` } }
     );
-    out.oauthController = { status: r1.status, body: r1.body.slice(0, 500) };
+    out.favoritesStatus = fav.status;
+    out.favoritesBody = fav.body.slice(0, 2000);
+  } catch (e) { out.favoritesError = e.message; }
 
-    // Try getdata reporttype=0 with OAuth token
-    const r2 = await httpsGet(
+  // Try getreportcontroller for types 0,1,2,27
+  out.controllerTests = {};
+  for (const rt of [0, 1, 2, 27]) {
+    try {
+      const r = await httpReq(jar, 'GET',
+        `${RB_URL}?function=getreportcontroller&reporttype=${rt}&reportsubtype=0&r=${rand()}&periodId=`,
+        { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/ReportBuilder.aspx` } }
+      );
+      out.controllerTests[`type${rt}`] = { status: r.status, body: r.body.slice(0, 200) };
+    } catch (e) { out.controllerTests[`type${rt}`] = { error: e.message }; }
+  }
+
+  // Try getdata reporttype=0 (loads last saved report)
+  try {
+    const gd = await httpReq(jar, 'GET',
       `${RB_URL}?function=getdata&reporttype=0&reportsubtype=0&r=${rand()}`,
-      bearerHdrs
+      { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/ReportBuilder.aspx` } }
     );
-    out.oauthGetdata = { status: r2.status, length: r2.body.length, body: r2.body.slice(0, 1000) };
-
-    // Also try logging in AND attaching Bearer token to see if combo works
-    const jar = makeCookieJar();
-    const user = process.env.SMG_USER || '';
-    const pass = process.env.SMG_PASSWORD || '';
-    if (user && pass) {
-      try {
-        await login(jar, user, pass);
-        out.formLogin = 'ok';
-        // getreportcontroller with both session cookie AND bearer token
-        const r3 = await httpReq(jar, 'GET',
-          `${RB_URL}?function=getreportcontroller&reporttype=27&reportsubtype=0&r=${rand()}&periodId=`,
-          { headers: { ...bearerHdrs } }
-        );
-        out.comboController = { status: r3.status, body: r3.body.slice(0, 500) };
-        // try favorites
-        const r4 = await httpReq(jar, 'GET',
-          `${BASE}/handlers/FavoritesComponent.ashx?Action=Initialize&r=${rand()}`,
-          { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/ReportBuilder.aspx` } }
-        );
-        out.favorites = { status: r4.status, body: r4.body.slice(0, 1000) };
-      } catch (e) { out.formLoginError = e.message; }
-    }
-  } catch (e) { out.oauthError = e.message; }
+    out.getdataStatus = gd.status;
+    out.getdataLength = gd.body.length;
+    out.getdataBody = gd.body.slice(0, 2000);
+  } catch (e) { out.getdataError = e.message; }
 
   return out;
 }

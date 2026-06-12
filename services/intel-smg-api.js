@@ -73,28 +73,6 @@ async function saveRefreshToken(p, token) {
   } catch (e) { console.warn('[SMG API] Could not save refresh token:', e.message); }
 }
 
-async function loginWithPassword(p) {
-  const user = process.env.SMG_USER;
-  const pass = process.env.SMG_PASSWORD;
-  if (!user || !pass) throw new Error('SMG_USER / SMG_PASSWORD not set — cannot auto-recover SMG token');
-
-  const body = new URLSearchParams({
-    grant_type: 'password',
-    username:   user,
-    password:   pass,
-    client_id:  SMG_CLIENT_ID,
-    scope:      'openid offline_access',
-  }).toString();
-
-  const res = await httpsPost(SMG_AUTH_URL, { 'Content-Type': 'application/x-www-form-urlencoded' }, body);
-  if (res.status !== 200) throw new Error(`SMG password grant failed: ${res.status} ${res.body.slice(0, 300)}`);
-
-  const data = JSON.parse(res.body);
-  await saveRefreshToken(p, data.refresh_token);
-  console.log('[SMG API] Token acquired via password grant — new refresh token saved');
-  return data.access_token;
-}
-
 async function getAccessToken() {
   const p = db.getPool();
 
@@ -124,11 +102,10 @@ async function getAccessToken() {
       console.log('[SMG API] Token acquired via refresh grant');
       return data.access_token;
     }
-    console.warn(`[SMG API] Refresh token failed (${res.status}) — falling back to password grant`);
+    throw new Error(`SMG refresh token failed: ${res.status} ${res.body.slice(0,300)} — re-seed SMG_REFRESH_TOKEN in Render env vars`);
   }
 
-  // Fallback: password grant using SMG_USER / SMG_PASSWORD
-  return loginWithPassword(p);
+  throw new Error('SMG_REFRESH_TOKEN not configured — add to Render env vars');
 }
 
 // ── comment fetching ─────────────────────────────────────────────────────────
