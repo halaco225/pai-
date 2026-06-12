@@ -29,9 +29,16 @@ function num(v) {
   return isNaN(n) ? null : n;
 }
 
-// Scan header rows to find actual column indices by keyword
+// Scan header row to find actual column indices by keyword.
+// Skip FOH/BOH/LY sub-columns — we only want the total labor columns.
 function detectColumns(rows) {
-  const cols = { act_lab_dollar: 4, sch_lab_dollar: 5, lab_dollar_var: 6, act_lab_pct: 7, sch_lab_pct: 8, lab_pct_var: 9, act_hrs: 10, sch_hrs: 11, hrs_var: 12 };
+  // GoodData "Overview by Location" report structure (confirmed from live API response):
+  //  0=Location  1=Week  2=A/F Sales  3=LY Sales
+  //  4=Frct Hours  5=Sch Hours  6=Act Hours
+  //  7=Sch Labor $  8=Act Labor $
+  //  9..=FOH/BOH breakdowns (skip these)
+  const cols = { af_sales: 2, sch_hrs: 5, act_hrs: 6, sch_lab_dollar: 7, act_lab_dollar: 8,
+                 lab_dollar_var: null, act_lab_pct: null, sch_lab_pct: null };
   for (let r = 0; r < Math.min(5, rows.length); r++) {
     const row = rows[r];
     if (!row) continue;
@@ -39,14 +46,15 @@ function detectColumns(rows) {
     for (let c = 0; c < row.length; c++) {
       const cell = String(row[c] || '').toLowerCase().replace(/\s+/g, ' ').trim();
       if (!cell) continue;
-      if (cell.includes('act') && cell.includes('lab') && cell.includes('%')) { cols.act_lab_pct = c; found = true; }
-      else if ((cell.includes('sch') || cell.includes('sched')) && cell.includes('lab') && cell.includes('%')) { cols.sch_lab_pct = c; found = true; }
-      else if (cell.includes('lab') && cell.includes('%') && cell.includes('var')) { cols.lab_pct_var = c; }
-      else if (cell.includes('act') && cell.includes('lab') && (cell.includes('$') || cell.includes('dollar'))) { cols.act_lab_dollar = c; found = true; }
-      else if ((cell.includes('sch') || cell.includes('sched')) && cell.includes('lab') && (cell.includes('$') || cell.includes('dollar'))) { cols.sch_lab_dollar = c; found = true; }
-      else if (cell.includes('lab') && (cell.includes('$') || cell.includes('dollar')) && cell.includes('var')) { cols.lab_dollar_var = c; }
-      else if (cell.includes('act') && cell.includes('hrs')) { cols.act_hrs = c; }
-      else if ((cell.includes('sch') || cell.includes('sched')) && cell.includes('hrs')) { cols.sch_hrs = c; }
+      // Skip FOH, BOH, LY sub-columns — only map top-level totals
+      if (cell.includes('foh') || cell.includes('boh') || cell.startsWith('ly ') || cell.includes(' ly ')) continue;
+      if (cell === 'act labor $' || cell === 'act lab $' || cell === 'actual labor $') { cols.act_lab_dollar = c; found = true; }
+      else if (cell === 'sch labor $' || cell === 'sch lab $' || cell === 'sched labor $' || cell === 'scheduled labor $') { cols.sch_lab_dollar = c; found = true; }
+      else if (cell === 'act hours' || cell === 'act hrs' || cell === 'actual hours') { cols.act_hrs = c; }
+      else if (cell === 'sch hours' || cell === 'sch hrs' || cell === 'sched hours' || cell === 'scheduled hours') { cols.sch_hrs = c; }
+      else if ((cell.includes('a/f') || cell.includes('af ')) && cell.includes('sales')) { cols.af_sales = c; }
+      else if (cell.includes('act') && cell.includes('lab') && cell.includes('%') && !cell.includes('var')) { cols.act_lab_pct = c; found = true; }
+      else if ((cell.includes('sch') || cell.includes('sched')) && cell.includes('lab') && cell.includes('%') && !cell.includes('var')) { cols.sch_lab_pct = c; found = true; }
     }
     if (found) {
       console.log(`[FourthLabor] Header detected at row ${r}:`, JSON.stringify(cols));
@@ -81,20 +89,29 @@ function parseFourthLaborFile(filePath) {
     if (!row[0] || String(row[0]).trim() === 'Rollup' || String(row[0]).trim() === 'Location') continue;
     const loc = parseLocation(row[0]);
     if (!loc) continue;
+    const af_sales       = num(row[C.af_sales]);
+    const act_lab_dollar = num(row[C.act_lab_dollar]);
+    const sch_lab_dollar = num(row[C.sch_lab_dollar]);
+    const act_hrs        = num(row[C.act_hrs]);
+    const sch_hrs        = num(row[C.sch_hrs]);
+    // Compute derived values not present in this report format
+    const lab_dollar_var = (act_lab_dollar != null && sch_lab_dollar != null) ? Math.round((act_lab_dollar - sch_lab_dollar) * 100) / 100 : null;
+    const hrs_var        = (act_hrs != null && sch_hrs != null) ? Math.round((act_hrs - sch_hrs) * 100) / 100 : null;
+    // Labor % — read from report if available, otherwise compute from dollars/sales
+    let act_lab_pct = C.act_lab_pct != null ? num(row[C.act_lab_pct]) : null;
+    let sch_lab_pct = C.sch_lab_pct != null ? num(row[C.sch_lab_pct]) : null;
+    if (act_lab_pct == null && act_lab_dollar != null && af_sales && af_sales > 0) {
+      act_lab_pct = Math.round((act_lab_dollar / af_sales) * 1000) / 10;
+    }
+    if (sch_lab_pct == null && sch_lab_dollar != null && af_sales && af_sales > 0) {
+      sch_lab_pct = Math.round((sch_lab_dollar / af_sales) * 1000) / 10;
+    }
     stores.push({
       ...loc,
-      af_sales:       num(row[1]),
-      fcst_sales:     num(row[2]),
-      sales_var:      num(row[3]),
-      act_lab_dollar: num(row[C.act_lab_dollar]),
-      sch_lab_dollar: num(row[C.sch_lab_dollar]),
-      lab_dollar_var: num(row[C.lab_dollar_var]),
-      act_lab_pct:    num(row[C.act_lab_pct]),
-      sch_lab_pct:    num(row[C.sch_lab_pct]),
-      lab_pct_var:    num(row[C.lab_pct_var]),
-      act_hrs:        num(row[C.act_hrs]),
-      sch_hrs:        num(row[C.sch_hrs]),
-      hrs_var:        num(row[C.hrs_var] != null ? row[C.hrs_var] : null),
+      af_sales, fcst_sales: af_sales, sales_var: null,
+      act_lab_dollar, sch_lab_dollar, lab_dollar_var,
+      act_lab_pct, sch_lab_pct, lab_pct_var: null,
+      act_hrs, sch_hrs, hrs_var,
     });
   }
   // Return debug metadata alongside stores so processFourthLabor can log it
@@ -167,22 +184,13 @@ async function processFourthLabor(filePath, targetDate) {
       day_of_week:      dow,
     };
 
-    // Fourth exports percentages as Excel decimals (0.1724 = 17.24%) when raw:true
-    // Normalize: if value < 1.5 assume decimal format, multiply by 100
-    // Guard: labor % > 150 is impossible — likely a dollar value in the wrong column
-    const normPct = v => {
-      if (v == null) return null;
-      const pct = v < 1.5 ? Math.round(v * 1000) / 10 : v;
-      if (pct > 150) { console.warn(`[FourthLabor] Skipping implausible labor % ${pct} for ${s.store_id} — may be a column mismatch`); return null; }
-      return pct;
-    };
     if (s.act_lab_pct != null) {
       await db.upsertSoftIndicator({ store_id: s.store_id, metric_date: targetDate,
-        indicator: 'labor_pct', value: normPct(s.act_lab_pct), target: 28, source: 'FOURTH' });
+        indicator: 'labor_pct', value: s.act_lab_pct, target: 28, source: 'FOURTH' });
     }
     if (s.sch_lab_pct != null) {
       await db.upsertSoftIndicator({ store_id: s.store_id, metric_date: targetDate,
-        indicator: 'sch_labor_pct', value: normPct(s.sch_lab_pct), target: null, source: 'FOURTH' });
+        indicator: 'sch_labor_pct', value: s.sch_lab_pct, target: null, source: 'FOURTH' });
     }
     if (s.act_lab_dollar != null) {
       await db.upsertSoftIndicator({ store_id: s.store_id, metric_date: targetDate,
