@@ -382,39 +382,55 @@ async function processWinScore(targetDate) {
 async function debugWinScore() {
   const out = {};
 
-  // Try 360.smg.com API using OAuth token (same token used for comments)
+  // Try using OAuth Bearer token directly against reporting.smg.com
   try {
     const { getAccessToken } = require('./intel-smg-api');
     const token = await getAccessToken();
     out.oauthToken = 'ok';
 
-    const ACCOUNT_ID = process.env.SMG_ACCOUNT_ID || '5b6205b27485e95d90e0a366';
-    const hdrs = {
-      'Authorization':   `Bearer ${token}`,
-      'accountid':       ACCOUNT_ID,
-      'accept':          'application/json, text/plain, */*',
-      'smg-languageiso': 'en-US',
-      'timezone':        'America/New_York',
-      'origin':          'https://360.smg.com',
-      'referer':         'https://360.smg.com/',
-      'user-agent':      'Mozilla/5.0 (compatible; PAi/1.0)',
+    const bearerHdrs = {
+      'Authorization':    `Bearer ${token}`,
+      'Accept':           'application/json, text/javascript, */*',
+      'X-Requested-With': 'XMLHttpRequest',
+      'Referer':          `${BASE}/ReportBuilder.aspx`,
+      'User-Agent':       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     };
 
-    const endpoints = [
-      '/api/scores',
-      '/api/winscore',
-      '/api/dashboard/scores',
-      '/api/reports/scores',
-      '/api/units/scores',
-      '/api/hierarchy/scores',
-    ];
+    // Try getreportcontroller with OAuth token (no cookie session)
+    const r1 = await httpsGet(
+      `${RB_URL}?function=getreportcontroller&reporttype=27&reportsubtype=0&r=${rand()}&periodId=`,
+      bearerHdrs
+    );
+    out.oauthController = { status: r1.status, body: r1.body.slice(0, 500) };
 
-    out.probes = {};
-    for (const ep of endpoints) {
+    // Try getdata reporttype=0 with OAuth token
+    const r2 = await httpsGet(
+      `${RB_URL}?function=getdata&reporttype=0&reportsubtype=0&r=${rand()}`,
+      bearerHdrs
+    );
+    out.oauthGetdata = { status: r2.status, length: r2.body.length, body: r2.body.slice(0, 1000) };
+
+    // Also try logging in AND attaching Bearer token to see if combo works
+    const jar = makeCookieJar();
+    const user = process.env.SMG_USER || '';
+    const pass = process.env.SMG_PASSWORD || '';
+    if (user && pass) {
       try {
-        const r = await httpsGet(`https://360.smg.com${ep}`, hdrs);
-        out.probes[ep] = { status: r.status, body: r.body.slice(0, 300) };
-      } catch (e) { out.probes[ep] = { error: e.message }; }
+        await login(jar, user, pass);
+        out.formLogin = 'ok';
+        // getreportcontroller with both session cookie AND bearer token
+        const r3 = await httpReq(jar, 'GET',
+          `${RB_URL}?function=getreportcontroller&reporttype=27&reportsubtype=0&r=${rand()}&periodId=`,
+          { headers: { ...bearerHdrs } }
+        );
+        out.comboController = { status: r3.status, body: r3.body.slice(0, 500) };
+        // try favorites
+        const r4 = await httpReq(jar, 'GET',
+          `${BASE}/handlers/FavoritesComponent.ashx?Action=Initialize&r=${rand()}`,
+          { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/ReportBuilder.aspx` } }
+        );
+        out.favorites = { status: r4.status, body: r4.body.slice(0, 1000) };
+      } catch (e) { out.formLoginError = e.message; }
     }
   } catch (e) { out.oauthError = e.message; }
 
