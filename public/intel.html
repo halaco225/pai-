@@ -1940,10 +1940,7 @@ function renderCancelStores(acName,stores){
     const cancelAmt=s.detail?.cancel_unmade_amt!=null?'$'+Number(s.detail.cancel_unmade_amt).toFixed(2):'—';
     const discPct=s.detail?.discount_pct!=null?Number(s.detail.discount_pct).toFixed(1)+'%':'—';
     const ticketCount=s.detail?.tickets?.length||0;
-    const hasDetail=ticketCount>0||s.detail?.flags?.length>0;
-    const nameCell=hasDetail
-      ?'<span style="color:#60a5fa;cursor:pointer;text-decoration:underline dotted" onclick="openCancelTickets(\''+escH(sid)+'\',\''+escH(s.store_name||sid)+'\')">'+escH(s.store_name||sid)+'</span>'
-      :'<span style="color:#e2e8f0;font-weight:600">'+escH(s.store_name||sid)+'</span>';
+    const nameCell='<span style="color:#60a5fa;cursor:pointer;text-decoration:underline dotted" onclick="openCancelTickets(\''+escH(sid)+'\',\''+escH(s.store_name||sid)+'\')">'+escH(s.store_name||sid)+'</span>';
     return'<tr>'
       +'<td>'+nameCell+'</td>'
       +'<td style="text-align:center;color:#94a3b8">'+s.cancels+'</td>'
@@ -1969,9 +1966,17 @@ function openCancelTickets(storeId,storeName){
     }
     html+='</div>';
   }
+  // Summary row — always show DBS aggregate data
+  const det=s||{};
+  const cancelAmtSum=det.cancel_unmade_amt!=null?'$'+Number(det.cancel_unmade_amt).toFixed(2):null;
+  const discPctSum=det.discount_pct!=null?Number(det.discount_pct).toFixed(1)+'%':null;
+  html+='<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;padding:8px;background:#0c1425;border-radius:6px">';
+  html+='<span style="font-size:12px;color:#64748b">Cancel&nbsp;$:&nbsp;<b style="color:'+(cancelAmtSum?'#ef4444':'#475569')+'">'+(cancelAmtSum||'—')+'</b></span>';
+  html+='<span style="font-size:12px;color:#64748b">Discount&nbsp;%:&nbsp;<b style="color:'+(discPctSum&&parseFloat(discPctSum)>1.5?'#f59e0b':'#475569')+'">'+(discPctSum||'—')+'</b></span>';
+  html+='</div>';
   if(tickets.length){
     html+='<div style="overflow-x:auto"><table class="ack-tbl" style="width:100%;font-size:12px">'
-      +'<thead><tr><th>Ticket #</th><th>Cashier</th><th style="text-align:right">Amount</th><th>Payment</th><th>Cancel Type</th><th>Discount Type</th><th>Time</th><th>Flag</th></tr></thead><tbody>';
+      +'<thead><tr><th>Ticket #</th><th>Cashier&nbsp;ID</th><th style="text-align:right">Amount</th><th>Payment</th><th>Cancel Type</th><th>Discount Type</th><th>Time</th><th>Flag</th></tr></thead><tbody>';
     for(const t of tickets){
       const flagColor=t.flag_type==='CHANGE_DOWN_CASH'?'#ef4444':t.flag_type==='CHANGE_DOWN_PATTERN'?'#f59e0b':'#94a3b8';
       html+='<tr>'
@@ -1987,7 +1992,7 @@ function openCancelTickets(storeId,storeName){
     }
     html+='</tbody></table></div>';
   } else {
-    html+='<p style="color:#64748b;font-size:13px">No ticket-level detail available for this store.</p>';
+    html+='<p style="color:#64748b;font-size:12px">Ticket-level detail (ticket #, cashier ID, time) requires the ODS Cancel After Tender report — not yet connected.<br>Change-down ticket detail is available for stores with flagged change-down transactions.</p>';
   }
   document.getElementById('cancelTicketContent').innerHTML=html;
   document.getElementById('cancelTicketPanel').style.display='block';

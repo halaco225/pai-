@@ -29,12 +29,42 @@ function num(v) {
   return isNaN(n) ? null : n;
 }
 
+// Scan header rows to find actual column indices by keyword
+function detectColumns(rows) {
+  const cols = { act_lab_dollar: 4, sch_lab_dollar: 5, lab_dollar_var: 6, act_lab_pct: 7, sch_lab_pct: 8, lab_pct_var: 9, act_hrs: 10, sch_hrs: 11, hrs_var: 12 };
+  for (let r = 0; r < Math.min(5, rows.length); r++) {
+    const row = rows[r];
+    if (!row) continue;
+    let found = false;
+    for (let c = 0; c < row.length; c++) {
+      const cell = String(row[c] || '').toLowerCase().replace(/\s+/g, ' ').trim();
+      if (!cell) continue;
+      if (cell.includes('act') && cell.includes('lab') && cell.includes('%')) { cols.act_lab_pct = c; found = true; }
+      else if ((cell.includes('sch') || cell.includes('sched')) && cell.includes('lab') && cell.includes('%')) { cols.sch_lab_pct = c; found = true; }
+      else if (cell.includes('lab') && cell.includes('%') && cell.includes('var')) { cols.lab_pct_var = c; }
+      else if (cell.includes('act') && cell.includes('lab') && (cell.includes('$') || cell.includes('dollar'))) { cols.act_lab_dollar = c; found = true; }
+      else if ((cell.includes('sch') || cell.includes('sched')) && cell.includes('lab') && (cell.includes('$') || cell.includes('dollar'))) { cols.sch_lab_dollar = c; found = true; }
+      else if (cell.includes('lab') && (cell.includes('$') || cell.includes('dollar')) && cell.includes('var')) { cols.lab_dollar_var = c; }
+      else if (cell.includes('act') && cell.includes('hrs')) { cols.act_hrs = c; }
+      else if ((cell.includes('sch') || cell.includes('sched')) && cell.includes('hrs')) { cols.sch_hrs = c; }
+    }
+    if (found) {
+      console.log(`[FourthLabor] Header detected at row ${r}:`, JSON.stringify(cols));
+      break;
+    }
+  }
+  return cols;
+}
+
 function parseFourthLaborFile(filePath) {
   const wb   = XLSX.readFile(filePath, { cellDates: false, raw: true });
   console.log('[FourthLabor] SheetNames:', wb.SheetNames);
   const ws   = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
   console.log('[FourthLabor] Total rows:', rows.length, '| First 5 rows:', JSON.stringify(rows.slice(0, 5)));
+
+  const C = detectColumns(rows);
+
   const stores = [];
   // Data starts at row index 3 (0-based), skip header rows and rollup
   // Auto-detect: if row 3 col 0 doesn't match, scan for the first row matching (NNNNNN)
@@ -50,18 +80,18 @@ function parseFourthLaborFile(filePath) {
     if (!loc) continue;
     stores.push({
       ...loc,
-      af_sales:      num(row[1]),
-      fcst_sales:    num(row[2]),
-      sales_var:     num(row[3]),
-      act_lab_dollar: num(row[4]),
-      sch_lab_dollar: num(row[5]),
-      lab_dollar_var: num(row[6]),
-      act_lab_pct:   num(row[7]),
-      sch_lab_pct:   num(row[8]),
-      lab_pct_var:   num(row[9]),
-      act_hrs:       num(row[10]),
-      sch_hrs:       num(row[11]),
-      hrs_var:       num(row[12]),
+      af_sales:       num(row[1]),
+      fcst_sales:     num(row[2]),
+      sales_var:      num(row[3]),
+      act_lab_dollar: num(row[C.act_lab_dollar]),
+      sch_lab_dollar: num(row[C.sch_lab_dollar]),
+      lab_dollar_var: num(row[C.lab_dollar_var]),
+      act_lab_pct:    num(row[C.act_lab_pct]),
+      sch_lab_pct:    num(row[C.sch_lab_pct]),
+      lab_pct_var:    num(row[C.lab_pct_var]),
+      act_hrs:        num(row[C.act_hrs]),
+      sch_hrs:        num(row[C.sch_hrs]),
+      hrs_var:        num(row[C.hrs_var] != null ? row[C.hrs_var] : null),
     });
   }
   return stores;
@@ -111,7 +141,13 @@ async function processFourthLabor(filePath, targetDate) {
 
     // Fourth exports percentages as Excel decimals (0.1724 = 17.24%) when raw:true
     // Normalize: if value < 1.5 assume decimal format, multiply by 100
-    const normPct = v => (v != null && v < 1.5) ? Math.round(v * 1000) / 10 : v;
+    // Guard: labor % > 150 is impossible — likely a dollar value in the wrong column
+    const normPct = v => {
+      if (v == null) return null;
+      const pct = v < 1.5 ? Math.round(v * 1000) / 10 : v;
+      if (pct > 150) { console.warn(`[FourthLabor] Skipping implausible labor % ${pct} for ${s.store_id} — may be a column mismatch`); return null; }
+      return pct;
+    };
     if (s.act_lab_pct != null) {
       await db.upsertSoftIndicator({ store_id: s.store_id, metric_date: targetDate,
         indicator: 'labor_pct', value: normPct(s.act_lab_pct), target: 28, source: 'FOURTH' });
