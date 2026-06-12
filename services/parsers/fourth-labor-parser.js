@@ -61,13 +61,16 @@ function parseFourthLaborFile(filePath) {
   console.log('[FourthLabor] SheetNames:', wb.SheetNames);
   const ws   = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
-  console.log('[FourthLabor] Total rows:', rows.length, '| First 5 rows:', JSON.stringify(rows.slice(0, 5)));
+  console.log('[FourthLabor] Total rows:', rows.length);
+  console.log('[FourthLabor] Row0:', JSON.stringify((rows[0] || []).slice(0, 15)));
+  console.log('[FourthLabor] Row1:', JSON.stringify((rows[1] || []).slice(0, 15)));
+  console.log('[FourthLabor] Row2:', JSON.stringify((rows[2] || []).slice(0, 15)));
+  console.log('[FourthLabor] Row3:', JSON.stringify((rows[3] || []).slice(0, 15)));
+  console.log('[FourthLabor] Row4:', JSON.stringify((rows[4] || []).slice(0, 15)));
 
   const C = detectColumns(rows);
 
   const stores = [];
-  // Data starts at row index 3 (0-based), skip header rows and rollup
-  // Auto-detect: if row 3 col 0 doesn't match, scan for the first row matching (NNNNNN)
   let dataStart = 3;
   for (let i = 0; i < Math.min(rows.length, 10); i++) {
     if (rows[i] && rows[i][0] && parseLocation(rows[i][0])) { dataStart = i; break; }
@@ -94,6 +97,12 @@ function parseFourthLaborFile(filePath) {
       hrs_var:        num(row[C.hrs_var] != null ? row[C.hrs_var] : null),
     });
   }
+  // Return debug metadata alongside stores so processFourthLabor can log it
+  stores._debug = {
+    column_map: C,
+    header_rows: rows.slice(0, 5).map(r => (r || []).slice(0, 15)),
+    first_data_row: (rows[dataStart] || []).slice(0, 15),
+  };
   return stores;
 }
 
@@ -112,12 +121,13 @@ async function processFourthLabor(filePath, targetDate) {
   console.log(`[FourthLabor] ${stores.length} stores`);
 
   // Debug: log column map, raw header rows, and parsed sample to diagnose column mapping
+  const dbg = stores._debug || {};
   const debugStores = stores.filter(s => ['042659','039522','039461'].includes(s.store_id)).slice(0, 3);
   await db.logIntelJob({ jobType: 'debug:fourthLabor_sample', targetDate, status: 'info',
     message: JSON.stringify({
-      column_map: C,
-      header_rows: rows.slice(0, 5).map(r => (r || []).slice(0, 15)), // first 15 cols of first 5 rows
-      first_data_row: (rows[dataStart] || []).slice(0, 15),
+      column_map: dbg.column_map,
+      header_rows: dbg.header_rows,
+      first_data_row: dbg.first_data_row,
       total_stores: stores.length,
       sample: (debugStores.length ? debugStores : stores.slice(0, 3)).map(s => ({
         store_id: s.store_id, store_name: s.store_name,
