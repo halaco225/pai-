@@ -110,6 +110,19 @@ async function processFourthLabor(filePath, targetDate) {
   }
 
   console.log(`[FourthLabor] ${stores.length} stores`);
+
+  // Debug: log raw parsed values for known Ayvaz stores so we can verify column mapping
+  const debugStores = stores.filter(s => ['042659','039522','039461'].includes(s.store_id)).slice(0, 3);
+  if (debugStores.length) {
+    await db.logIntelJob({ jobType: 'debug:fourthLabor_sample', targetDate, status: 'info',
+      message: JSON.stringify(debugStores.map(s => ({
+        store_id: s.store_id, store_name: s.store_name,
+        act_lab_dollar: s.act_lab_dollar, sch_lab_dollar: s.sch_lab_dollar,
+        act_lab_pct: s.act_lab_pct, sch_lab_pct: s.sch_lab_pct,
+        act_hrs: s.act_hrs, sch_hrs: s.sch_hrs,
+      }))) });
+  }
+
   const assignments = await db.getStoreAssignments();
   let flagsWritten = 0;
 
