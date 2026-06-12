@@ -224,55 +224,19 @@ async function getFiscalPeriod(jar) {
 // ── Report fetch ──────────────────────────────────────────────────────────────
 
 async function fetchReportData(jar, startDate, endDate, quickDateValue) {
-  const qs = [
-    'function=getdata',
-    'reporttype=27',
-    'reportsubtype=0',
-    'disableunits=false',
-    `r=${rand()}`,
-    'translateBtnClicked=false',
-    'translateFlag=false',
-  ].join('&');
+  // Use the same GET approach the browser uses: reporttype=0 loads the last saved report
+  const qs = `function=getdata&reporttype=0&reportsubtype=0&r=${rand()}`;
 
-  const body = formEncode({
-    StartDate:                     startDate,
-    EndDate:                       endDate,
-    CustomQuickDateId:             '',
-    CustomStartDate:               '',
-    CustomEndDate:                 '',
-    ReportLevel:                   LEVEL_STORE,
-    Benchmarks:                    '',
-    SurveyItems:                   WIN_SCORE_ITEM,
-    Filters:                       '[]',
-    CompareBy:                     '',
-    BreakoutCompareType:           'undefined',
-    MultiParentHierarchyLevelBy:   '0',
-    ColumnWrap:                    'True',
-    UnitCount:                     'false',
-    DateType:                      'Survey',
-    CCTypeList:                    '',
-    HierarchyList:                 '',
-    CompareToOtherDatesTimePeriod: '0',
-    QuickDateValue:                quickDateValue,
-    GroupByLevel:                  LEVEL_STORE,
-    Units:                         UNIT_IDS,
-    HierarchyStructureScoreType:   '',
-    HierarchyStructureType:        '',
-    LevelAlignment:                '',
-  });
-
-  console.log('[WinScore] POST ReportViewer.ashx');
-  const r = await httpReq(jar, 'POST', `${RV_URL}?${qs}`, {
-    body,
+  console.log('[WinScore] GET ReportBuilder.ashx (reporttype=0)');
+  const r = await httpReq(jar, 'GET', `${RB_URL}?${qs}`, {
     headers: {
       Accept:              'application/json, text/javascript, */*',
       Referer:             `${BASE}/ReportBuilder.aspx`,
-      Origin:              BASE,
       'X-Requested-With': 'XMLHttpRequest',
     },
   });
 
-  if (r.status !== 200) throw new Error(`ReportViewer HTTP ${r.status}: ${r.body.slice(0, 300)}`);
+  if (r.status !== 200) throw new Error(`ReportBuilder HTTP ${r.status}: ${r.body.slice(0, 300)}`);
   return r.body;
 }
 
@@ -452,7 +416,9 @@ async function debugWinScore() {
     out.fiscalPeriod = fp;
     const raw = await fetchReportData(jar, fp.startDate, fp.endDate, fp.quickDateValue);
     out.rawLength = raw.length;
-    out.rawSnippet = raw.slice(0, 1000);
+    out.rawSnippet = raw.slice(0, 3000);
+    out.parsedScores = parseReportResponse(raw).length;
+    try { const d = JSON.parse(raw); out.jsonTopKeys = Object.keys(d).slice(0, 20); } catch (_) {}
   } catch (e) { out.fetchError = e.message; }
   return out;
 }
