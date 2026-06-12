@@ -423,22 +423,28 @@ async function debugWinScore() {
   const out = {};
   try { await login(jar, user, pass); out.login = 'ok'; } catch (e) { return { login: 'FAILED', error: e.message }; }
 
-  // Expose raw getreportcontroller response to find real item/unit IDs
+  // Check what the ReportBuilder.aspx page actually looks like post-login
   try {
-    await httpReq(jar, 'GET', `${BASE}/ReportBuilder.aspx`, { headers: { Referer: LOGIN } });
+    const rb = await httpReq(jar, 'GET', `${BASE}/ReportBuilder.aspx`, { headers: { Referer: LOGIN } });
+    out.reportBuilderStatus = rb.status;
+    // Does it show a report list or redirect to login?
+    out.reportBuilderSnippet = rb.body.slice(0, 2000);
+    out.isLoggedIn = !rb.body.includes('txtPassword') && rb.status === 200;
+
+    // Try fetching the available report list
+    const rl = await httpReq(jar, 'GET', `${RB_URL}?function=getreportlist&r=${rand()}`, {
+      headers: { Accept: 'application/json, text/javascript, */*', Referer: `${BASE}/ReportBuilder.aspx` },
+    });
+    out.reportListStatus = rl.status;
+    out.reportListRaw = rl.body.slice(0, 3000);
+
+    // Try reporttype=27
     const qs = `function=getreportcontroller&reporttype=27&reportsubtype=0&r=${rand()}&periodId=`;
     const rc = await httpReq(jar, 'GET', `${RB_URL}?${qs}`, {
       headers: { Accept: 'application/json, text/javascript, */*', Referer: `${BASE}/ReportBuilder.aspx` },
     });
     out.controllerStatus = rc.status;
-    out.controllerRaw = rc.body.slice(0, 5000);
-    try {
-      const d = JSON.parse(rc.body);
-      out.controllerKeys = Object.keys(d);
-      out.surveyItems = (d.SurveyItems || d.surveyItems || []).slice(0, 20);
-      out.units = (d.Units || d.units || []).slice(0, 10);
-      out.dateRanges = (d.DateRanges || d.dateRanges || []).slice(0, 5);
-    } catch (_) { out.controllerParseError = 'not JSON'; }
+    out.controllerRaw = rc.body.slice(0, 2000);
   } catch (e) { out.controllerError = e.message; }
 
   try {
