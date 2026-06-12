@@ -2403,18 +2403,32 @@ router.get('/cancel-detail', requireAuth, async (req, res) => {
       [ac, date]
     );
 
-    // Pull DBS aggregate metrics for cancel $ and discount %
+    // Pull DBS aggregate metrics for cancel $ and discount % — all stores for this AC
     const dbsRows = await db.pool.query(
-      `SELECT m.store_id, m.cancel_unmade_day, m.discount_pct_day
+      `SELECT m.store_id, sa.store_name, m.cancel_unmade_day, m.discount_pct_day
        FROM intel_dbs_metrics m
        JOIN store_assignments sa ON sa.store_id = m.store_id
        WHERE sa.area_coach = $1 AND m.metric_date = $2`,
       [ac, date]
     );
+    // Also try previous day if today has no DBS data yet
+    let dbsRowsFallback = { rows: [] };
+    if (dbsRows.rows.length === 0) {
+      const prev = new Date(date + 'T12:00:00Z');
+      prev.setUTCDate(prev.getUTCDate() - 1);
+      const prevDate = prev.toISOString().slice(0, 10);
+      dbsRowsFallback = await db.pool.query(
+        `SELECT m.store_id, sa.store_name, m.cancel_unmade_day, m.discount_pct_day
+         FROM intel_dbs_metrics m
+         JOIN store_assignments sa ON sa.store_id = m.store_id
+         WHERE sa.area_coach = $1 AND m.metric_date = $2`,
+        [ac, prevDate]
+      );
+    }
 
     const dbsByStore = {};
-    for (const r of dbsRows.rows) {
-      dbsByStore[r.store_id] = { cancel_unmade_day: r.cancel_unmade_day, discount_pct_day: r.discount_pct_day };
+    for (const r of [...dbsRows.rows, ...dbsRowsFallback.rows]) {
+      dbsByStore[r.store_id] = { store_name: r.store_name, cancel_unmade_day: r.cancel_unmade_day, discount_pct_day: r.discount_pct_day };
     }
 
     // Group by store, collect all tickets
@@ -2453,17 +2467,20 @@ router.get('/cancel-detail', requireAuth, async (req, res) => {
       }
     }
 
-    // Also add stores that only have DBS data (cancel_unmade or discount) but no flags
+    // Add all remaining DBS stores that have no flags — always include so Cancel $ and Discount % show values
     for (const [sid, dbs] of Object.entries(dbsByStore)) {
-      if (!byStore[sid] && (dbs.cancel_unmade_day > 0 || dbs.discount_pct_day > 1.5)) {
+      if (!byStore[sid]) {
         byStore[sid] = {
           store_id: sid,
-          store_name: sid,
+          store_name: dbs.store_name || sid,
           cancel_unmade_amt: dbs.cancel_unmade_day,
           discount_pct: dbs.discount_pct_day,
           flags: [],
           tickets: [],
         };
+      } else {
+        // Patch store_name if we have a better one from DBS
+        if (!byStore[sid].store_name && dbs.store_name) byStore[sid].store_name = dbs.store_name;
       }
     }
 
