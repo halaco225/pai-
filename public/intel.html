@@ -328,8 +328,11 @@ button{font-family:inherit;cursor:pointer}
       <div class="date-pill">📅 <input type="date" id="dateInput" onchange="onDateChange(this.value)"></div>
       <button class="run-batch-btn hidden" id="runBatchBtn" onclick="runBatchNow()">⚡ Run Batch</button>
       <button class="run-batch-btn hidden" id="backfillBtn" onclick="runBackfill()" style="background:#6366f1">📅 Backfill History</button>
+      <button class="run-batch-btn hidden" id="laborHutbotBtn" onclick="runLaborHutbot()" style="background:#4a1d4a;border-color:#c084fc;color:#e9d5ff">↺ Re-run Labor &amp; HutBot</button>
       <button class="run-batch-btn hidden" id="smgUploadBtn" onclick="document.getElementById('smgFileInput').click()" style="background:#0e4a2e;border-color:#22c55e;color:#86efac">💬 Upload SMG</button>
       <input type="file" id="smgFileInput" accept=".xlsx,.xls" class="hidden" onchange="uploadSMGFile(this)">
+      <button class="run-batch-btn hidden" id="hutbotCsvBtn" onclick="document.getElementById('hutbotCsvInput').click()" style="background:#1e3a5f;border-color:#60a5fa;color:#93c5fd">📋 Upload HutBot CSV</button>
+      <input type="file" id="hutbotCsvInput" accept=".csv" class="hidden" onchange="uploadHutBotCSV(this)">
       <button class="refresh-btn" onclick="init()">↺ Refresh Data</button>
     </div>
   </header>
@@ -697,7 +700,9 @@ function setupUser(u){
     document.getElementById('opsLabel').classList.remove('hidden');
     document.getElementById('runBatchBtn').classList.remove('hidden');
     document.getElementById('backfillBtn').classList.remove('hidden');
+    document.getElementById('laborHutbotBtn').classList.remove('hidden');
     document.getElementById('smgUploadBtn').classList.remove('hidden');
+    document.getElementById('hutbotCsvBtn').classList.remove('hidden');
   }
 }
 
@@ -1706,6 +1711,51 @@ function buildFlagDesc(f){
   if(val!=null&&tgt!=null) return fmtMetric(f.metric_type)+': '+val+' (threshold: '+tgt+')';
   return d.note||d.description||fmtMetric(f.metric_type)+' flagged';
 }
+async function runLaborHutbot(){
+  const btn=document.getElementById('laborHutbotBtn');
+  if(btn.disabled)return;
+  btn.disabled=true;btn.textContent='⟳ Running…';
+  try{
+    const res=await fetch('/api/intel/automation/run-labor-hutbot-now',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({date:selectedDate})
+    });
+    const d=await res.json();
+    if(!res.ok)throw new Error(d.error||'Failed');
+    btn.textContent='✓ Started';
+    setTimeout(async()=>{
+      await Promise.all([loadKPIs(),loadFlags(),loadBrief()]);
+      btn.disabled=false;btn.textContent='↺ Re-run Labor & HutBot';
+    },15000);
+  }catch(err){
+    alert('❌ Error: '+err.message);
+    btn.disabled=false;btn.textContent='↺ Re-run Labor & HutBot';
+  }
+}
+
+async function uploadHutBotCSV(input){
+  const file=input.files[0];
+  if(!file)return;
+  const btn=document.getElementById('hutbotCsvBtn');
+  btn.disabled=true;btn.textContent='⟳ Uploading…';
+  try{
+    const fd=new FormData();
+    fd.append('file',file);
+    fd.append('date',selectedDate);
+    const res=await fetch('/api/intel/upload/hutbot-csv',{method:'POST',body:fd});
+    const d=await res.json();
+    if(!res.ok)throw new Error(d.error||'Upload failed');
+    alert('✅ HutBot CSV uploaded for '+d.targetDate+'. Flags updated.');
+    await Promise.all([loadKPIs(),loadFlags(),loadBrief()]);
+  }catch(err){
+    alert('❌ HutBot CSV upload error: '+err.message);
+  }finally{
+    btn.disabled=false;btn.textContent='📋 Upload HutBot CSV';
+    input.value='';
+  }
+}
+
 async function uploadSMGFile(input){
   const file=input.files[0];
   if(!file)return;

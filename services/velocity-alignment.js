@@ -7,7 +7,6 @@
 const ALIGNMENT = {
   // ── Harold Lacoste Region ──────────────────────────────────────────
   // Area 2011 — Darian Spikes
-  "S038876":{"name":"Senoia","area":"Area 2011","area_coach":"Darian Spikes","region_coach":"Harold Lacoste","vp":"Matt Hester"},
   "S039377":{"name":"Griffin","area":"Area 2011","area_coach":"Darian Spikes","region_coach":"Harold Lacoste","vp":"Matt Hester"},
   "S039378":{"name":"Union City","area":"Area 2011","area_coach":"Darian Spikes","region_coach":"Harold Lacoste","vp":"Matt Hester"},
   "S039379":{"name":"Newnan","area":"Area 2011","area_coach":"Darian Spikes","region_coach":"Harold Lacoste","vp":"Matt Hester"},
@@ -24,6 +23,7 @@ const ALIGNMENT = {
   "S039521":{"name":"McDonogh","area":"Area 2016","area_coach":"Ebony Simmons","region_coach":"Harold Lacoste","vp":"Matt Hester"},
   "S039522":{"name":"Ellenwood","area":"Area 2016","area_coach":"Ebony Simmons","region_coach":"Harold Lacoste","vp":"Matt Hester"},
   // Area 2022 — Jadon McNeil
+  "S038876":{"name":"Dallas-Acworth","area":"Area 2022","area_coach":"Jadon McNeil","region_coach":"Harold Lacoste","vp":"Matt Hester"},
   "S039375":{"name":"Kennesaw","area":"Area 2022","area_coach":"Jadon McNeil","region_coach":"Harold Lacoste","vp":"Matt Hester"},
   "S039376":{"name":"Dallas","area":"Area 2022","area_coach":"Jadon McNeil","region_coach":"Harold Lacoste","vp":"Matt Hester"},
   "S039382":{"name":"Acworth","area":"Area 2022","area_coach":"Jadon McNeil","region_coach":"Harold Lacoste","vp":"Matt Hester"},

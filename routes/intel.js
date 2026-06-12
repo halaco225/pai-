@@ -60,6 +60,74 @@ router.post('/automation/run-batch', async (req, res) => {
   }
 });
 
+// ── POST /api/intel/automation/run-labor-hutbot — re-run Fourth + HutBot + cache only ──
+router.post('/automation/run-labor-hutbot', async (req, res) => {
+  const token = req.headers['x-automation-token'] || req.query.token;
+  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, '38b8091924e1f85583454212a9860038'].filter(Boolean);
+  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+  const targetDate = req.body?.date || req.query.date || null;
+  const date = targetDate || (() => {
+    const d = new Date(); d.setDate(d.getDate() - 1);
+    return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  })();
+  console.log(`[Intel] Labor+HutBot re-run triggered for ${date}`);
+  res.json({ status: 'started', date });
+
+  (async () => {
+    const { downloadFourthReport } = require('../services/intel-fourth');
+    const { processFourthLabor }   = require('../services/parsers/fourth-labor-parser');
+    const { processFourthOT }      = require('../services/parsers/fourth-ot-parser');
+    const { processHutBot }        = require('../services/intel-hutbot');
+    const { generateIntelCache }   = require('../services/intel-pipeline');
+    const steps = {};
+
+    // Fourth Labor
+    try {
+      const pull = await downloadFourthReport('LABOR', date);
+      if (!pull.success) throw new Error(pull.error);
+      steps.fourthLabor = await processFourthLabor(pull.filePath, date);
+      try { require('fs').unlinkSync(pull.filePath); } catch (_) {}
+      console.log(`[Intel] Fourth Labor done:`, steps.fourthLabor);
+    } catch (err) {
+      steps.fourthLabor = { success: false, error: err.message };
+      console.error('[Intel] Fourth Labor failed:', err.message);
+    }
+
+    // Fourth OT
+    try {
+      const pull = await downloadFourthReport('OT', date);
+      if (!pull.success) throw new Error(pull.error);
+      steps.fourthOT = await processFourthOT(pull.filePath, date);
+      try { require('fs').unlinkSync(pull.filePath); } catch (_) {}
+      console.log(`[Intel] Fourth OT done:`, steps.fourthOT);
+    } catch (err) {
+      steps.fourthOT = { success: false, error: err.message };
+      console.error('[Intel] Fourth OT failed:', err.message);
+    }
+
+    // HutBot
+    try {
+      steps.hutBot = await processHutBot(date);
+      console.log(`[Intel] HutBot done:`, steps.hutBot);
+    } catch (err) {
+      steps.hutBot = { success: false, error: err.message };
+      console.error('[Intel] HutBot failed:', err.message);
+    }
+
+    // Regenerate cache
+    try {
+      await generateIntelCache(date);
+      steps.cache = { success: true };
+      console.log('[Intel] Cache regenerated after Labor+HutBot re-run');
+    } catch (err) {
+      steps.cache = { success: false, error: err.message };
+      console.error('[Intel] Cache regen failed:', err.message);
+    }
+
+    lastPipelineResult = { steps, date, completedAt: new Date().toISOString() };
+  })();
+});
+
 // ── GET /api/intel/automation/status ─────────────────────────────────────────
 router.get('/automation/status', async (req, res) => {
   try {
@@ -472,7 +540,101 @@ router.post('/upload/smg', smgUpload.single('file'), async (req, res) => {
   })();
 });
 
+// ── POST /api/intel/upload/hutbot-csv — manual HutBot CSV upload ──────────────
+// Accepts the "Organization Breakdown Summary" CSV from the ByteCoach/HutBot portal.
+// Clears existing HutBot flags for the target date and rewrites from CSV data.
+router.post('/upload/hutbot-csv', hutbotUpload.single('file'), async (req, res) => {
+  const tkn = req.headers['x-automation-token'] || req.query.token;
+  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, '38b8091924e1f85583454212a9860038'].filter(Boolean);
+  const hasToken = tkn && validTokens.includes(tkn);
+  const hasRole  = req.session?.user && ['rdo','vp','area_coach'].includes(req.session?.user?.role);
+  if (!hasToken && !hasRole) return res.status(401).json({ error: 'Unauthorized' });
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: 'No file uploaded. Attach the HutBot Organization Breakdown Summary CSV.' });
+
+  const targetDate = req.body.date || (() => {
+    const now = new Date();
+    const est = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    est.setDate(est.getDate() - 1);
+    return est.toISOString().split('T')[0];
+  })();
+
+  console.log(`[HutBot CSV Upload] Processing ${file.originalname} for ${targetDate}`);
+  res.json({ status: 'started', file: file.originalname, targetDate });
+
+  (async () => {
+    try {
+      const { processHutBotFromCSV } = require('../services/intel-hutbot');
+      const result = await processHutBotFromCSV(file.path, targetDate);
+      if (!result.success) {
+        console.error('[HutBot CSV Upload] Processing failed:', result.error);
+      } else {
+        console.log(`[HutBot CSV Upload] Done — ${result.storesProcessed} stores, ${result.flagsWritten} flags for ${targetDate}`);
+        try {
+          const { generateIntelCache } = require('../services/intel-pipeline');
+          await generateIntelCache(targetDate);
+          console.log('[HutBot CSV Upload] Intel cache regenerated');
+        } catch (cacheErr) {
+          console.warn('[HutBot CSV Upload] Cache regen failed (non-fatal):', cacheErr.message);
+        }
+      }
+    } catch (err) {
+      console.error('[HutBot CSV Upload] Error:', err.message);
+    } finally {
+      fs.unlink(file.path, () => {});
+    }
+  })();
+});
+
 router.use(requireAuth);
+
+// ── POST /api/intel/automation/run-labor-hutbot-now — session-auth re-run of Fourth + HutBot ──
+router.post('/automation/run-labor-hutbot-now', requireRole('rdo', 'vp'), async (req, res) => {
+  const user = req.session.user;
+  const targetDate = req.body?.date || null;
+  const date = targetDate || (() => {
+    const d = new Date(); d.setDate(d.getDate() - 1);
+    return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  })();
+  console.log(`[Intel] Labor+HutBot re-run triggered by ${user.username} for ${date}`);
+  res.json({ status: 'started', date });
+
+  (async () => {
+    const { downloadFourthReport } = require('../services/intel-fourth');
+    const { processFourthLabor }   = require('../services/parsers/fourth-labor-parser');
+    const { processFourthOT }      = require('../services/parsers/fourth-ot-parser');
+    const { processHutBot }        = require('../services/intel-hutbot');
+    const { generateIntelCache }   = require('../services/intel-pipeline');
+
+    try {
+      const pull = await downloadFourthReport('LABOR', date);
+      if (pull.success) {
+        await processFourthLabor(pull.filePath, date);
+        try { require('fs').unlinkSync(pull.filePath); } catch (_) {}
+        console.log('[Intel] Fourth Labor re-run complete');
+      }
+    } catch (err) { console.error('[Intel] Fourth Labor re-run failed:', err.message); }
+
+    try {
+      const pull = await downloadFourthReport('OT', date);
+      if (pull.success) {
+        await processFourthOT(pull.filePath, date);
+        try { require('fs').unlinkSync(pull.filePath); } catch (_) {}
+        console.log('[Intel] Fourth OT re-run complete');
+      }
+    } catch (err) { console.error('[Intel] Fourth OT re-run failed:', err.message); }
+
+    try {
+      await processHutBot(date);
+      console.log('[Intel] HutBot re-run complete');
+    } catch (err) { console.error('[Intel] HutBot re-run failed:', err.message); }
+
+    try {
+      await generateIntelCache(date);
+      console.log('[Intel] Cache regenerated');
+    } catch (err) { console.error('[Intel] Cache regen failed:', err.message); }
+  })();
+});
 
 // ── POST /api/intel/automation/run-now — manual batch trigger (session auth, rdo/vp only) ──
 router.post('/automation/run-now', requireRole('rdo', 'vp'), async (req, res) => {
@@ -680,11 +842,10 @@ router.get('/kpis', async (req, res) => {
 
     // Fetch all metrics for the date — storeMap (seeded from store_assignments) scopes in JS.
     // Avoids type-mismatch issues with store_id = ANY() across different DB column types.
-    const [metricsRes, flagCountRes, fcOtRes, surveyRes, routinesRes, laborRes, winScoreRes, actLabRes, schLabRes] = await Promise.all([
+    const [metricsRes, flagCountRes, fcOtRes, surveyRes, routinesRes, laborRes, winScoreRes, actLabRes, schLabRes, schLaborPctRes] = await Promise.all([
       p.query(`SELECT area_coach, store_id, store_name,
         net_sales_day, growth_pct_day,
-        cancel_unmade_day, paidouts_day, cash_variance_day,
-        sched_labor_pct_day, act_labor_pct_day
+        cancel_unmade_day, paidouts_day, cash_variance_day
         FROM intel_dbs_metrics
         WHERE metric_date=$1
         ORDER BY area_coach, store_id`, [date]),
@@ -707,7 +868,8 @@ router.get('/kpis', async (req, res) => {
       p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='labor_pct'`, [date]),
       p.query(`SELECT store_id, win_score, survey_count FROM smg_win_scores WHERE period_end_date <= $1 ORDER BY period_end_date DESC`, [date]),
       p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='act_lab_dollar'`, [date]),
-      p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='sch_lab_dollar'`, [date])
+      p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='sch_lab_dollar'`, [date]),
+      p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='sch_labor_pct'`, [date])
     ]);
 
     // Build user AC set for fallback scoping when store not in store_assignments
@@ -740,11 +902,9 @@ router.get('/kpis', async (req, res) => {
         };
       }
       Object.assign(storeMap[r.store_id], {
-        net_sales:       r.net_sales_day ? +r.net_sales_day : null,
-        growth_pct:      r.growth_pct_day != null ? +r.growth_pct_day : null,
-        cancels:         r.cancel_unmade_day ? +r.cancel_unmade_day : null,
-        sched_labor_pct: r.sched_labor_pct_day != null ? +r.sched_labor_pct_day : null,
-        act_labor_pct:   r.act_labor_pct_day   != null ? +r.act_labor_pct_day   : null,
+        net_sales:  r.net_sales_day ? +r.net_sales_day : null,
+        growth_pct: r.growth_pct_day != null ? +r.growth_pct_day : null,
+        cancels:    r.cancel_unmade_day ? +r.cancel_unmade_day : null,
       });
     }
 
@@ -778,7 +938,16 @@ router.get('/kpis', async (req, res) => {
       }
     }
     for (const r of laborRes.rows) {
-      if (storeMap[r.store_id]) storeMap[r.store_id].labor_pct = r.value != null ? +r.value : null;
+      if (storeMap[r.store_id]) {
+        const v = r.value != null ? +r.value : null;
+        storeMap[r.store_id].labor_pct    = v;
+        storeMap[r.store_id].act_labor_pct = v; // Fourth actual overrides DBS
+      }
+    }
+    for (const r of schLaborPctRes.rows) {
+      if (storeMap[r.store_id] && r.value != null) {
+        storeMap[r.store_id].sched_labor_pct = +r.value; // Fourth scheduled overrides DBS
+      }
     }
     // Win score: use most recent row per store (query ordered DESC so first seen = most recent)
     const winScoreSeen = new Set();
@@ -858,6 +1027,7 @@ router.get('/kpis', async (req, res) => {
       growth_pct:      validGrowth.length ? validGrowth.reduce((s,r) => s+r.growth_pct,0)/validGrowth.length : null,
       cancels:         by_store.reduce((s,r) => s+(r.cancels||0), 0) || null,
       labor_pct:       (() => { const lp = by_store.filter(s => s.labor_pct != null); return lp.length ? lp.reduce((s,r) => s+r.labor_pct, 0)/lp.length : null; })(),
+      sched_labor_pct: (() => { const sp = by_store.filter(s => s.sched_labor_pct != null); return sp.length ? sp.reduce((s,r) => s+r.sched_labor_pct, 0)/sp.length : null; })(),
       ot_hours:        by_store.reduce((s,r) => s+(r.ot_hours||0), 0) || null,
       comments_pos:    by_store.reduce((s,r) => s+(r.comments_pos||0), 0),
       comments_neg:    by_store.reduce((s,r) => s+(r.comments_neg||0), 0),

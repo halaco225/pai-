@@ -19,14 +19,16 @@ const PATTERN_MIN      = 4;    // flag cashier if they have this many or more in
 
 // Column name patterns to search for (case-insensitive)
 const COL_PATTERNS = {
-  store:    /store|location/i,
-  ticket:   /ticket|order|check/i,
-  cashier:  /cashier|employee|emp.?id|empl/i,
-  name:     /emp.*name|cashier.*name|name/i,
-  amount:   /amount|change.*down|variance/i,
-  payment:  /tender|payment|pay.*type|cash.*type/i,
-  time:     /time|date.*time/i,
-  date:     /^date$/i,
+  store:       /store|location/i,
+  ticket:      /ticket|order|check/i,
+  cashier:     /cashier|employee|emp.?id|empl/i,
+  name:        /emp.*name|cashier.*name|name/i,
+  amount:      /amount|change.*down|variance/i,
+  payment:     /tender|payment|pay.*type|cash.*type/i,
+  cancel_type: /cancel.*type|type.*cancel|action.*type|transaction.*type|cancel.*reason|reason/i,
+  discount_type: /discount.*type|discount.*reason|promo.*type|coupon.*type|discount.*code|promo/i,
+  time:        /time|date.*time/i,
+  date:        /^date$/i,
 };
 
 function num(v) {
@@ -115,13 +117,15 @@ async function processChangeDown(filePath, targetDate) {
     const ticketId   = cols.ticket  != null ? String(row[cols.ticket]  || '').trim() : '';
     const cashierId  = cols.cashier != null ? String(row[cols.cashier] || '').trim() : '';
     const cashierName= cols.name    != null ? String(row[cols.name]    || '').trim() : '';
-    const payment    = cols.payment != null ? String(row[cols.payment] || '').trim() : '';
-    const time       = cols.time    != null ? String(row[cols.time]    || '').trim()
-                     : cols.date   != null ? String(row[cols.date]    || '').trim() : '';
+    const payment      = cols.payment      != null ? String(row[cols.payment]      || '').trim() : '';
+    const cancelType   = cols.cancel_type  != null ? String(row[cols.cancel_type]  || '').trim() : '';
+    const discountType = cols.discount_type!= null ? String(row[cols.discount_type]|| '').trim() : '';
+    const time         = cols.time    != null ? String(row[cols.time]    || '').trim()
+                       : cols.date   != null ? String(row[cols.date]    || '').trim() : '';
 
     if (!storeId) continue;
 
-    records.push({ storeId, storeName, ticketId, cashierId, cashierName, amount, payment, time, isCash: isCash(payment) });
+    records.push({ storeId, storeName, ticketId, cashierId, cashierName, amount, payment, cancelType, discountType, time, isCash: isCash(payment) });
   }
 
   console.log(`[ChangeDown] ${records.length} records parsed`);
@@ -171,12 +175,14 @@ async function processChangeDown(filePath, targetDate) {
         details: {
           summary: `${cashTickets.length} cash change-down${cashTickets.length > 1 ? 's' : ''} of $${CASH_THRESHOLD}+ — possible cash theft`,
           tickets: cashTickets.map(t => ({
-            ticket_id:    t.ticketId,
-            amount:       t.amount,
-            cashier_id:   t.cashierId,
-            cashier_name: t.cashierName,
-            payment_type: t.payment,
-            time:         t.time,
+            ticket_id:     t.ticketId,
+            amount:        t.amount,
+            cashier_id:    t.cashierId,
+            cashier_name:  t.cashierName,
+            payment_type:  t.payment,
+            cancel_type:   t.cancelType   || null,
+            discount_type: t.discountType || null,
+            time:          t.time,
           })),
         },
       });
@@ -195,12 +201,14 @@ async function processChangeDown(filePath, targetDate) {
         details: {
           summary: `${nonCashLarge.length} large change-down${nonCashLarge.length > 1 ? 's' : ''} of $${CASH_THRESHOLD}+ (non-cash)`,
           tickets: nonCashLarge.map(t => ({
-            ticket_id:    t.ticketId,
-            amount:       t.amount,
-            cashier_id:   t.cashierId,
-            cashier_name: t.cashierName,
-            payment_type: t.payment,
-            time:         t.time,
+            ticket_id:     t.ticketId,
+            amount:        t.amount,
+            cashier_id:    t.cashierId,
+            cashier_name:  t.cashierName,
+            payment_type:  t.payment,
+            cancel_type:   t.cancelType   || null,
+            discount_type: t.discountType || null,
+            time:          t.time,
           })),
         },
       });
@@ -232,10 +240,12 @@ async function processChangeDown(filePath, targetDate) {
             cash_count:   c.tickets.filter(t => t.isCash).length,
             total_amount: Math.round(c.tickets.reduce((s, t) => s + t.amount, 0) * 100) / 100,
             tickets:      c.tickets.map(t => ({
-              ticket_id:    t.ticketId,
-              amount:       t.amount,
-              payment_type: t.payment,
-              time:         t.time,
+              ticket_id:     t.ticketId,
+              amount:        t.amount,
+              payment_type:  t.payment,
+              cancel_type:   t.cancelType   || null,
+              discount_type: t.discountType || null,
+              time:          t.time,
             })),
           })),
         },

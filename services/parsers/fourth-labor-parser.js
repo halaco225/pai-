@@ -128,6 +128,14 @@ async function processFourthLabor(filePath, targetDate) {
       await db.upsertSoftIndicator({ store_id: s.store_id, metric_date: targetDate,
         indicator: 'sch_lab_dollar', value: s.sch_lab_dollar, target: null, source: 'FOURTH' });
     }
+    if (s.act_hrs != null) {
+      await db.upsertSoftIndicator({ store_id: s.store_id, metric_date: targetDate,
+        indicator: 'act_labor_hrs', value: s.act_hrs, target: null, source: 'FOURTH' });
+    }
+    if (s.sch_hrs != null) {
+      await db.upsertSoftIndicator({ store_id: s.store_id, metric_date: targetDate,
+        indicator: 'sch_labor_hrs', value: s.sch_hrs, target: null, source: 'FOURTH' });
+    }
 
     // Flag only when Act Lab$ >= $200 over scheduled (eliminates low-noise small variances)
     if (s.lab_dollar_var != null && s.lab_dollar_var >= 200) {

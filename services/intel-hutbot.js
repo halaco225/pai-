@@ -318,4 +318,114 @@ async function processHutBot(targetDate) {
   }
 }
 
-module.exports = { processHutBot, writeHutBotFlags };
+// ─────────────────────────────────────────────────────────────────────────────
+//  CSV upload path — "Organization Breakdown Summary" from ByteCoach/HutBot portal
+//  Columns: Organization, Region, Area, Rest. Champs, Rest. Name, On Time %, Late %, Missed %
+//  Store IDs in "Rest. Champs" have a "1P" prefix (e.g. "1P039384" → "039384")
+// ─────────────────────────────────────────────────────────────────────────────
+
+function parseHutBotCSV(filePath) {
+  const fs  = require('fs');
+  const raw = fs.readFileSync(filePath, 'utf8');
+  const lines = raw.split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) throw new Error('Empty CSV');
+
+  // Parse header to find column indices
+  const header = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim().toLowerCase());
+  const col = name => header.findIndex(h => h.includes(name));
+  const idxId      = col('rest. champs');
+  const idxOnTime  = col('on time');
+  const idxLate    = col('late');
+  const idxMissed  = col('missed');
+
+  if (idxId < 0 || idxOnTime < 0 || idxLate < 0 || idxMissed < 0) {
+    throw new Error(`CSV missing expected columns. Found: ${header.join(', ')}`);
+  }
+
+  const records = [];
+  for (let i = 1; i < lines.length; i++) {
+    // Handle quoted fields with commas
+    const fields = lines[i].match(/(".*?"|[^,]+|(?<=,)(?=,)|^(?=,)|(?<=,)$)/g) || lines[i].split(',');
+    const clean  = f => (f || '').replace(/^"|"$/g, '').trim();
+
+    const rawId   = clean(fields[idxId]);
+    const onTime  = parseFloat(clean(fields[idxOnTime]));
+    const latePct = parseFloat(clean(fields[idxLate]));
+    const missPct = parseFloat(clean(fields[idxMissed]));
+
+    if (!rawId || isNaN(onTime)) continue;
+
+    // Strip leading "1P" prefix to get numeric store_id
+    const store_id = rawId.replace(/^1P/i, '');
+
+    records.push({ store_id, on_time_pct: onTime, late_pct: latePct || 0, missed_pct: missPct || 0 });
+  }
+  return records;
+}
+
+async function processHutBotFromCSV(filePath, targetDate) {
+  console.log(`[HutBot CSV] Parsing ${filePath} for ${targetDate}`);
+  let rows;
+  try {
+    rows = parseHutBotCSV(filePath);
+  } catch (err) {
+    console.error('[HutBot CSV] Parse error:', err.message);
+    return { success: false, error: err.message };
+  }
+
+  console.log(`[HutBot CSV] ${rows.length} stores parsed`);
+  const assignments = await db.getStoreAssignments();
+
+  // Build records for stores with any late/missed activity
+  const records = [];
+  for (const row of rows) {
+    const asgn = assignments[row.store_id];
+    if (!asgn) {
+      console.warn(`[HutBot CSV] No store_assignment for store_id="${row.store_id}" — skipping`);
+      continue;
+    }
+    // Add a missed record if missed% > 0
+    if (row.missed_pct > 0) {
+      records.push({
+        store_id:       row.store_id,
+        store_name:     asgn.store_name,
+        routine_name:   'DAY',
+        status:         'missed',
+        scheduled_time: null,
+        minutes_late:   null,
+        submitted_by:   null,
+        report_date:    targetDate,
+      });
+    }
+    // Add a late record if late% > 0 (only if not already flagged as missed)
+    if (row.late_pct > 0 && row.missed_pct === 0) {
+      records.push({
+        store_id:       row.store_id,
+        store_name:     asgn.store_name,
+        routine_name:   'DAY',
+        status:         'late',
+        scheduled_time: null,
+        minutes_late:   null,
+        submitted_by:   null,
+        report_date:    targetDate,
+      });
+    }
+  }
+
+  console.log(`[HutBot CSV] ${records.length} actionable records (missed/late)`);
+
+  try {
+    const flagsWritten = await writeHutBotFlags(records, targetDate);
+    return {
+      success: true,
+      storesProcessed: rows.filter(r => assignments[r.store_id]).length,
+      flagsWritten,
+      source: 'csv',
+    };
+  } catch (err) {
+    console.error('[HutBot CSV] DB write error:', err.message);
+    return { success: false, error: `DB write failed: ${err.message}` };
+  }
+}
+
+module.exports = { processHutBot, writeHutBotFlags, processHutBotFromCSV };

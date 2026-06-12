@@ -10,7 +10,6 @@ VP of Operations: Matt Hester
   Region Coach: Harold Lacoste
 
     AC: Darian Spikes | Area 2011 | dspikes@ayvazpizza.com
-      038876 | Senoia, GA | RGM: OPEN
       039377 | Griffin, GA | RGM: Patricia Washington
       039378 | Union City, GA | RGM: Kirk Browne
       039379 | Newnan, GA | RGM: Jasmine Mozley
@@ -29,6 +28,7 @@ VP of Operations: Matt Hester
       039522 | Ellenwood, GA | RGM: Pierce Smith
 
     AC: Jadon McNeil | Area 2022 | jmcneil@ayvazpizza.com
+      038876 | Dallas-Acworth, GA | RGM: OPEN
       039375 | Kennesaw, GA | RGM: Krystle Presnell
       039376 | Dallas, GA | RGM: Shannel Norville
       039382 | Acworth, GA | RGM: Crystal Caswell
