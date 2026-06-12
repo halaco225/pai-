@@ -215,6 +215,7 @@
     <span class="status-dot" id="statusDot"></span>
     <span id="statusText">Loading...</span>
     <span style="margin-left:auto;display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm" id="pullOdsBtn" onclick="pullOdsNow()" style="color:#a78bfa;border-color:#a78bfa">↺ Pull ODS Now</button>
       <button class="btn btn-outline btn-sm" onclick="openUpload()">↑ Upload Report</button>
       <button class="btn btn-outline btn-sm" onclick="exportExcel()">↓ Export Excel</button>
       <button class="btn btn-outline btn-sm" onclick="backfillBuckets()" id="bucketFillBtn" title="Re-pull historical dates where IST bucket data is missing">⟳ Fix IST Buckets</button>
@@ -1774,6 +1775,20 @@ function drillDOW(dow, dayName) {
 }
 
 // ── Upload ────────────────────────────────────────────────────────────
+async function pullOdsNow() {
+  const btn = document.getElementById('pullOdsBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '↺ Pulling…'; }
+  try {
+    const r = await fetch('/api/velocity/automation/pull-ods-now', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.status);
+    if (btn) btn.textContent = '✓ Pulling (refreshes in ~30s)';
+    setTimeout(() => { loadData(); if (btn) { btn.textContent = '↺ Pull ODS Now'; btn.disabled = false; } }, 30000);
+  } catch (e) {
+    alert('Pull ODS failed: ' + e.message);
+    if (btn) { btn.textContent = '↺ Pull ODS Now'; btn.disabled = false; }
+  }
+}
 function openUpload() { document.getElementById('uploadModal').style.display = 'flex'; }
 function closeUpload() { document.getElementById('uploadModal').style.display = 'none'; }
 

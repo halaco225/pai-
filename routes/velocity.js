@@ -344,6 +344,55 @@ router.get('/init-db', async (req, res) => {
   }
 });
 
+// ── POST /api/velocity/automation/pull-ods-now — manual trigger (session auth) ──
+const { requireRole } = require('../middleware/auth');
+router.post('/automation/pull-ods-now', requireAuth, requireRole('rdo', 'vp'), async (req, res) => {
+  const targetDate = req.body?.date || req.query.date || getYesterdayChicago();
+  console.log(`[Velocity ODS] Manual pull triggered by ${req.session?.user?.email} for ${targetDate}`);
+  res.json({ status: 'started', targetDate });
+
+  (async () => {
+    try {
+      const { pullAboveStoreReport } = require('../services/velocity-ods');
+      const pullResult = await pullAboveStoreReport(targetDate);
+      if (!pullResult.success) throw new Error(pullResult.error);
+
+      const parsed = pullResult.format === 'xlsx'
+        ? parseSOSExcelODS(pullResult.filePath)
+        : await parseAboveStorePDF(pullResult.filePath);
+      try { fs.unlinkSync(pullResult.filePath); } catch(e){}
+
+      if (!parsed.stores?.length) throw new Error('No store data in report');
+
+      const weekKey  = getWeekKey(targetDate);
+      const periodWk = getPeriodWeek(targetDate);
+      let saved = 0;
+      for (const s of parsed.stores) {
+        if (!ALIGNMENT[s.store_id]) continue;
+        await db.upsertVelocityRecord({
+          store_id: s.store_id, record_date: targetDate,
+          week_key: weekKey, period_week: periodWk,
+          ist_avg: s.ist_avg,
+          ist_lt10: s.ist_lt10 ?? 0, ist_1014: s.ist_1014 ?? 0,
+          ist_1518: s.ist_1518 ?? 0, ist_1925: s.ist_1925 ?? 0, ist_gt25: s.ist_gt25 ?? 0,
+          ist_lt19_pct: s.ist_lt19_pct ?? null,
+          total_orders: s.total_orders ?? 0,
+          make_time: s.make_time ?? null, pct_lt4: s.pct_lt4 ?? null,
+          production_time: s.production_time ?? null, pct_lt15: s.pct_lt15 ?? null,
+          on_time_pct: s.on_time_pct ?? null,
+          data_source: parsed.source, uploader: 'system'
+        });
+        saved++;
+      }
+      await db.logVelocityJob({ jobType: 'ods_pull_manual', targetDate, status: 'success', storesProcessed: saved, message: `Manual pull: ${saved} stores` });
+      console.log(`[Velocity ODS] Manual pull complete — ${saved} stores saved`);
+    } catch (err) {
+      await db.logVelocityJob({ jobType: 'ods_pull_manual', targetDate, status: 'error', message: err.message });
+      console.error('[Velocity ODS] Manual pull failed:', err.message);
+    }
+  })();
+});
+
 // All other velocity routes require session auth
 router.use(requireAuth);
 
