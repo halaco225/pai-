@@ -141,6 +141,34 @@ function formEncode(obj) {
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 
+// httpReqNoFollow — same as httpReq but stops at first redirect and returns location
+function httpReqNoFollow(jar, method, reqUrl, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed  = new url.URL(reqUrl);
+    const domain  = parsed.hostname;
+    const cookies = jar.get(domain);
+    const isHttps = parsed.protocol === 'https:';
+    const lib     = isHttps ? https : http;
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      ...(cookies ? { Cookie: cookies } : {}),
+      ...opts.headers,
+    };
+    const body = opts.body || null;
+    if (body) { headers['Content-Type'] = 'application/x-www-form-urlencoded'; headers['Content-Length'] = Buffer.byteLength(body); }
+    const req = lib.request({ method, hostname: parsed.hostname, port: parsed.port || (isHttps ? 443 : 80), path: parsed.pathname + parsed.search, headers }, (res) => {
+      const setCookies = res.headers['set-cookie'];
+      if (setCookies) jar.set(domain, setCookies);
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => resolve({ status: res.statusCode, location: res.headers.location, headers: res.headers, body: Buffer.concat(chunks).toString('utf8') }));
+    });
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
 async function login(jar, user, pass) {
   console.log('[WinScore] GET login page');
   const r1 = await httpReq(jar, 'GET', LOGIN, {});
@@ -164,7 +192,6 @@ async function login(jar, user, pass) {
     headers: { Referer: LOGIN, Origin: BASE },
   });
 
-  const cookieStr = jar.get('reporting.smg.com');
   if (r2.status === 200 && r2.body.includes('txtPassword')) {
     throw new Error('Login failed — check SMG_USER / SMG_PASSWORD');
   }
@@ -385,48 +412,45 @@ async function debugWinScore() {
   const pass = process.env.SMG_PASSWORD || '';
   if (!user || !pass) return { error: 'SMG_USER / SMG_PASSWORD not set' };
 
-  // Form login only — no OAuth needed for reporting.smg.com
+  // Trace redirect chain from login to find SSO handshake
   const jar = makeCookieJar();
-  try { await login(jar, user, pass); out.formLogin = 'ok'; }
-  catch (e) { return { formLogin: 'FAILED', error: e.message }; }
-
-  // Load ReportBuilder page
-  const rb = await httpReq(jar, 'GET', `${BASE}/ReportBuilder.aspx`, { headers: { Referer: LOGIN } });
-  out.reportBuilderStatus = rb.status;
-  out.isLoggedIn = rb.status === 200 && !rb.body.includes('txtPassword');
-
-  // Fetch saved favorites — the browser auto-loads the last favorite on page load
+  out.redirectChain = [];
   try {
-    const fav = await httpReq(jar, 'GET',
-      `${BASE}/handlers/FavoritesComponent.ashx?Action=Initialize&r=${rand()}`,
+    const r1 = await httpReqNoFollow(jar, 'GET', LOGIN, {});
+    out.redirectChain.push({ url: LOGIN, status: r1.status, location: r1.location || null });
+
+    const fields = {
+      __LASTFOCUS: '', __EVENTTARGET: '', __EVENTARGUMENT: '',
+      __VIEWSTATE: extractHidden(r1.body, '__VIEWSTATE'),
+      __VIEWSTATEGENERATOR: extractHidden(r1.body, '__VIEWSTATEGENERATOR'),
+      __EVENTVALIDATION: extractHidden(r1.body, '__EVENTVALIDATION'),
+      ctl00_TheScriptManager_HiddenField: extractHidden(r1.body, 'ctl00_TheScriptManager_HiddenField'),
+      'ctl00$cphMain$txtUserName': user,
+      'ctl00$cphMain$txtPassword': pass,
+    };
+    const r2 = await httpReqNoFollow(jar, 'POST', LOGIN, { body: formEncode(fields), headers: { Referer: LOGIN, Origin: BASE } });
+    out.redirectChain.push({ url: LOGIN + ' POST', status: r2.status, location: r2.location || null, bodySnippet: r2.body.slice(0, 200) });
+
+    // Follow each redirect step manually to trace SSO
+    let next = r2.location;
+    for (let i = 0; i < 6 && next; i++) {
+      const nextUrl = next.startsWith('http') ? next : new url.URL(next, BASE).href;
+      const rx = await httpReqNoFollow(jar, 'GET', nextUrl, {});
+      out.redirectChain.push({ url: nextUrl, status: rx.status, location: rx.location || null, bodySnippet: rx.body.slice(0, 300) });
+      next = rx.location;
+    }
+  } catch (e) { out.redirectError = e.message; }
+
+  // Now try full login + report builder
+  try {
+    await login(jar, user, pass);
+    out.formLogin = 'ok';
+    const rc = await httpReq(jar, 'GET',
+      `${RB_URL}?function=getreportcontroller&reporttype=27&reportsubtype=0&r=${rand()}&periodId=`,
       { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/ReportBuilder.aspx` } }
     );
-    out.favoritesStatus = fav.status;
-    out.favoritesBody = fav.body.slice(0, 2000);
-  } catch (e) { out.favoritesError = e.message; }
-
-  // Try getreportcontroller for types 0,1,2,27
-  out.controllerTests = {};
-  for (const rt of [0, 1, 2, 27]) {
-    try {
-      const r = await httpReq(jar, 'GET',
-        `${RB_URL}?function=getreportcontroller&reporttype=${rt}&reportsubtype=0&r=${rand()}&periodId=`,
-        { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/ReportBuilder.aspx` } }
-      );
-      out.controllerTests[`type${rt}`] = { status: r.status, body: r.body.slice(0, 200) };
-    } catch (e) { out.controllerTests[`type${rt}`] = { error: e.message }; }
-  }
-
-  // Try getdata reporttype=0 (loads last saved report)
-  try {
-    const gd = await httpReq(jar, 'GET',
-      `${RB_URL}?function=getdata&reporttype=0&reportsubtype=0&r=${rand()}`,
-      { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/ReportBuilder.aspx` } }
-    );
-    out.getdataStatus = gd.status;
-    out.getdataLength = gd.body.length;
-    out.getdataBody = gd.body.slice(0, 2000);
-  } catch (e) { out.getdataError = e.message; }
+    out.controllerResult = { status: rc.status, body: rc.body.slice(0, 300) };
+  } catch (e) { out.loginError = e.message; }
 
   return out;
 }
