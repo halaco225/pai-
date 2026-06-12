@@ -2404,12 +2404,12 @@ router.get('/cancel-detail', requireAuth, async (req, res) => {
     const { ac, date } = req.query;
     if (!ac || !date) return res.status(400).json({ error: 'ac and date required' });
 
-    // Pull CHANGE_DOWN flags for this AC/date — they carry ticket arrays
+    // Pull CHANGE_DOWN + CANCEL_TENDER flags for this AC/date — they carry ticket arrays
     const flagRows = await db.pool.query(
       `SELECT store_id, store_name, metric_type, value, details
        FROM intel_flags
        WHERE area_coach = $1 AND metric_date = $2
-         AND metric_type IN ('CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE','CHANGE_DOWN_PATTERN','CANCEL_UNMADE')
+         AND metric_type IN ('CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE','CHANGE_DOWN_PATTERN','CANCEL_UNMADE','CANCEL_TENDER')
        ORDER BY store_name, metric_type`,
       [ac, date]
     );

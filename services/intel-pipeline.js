@@ -160,6 +160,22 @@ async function runIntelPipeline(targetDate) {
   }
   await logStep('changeDown', results.steps.changeDown, targetDate);
 
+  // ── Step 4c: Cancel After Tender (ODS) ────────────────────────────────────
+  console.log('[Intel Pipeline] Step 4c: Cancel After Tender');
+  try {
+    const pull = await pullReport('CANCEL_TENDER', targetDate);
+    if (!pull.success) throw new Error(pull.error);
+    const { processCancelTender } = require('./parsers/cancel-tender-parser');
+    const r = await processCancelTender(pull.filePath, targetDate);
+    cleanupFile(pull.filePath);
+    results.steps.cancelTender = r;
+  } catch (err) {
+    results.errors.push(`CancelTender: ${err.message}`);
+    results.steps.cancelTender = { success: false, error: err.message };
+    console.error('[Intel Pipeline] Cancel Tender failed:', err.message);
+  }
+  await logStep('cancelTender', results.steps.cancelTender, targetDate);
+
   // ── Step 5: Forgot to Clock Out ────────────────────────────────────────────
   console.log('[Intel Pipeline] Step 5: Forgot to Clock Out');
   try {
