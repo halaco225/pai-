@@ -374,6 +374,7 @@ button{font-family:inherit;cursor:pointer}
     <button class="tab-btn active" id="tbd" onclick="switchTab('dashboard',this)">Dashboard</button>
     <button class="tab-btn" id="tbb" onclick="switchTab('brief',this)">Morning Brief</button>
     <button class="tab-btn" id="tbf" onclick="switchTab('flags',this)">Flags <span class="tab-cnt hidden" id="flagCnt">0</span></button>
+    <button class="tab-btn" id="tbtr" onclick="switchTab('trends',this)">Weekly Trends <span class="tab-cnt hidden" id="trendCnt">0</span></button>
     <button class="tab-btn hidden" id="tba" onclick="switchTab('accountability',this)">Accountability</button>
     <button class="tab-btn" id="tbdg" onclick="switchTab('digest',this)">Weekly Digest</button>
     <button class="tab-btn" id="tbsmg" onclick="switchTab('smg',this)">Guest Comments</button>
@@ -438,6 +439,11 @@ button{font-family:inherit;cursor:pointer}
         <button class="ff-btn" onclick="applyFlagFilter('addressed',this)">Addressed</button>
       </div>
       <div id="flagsContainer"><div class="loading"><span class="spin">⟳</span></div></div>
+    </div>
+
+    <div class="tab-panel" id="panel-trends">
+      <div style="font-size:12px;color:#475569;margin-bottom:14px">Week-over-week performance trends by store. No action required unless trend is worsening.</div>
+      <div id="trendsContainer"><div class="loading"><span class="spin">⟳</span></div></div>
     </div>
 
     <div class="tab-panel" id="panel-accountability">
@@ -592,6 +598,7 @@ function reloadActiveTab(){
   if(activeTab==='dashboard') loadKPIs();
   else if(activeTab==='brief') loadBrief();
   else if(activeTab==='flags') loadFlags();
+  else if(activeTab==='trends'){renderTrends();}
   else if(activeTab==='digest') loadDigest();
   else if(activeTab==='smg') loadSMGComments(true);
   else if(activeTab==='accountability') loadAccountability();
@@ -975,18 +982,60 @@ function mCell(v,fmt,type){
 }
 function fPill(cnt){const c=cnt||0;if(!c)return'<span class="n">0</span>';const cl=c>3?'fp-high':c>1?'fp-med':'fp-low';return'<span class="flag-pill '+cl+'">'+c+'</span>';}
 
+let allTrends=[];
 async function loadFlags(){
   try{
     const data=await fetch('/api/intel/flags?date='+selectedDate+vpFilterParam()+globalFilterParam()).then(r=>r.json());
-    allFlags=Array.isArray(data)?data:(data.flags||[]);
+    const all=Array.isArray(data)?data:(data.flags||[]);
+    // Split PERFORMANCE_TREND out of flags — shown in Weekly Trends tab instead
+    allTrends=all.filter(f=>f.metric_type==='PERFORMANCE_TREND');
+    allFlags=all.filter(f=>f.metric_type!=='PERFORMANCE_TREND');
     const open=allFlags.filter(f=>f.status!=='addressed'&&f.status!=='archived').length;
     if(open>0){
       ['navBadge1','navBadge2','flagCnt'].forEach(id=>{const el=document.getElementById(id);if(el){el.textContent=open;el.classList.remove('hidden');}});
     }
     document.getElementById('flagDot').className='dot '+(open>0?'amber':'green');
     document.getElementById('flagStatus').textContent=open+' open flag'+(open!==1?'s':'');
+    // Update trends count badge
+    const tc=document.getElementById('trendCnt');
+    if(tc){tc.textContent=allTrends.length;if(allTrends.length>0)tc.classList.remove('hidden');}
     applyFlagFilter(curFilter);
+    renderTrends();
   }catch(e){console.error('loadFlags:',e);}
+}
+function renderTrends(){
+  const c=document.getElementById('trendsContainer');
+  if(!c)return;
+  if(!allTrends.length){c.innerHTML='<div style="color:#64748b;padding:16px">No performance trends this week.</div>';return;}
+  // Group by area_coach
+  const byAC={};
+  for(const f of allTrends){const ac=f.area_coach||'Unknown';if(!byAC[ac])byAC[ac]=[];byAC[ac].push(f);}
+  const trendIcon=d=>{if(!d)return'';const t=typeof d==='object'?d.trend:null;return t==='up'?'↑':t==='down'?'↓':t==='flat'?'→':'';}
+  const trendColor=d=>{if(!d)return'#94a3b8';const t=typeof d==='object'?d.trend:null;return t==='up'?'#22c55e':t==='down'?'#ef4444':'#94a3b8';}
+  let html='';
+  for(const [ac,trends] of Object.entries(byAC)){
+    html+='<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">'+escH(ac)+'</div>'
+      +'<div style="display:flex;flex-direction:column;gap:6px">';
+    for(const f of trends){
+      const det=f.details||{};
+      const dir=det.trend||'';
+      const ic=dir==='up'?'↑':dir==='down'?'↓':'→';
+      const col=dir==='up'?'#22c55e':dir==='down'?'#ef4444':'#94a3b8';
+      const metric=det.metric_label||det.metric||f.metric_type||'';
+      const summary=det.summary||det.description||'';
+      html+='<div style="background:#0c1425;border:1px solid #1e2d4d;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:12px">'
+        +'<span style="font-size:20px;color:'+col+';font-weight:800;width:20px;text-align:center">'+ic+'</span>'
+        +'<div>'
+        +'<div style="font-size:13px;font-weight:600;color:#e2e8f0">'+escH(f.store_name||f.store_id||'')+'</div>'
+        +(metric?'<div style="font-size:11px;color:#64748b">'+escH(metric)+'</div>':'')
+        +(summary?'<div style="font-size:11px;color:#94a3b8;margin-top:2px">'+escH(summary)+'</div>':'')
+        +'</div>'
+        +(f.value!=null?'<div style="margin-left:auto;font-size:14px;font-weight:700;color:'+col+'">'+f.value+'</div>':'')
+        +'</div>';
+    }
+    html+='</div></div>';
+  }
+  c.innerHTML=html;
 }
 
 function applyFlagFilter(filter,btn){
@@ -1201,27 +1250,38 @@ function openStoreDetail(storeId, storeName, acName){
     +metTile('Clock-Outs',s.forgot_clockout!=null?Math.round(s.forgot_clockout)+'':'—','','#f59e0b')
     +metTile('Routines',(s.routines_missed||0)+'M '+(s.routines_late||0)+'L','',s.routines_missed>0?'#ef4444':'#64748b')
     +metTile('Win Score',s.win_score!=null?s.win_score+'%':'—','',s.win_score>=75?'#22c55e':s.win_score>=65?'#f59e0b':'#ef4444')
-    +(s.sched_labor_pct!=null||s.act_labor_pct!=null?(()=>{
-      const slp=s.sched_labor_pct!=null?+s.sched_labor_pct:null;
-      const alp=s.act_labor_pct!=null?+s.act_labor_pct:null;
-      const v=slp!=null&&alp!=null?+(alp-slp).toFixed(2):null;
-      return'<div style="background:#0c1425;border:1px solid '+(v!=null&&v>0?'#ef444440':'#1e2d4d')+';border-radius:8px;padding:10px">'
-        +'<div style="font-size:10px;color:#475569;font-weight:700;text-transform:uppercase;margin-bottom:6px">Labor %</div>'
-        +(slp!=null?'<div style="font-size:13px;margin-bottom:2px"><span style="color:#64748b">Sch </span><span style="color:#94a3b8;font-weight:600">'+slp.toFixed(1)+'%</span></div>':'')
-        +(alp!=null?'<div style="font-size:13px;margin-bottom:2px"><span style="color:#64748b">Act </span><span style="color:#e2e8f0;font-weight:700">'+alp.toFixed(1)+'%</span></div>':'')
-        +(v!=null?'<div style="font-size:13px"><span style="color:#64748b">Var </span><span style="font-weight:700;color:'+(v>0?'#ef4444':'#22c55e')+'">'+(v>0?'+':'')+v.toFixed(1)+'%</span></div>':'')
+    +(()=>{
+      const slp=s.sched_labor_pct!=null?+s.sched_labor_pct:null,alp=s.act_labor_pct!=null?+s.act_labor_pct:null;
+      const lpv=slp!=null&&alp!=null?+(alp-slp).toFixed(1):null;
+      const sld=s.sch_lab_dollar!=null?+s.sch_lab_dollar:null,ald=s.act_lab_dollar!=null?+s.act_lab_dollar:null;
+      const ldv=ald!=null&&sld!=null?+(ald-sld).toFixed(0):null;
+      const slh=s.sch_labor_hrs!=null?+s.sch_labor_hrs:null,alh=s.act_labor_hrs!=null?+s.act_labor_hrs:null;
+      const hrv=alh!=null&&slh!=null?+(alh-slh).toFixed(1):null;
+      if(slp==null&&alp==null&&sld==null&&ald==null&&slh==null&&alh==null)return'';
+      const overBudget=(lpv!=null&&lpv>0)||(ldv!=null&&ldv>0);
+      let h='<div style="grid-column:1/-1;background:#0c1425;border:1px solid '+(overBudget?'#ef444440':'#1e2d4d')+';border-radius:8px;padding:10px">'
+        +'<div style="font-size:10px;color:#475569;font-weight:700;text-transform:uppercase;margin-bottom:8px">Fourth Analytics — Labor</div>'
+        +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">';
+      // Labor %
+      h+='<div><div style="font-size:10px;color:#475569;margin-bottom:4px">LABOR %</div>'
+        +(slp!=null?'<div style="font-size:12px"><span style="color:#64748b">Sch </span><span style="color:#94a3b8">'+slp.toFixed(1)+'%</span></div>':'')
+        +(alp!=null?'<div style="font-size:12px"><span style="color:#64748b">Act </span><span style="color:#e2e8f0;font-weight:700">'+alp.toFixed(1)+'%</span></div>':'')
+        +(lpv!=null?'<div style="font-size:12px"><span style="color:#64748b">Var </span><span style="font-weight:700;color:'+(lpv>0?'#ef4444':'#22c55e')+'">'+(lpv>0?'+':'')+lpv.toFixed(1)+'%</span></div>':'')
         +'</div>';
-    })():s.act_lab_dollar!=null||s.sch_lab_dollar!=null?(()=>{
-      const act=s.act_lab_dollar!=null?+s.act_lab_dollar:null;
-      const sch=s.sch_lab_dollar!=null?+s.sch_lab_dollar:null;
-      const v=act!=null&&sch!=null?act-sch:null;
-      return'<div style="background:#0c1425;border:1px solid '+(v!=null&&v>0?'#ef444440':'#1e2d4d')+';border-radius:8px;padding:10px">'
-        +'<div style="font-size:10px;color:#475569;font-weight:700;text-transform:uppercase;margin-bottom:6px">Labor $</div>'
-        +(act!=null?'<div style="font-size:13px;margin-bottom:2px"><span style="color:#64748b">Act </span><span style="color:#e2e8f0;font-weight:700">'+fmtMoney(act)+'</span></div>':'')
-        +(sch!=null?'<div style="font-size:13px;margin-bottom:2px"><span style="color:#64748b">Sch </span><span style="color:#94a3b8;font-weight:600">'+fmtMoney(sch)+'</span></div>':'')
-        +(v!=null?'<div style="font-size:13px"><span style="color:#64748b">Var </span><span style="font-weight:700;color:'+(v>0?'#ef4444':'#22c55e')+'">'+(v>0?'+':'')+fmtMoney(v)+'</span></div>':'')
+      // Labor $
+      h+='<div><div style="font-size:10px;color:#475569;margin-bottom:4px">LABOR $</div>'
+        +(sld!=null?'<div style="font-size:12px"><span style="color:#64748b">Sch </span><span style="color:#94a3b8">'+fmtMoney(sld)+'</span></div>':'')
+        +(ald!=null?'<div style="font-size:12px"><span style="color:#64748b">Act </span><span style="color:#e2e8f0;font-weight:700">'+fmtMoney(ald)+'</span></div>':'')
+        +(ldv!=null?'<div style="font-size:12px"><span style="color:#64748b">Var </span><span style="font-weight:700;color:'+(ldv>0?'#ef4444':'#22c55e')+'">'+(ldv>0?'+':'')+fmtMoney(ldv)+'</span></div>':'')
         +'</div>';
-    })():'')
+      // Hours
+      h+='<div><div style="font-size:10px;color:#475569;margin-bottom:4px">HOURS</div>'
+        +(slh!=null?'<div style="font-size:12px"><span style="color:#64748b">Sch </span><span style="color:#94a3b8">'+slh.toFixed(1)+'</span></div>':'')
+        +(alh!=null?'<div style="font-size:12px"><span style="color:#64748b">Act </span><span style="color:#e2e8f0;font-weight:700">'+alh.toFixed(1)+'</span></div>':'')
+        +(hrv!=null?'<div style="font-size:12px"><span style="color:#64748b">Var </span><span style="font-weight:700;color:'+(hrv>0?'#ef4444':'#22c55e')+'">'+(hrv>0?'+':'')+hrv.toFixed(1)+'</span></div>':'')
+        +'</div>';
+      return h+'</div></div>';
+    })()
     +'</div>';
 
   let flagsHtml='';
@@ -1681,7 +1741,7 @@ function switchTab(tab,btn){
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab-btn,.nav-item').forEach(b=>b.classList.remove('active'));
   document.getElementById('panel-'+tab).classList.add('active');
-  const map={dashboard:'tbd',brief:'tbb',flags:'tbf',accountability:'tba',digest:'tbdg',smg:'tbsmg'};
+  const map={dashboard:'tbd',brief:'tbb',flags:'tbf',trends:'tbtr',accountability:'tba',digest:'tbdg',smg:'tbsmg'};
   if(map[tab])document.getElementById(map[tab])?.classList.add('active');
   if(btn)btn.classList.add('active');
   if(tab==='digest')loadDigest();
@@ -1920,7 +1980,7 @@ function closeLaborDrill(){document.getElementById('laborDrillModal').style.disp
 
 let _cancelDetailData=null;
 async function openCancelDrill(acName){
-  const dateStr=kpiData?.date||new Date().toISOString().slice(0,10);
+  const dateStr=kpiData?.week_end||kpiData?.date||new Date(Date.now()-86400000).toISOString().slice(0,10);
   document.getElementById('cancelDrillTitle').textContent=acName+' — Cancel & Discount Detail';
   document.getElementById('cancelDrillBody').innerHTML='<tr><td colspan="6" style="color:#64748b;text-align:center;padding:16px">Loading…</td></tr>';
   document.getElementById('cancelTicketPanel').style.display='none';
