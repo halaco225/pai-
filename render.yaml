@@ -79,7 +79,7 @@ services:
     name: intel-dbs-pull
     env: node
     plan: starter
-    schedule: "0 10 * * *"
+    schedule: "20 10 * * *"
     buildCommand: npm install
     startCommand: node scripts/intel-cron.js
     envVars:

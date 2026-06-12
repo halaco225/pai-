@@ -1,56 +1,83 @@
 /**
  * velocity-cron-pull.js
- * Runs at 5 AM EST via Render cron.
- * Calls the PAi automation endpoint to pull yesterday's Above Store Report from OneData.
- * All Playwright logic lives in the main web service — this script just triggers it.
+ * Runs at 10 AM UTC via Render cron.
+ * Wakes the web service first, then triggers the velocity ODS pull.
  */
 
 const https = require('https');
-const http = require('http');
+const http  = require('http');
 
 const BASE_URL = process.env.PAI_BASE_URL || 'https://pai-ayvaz.onrender.com';
-const TOKEN = process.env.VELOCITY_AUTOMATION_TOKEN;
+const TOKEN    = process.env.VELOCITY_AUTOMATION_TOKEN;
 
 if (!TOKEN) {
   console.error('[velocity-cron-pull] ERROR: VELOCITY_AUTOMATION_TOKEN not set');
   process.exit(1);
 }
 
-function post(url, token) {
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function request(method, url, token, body) {
   return new Promise((resolve, reject) => {
-    const parsed = new URL(url);
-    const lib = parsed.protocol === 'https:' ? https : http;
-    const body = JSON.stringify({});
+    const parsed  = new URL(url);
+    const lib     = parsed.protocol === 'https:' ? https : http;
+    const bodyStr = body ? JSON.stringify(body) : '';
     const options = {
       hostname: parsed.hostname,
-      port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
-      path: parsed.pathname,
-      method: 'POST',
+      port:     parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+      path:     parsed.pathname,
+      method,
+      timeout:  90000,
       headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
-        'X-Automation-Token': token
-      }
+        'Content-Type':    'application/json',
+        'Content-Length':  Buffer.byteLength(bodyStr),
+        ...(token ? { 'X-Automation-Token': token } : {}),
+      },
     };
     const req = lib.request(options, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        resolve({ status: res.statusCode, body: data });
-      });
+      res.on('end', () => resolve({ status: res.statusCode, body: data }));
     });
+    req.on('timeout', () => { req.destroy(); reject(new Error('Request timed out')); });
     req.on('error', reject);
-    req.write(body);
+    if (bodyStr) req.write(bodyStr);
     req.end();
   });
 }
 
-async function run() {
-  const endpoint = `${BASE_URL}/api/velocity/automation/pull-ods`;
-  console.log(`[velocity-cron-pull] ${new Date().toISOString()} — calling ${endpoint}`);
+async function wakeServer(maxWaitMs = 120000) {
+  const healthUrl = `${BASE_URL}/health`;
+  const start = Date.now();
+  let attempt = 0;
+  while (Date.now() - start < maxWaitMs) {
+    attempt++;
+    try {
+      const r = await request('GET', healthUrl, null, null);
+      if (r.status < 500) {
+        console.log(`[velocity-cron-pull] Server awake after ${attempt} attempt(s) (${Date.now()-start}ms)`);
+        return true;
+      }
+    } catch (e) {
+      console.log(`[velocity-cron-pull] Wake attempt ${attempt} failed: ${e.message} — retrying in 15s`);
+    }
+    await sleep(15000);
+  }
+  return false;
+}
 
+async function run() {
+  console.log(`[velocity-cron-pull] ${new Date().toISOString()} — waking server at ${BASE_URL}`);
+  const awake = await wakeServer();
+  if (!awake) {
+    console.error('[velocity-cron-pull] Server did not wake after 2 minutes — aborting');
+    process.exit(1);
+  }
+
+  const endpoint = `${BASE_URL}/api/velocity/automation/pull-ods`;
+  console.log(`[velocity-cron-pull] Triggering ODS pull: ${endpoint}`);
   try {
-    const result = await post(endpoint, TOKEN);
+    const result = await request('POST', endpoint, TOKEN, {});
     console.log(`[velocity-cron-pull] Response ${result.status}: ${result.body}`);
     if (result.status >= 200 && result.status < 300) {
       console.log('[velocity-cron-pull] ODS pull triggered successfully.');
