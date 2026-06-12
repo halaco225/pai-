@@ -897,7 +897,20 @@ function renderDrill(ac){
       +'<div class="sc-m"><span class="lbl">Growth </span><span class="val">'+(s.growth_pct!=null?fmtPct(s.growth_pct):'—')+'</span></div>'
       +'<div class="sc-m"><span class="lbl">Routines </span><span class="val '+((s.routines_missed||0)>0?'r':'')+'">'+(s.routines_missed||0)+'M '+(s.routines_late||0)+'L</span></div>'
       +'<div class="sc-m"><span class="lbl">Flags </span><span class="val '+((s.flag_count||0)>0?'r':'')+'">'+(s.flag_count||0)+'</span></div>'
-      +(s.sched_labor_pct!=null||s.act_labor_pct!=null?(()=>{const slp=s.sched_labor_pct!=null?+s.sched_labor_pct:null;const alp=s.act_labor_pct!=null?+s.act_labor_pct:null;const v=slp!=null&&alp!=null?+(alp-slp).toFixed(1):null;return'<div class="sc-m" style="grid-column:1/-1"><span class="lbl">Labor% </span><span class="val" style="color:#e2e8f0">'+(slp!=null?'Sch '+slp.toFixed(1)+'% ':'')+(alp!=null?'Act '+alp.toFixed(1)+'%':'')+(v!=null?' <b style="color:'+(v>0?'#ef4444':'#22c55e')+'">'+(v>0?'+':'')+v.toFixed(1)+'%</b>':'')+'</span></div>';})():s.act_lab_dollar!=null?'<div class="sc-m" style="grid-column:1/-1"><span class="lbl">Labor </span><span class="val" style="color:#e2e8f0">'+fmtMoney(s.act_lab_dollar)+(s.sch_lab_dollar!=null?' / <span style="color:#64748b">Sch '+fmtMoney(s.sch_lab_dollar)+'</span>':'')+(s.act_lab_dollar!=null&&s.sch_lab_dollar!=null?' <b style="color:'+(+s.act_lab_dollar>+s.sch_lab_dollar?'#ef4444':'#22c55e')+'">'+(+s.act_lab_dollar-+s.sch_lab_dollar>0?'+':'')+fmtMoney(+s.act_lab_dollar-+s.sch_lab_dollar)+'</b>':'')+'</span></div>':'')
+      +(()=>{
+        const slp=s.sched_labor_pct!=null?+s.sched_labor_pct:null,alp=s.act_labor_pct!=null?+s.act_labor_pct:null;
+        const lpv=slp!=null&&alp!=null?+(alp-slp).toFixed(1):null;
+        const sld=s.sch_lab_dollar!=null?+s.sch_lab_dollar:null,ald=s.act_lab_dollar!=null?+s.act_lab_dollar:null;
+        const ldv=ald!=null&&sld!=null?+(ald-sld).toFixed(0):null;
+        const slh=s.sch_labor_hrs!=null?+s.sch_labor_hrs:null,alh=s.act_labor_hrs!=null?+s.act_labor_hrs:null;
+        const hrv=alh!=null&&slh!=null?+(alh-slh).toFixed(1):null;
+        if(slp==null&&alp==null&&sld==null&&ald==null&&slh==null&&alh==null)return'';
+        let h='<div class="sc-m" style="grid-column:1/-1"><span class="lbl">Labor </span><span class="val" style="color:#e2e8f0;font-size:11px;line-height:1.8">';
+        if(slp!=null||alp!=null)h+='<span style="color:#64748b">%: </span>'+(slp!=null?'<span style="color:#475569">Sch '+slp.toFixed(1)+'%</span> ':'')+(alp!=null?'Act '+alp.toFixed(1)+'%':'')+(lpv!=null?' <b style="color:'+(lpv>0?'#ef4444':'#22c55e')+'">'+(lpv>0?'+':'')+lpv.toFixed(1)+'%</b>':'')+'  ';
+        if(sld!=null||ald!=null)h+='<br><span style="color:#64748b">$: </span>'+(sld!=null?'<span style="color:#475569">Sch '+fmtMoney(sld)+'</span> ':'')+(ald!=null?'Act '+fmtMoney(ald):'')+(ldv!=null?' <b style="color:'+(ldv>0?'#ef4444':'#22c55e')+'">'+(ldv>0?'+':'')+fmtMoney(ldv)+'</b>':'');
+        if(slh!=null||alh!=null)h+='<br><span style="color:#64748b">Hrs: </span>'+(slh!=null?'<span style="color:#475569">Sch '+slh.toFixed(1)+'</span> ':'')+(alh!=null?'Act '+alh.toFixed(1):'')+(hrv!=null?' <b style="color:'+(hrv>0?'#ef4444':'#22c55e')+'">'+(hrv>0?'+':'')+hrv.toFixed(1)+'</b>':'');
+        return h+'</span></div>';
+      })()
       +'</div><div style="font-size:10px;color:#3b4d6b;margin-top:6px;text-align:right">Tap for detail →</div>'
       +'</div>';
   }).join('');

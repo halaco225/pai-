@@ -1551,12 +1551,23 @@ router.get('/weekly-digest', async (req, res) => {
         GROUP BY sa.area_coach ORDER BY sa.area_coach`, velParams
       ),
       p.query(`
-        SELECT store_id, store_name, area_coach,
-               net_sales_wtd::float, growth_pct_wtd::float,
-               net_sales_day::float, growth_pct_day::float
-        FROM intel_dbs_metrics
-        WHERE metric_date = ${latestInWeek} AND ${metricsWhere}
-        ORDER BY area_coach, store_name`, mp
+        SELECT m.store_id, m.store_name, m.area_coach,
+               m.net_sales_wtd::float, m.growth_pct_wtd::float,
+               m.net_sales_day::float, m.growth_pct_day::float,
+               MAX(CASE WHEN si.indicator='labor_pct'      THEN si.value END)::float AS act_labor_pct,
+               MAX(CASE WHEN si.indicator='sch_labor_pct'  THEN si.value END)::float AS sched_labor_pct,
+               MAX(CASE WHEN si.indicator='act_lab_dollar' THEN si.value END)::float AS act_lab_dollar,
+               MAX(CASE WHEN si.indicator='sch_lab_dollar' THEN si.value END)::float AS sch_lab_dollar,
+               MAX(CASE WHEN si.indicator='act_labor_hrs'  THEN si.value END)::float AS act_labor_hrs,
+               MAX(CASE WHEN si.indicator='sch_labor_hrs'  THEN si.value END)::float AS sch_labor_hrs
+        FROM intel_dbs_metrics m
+        LEFT JOIN dbs_soft_indicators si
+          ON si.store_id = m.store_id AND si.metric_date = m.metric_date
+          AND si.indicator IN ('labor_pct','sch_labor_pct','act_lab_dollar','sch_lab_dollar','act_labor_hrs','sch_labor_hrs')
+        WHERE m.metric_date = ${latestInWeek} AND ${metricsWhere}
+        GROUP BY m.store_id, m.store_name, m.area_coach,
+                 m.net_sales_wtd, m.growth_pct_wtd, m.net_sales_day, m.growth_pct_day
+        ORDER BY m.area_coach, m.store_name`, mp
       )
     ]);
 

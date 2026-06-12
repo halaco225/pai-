@@ -78,7 +78,7 @@ function parseFourthLaborFile(filePath) {
 
   const C = detectColumns(rows);
 
-  const stores = [];
+  const storeRows = [];
   let dataStart = 3;
   for (let i = 0; i < Math.min(rows.length, 10); i++) {
     if (rows[i] && rows[i][0] && parseLocation(rows[i][0])) { dataStart = i; break; }
@@ -106,7 +106,7 @@ function parseFourthLaborFile(filePath) {
     if (sch_lab_pct == null && sch_lab_dollar != null && af_sales && af_sales > 0) {
       sch_lab_pct = Math.round((sch_lab_dollar / af_sales) * 1000) / 10;
     }
-    stores.push({
+    storeRows.push({
       ...loc,
       af_sales, fcst_sales: af_sales, sales_var: null,
       act_lab_dollar, sch_lab_dollar, lab_dollar_var,
@@ -114,6 +114,17 @@ function parseFourthLaborFile(filePath) {
       act_hrs, sch_hrs, hrs_var,
     });
   }
+  // Dedup by store_id — report has one row per store per week, keep the row with most non-null data
+  const bestByStore = {};
+  for (const s of storeRows) {
+    const score = [s.act_lab_dollar, s.sch_lab_dollar, s.act_hrs, s.sch_hrs].filter(v => v != null).length;
+    if (!bestByStore[s.store_id] || score > bestByStore[s.store_id]._score) {
+      bestByStore[s.store_id] = { ...s, _score: score };
+    }
+  }
+  const stores = Object.values(bestByStore).map(({ _score, ...s }) => s);
+  console.log(`[FourthLabor] ${storeRows.length} raw rows → ${stores.length} unique stores after dedup`);
+
   // Return debug metadata alongside stores so processFourthLabor can log it
   stores._debug = {
     column_map: C,
