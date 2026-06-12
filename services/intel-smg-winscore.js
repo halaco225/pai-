@@ -415,4 +415,24 @@ async function processWinScore(targetDate) {
   return { success: true, storesProcessed: scores.length, scoresWritten: written, periodEnd };
 }
 
-module.exports = { processWinScore, parseReportResponse };
+async function debugWinScore() {
+  const user = process.env.SMG_USER || '';
+  const pass = process.env.SMG_PASSWORD || '';
+  if (!user || !pass) return { error: 'SMG_USER / SMG_PASSWORD not set' };
+  const jar = makeCookieJar();
+  const out = {};
+  try { await login(jar, user, pass); out.login = 'ok'; } catch (e) { return { login: 'FAILED', error: e.message }; }
+  try {
+    const fp = await getFiscalPeriod(jar);
+    out.fiscalPeriod = fp;
+    const raw = await fetchReportData(jar, fp.startDate, fp.endDate, fp.quickDateValue);
+    out.rawLength = raw.length;
+    out.rawSnippet = raw.slice(0, 3000);
+    out.parsedScores = parseReportResponse(raw).length;
+    // Try JSON parse and show keys
+    try { const d = JSON.parse(raw); out.jsonKeys = Object.keys(d); } catch (_) { out.jsonKeys = 'not JSON'; }
+  } catch (e) { out.error = e.message; }
+  return out;
+}
+
+module.exports = { processWinScore, parseReportResponse, debugWinScore };

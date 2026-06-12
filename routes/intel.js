@@ -487,6 +487,18 @@ router.get('/debug/playwright', async (req, res) => {
   });
 });
 
+// ── GET /api/intel/debug/winscore — run Win Score and return raw response snippet ──
+router.get('/debug/winscore', async (req, res) => {
+  const token = req.headers['x-automation-token'] || req.query.token;
+  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, '38b8091924e1f85583454212a9860038'].filter(Boolean);
+  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { debugWinScore } = require('../services/intel-smg-winscore');
+    const result = await debugWinScore();
+    res.json(result);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
 // ── POST /api/intel/upload/smg — manual SMG Comments Excel upload ─────────────
 // Accepts the "Comments by Comment" Excel export from 360.smg.com.
 // Runs the same processing as the automated pipeline (Claude Haiku classification,
