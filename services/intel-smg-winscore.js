@@ -422,16 +422,32 @@ async function debugWinScore() {
   const jar = makeCookieJar();
   const out = {};
   try { await login(jar, user, pass); out.login = 'ok'; } catch (e) { return { login: 'FAILED', error: e.message }; }
+
+  // Expose raw getreportcontroller response to find real item/unit IDs
+  try {
+    await httpReq(jar, 'GET', `${BASE}/ReportBuilder.aspx`, { headers: { Referer: LOGIN } });
+    const qs = `function=getreportcontroller&reporttype=27&reportsubtype=0&r=${rand()}&periodId=`;
+    const rc = await httpReq(jar, 'GET', `${RB_URL}?${qs}`, {
+      headers: { Accept: 'application/json, text/javascript, */*', Referer: `${BASE}/ReportBuilder.aspx` },
+    });
+    out.controllerStatus = rc.status;
+    out.controllerRaw = rc.body.slice(0, 5000);
+    try {
+      const d = JSON.parse(rc.body);
+      out.controllerKeys = Object.keys(d);
+      out.surveyItems = (d.SurveyItems || d.surveyItems || []).slice(0, 20);
+      out.units = (d.Units || d.units || []).slice(0, 10);
+      out.dateRanges = (d.DateRanges || d.dateRanges || []).slice(0, 5);
+    } catch (_) { out.controllerParseError = 'not JSON'; }
+  } catch (e) { out.controllerError = e.message; }
+
   try {
     const fp = await getFiscalPeriod(jar);
     out.fiscalPeriod = fp;
     const raw = await fetchReportData(jar, fp.startDate, fp.endDate, fp.quickDateValue);
     out.rawLength = raw.length;
-    out.rawSnippet = raw.slice(0, 3000);
-    out.parsedScores = parseReportResponse(raw).length;
-    // Try JSON parse and show keys
-    try { const d = JSON.parse(raw); out.jsonKeys = Object.keys(d); } catch (_) { out.jsonKeys = 'not JSON'; }
-  } catch (e) { out.error = e.message; }
+    out.rawSnippet = raw.slice(0, 1000);
+  } catch (e) { out.fetchError = e.message; }
   return out;
 }
 
