@@ -316,10 +316,10 @@ async function fetchReportData(jar, startDate, endDate, quickDateValue, unitIds)
     { body: formEncode({ Units: unitIds, Level: LEVEL_STORE }), headers: xhrHdrs }
   );
 
-  // Step 2: fetch report data from ReportViewer.ashx — reporttype=27 is comparison report
+  // Step 2: fetch report data from ReportViewer.ashx
   console.log('[WinScore] Fetching report data');
   const r = await httpReq(jar, 'POST',
-    `${RV_URL}?function=getdata&reporttype=27&reportsubtype=0&disableunits=false&r=${rand()}`,
+    `${RV_URL}?function=getdata&reporttype=0&reportsubtype=0&disableunits=false&r=${rand()}`,
     { body: postBody, headers: xhrHdrs }
   );
   console.log(`[WinScore] Report response: HTTP ${r.status}, ${r.body.length} bytes, snippet: ${r.body.slice(0, 120)}`);
@@ -561,11 +561,53 @@ async function debugWinScore() {
     const unitIds = await getUnitIds();
     out.unitIdsSample = unitIds.split(';').slice(0, 5);
 
-    const raw = await fetchReportData(jar2, fp.startDate, fp.endDate, fp.quickDateValue, unitIds);
-    out.reportLength = raw.length;
-    out.reportSnippet = raw.slice(0, 500);
+    const xhrHdrs = {
+      Accept: 'application/json, text/javascript, */*',
+      'X-Requested-With': 'XMLHttpRequest',
+      Referer: `${BASE}/ReportBuilder.aspx`,
+      Origin: BASE,
+    };
+
+    // Probe A: submitpercentageunitsselected response
+    const submitResp = await httpReq(jar2, 'POST',
+      `${RB_URL}?function=submitpercentageunitsselected&reporttype=27&reportsubtype=0&r=${rand()}`,
+      { body: formEncode({ Units: unitIds, Level: LEVEL_STORE }), headers: xhrHdrs }
+    );
+    out.submitStatus = submitResp.status;
+    out.submitBody = submitResp.body.slice(0, 200);
+
+    // Probe B: getdata WITHOUT prior submit (direct)
+    const postBody = formEncode({
+      StartDate: fp.startDate, EndDate: fp.endDate,
+      CustomQuickDateId: '', CustomStartDate: '', CustomEndDate: '',
+      ReportLevel: LEVEL_STORE, Benchmarks: '', SurveyItems: WIN_SCORE_ITEM,
+      Filters: '[]', CompareBy: '', BreakoutCompareType: 'undefined',
+      MultiParentHierarchyLevelBy: '0', ColumnWrap: 'True', UnitCount: 'false',
+      DateType: 'Survey', CCTypeList: '', HierarchyList: '',
+      CompareToOtherDatesTimePeriod: '0', QuickDateValue: fp.quickDateValue,
+      GroupByLevel: LEVEL_STORE, Units: unitIds,
+      HierarchyStructureScoreType: '', HierarchyStructureType: '', LevelAlignment: '',
+    });
+
+    // Probe C: getdata after submit (current approach)
+    const rv0 = await httpReq(jar2, 'POST',
+      `${RV_URL}?function=getdata&reporttype=0&reportsubtype=0&disableunits=false&r=${rand()}`,
+      { body: postBody, headers: xhrHdrs }
+    );
+    out.rv0Length = rv0.body.length;
+    out.rv0Snippet = rv0.body.slice(0, 300);
+    try { const d = JSON.parse(rv0.body); out.rv0Slot1Keys = Object.keys(Array.isArray(d) && d[1] ? d[1] : {}).slice(0, 10); } catch (_) {}
+
+    // Probe D: getdata on ReportBuilder.ashx with reporttype=0
+    const rb0 = await httpReq(jar2, 'POST',
+      `${RB_URL}?function=getdata&reporttype=0&reportsubtype=0&r=${rand()}`,
+      { body: postBody, headers: xhrHdrs }
+    );
+    out.rb0Length = rb0.body.length;
+    out.rb0Snippet = rb0.body.slice(0, 300);
+
+    const raw = rv0.body;
     out.parsedScores = parseReportResponse(raw).length;
-    try { const d = JSON.parse(raw); out.reportTopKeys = Object.keys(Array.isArray(d) ? (d[1] || d[0]) : d).slice(0, 10); } catch (_) {}
   } catch (e) { out.error = e.message; }
 
   return out;
