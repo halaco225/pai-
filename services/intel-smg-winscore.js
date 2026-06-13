@@ -318,24 +318,32 @@ async function fetchReportData(jar, startDate, endDate, quickDateValue, unitIds)
     LevelAlignment:                '',
   });
 
-  // Tell the server which units are selected (required before getdata)
-  console.log('[WinScore] POST SubmitPercentageUnitsSelected');
-  await httpReq(jar, 'POST', `${RB_URL}?function=SubmitPercentageUnitsSelected&r=${rand()}`, {
-    body: formEncode({ Units: unitIds, ReportType: '27', ReportSubType: '0' }),
-    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/ReportBuilder.aspx`, Origin: BASE },
-  });
+  const xhrHdrs = { Accept: 'application/json, text/javascript, */*', 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/ReportBuilder.aspx`, Origin: BASE };
 
-  console.log('[WinScore] POST ReportViewer.ashx');
-  const r = await httpReq(jar, 'POST', `${RV_URL}?${qs}`, {
+  // Try ReportViewer.ashx as GET with all params in query string (matches browser behavior)
+  const getQs = qs + '&' + body;
+  console.log('[WinScore] GET ReportViewer.ashx');
+  const rGet = await httpReq(jar, 'GET', `${RV_URL}?${getQs}`, { headers: xhrHdrs });
+  if (rGet.status === 200 && !rGet.body.startsWith('{"Error"')) {
+    console.log('[WinScore] GET succeeded');
+    return rGet.body;
+  }
+
+  // Try SaveExportReport.ashx which returned 50kb of data in the browser
+  console.log('[WinScore] POST SaveExportReport.ashx');
+  const SAVE_URL = `${BASE}/handlers/SaveExportReport.ashx`;
+  const rSave = await httpReq(jar, 'POST', `${SAVE_URL}?function=getdata&reporttype=27&reportsubtype=0&r=${rand()}`, {
     body,
-    headers: {
-      Accept:              'application/json, text/javascript, */*',
-      Referer:             `${BASE}/ReportBuilder.aspx`,
-      Origin:              BASE,
-      'X-Requested-With': 'XMLHttpRequest',
-    },
+    headers: xhrHdrs,
   });
+  if (rSave.status === 200 && !rSave.body.startsWith('{"Error"')) {
+    console.log('[WinScore] SaveExportReport succeeded');
+    return rSave.body;
+  }
 
+  // Final fallback: POST ReportViewer.ashx
+  console.log('[WinScore] POST ReportViewer.ashx (fallback)');
+  const r = await httpReq(jar, 'POST', `${RV_URL}?${qs}`, { body, headers: xhrHdrs });
   if (r.status !== 200) throw new Error(`ReportViewer HTTP ${r.status}: ${r.body.slice(0, 300)}`);
   return r.body;
 }
@@ -550,8 +558,9 @@ async function debugWinScore() {
     out.unitIdsSample = unitIds.split(';').slice(0, 5);
     const raw = await fetchReportData(jar2, fp.startDate, fp.endDate, fp.quickDateValue, unitIds);
     out.reportLength = raw.length;
-    out.reportSnippet = raw.slice(0, 1000);
+    out.reportSnippet = raw.slice(0, 2000);
     out.parsedScores = parseReportResponse(raw).length;
+    try { const d = JSON.parse(raw); out.reportTopKeys = Object.keys(Array.isArray(d) ? d[0] : d).slice(0, 20); } catch (_) {}
   } catch (e) { out.error = e.message; }
 
   return out;
