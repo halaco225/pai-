@@ -16,15 +16,14 @@ const LOGIN  = `${BASE}/Index.aspx`;
 const RB_URL = `${BASE}/handlers/ReportBuilder.ashx`;
 const RV_URL = `${BASE}/handlers/ReportViewer.ashx`;
 
-// All 41 store unit IDs captured from browser DevTools
-const UNIT_IDS = [
-  5519376, 5519575, 5519576, 5519577, 5519578, 5519579, 5519580, 5519581,
-  5519582, 5519583, 5519584, 5519585, 5519586, 5519587, 5519588, 5519589,
-  5519590, 5519591, 5519592, 5519593, 5519609, 5519611, 5519612, 5519613,
-  5519614, 5519615, 5519628, 5519629, 5519649, 5519652, 5519658, 5519659,
-  5519662, 5519710, 5519718, 5519719, 5519722, 5519723, 5519724, 5519726,
-  5585772,
-].join(',');
+// Unit IDs are built dynamically from store_assignments: format is 1P{store_id}
+// Cached at module load time and refreshed each processWinScore run
+let _unitIds = null;
+async function getUnitIds() {
+  const assignments = await db.getStoreAssignments();
+  const ids = Object.keys(assignments).map(id => `1P${id}`);
+  return ids.join(';'); // report builder uses semicolons
+}
 
 const WIN_SCORE_ITEM = '699308';
 const LEVEL_STORE    = '10';
@@ -247,9 +246,11 @@ async function getFiscalPeriod(jar) {
   try { data = JSON.parse(r.body); }
   catch (e) { throw new Error(`getreportcontroller parse error: ${r.body.slice(0, 200)}`); }
 
-  console.log('[WinScore] getreportcontroller keys:', Object.keys(data || {}));
-  const ranges = data.DateRanges || data.dateRanges || [];
-  const cur    = ranges.find(d => /current fiscal period/i.test(d.text || d.Text));
+  // Response may be array or object
+  const obj = Array.isArray(data) ? data[0] : data;
+  console.log('[WinScore] getreportcontroller keys:', Object.keys(obj || {}));
+  const ranges = obj.DateRanges || obj.dateRanges || [];
+  const cur    = ranges.find(d => /current fiscal period/i.test(d.T || d.text || d.Text));
 
   if (!cur) {
     // Fallback: compute a 28-day window ending yesterday (approximates current fiscal period)
@@ -266,7 +267,7 @@ async function getFiscalPeriod(jar) {
     return { startDate, endDate, quickDateValue };
   }
 
-  const val   = cur.value || cur.Value; // "4/21/2026|5/18/2026|False|95"
+  const val   = cur.V || cur.value || cur.Value; // "5/19/2026|6/15/2026|False|95"
   const parts = val.split('|');
   if (parts.length < 2) throw new Error(`Unexpected fiscal period value: ${val}`);
 
@@ -279,7 +280,7 @@ async function getFiscalPeriod(jar) {
 
 // ── Report fetch ──────────────────────────────────────────────────────────────
 
-async function fetchReportData(jar, startDate, endDate, quickDateValue) {
+async function fetchReportData(jar, startDate, endDate, quickDateValue, unitIds) {
   const qs = [
     'function=getdata',
     'reporttype=27',
@@ -311,7 +312,7 @@ async function fetchReportData(jar, startDate, endDate, quickDateValue) {
     CompareToOtherDatesTimePeriod: '0',
     QuickDateValue:                quickDateValue,
     GroupByLevel:                  LEVEL_STORE,
-    Units:                         UNIT_IDS,
+    Units:                         unitIds,
     HierarchyStructureScoreType:   '',
     HierarchyStructureType:        '',
     LevelAlignment:                '',
@@ -437,9 +438,10 @@ async function processWinScore(targetDate) {
     return { success: false, error: `getFiscalPeriod: ${err.message}` };
   }
 
+  const unitIds = await getUnitIds();
   let raw;
   try {
-    raw = await fetchReportData(jar, startDate, endDate, quickDateValue);
+    raw = await fetchReportData(jar, startDate, endDate, quickDateValue, unitIds);
   } catch (err) {
     console.error('[WinScore] fetchReportData failed:', err.message);
     return { success: false, error: `fetchReportData: ${err.message}` };
@@ -537,7 +539,9 @@ async function debugWinScore() {
     // Try actual report fetch using ReportViewer.ashx POST
     const fp = await getFiscalPeriod(jar2);
     out.fiscalPeriod = fp;
-    const raw = await fetchReportData(jar2, fp.startDate, fp.endDate, fp.quickDateValue);
+    const unitIds = await getUnitIds();
+    out.unitIdsSample = unitIds.split(';').slice(0, 5);
+    const raw = await fetchReportData(jar2, fp.startDate, fp.endDate, fp.quickDateValue, unitIds);
     out.reportLength = raw.length;
     out.reportSnippet = raw.slice(0, 1000);
     out.parsedScores = parseReportResponse(raw).length;
