@@ -186,8 +186,12 @@ async function processFourthLabor(filePath, targetDate) {
     const details = {
       sales_var:        s.sales_var,
       sales_var_pct:    s.fcst_sales ? (s.sales_var / s.fcst_sales) : null,
+      af_sales:         s.af_sales,
+      fcst_sales:       s.fcst_sales,
       labor_dollar_var: s.lab_dollar_var,
       hours_var:        s.hrs_var,
+      act_hrs:          s.act_hrs,
+      sch_hrs:          s.sch_hrs,
       act_labor_pct:    s.act_lab_pct,
       sch_labor_pct:    s.sch_lab_pct,
       act_lab_dollar:   s.act_lab_dollar,

@@ -1640,14 +1640,19 @@ function buildFlagAccordion(f){
   // ── LABOR_OVER_BUDGET ────────────────────────────────────────────────────
   if(f.metric_type==='LABOR_OVER_BUDGET'){
     const varColor=det.labor_dollar_var>0?'#ef4444':'#22c55e';
+    const actSales=det.af_sales!=null?det.af_sales:(det.fcst_sales!=null?det.fcst_sales:null);
     out+=section('Fourth Analytics — Labor Detail',
-      kv('Actual Labor $',fmtMny(det.act_lab_dollar))
+      kv('Actual Sales',actSales!=null?fmtMny(actSales):'—')
+      +kv('Forecast Sales',det.fcst_sales!=null?fmtMny(det.fcst_sales):'—')
+      +(det.sales_var!=null?kv('Sales vs Forecast',(det.sales_var>=0?'+':'')+fmtMny(det.sales_var),det.sales_var>=0?'#22c55e':'#ef4444'):'')
+      +kv('Actual Labor $',fmtMny(det.act_lab_dollar))
       +kv('Scheduled Labor $',fmtMny(det.sch_lab_dollar))
       +kv('Labor $ Variance',det.labor_dollar_var!=null?(det.labor_dollar_var>0?'+':'')+fmtMny(det.labor_dollar_var):'—',varColor)
       +kv('Actual Labor %',fmtPct(det.act_labor_pct),det.act_labor_pct>det.sch_labor_pct?'#ef4444':'#22c55e')
       +kv('Scheduled Labor %',fmtPct(det.sch_labor_pct))
-      +kv('Hours Over Schedule',fmtHrs(det.hours_var),det.hours_var>0?'#f59e0b':'#22c55e')
-      +kv('Sales vs Forecast',det.sales_var!=null?(det.sales_var>=0?'+':'')+fmtMny(det.sales_var):'—',det.sales_var>=0?'#22c55e':'#ef4444')
+      +kv('Actual Hours',det.act_hrs!=null?det.act_hrs.toFixed(1)+'h':'—')
+      +kv('Scheduled Hours',det.sch_hrs!=null?det.sch_hrs.toFixed(1)+'h':'—')
+      +kv('Hours Over Schedule',det.hours_var!=null?(det.hours_var>0?'+':'')+det.hours_var.toFixed(1)+'h':'—',det.hours_var>0?'#f59e0b':'#22c55e')
       +kv('Consecutive Days Over',(f.consecutive_days_out||1)+' day'+(f.consecutive_days_out>1?'s':''),f.consecutive_days_out>=3?'#ef4444':'#f59e0b')
     );
   }
