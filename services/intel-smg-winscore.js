@@ -195,32 +195,26 @@ async function login(jar, user, pass) {
     throw new Error('Login failed — check SMG_USER / SMG_PASSWORD');
   }
 
-  // If we landed on MultiLanguage.aspx, submit it to complete session initialization
-  const finalUrl = `${BASE}/MultiLanguage.aspx`;
-  const mlPage = await httpReq(jar, 'GET', finalUrl, { headers: { Referer: LOGIN } });
-  if (mlPage.status === 200 && mlPage.body.includes('MultiLanguage')) {
-    console.log('[WinScore] Submitting MultiLanguage.aspx to complete session setup');
-    // Set language selection cookie (English = 3) like the browser does
-    jar.set('reporting.smg.com', ['V4LanguageSelection=3; path=/; domain=.smg.com']);
-    // Find language form fields and submit
+  // MultiLanguage.aspx = language selection page. Must submit English (value=3) to unlock session.
+  const mlUrl = `${BASE}/MultiLanguage.aspx`;
+  const mlPage = await httpReqNoFollow(jar, 'GET', mlUrl, {});
+  if (mlPage.status === 200 && mlPage.body.includes('rblSelections')) {
+    console.log('[WinScore] Submitting language selection (English)');
     const langFields = {
-      __VIEWSTATE:          extractHidden(mlPage.body, '__VIEWSTATE') || '',
-      __VIEWSTATEGENERATOR: extractHidden(mlPage.body, '__VIEWSTATEGENERATOR') || '',
-      __EVENTVALIDATION:    extractHidden(mlPage.body, '__EVENTVALIDATION') || '',
+      ctl00_TheScriptManager_HiddenField: '',
+      __EVENTTARGET:        '',
+      __EVENTARGUMENT:      '',
+      __VIEWSTATE:          extractHidden(mlPage.body, '__VIEWSTATE'),
+      __VIEWSTATEGENERATOR: extractHidden(mlPage.body, '__VIEWSTATEGENERATOR'),
+      __EVENTVALIDATION:    extractHidden(mlPage.body, '__EVENTVALIDATION'),
+      'ctl00$cphMain$rblSelections': '3', // English
+      'ctl00$cphMain$BtnSubmit':     'Continue',
     };
-    // Find any button/submit field
-    const btnMatch = mlPage.body.match(/name="([^"]*(?:btn|submit|continue|language)[^"]*)"[^>]*value="([^"]*)"/i);
-    if (btnMatch) langFields[btnMatch[1]] = btnMatch[2];
-    // Try to find language dropdown
-    const selMatch = mlPage.body.match(/name="([^"]*(?:lang|language|ddl)[^"]*)"[^>]*/i);
-    if (selMatch) langFields[selMatch[1]] = '3';
-
-    if (Object.keys(langFields).some(k => langFields[k])) {
-      await httpReq(jar, 'POST', finalUrl, {
-        body: formEncode(langFields),
-        headers: { Referer: finalUrl, Origin: BASE },
-      });
-    }
+    await httpReq(jar, 'POST', mlUrl, {
+      body:    formEncode(langFields),
+      headers: { Referer: mlUrl, Origin: BASE, 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
+    console.log('[WinScore] Language selection submitted');
   }
 
   console.log('[WinScore] Login OK');
