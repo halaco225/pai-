@@ -494,7 +494,7 @@ async function debugWinScore() {
   const pass = process.env.SMG_PASSWORD || '';
   if (!user || !pass) return { error: 'SMG_USER / SMG_PASSWORD not set' };
 
-  // Trace redirect chain from login to find SSO handshake
+  // Trace redirect chain and capture full MultiLanguage.aspx body
   const jar = makeCookieJar();
   out.redirectChain = [];
   try {
@@ -511,14 +511,40 @@ async function debugWinScore() {
       'ctl00$cphMain$txtPassword': pass,
     };
     const r2 = await httpReqNoFollow(jar, 'POST', LOGIN, { body: formEncode(fields), headers: { Referer: LOGIN, Origin: BASE } });
-    out.redirectChain.push({ url: LOGIN + ' POST', status: r2.status, location: r2.location || null, bodySnippet: r2.body.slice(0, 200) });
+    out.redirectChain.push({ url: LOGIN + ' POST', status: r2.status, location: r2.location || null });
 
-    // Follow each redirect step manually to trace SSO
     let next = r2.location;
     for (let i = 0; i < 6 && next; i++) {
       const nextUrl = next.startsWith('http') ? next : new url.URL(next, BASE).href;
       const rx = await httpReqNoFollow(jar, 'GET', nextUrl, {});
-      out.redirectChain.push({ url: nextUrl, status: rx.status, location: rx.location || null, bodySnippet: rx.body.slice(0, 300) });
+      const entry = { url: nextUrl, status: rx.status, location: rx.location || null };
+      if (nextUrl.includes('MultiLanguage')) {
+        // Capture full page to see form structure
+        entry.fullBody = rx.body;
+        // Extract all input names and values
+        const inputs = [];
+        const inputRe = /<input[^>]+>/gi;
+        let m;
+        while ((m = inputRe.exec(rx.body))) {
+          const nameM = m[0].match(/name="([^"]*)"/i);
+          const valM  = m[0].match(/value="([^"]*)"/i);
+          const typeM = m[0].match(/type="([^"]*)"/i);
+          if (nameM) inputs.push({ name: nameM[1], value: valM ? valM[1] : '', type: typeM ? typeM[1] : '' });
+        }
+        // Extract all select/option names
+        const selects = [];
+        const selRe = /<select[^>]+name="([^"]*)"[\s\S]*?<\/select>/gi;
+        while ((m = selRe.exec(rx.body))) {
+          const opts = [];
+          const optRe = /<option[^>]*value="([^"]*)"[^>]*>(.*?)<\/option>/gi;
+          let om;
+          while ((om = optRe.exec(m[0]))) opts.push({ value: om[1], text: om[2].replace(/<[^>]+>/g,'').trim() });
+          selects.push({ name: m[1], options: opts });
+        }
+        entry.inputs = inputs;
+        entry.selects = selects;
+      }
+      out.redirectChain.push(entry);
       next = rx.location;
     }
   } catch (e) { out.redirectError = e.message; }
