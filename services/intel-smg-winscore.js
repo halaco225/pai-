@@ -275,17 +275,14 @@ async function getFiscalPeriod(jar) {
 // ── Report fetch ──────────────────────────────────────────────────────────────
 
 async function fetchReportData(jar, startDate, endDate, quickDateValue, unitIds) {
-  const qs = [
-    'function=getdata',
-    'reporttype=27',
-    'reportsubtype=0',
-    'disableunits=false',
-    `r=${rand()}`,
-    'translateBtnClicked=false',
-    'translateFlag=false',
-  ].join('&');
+  const xhrHdrs = {
+    Accept: 'application/json, text/javascript, */*',
+    'X-Requested-With': 'XMLHttpRequest',
+    Referer: `${BASE}/ReportBuilder.aspx`,
+    Origin:  BASE,
+  };
 
-  const body = formEncode({
+  const postBody = formEncode({
     StartDate:                     startDate,
     EndDate:                       endDate,
     CustomQuickDateId:             '',
@@ -312,34 +309,27 @@ async function fetchReportData(jar, startDate, endDate, quickDateValue, unitIds)
     LevelAlignment:                '',
   });
 
-  const xhrHdrs = { Accept: 'application/json, text/javascript, */*', 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/ReportBuilder.aspx`, Origin: BASE };
+  // Browser DevTools showed ReportBuilder.ashx (not ReportViewer.ashx) for getdata
+  // Try both reporttype=27 (comparison) and reporttype=0 (standard) since browser showed 0
+  const attempts = [
+    { url: `${RB_URL}?function=getdata&reporttype=27&reportsubtype=0&disableunits=false&r=${rand()}`, method: 'POST' },
+    { url: `${RB_URL}?function=getdata&reporttype=0&reportsubtype=0&disableunits=false&r=${rand()}`,  method: 'POST' },
+    { url: `${RV_URL}?function=getdata&reporttype=27&reportsubtype=0&disableunits=false&r=${rand()}`, method: 'POST' },
+  ];
 
-  // Try ReportViewer.ashx as GET with all params in query string (matches browser behavior)
-  const getQs = qs + '&' + body;
-  console.log('[WinScore] GET ReportViewer.ashx');
-  const rGet = await httpReq(jar, 'GET', `${RV_URL}?${getQs}`, { headers: xhrHdrs });
-  if (rGet.status === 200 && !rGet.body.startsWith('{"Error"')) {
-    console.log('[WinScore] GET succeeded');
-    return rGet.body;
+  for (const attempt of attempts) {
+    console.log(`[WinScore] Trying ${attempt.method} ${attempt.url.split('?')[0]} reporttype=${attempt.url.match(/reporttype=(\d+)/)?.[1]}`);
+    const r = await httpReq(jar, attempt.method, attempt.url, { body: postBody, headers: xhrHdrs });
+    console.log(`[WinScore] → HTTP ${r.status}, ${r.body.length} bytes, snippet: ${r.body.slice(0, 80)}`);
+    if (r.status === 200 && !r.body.startsWith('{"Error"') && r.body.length > 30) {
+      console.log('[WinScore] Report fetch succeeded');
+      return r.body;
+    }
   }
 
-  // Try SaveExportReport.ashx which returned 50kb of data in the browser
-  console.log('[WinScore] POST SaveExportReport.ashx');
-  const SAVE_URL = `${BASE}/handlers/SaveExportReport.ashx`;
-  const rSave = await httpReq(jar, 'POST', `${SAVE_URL}?function=getdata&reporttype=27&reportsubtype=0&r=${rand()}`, {
-    body,
-    headers: xhrHdrs,
-  });
-  if (rSave.status === 200 && !rSave.body.startsWith('{"Error"')) {
-    console.log('[WinScore] SaveExportReport succeeded');
-    return rSave.body;
-  }
-
-  // Final fallback: POST ReportViewer.ashx
-  console.log('[WinScore] POST ReportViewer.ashx (fallback)');
-  const r = await httpReq(jar, 'POST', `${RV_URL}?${qs}`, { body, headers: xhrHdrs });
-  if (r.status !== 200) throw new Error(`ReportViewer HTTP ${r.status}: ${r.body.slice(0, 300)}`);
-  return r.body;
+  // Return last response so caller can log it
+  const last = await httpReq(jar, 'POST', `${RB_URL}?function=getdata&reporttype=27&reportsubtype=0&r=${rand()}`, { body: postBody, headers: xhrHdrs });
+  return last.body;
 }
 
 // ── Response parser ───────────────────────────────────────────────────────────
