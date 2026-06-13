@@ -312,14 +312,14 @@ async function fetchReportData(jar, startDate, endDate, quickDateValue, unitIds)
   // Step 1: submit unit selection so the server knows which stores to report on
   console.log('[WinScore] Submitting unit selection');
   await httpReq(jar, 'POST',
-    `${RB_URL}?function=submitpercentageunitsselected&reporttype=0&reportsubtype=0&r=${rand()}`,
+    `${RB_URL}?function=submitpercentageunitsselected&reporttype=27&reportsubtype=0&r=${rand()}`,
     { body: formEncode({ Units: unitIds, Level: LEVEL_STORE }), headers: xhrHdrs }
   );
 
-  // Step 2: fetch report data from ReportViewer.ashx (reporttype=0 is comparison report)
+  // Step 2: fetch report data from ReportViewer.ashx — reporttype=27 is comparison report
   console.log('[WinScore] Fetching report data');
   const r = await httpReq(jar, 'POST',
-    `${RV_URL}?function=getdata&reporttype=0&reportsubtype=0&disableunits=false&r=${rand()}`,
+    `${RV_URL}?function=getdata&reporttype=27&reportsubtype=0&disableunits=false&r=${rand()}`,
     { body: postBody, headers: xhrHdrs }
   );
   console.log(`[WinScore] Report response: HTTP ${r.status}, ${r.body.length} bytes, snippet: ${r.body.slice(0, 120)}`);
