@@ -375,7 +375,7 @@ function parseHtmlTable(html) {
     while ((tdMatch = tdRe.exec(trMatch[1]))) cells.push(strip(tdMatch[1]));
     if (cells.length) allRows.push(cells);
   }
-  if (!allRows.length) return [];
+  if (!allRows.length) return { stores: [], aggregate: null };
 
   // The data table is the one whose header row contains "Win Score".
   let headerIdx = allRows.findIndex(r => r.some(c => /win score/i.test(c)));
