@@ -309,28 +309,21 @@ async function fetchReportData(jar, startDate, endDate, quickDateValue, unitIds)
     LevelAlignment:                '',
   });
 
-  // reporttype=0 is the comparison report data endpoint (browser DevTools confirmed)
-  // reporttype=27 returns UI label translations — NOT score data
-  const attempts = [
-    { url: `${RB_URL}?function=getdata&reporttype=0&reportsubtype=0&disableunits=false&r=${rand()}`,  method: 'POST' },
-    { url: `${RB_URL}?function=getdata&reporttype=27&reportsubtype=0&disableunits=false&r=${rand()}`, method: 'POST' },
-    { url: `${RV_URL}?function=getdata&reporttype=0&reportsubtype=0&disableunits=false&r=${rand()}`,  method: 'POST' },
-  ];
+  // Step 1: submit unit selection so the server knows which stores to report on
+  console.log('[WinScore] Submitting unit selection');
+  await httpReq(jar, 'POST',
+    `${RB_URL}?function=submitpercentageunitsselected&reporttype=0&reportsubtype=0&r=${rand()}`,
+    { body: formEncode({ Units: unitIds, Level: LEVEL_STORE }), headers: xhrHdrs }
+  );
 
-  for (const attempt of attempts) {
-    console.log(`[WinScore] Trying ${attempt.method} ${attempt.url.split('?')[0].split('/').pop()} reporttype=${attempt.url.match(/reporttype=(\d+)/)?.[1]}`);
-    const r = await httpReq(jar, attempt.method, attempt.url, { body: postBody, headers: xhrHdrs });
-    console.log(`[WinScore] → HTTP ${r.status}, ${r.body.length} bytes, snippet: ${r.body.slice(0, 100)}`);
-    // Reject error responses and UI-label responses (which have Title1 key, not score data)
-    if (r.status === 200 && r.body.length > 30 && !r.body.includes('"Error"') && !r.body.includes('"Title1"')) {
-      console.log('[WinScore] Report fetch succeeded');
-      return r.body;
-    }
-  }
-
-  // Return last response so the caller can log what we actually got
-  const last = await httpReq(jar, 'POST', `${RB_URL}?function=getdata&reporttype=0&reportsubtype=0&r=${rand()}`, { body: postBody, headers: xhrHdrs });
-  return last.body;
+  // Step 2: fetch report data from ReportViewer.ashx (reporttype=0 is comparison report)
+  console.log('[WinScore] Fetching report data');
+  const r = await httpReq(jar, 'POST',
+    `${RV_URL}?function=getdata&reporttype=0&reportsubtype=0&disableunits=false&r=${rand()}`,
+    { body: postBody, headers: xhrHdrs }
+  );
+  console.log(`[WinScore] Report response: HTTP ${r.status}, ${r.body.length} bytes, snippet: ${r.body.slice(0, 120)}`);
+  return r.body;
 }
 
 // ── Response parser ───────────────────────────────────────────────────────────
@@ -568,36 +561,11 @@ async function debugWinScore() {
     const unitIds = await getUnitIds();
     out.unitIdsSample = unitIds.split(';').slice(0, 5);
 
-    const xhrHdrs = { Accept: 'application/json, text/javascript, */*', 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/ReportBuilder.aspx`, Origin: BASE };
-
-    const makeBody = (overrides = {}) => formEncode({
-      StartDate: fp.startDate, EndDate: fp.endDate, CustomQuickDateId: '', CustomStartDate: '', CustomEndDate: '',
-      ReportLevel: LEVEL_STORE, Benchmarks: '', SurveyItems: WIN_SCORE_ITEM, Filters: '[]', CompareBy: '',
-      BreakoutCompareType: 'undefined', MultiParentHierarchyLevelBy: '0', ColumnWrap: 'True', UnitCount: 'false',
-      DateType: 'Survey', CCTypeList: '', HierarchyList: '', CompareToOtherDatesTimePeriod: '0',
-      QuickDateValue: fp.quickDateValue, GroupByLevel: LEVEL_STORE, Units: unitIds,
-      HierarchyStructureScoreType: '', HierarchyStructureType: '', LevelAlignment: '',
-      ...overrides,
-    });
-
-    const probe = async (label, url, body) => {
-      const r = await httpReq(jar2, 'POST', url, { body, headers: xhrHdrs });
-      return { label, status: r.status, len: r.body.length, snippet: r.body.slice(0, 300) };
-    };
-
-    out.probes = await Promise.all([
-      probe('RB rt=0 sub=0',      `${RB_URL}?function=getdata&reporttype=0&reportsubtype=0&disableunits=false&r=${rand()}`,  makeBody()),
-      probe('RB rt=27 sub=0',     `${RB_URL}?function=getdata&reporttype=27&reportsubtype=0&disableunits=false&r=${rand()}`, makeBody()),
-      probe('RB rt=0 noUnits',    `${RB_URL}?function=getdata&reporttype=0&reportsubtype=0&disableunits=false&r=${rand()}`,  makeBody({ Units: '' })),
-      probe('RV rt=0 sub=0',      `${RV_URL}?function=getdata&reporttype=0&reportsubtype=0&disableunits=false&r=${rand()}`,  makeBody()),
-      probe('RV rt=27 sub=0',     `${RV_URL}?function=getdata&reporttype=27&reportsubtype=0&disableunits=false&r=${rand()}`, makeBody()),
-    ]);
-    // Use the probe that has most bytes and no error/label pattern
-    const best = out.probes.reduce((a, b) => b.len > a.len ? b : a, out.probes[0]);
-    out.bestProbe = best.label;
-    out.reportLength = best.len;
-    out.reportSnippet = best.snippet;
-    out.parsedScores = parseReportResponse(best.snippet).length;
+    const raw = await fetchReportData(jar2, fp.startDate, fp.endDate, fp.quickDateValue, unitIds);
+    out.reportLength = raw.length;
+    out.reportSnippet = raw.slice(0, 500);
+    out.parsedScores = parseReportResponse(raw).length;
+    try { const d = JSON.parse(raw); out.reportTopKeys = Object.keys(Array.isArray(d) ? (d[1] || d[0]) : d).slice(0, 10); } catch (_) {}
   } catch (e) { out.error = e.message; }
 
   return out;
