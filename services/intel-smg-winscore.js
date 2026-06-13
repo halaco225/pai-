@@ -280,19 +280,55 @@ async function getFiscalPeriod(jar) {
 // ── Report fetch ──────────────────────────────────────────────────────────────
 
 async function fetchReportData(jar, startDate, endDate, quickDateValue) {
-  // Use the same GET approach the browser uses: reporttype=0 loads the last saved report
-  const qs = `function=getdata&reporttype=0&reportsubtype=0&r=${rand()}`;
+  const qs = [
+    'function=getdata',
+    'reporttype=27',
+    'reportsubtype=0',
+    'disableunits=false',
+    `r=${rand()}`,
+    'translateBtnClicked=false',
+    'translateFlag=false',
+  ].join('&');
 
-  console.log('[WinScore] GET ReportBuilder.ashx (reporttype=0)');
-  const r = await httpReq(jar, 'GET', `${RB_URL}?${qs}`, {
+  const body = formEncode({
+    StartDate:                     startDate,
+    EndDate:                       endDate,
+    CustomQuickDateId:             '',
+    CustomStartDate:               '',
+    CustomEndDate:                 '',
+    ReportLevel:                   LEVEL_STORE,
+    Benchmarks:                    '',
+    SurveyItems:                   WIN_SCORE_ITEM,
+    Filters:                       '[]',
+    CompareBy:                     '',
+    BreakoutCompareType:           'undefined',
+    MultiParentHierarchyLevelBy:   '0',
+    ColumnWrap:                    'True',
+    UnitCount:                     'false',
+    DateType:                      'Survey',
+    CCTypeList:                    '',
+    HierarchyList:                 '',
+    CompareToOtherDatesTimePeriod: '0',
+    QuickDateValue:                quickDateValue,
+    GroupByLevel:                  LEVEL_STORE,
+    Units:                         UNIT_IDS,
+    HierarchyStructureScoreType:   '',
+    HierarchyStructureType:        '',
+    LevelAlignment:                '',
+  });
+
+  console.log('[WinScore] POST ReportViewer.ashx');
+  const r = await httpReq(jar, 'POST', `${RV_URL}?${qs}`, {
+    body,
     headers: {
       Accept:              'application/json, text/javascript, */*',
       Referer:             `${BASE}/ReportBuilder.aspx`,
+      Origin:              BASE,
       'X-Requested-With': 'XMLHttpRequest',
     },
   });
 
-  if (r.status !== 200) throw new Error(`ReportBuilder HTTP ${r.status}: ${r.body.slice(0, 300)}`);
+  if (r.status !== 200) throw new Error(`ReportViewer HTTP ${r.status}: ${r.body.slice(0, 300)}`);
   return r.body;
 }
 
@@ -470,18 +506,42 @@ async function debugWinScore() {
     }
   } catch (e) { out.redirectError = e.message; }
 
-  // Full login (with MultiLanguage fix) then test report builder
   const jar2 = makeCookieJar();
   try {
     await login(jar2, user, pass);
     out.formLogin = 'ok';
     await httpReq(jar2, 'GET', `${BASE}/ReportBuilder.aspx`, { headers: { Referer: LOGIN } });
+
+    // Get controller — parse SurveyItems and date ranges
     const rc = await httpReq(jar2, 'GET',
       `${RB_URL}?function=getreportcontroller&reporttype=27&reportsubtype=0&r=${rand()}&periodId=`,
       { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/ReportBuilder.aspx` } }
     );
-    out.controllerResult = { status: rc.status, length: rc.body.length, body: rc.body.slice(0, 500) };
-  } catch (e) { out.loginError = e.message; }
+    out.controllerLength = rc.body.length;
+    try {
+      const cd = JSON.parse(rc.body);
+      const arr = Array.isArray(cd) ? cd : [cd];
+      out.surveyItems = (arr[0].SurveyItems || arr[0].surveyItems || []).slice(0, 30);
+      out.dateRanges  = (arr[0].DateRanges  || arr[0].dateRanges  || []).slice(0, 5);
+    } catch (e) { out.controllerParseError = e.message; out.controllerSnippet = rc.body.slice(0, 500); }
+
+    // Get units list
+    const gu = await httpReq(jar2, 'GET',
+      `${RB_URL}?function=getunits&reporttype=27&reportsubtype=0&r=${rand()}`,
+      { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/ReportBuilder.aspx` } }
+    );
+    out.unitsLength = gu.body.length;
+    try { const ud = JSON.parse(gu.body); out.unitsSample = (ud.Units || ud.units || ud || []).slice(0, 5); }
+    catch (e) { out.unitsSnippet = gu.body.slice(0, 500); }
+
+    // Try actual report fetch using ReportViewer.ashx POST
+    const fp = await getFiscalPeriod(jar2);
+    out.fiscalPeriod = fp;
+    const raw = await fetchReportData(jar2, fp.startDate, fp.endDate, fp.quickDateValue);
+    out.reportLength = raw.length;
+    out.reportSnippet = raw.slice(0, 1000);
+    out.parsedScores = parseReportResponse(raw).length;
+  } catch (e) { out.error = e.message; }
 
   return out;
 }
