@@ -28,6 +28,16 @@ async function getUnitIds() {
 const WIN_SCORE_ITEM = '699308';
 const LEVEL_STORE    = '10';
 
+// Saved SMG favorite report that auto-renders the Win Score Comparison table as HTML.
+// reporting.smg.com has NO clean JSON data API — the only way to get the numbers is to
+// load a saved favorite (Report.aspx?ID=...), which restores the full report definition
+// into session and renders the data table in the returned HTML (see parseReportResponse).
+//
+// Default = "Win Score - Last 30 Days" (region-aggregate, rolling dates). To get per-store
+// numbers instead, build a Store-level comparison favorite in SMG, then set
+// SMG_WINSCORE_REPORT_ID to its ID — no code change needed; the parser handles both shapes.
+const WIN_SCORE_REPORT_ID = process.env.SMG_WINSCORE_REPORT_ID || '033C5385EEA0F79D08857C066EDF71D7';
+
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
 function rand() { return Math.random().toString(); }
@@ -274,66 +284,30 @@ async function getFiscalPeriod(jar) {
 
 // ── Report fetch ──────────────────────────────────────────────────────────────
 
-async function fetchReportData(jar, startDate, endDate, quickDateValue, unitIds) {
-  const xhrHdrs = {
-    Accept: 'application/json, text/javascript, */*',
-    'X-Requested-With': 'XMLHttpRequest',
-    Referer: `${BASE}/ReportBuilder.aspx`,
-    Origin:  BASE,
-  };
-
-  const postBody = formEncode({
-    StartDate:                     startDate,
-    EndDate:                       endDate,
-    CustomQuickDateId:             '',
-    CustomStartDate:               '',
-    CustomEndDate:                 '',
-    ReportLevel:                   LEVEL_STORE,
-    Benchmarks:                    '',
-    SurveyItems:                   WIN_SCORE_ITEM,
-    Filters:                       '[]',
-    CompareBy:                     '',
-    BreakoutCompareType:           'undefined',
-    MultiParentHierarchyLevelBy:   '0',
-    ColumnWrap:                    'True',
-    UnitCount:                     'false',
-    DateType:                      'Survey',
-    CCTypeList:                    '',
-    HierarchyList:                 '',
-    CompareToOtherDatesTimePeriod: '0',
-    QuickDateValue:                quickDateValue,
-    GroupByLevel:                  LEVEL_STORE,
-    Units:                         unitIds,
-    HierarchyStructureScoreType:   '',
-    HierarchyStructureType:        '',
-    LevelAlignment:                '',
+// Load the saved favorite report. Report.aspx?ID=... restores the report definition into
+// the session and redirects to ReportBuilder.aspx?report=Comparison, which renders the
+// Win Score data table directly in the returned HTML. Returns that HTML for parseReportResponse.
+async function fetchReportData(jar) {
+  const reportUrl = `${BASE}/Report.aspx?ID=${WIN_SCORE_REPORT_ID}`;
+  console.log(`[WinScore] Loading saved report ${WIN_SCORE_REPORT_ID}`);
+  const r = await httpReq(jar, 'GET', reportUrl, {
+    headers: { Referer: `${BASE}/ReportsAndAnalytics.aspx` },
   });
-
-  // Step 1: submit unit selection so the server knows which stores to report on
-  console.log('[WinScore] Submitting unit selection');
-  await httpReq(jar, 'POST',
-    `${RB_URL}?function=submitpercentageunitsselected&reporttype=27&reportsubtype=0&r=${rand()}`,
-    { body: formEncode({ Units: unitIds, Level: LEVEL_STORE }), headers: xhrHdrs }
-  );
-
-  // Step 2: fetch report data from ReportViewer.ashx
-  console.log('[WinScore] Fetching report data');
-  const r = await httpReq(jar, 'POST',
-    `${RV_URL}?function=getdata&reporttype=0&reportsubtype=0&disableunits=false&r=${rand()}`,
-    { body: postBody, headers: xhrHdrs }
-  );
-  console.log(`[WinScore] Report response: HTTP ${r.status}, ${r.body.length} bytes, snippet: ${r.body.slice(0, 120)}`);
+  console.log(`[WinScore] Report response: HTTP ${r.status}, ${r.body.length} bytes`);
+  if (r.status !== 200) throw new Error(`Report.aspx HTTP ${r.status}`);
   return r.body;
 }
 
 // ── Response parser ───────────────────────────────────────────────────────────
 
+// Extract a 6-digit store id from a unit label, but ONLY when it is a real store unit.
+// Store rows look like "1P039429 - 039429,1660 HWY 81 EAST,..." → 039429.
+// Region/Area rows look like "R-KDGI08-LACOSTE, HAROLD - PPP1393282REGNKDGI08" → no store id
+// (we must NOT grab the 6 digits out of PPP1393282 — those are not a store).
 function parseStoreIdFromUnit(unit) {
   if (!unit) return null;
-  const m  = String(unit).match(/1P(\d{6})\s*-\s*(\d{6})/);
-  if (m) return m[2];
-  const m2 = String(unit).match(/(\d{6})/);
-  return m2 ? m2[1] : null;
+  const m = String(unit).match(/\b1P(\d{6})\b/);
+  return m ? m[1] : null;
 }
 
 function parseWinScore(val) {
@@ -342,30 +316,10 @@ function parseWinScore(val) {
   return isNaN(n) ? null : n;
 }
 
+// Parse the rendered Comparison Report HTML table.
+// Returns { stores: [{store_id, win_score, survey_count}], aggregate: {win_score, survey_count}|null }.
+// A Store-level favorite yields per-store rows; the region favorite yields a single aggregate row.
 function parseReportResponse(raw) {
-  // Try JSON first
-  let data = null;
-  try { data = JSON.parse(raw); } catch (_) {}
-
-  if (data) {
-    const rows = Array.isArray(data) ? data
-      : (data.rows || data.Rows || data.data || data.Data || []);
-    if (rows.length > 0) {
-      const results = [];
-      for (const row of rows) {
-        const unitRaw   = row.Unit || row.unit || row.Store || row.store || row.Name || row.name || '';
-        const scoreRaw  = row['Win Score'] || row.WinScore || row.winScore || row.Score || row.score;
-        const countRaw  = row.Count || row.count || row.Surveys || row.surveys || 0;
-        const store_id  = parseStoreIdFromUnit(unitRaw);
-        const win_score = parseWinScore(scoreRaw);
-        if (!store_id || win_score == null) continue;
-        results.push({ store_id, win_score, survey_count: parseInt(String(countRaw).replace(/\D/g, '')) || 0 });
-      }
-      if (results.length > 0) return results;
-    }
-  }
-
-  // HTML table fallback
   return parseHtmlTable(raw);
 }
 
@@ -385,26 +339,36 @@ function parseHtmlTable(html) {
   }
   if (!allRows.length) return [];
 
+  // The data table is the one whose header row contains "Win Score".
   let headerIdx = allRows.findIndex(r => r.some(c => /win score/i.test(c)));
-  if (headerIdx < 0) headerIdx = 0;
+  if (headerIdx < 0) return { stores: [], aggregate: null };
 
   const headers   = allRows[headerIdx].map(h => h.toLowerCase());
-  const storeCol  = headers.findIndex(h => /store|unit|name/i.test(h));
+  // Unit column header is "Store"/"Region"/"Area"/"Market"/"Unit" depending on report level.
+  let   unitCol   = headers.findIndex(h => /store|region|area|market|unit|name/i.test(h));
+  if (unitCol < 0) unitCol = 0;
   const scoreCol  = headers.findIndex(h => /win score/i.test(h));
   const countCol  = headers.findIndex(h => /count|survey/i.test(h));
 
-  const results = [];
+  const stores    = [];
+  let   aggregate = null;
   for (let i = headerIdx + 1; i < allRows.length; i++) {
-    const row      = allRows[i];
-    const unitRaw  = storeCol >= 0 ? row[storeCol] : row[0];
-    if (!unitRaw || /combined|total/i.test(unitRaw)) continue;
-    const store_id  = parseStoreIdFromUnit(unitRaw);
-    const win_score = parseWinScore(scoreCol >= 0 ? row[scoreCol] : row[row.length - 1]);
-    if (!store_id || win_score == null) continue;
+    const row     = allRows[i];
+    const unitRaw = row[unitCol] != null ? row[unitCol] : row[0];
+    if (!unitRaw) continue;
+    const win_score = parseWinScore(scoreCol >= 0 ? row[scoreCol] : null);
+    if (win_score == null) continue;
     const survey_count = parseInt(String(countCol >= 0 ? row[countCol] : '0').replace(/\D/g, '')) || 0;
-    results.push({ store_id, win_score, survey_count });
+
+    const store_id = parseStoreIdFromUnit(unitRaw);
+    if (store_id) {
+      stores.push({ store_id, win_score, survey_count });
+    } else if (!aggregate) {
+      // No store id → region/area aggregate row (first one wins)
+      aggregate = { win_score, survey_count };
+    }
   }
-  return results;
+  return { stores, aggregate };
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -423,36 +387,42 @@ async function processWinScore(targetDate) {
     return { success: false, error: `Login: ${err.message}` };
   }
 
-  let startDate, endDate, quickDateValue;
-  try {
-    ({ startDate, endDate, quickDateValue } = await getFiscalPeriod(jar));
-  } catch (err) {
-    console.error('[WinScore] getFiscalPeriod failed:', err.message);
-    return { success: false, error: `getFiscalPeriod: ${err.message}` };
-  }
-
-  const unitIds = await getUnitIds();
   let raw;
   try {
-    raw = await fetchReportData(jar, startDate, endDate, quickDateValue, unitIds);
+    raw = await fetchReportData(jar);
   } catch (err) {
     console.error('[WinScore] fetchReportData failed:', err.message);
     return { success: false, error: `fetchReportData: ${err.message}` };
   }
 
-  const scores = parseReportResponse(raw);
-  console.log(`[WinScore] Parsed ${scores.length} store scores`);
-  if (!scores.length) {
-    console.warn('[WinScore] No scores parsed. Raw (first 2000 chars):\n' + raw.slice(0, 2000));
-    return { success: false, error: 'No scores parsed from response' };
-  }
+  const { stores, aggregate } = parseReportResponse(raw);
+  console.log(`[WinScore] Parsed ${stores.length} store rows, aggregate=${aggregate ? aggregate.win_score + '%' : 'none'}`);
 
   const pool = db.getPool();
   if (!pool) return { success: false, error: 'No DB pool' };
 
-  const periodEnd = endDate;
+  // period_end_date: the report's "to" date (rolling Last 30 Days), falling back to today.
+  const periodEnd = extractPeriodEnd(raw) || targetDate || new Date().toISOString().slice(0, 10);
+
+  // Build the rows to write. Prefer per-store data; if the favorite is region-level (no
+  // store rows, just an aggregate), apply the region Win Score to every assigned store so
+  // each store card populates with the real region number until a Store-level favorite is set.
+  let toWrite = stores;
+  if (!toWrite.length && aggregate) {
+    const assignments = await db.getStoreAssignments();
+    toWrite = Object.keys(assignments).map(store_id => ({
+      store_id, win_score: aggregate.win_score, survey_count: aggregate.survey_count,
+    }));
+    console.log(`[WinScore] Region aggregate applied to ${toWrite.length} assigned stores`);
+  }
+
+  if (!toWrite.length) {
+    console.warn('[WinScore] No scores parsed. Raw (first 2000 chars):\n' + raw.slice(0, 2000));
+    return { success: false, error: 'No scores parsed from response' };
+  }
+
   let written = 0;
-  for (const s of scores) {
+  for (const s of toWrite) {
     await pool.query(`
       INSERT INTO smg_win_scores (store_id, period_end_date, win_score, survey_count, updated_at)
       VALUES ($1, $2, $3, $4, NOW())
@@ -462,8 +432,17 @@ async function processWinScore(targetDate) {
     written++;
   }
 
-  console.log(`[WinScore] ${written} scores written (period end: ${periodEnd})`);
-  return { success: true, storesProcessed: scores.length, scoresWritten: written, periodEnd };
+  const mode = stores.length ? 'per-store' : 'region-aggregate';
+  console.log(`[WinScore] ${written} scores written (period end: ${periodEnd}, mode: ${mode})`);
+  return { success: true, storesProcessed: toWrite.length, scoresWritten: written, periodEnd, mode };
+}
+
+// Pull the report period end ("Comparison Report: M/D/YYYY to M/D/YYYY") as ISO YYYY-MM-DD.
+function extractPeriodEnd(html) {
+  const m = html.match(/to\s+(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!m) return null;
+  const [, mm, dd, yyyy] = m;
+  return `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
 }
 
 async function debugWinScore() {
@@ -555,59 +534,15 @@ async function debugWinScore() {
     try { const ud = JSON.parse(gu.body); out.unitsSample = (ud.Units || ud.units || ud || []).slice(0, 5); }
     catch (e) { out.unitsSnippet = gu.body.slice(0, 500); }
 
-    // Try actual report fetch — test multiple parameter variations
-    const fp = await getFiscalPeriod(jar2);
-    out.fiscalPeriod = fp;
-    const unitIds = await getUnitIds();
-    out.unitIdsSample = unitIds.split(';').slice(0, 5);
-
-    const xhrHdrs = {
-      Accept: 'application/json, text/javascript, */*',
-      'X-Requested-With': 'XMLHttpRequest',
-      Referer: `${BASE}/ReportBuilder.aspx`,
-      Origin: BASE,
-    };
-
-    // Probe A: submitpercentageunitsselected response
-    const submitResp = await httpReq(jar2, 'POST',
-      `${RB_URL}?function=submitpercentageunitsselected&reporttype=27&reportsubtype=0&r=${rand()}`,
-      { body: formEncode({ Units: unitIds, Level: LEVEL_STORE }), headers: xhrHdrs }
-    );
-    out.submitStatus = submitResp.status;
-    out.submitBody = submitResp.body.slice(0, 200);
-
-    // Probe B: getdata WITHOUT prior submit (direct)
-    const postBody = formEncode({
-      StartDate: fp.startDate, EndDate: fp.endDate,
-      CustomQuickDateId: '', CustomStartDate: '', CustomEndDate: '',
-      ReportLevel: LEVEL_STORE, Benchmarks: '', SurveyItems: WIN_SCORE_ITEM,
-      Filters: '[]', CompareBy: '', BreakoutCompareType: 'undefined',
-      MultiParentHierarchyLevelBy: '0', ColumnWrap: 'True', UnitCount: 'false',
-      DateType: 'Survey', CCTypeList: '', HierarchyList: '',
-      CompareToOtherDatesTimePeriod: '0', QuickDateValue: fp.quickDateValue,
-      GroupByLevel: LEVEL_STORE, Units: unitIds,
-      HierarchyStructureScoreType: '', HierarchyStructureType: '', LevelAlignment: '',
-    });
-
-    // Probe C: getdata after submit (current approach)
-    const rv0 = await httpReq(jar2, 'POST',
-      `${RV_URL}?function=getdata&reporttype=0&reportsubtype=0&disableunits=false&r=${rand()}`,
-      { body: postBody, headers: xhrHdrs }
-    );
-    out.rv0Length = rv0.body.length;
-    out.rv0Snippet = rv0.body.slice(0, 300);
-    try { const d = JSON.parse(rv0.body); out.rv0Slot1Keys = Object.keys(Array.isArray(d) && d[1] ? d[1] : {}).slice(0, 10); } catch (_) {}
-
-    // Probe D: getdata on ReportBuilder.ashx with reporttype=0
-    const rb0 = await httpReq(jar2, 'POST',
-      `${RB_URL}?function=getdata&reporttype=0&reportsubtype=0&r=${rand()}`,
-      { body: postBody, headers: xhrHdrs }
-    );
-    out.rb0Length = rb0.body.length;
-    out.rb0Snippet = rb0.body.slice(0, 300);
-
-    const raw = rv0.body;
-    out.parsedScores = parseReportResponse(raw).length;
+    // Load the saved favorite report and parse the rendered HTML table.
+    out.reportId = WIN_SCORE_REPORT_ID;
+    const raw = await fetchReportData(jar2);
+    out.reportLength = raw.length;
+    out.periodEnd = extractPeriodEnd(raw);
+    const parsed = parseReportResponse(raw);
+    out.storeRows = parsed.stores.length;
+    out.storeSample = parsed.stores.slice(0, 5);
+    out.aggregate = parsed.aggregate;
   } catch (e) { out.error = e.message; }
 
   return out;
