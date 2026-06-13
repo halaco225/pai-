@@ -1178,6 +1178,67 @@ router.get('/flags', async (req, res) => {
   }
 });
 
+// ── GET /api/intel/trends — PERFORMANCE_TREND flags across a date range ────────
+// scope: 'week' (current Mon–Sun), 'weekly' (last 8 weeks), 'period' (last 3 × 4-week blocks)
+router.get('/trends', async (req, res) => {
+  try {
+    const user = req.session.user;
+    if (!user) return res.status(401).json({ error: 'Not authenticated' });
+    const p = db.getPool();
+    if (!p) return res.json({ trends: [], scope: req.query.scope || 'week' });
+
+    const scope = ['week', 'weekly', 'period'].includes(req.query.scope) ? req.query.scope : 'week';
+    const filterAC    = req.query.filter_ac    || null;
+    const filterStore = req.query.filter_store || null;
+
+    // Anchor = requested date, else latest trend date
+    let anchor = req.query.date || null;
+    if (!anchor) {
+      const dr = await p.query("SELECT MAX(metric_date)::text d FROM intel_flags WHERE metric_type='PERFORMANCE_TREND'");
+      anchor = dr.rows[0]?.d || new Date().toISOString().slice(0, 10);
+    }
+    const iso = d => d.toISOString().slice(0, 10);
+    let startDate, endDate;
+    if (scope === 'week') {
+      const a = new Date(anchor + 'T00:00:00');
+      const dow = (a.getDay() + 6) % 7; // 0 = Monday
+      const mon = new Date(a); mon.setDate(a.getDate() - dow);
+      const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+      startDate = iso(mon); endDate = iso(sun);
+    } else {
+      const daysBack = scope === 'weekly' ? 55 : 83; // ~8 weeks / ~12 weeks (3 × 4-wk blocks)
+      const a = new Date(anchor + 'T00:00:00');
+      const s = new Date(a); s.setDate(a.getDate() - daysBack);
+      startDate = iso(s); endDate = anchor;
+    }
+
+    const params = [startDate, endDate];
+    let where = "metric_type='PERFORMANCE_TREND' AND metric_date BETWEEN $1 AND $2 AND status != 'archived'";
+    if (user.role === 'vp') {
+      params.push(user.scope?.vp_name || user.name); where += ` AND territory_vp=$${params.length}`;
+      const rc = req.query.rc_name || null, ac = req.query.ac_name || filterAC || null;
+      if (rc) { params.push(rc); where += ` AND region_coach=$${params.length}`; }
+      else if (ac) { params.push(ac); where += ` AND area_coach=$${params.length}`; }
+    } else if (user.role === 'rdo') {
+      const acs = user.scope?.area_coaches || [];
+      if (filterAC) { params.push(filterAC); where += ` AND area_coach=$${params.length}`; }
+      else if (acs.length) { params.push(acs); where += ` AND area_coach=ANY($${params.length}::text[])`; }
+      else { params.push(user.scope?.rc_name || user.name); where += ` AND region_coach=$${params.length}`; }
+    } else if (user.role === 'area_coach') {
+      params.push(user.scope?.ac_name || user.name); where += ` AND area_coach=$${params.length}`;
+    }
+    if (filterStore) { params.push(filterStore); where += ` AND store_name=$${params.length}`; }
+
+    const r = await p.query(
+      `SELECT * FROM intel_flags WHERE ${where} ORDER BY metric_date DESC, severity DESC, consecutive_days_out DESC`,
+      params
+    );
+    res.json({ trends: r.rows, scope, anchor, start: startDate, end: endDate, count: r.rows.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/intel/flags/:id — single flag detail ─────────────────────────────
 router.get('/flags/:id', async (req, res) => {
   try {

@@ -204,6 +204,9 @@ button{font-family:inherit;cursor:pointer}
 .flag-filters{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
 .ff-btn{padding:5px 13px;border-radius:16px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid #1e2d4d;background:transparent;color:#64748b;transition:all .15s}
 .ff-btn.active{background:#1e3a5f;border-color:#3b82f6;color:#60a5fa}
+.ts-btn{padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;background:transparent;color:#64748b;transition:all .15s}
+.ts-btn.active{background:#1e3a5f;color:#60a5fa}
+.trend-bucket-hdr{font-size:11px;font-weight:700;color:#60a5fa;text-transform:uppercase;letter-spacing:.06em;margin:18px 0 8px}
 .flag-card{padding:16px;background:#131d35;border:1px solid #1e2d4d;border-radius:10px;margin-bottom:10px}
 .flag-card.sev-high{border-left:3px solid #ef4444}
 .flag-card.sev-medium{border-left:3px solid #f59e0b}
@@ -374,7 +377,7 @@ button{font-family:inherit;cursor:pointer}
     <button class="tab-btn active" id="tbd" onclick="switchTab('dashboard',this)">Dashboard</button>
     <button class="tab-btn" id="tbb" onclick="switchTab('brief',this)">Morning Brief</button>
     <button class="tab-btn" id="tbf" onclick="switchTab('flags',this)">Flags <span class="tab-cnt hidden" id="flagCnt">0</span></button>
-    <button class="tab-btn" id="tbtr" onclick="switchTab('trends',this)">Weekly Trends <span class="tab-cnt hidden" id="trendCnt">0</span></button>
+    <button class="tab-btn" id="tbtr" onclick="switchTab('trends',this)">Trends</button>
     <button class="tab-btn hidden" id="tba" onclick="switchTab('accountability',this)">Accountability</button>
     <button class="tab-btn" id="tbdg" onclick="switchTab('digest',this)">Weekly Digest</button>
     <button class="tab-btn" id="tbsmg" onclick="switchTab('smg',this)">Guest Comments</button>
@@ -442,7 +445,14 @@ button{font-family:inherit;cursor:pointer}
     </div>
 
     <div class="tab-panel" id="panel-trends">
-      <div style="font-size:12px;color:#475569;margin-bottom:14px">Week-over-week performance trends by store. No action required unless trend is worsening.</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <div style="font-size:12px;color:#475569">Performance trends by store. No action required unless a trend is worsening.</div>
+        <div class="trend-scope" style="display:flex;gap:4px;background:#0c1425;border:1px solid #1e2d4d;border-radius:8px;padding:3px">
+          <button class="ts-btn active" id="ts-week"   onclick="setTrendScope('week',this)">This Week</button>
+          <button class="ts-btn"        id="ts-weekly" onclick="setTrendScope('weekly',this)">Weekly</button>
+          <button class="ts-btn"        id="ts-period" onclick="setTrendScope('period',this)">Periods</button>
+        </div>
+      </div>
       <div id="trendsContainer"><div class="loading"><span class="spin">⟳</span></div></div>
     </div>
 
@@ -598,7 +608,7 @@ function reloadActiveTab(){
   if(activeTab==='dashboard') loadKPIs();
   else if(activeTab==='brief') loadBrief();
   else if(activeTab==='flags') loadFlags();
-  else if(activeTab==='trends'){renderTrends();}
+  else if(activeTab==='trends'){loadTrends();}
   else if(activeTab==='digest') loadDigest();
   else if(activeTab==='smg') loadSMGComments(true);
   else if(activeTab==='accountability') loadAccountability();
@@ -996,44 +1006,84 @@ async function loadFlags(){
     }
     document.getElementById('flagDot').className='dot '+(open>0?'amber':'green');
     document.getElementById('flagStatus').textContent=open+' open flag'+(open!==1?'s':'');
-    // Update trends count badge
-    const tc=document.getElementById('trendCnt');
-    if(tc){tc.textContent=allTrends.length;if(allTrends.length>0)tc.classList.remove('hidden');}
+    // Trends are not flagged/counted here — the Trends tab loads its own scoped data.
     applyFlagFilter(curFilter);
-    renderTrends();
   }catch(e){console.error('loadFlags:',e);}
+}
+let trendScope='week';
+let trendAnchor=null;
+function setTrendScope(scope,btn){
+  trendScope=scope;
+  document.querySelectorAll('.ts-btn').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  loadTrends();
+}
+async function loadTrends(){
+  const c=document.getElementById('trendsContainer');
+  if(c)c.innerHTML='<div class="loading"><span class="spin">⟳</span></div>';
+  try{
+    const data=await fetch('/api/intel/trends?scope='+trendScope+'&date='+selectedDate+vpFilterParam()+globalFilterParam()).then(r=>r.json());
+    allTrends=data.trends||[];
+    trendAnchor=data.anchor||selectedDate;
+    renderTrends();
+  }catch(e){console.error('loadTrends:',e);if(c)c.innerHTML='<div style="color:#ef4444;padding:16px">Could not load trends.</div>';}
+}
+function trendShortD(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}
+function trendBucket(dateStr){
+  const d=new Date(dateStr+'T00:00:00');
+  if(trendScope==='period'){
+    const anchor=new Date((trendAnchor||dateStr)+'T00:00:00');
+    const blk=Math.floor(Math.floor((anchor-d)/86400000)/28);
+    const end=new Date(anchor);end.setDate(anchor.getDate()-blk*28);
+    const start=new Date(end);start.setDate(end.getDate()-27);
+    return{key:'p'+blk,label:'Period: '+trendShortD(start)+' – '+trendShortD(end),sort:-blk};
+  }
+  const dow=(d.getDay()+6)%7;
+  const mon=new Date(d);mon.setDate(d.getDate()-dow);
+  const sun=new Date(mon);sun.setDate(mon.getDate()+6);
+  return{key:mon.toISOString().slice(0,10),label:'Week of '+trendShortD(mon)+' – '+trendShortD(sun),sort:mon.getTime()};
+}
+function trendInfo(f){
+  const det=f.details||{};
+  const nm={growth_pct_day:'Sales Growth',production_lt15:'Production Score',discount_pct:'Discount %',allowance_pct:'Allowance %'};
+  const inds=det.indicators_negative;
+  if(inds&&inds.length)return inds.map(i=>escH(nm[i]||i)).join(', ');
+  return f.value!=null?escH(String(f.value))+' indicators below threshold':'Multiple metrics below threshold';
 }
 function renderTrends(){
   const c=document.getElementById('trendsContainer');
   if(!c)return;
-  if(!allTrends.length){c.innerHTML='<div style="color:#64748b;padding:16px">No performance trends this week.</div>';return;}
-  // Group by area_coach
-  const byAC={};
-  for(const f of allTrends){const ac=f.area_coach||'Unknown';if(!byAC[ac])byAC[ac]=[];byAC[ac].push(f);}
-  const trendIcon=d=>{if(!d)return'';const t=typeof d==='object'?d.trend:null;return t==='up'?'↑':t==='down'?'↓':t==='flat'?'→':'';}
-  const trendColor=d=>{if(!d)return'#94a3b8';const t=typeof d==='object'?d.trend:null;return t==='up'?'#22c55e':t==='down'?'#ef4444':'#94a3b8';}
+  if(!allTrends.length){c.innerHTML='<div style="color:#64748b;padding:16px">No trends in this range.</div>';return;}
+  const buckets={};
+  for(const f of allTrends){
+    const b=trendBucket(f.metric_date);
+    if(!buckets[b.key])buckets[b.key]={label:b.label,sort:b.sort,rows:[]};
+    buckets[b.key].rows.push(f);
+  }
+  const ordered=Object.values(buckets).sort((a,b)=>b.sort-a.sort);
+  const single=trendScope==='week'&&ordered.length<=1;
   let html='';
-  for(const [ac,trends] of Object.entries(byAC)){
-    html+='<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">'+escH(ac)+'</div>'
-      +'<div style="display:flex;flex-direction:column;gap:6px">';
-    for(const f of trends){
+  for(const bk of ordered){
+    if(!single)html+='<div class="trend-bucket-hdr">'+escH(bk.label)+'</div>';
+    html+='<div style="display:flex;flex-direction:column;gap:6px">';
+    bk.rows.sort((a,b)=>String(a.store_name||'').localeCompare(String(b.store_name||'')));
+    for(const f of bk.rows){
       const det=f.details||{};
       const dir=det.trend||'';
       const ic=dir==='up'?'↑':dir==='down'?'↓':'→';
       const col=dir==='up'?'#22c55e':dir==='down'?'#ef4444':'#94a3b8';
-      const metric=det.metric_label||det.metric||f.metric_type||'';
-      const summary=det.summary||det.description||'';
+      const ac=f.area_coach?'<span style="color:#475569"> · '+escH(f.area_coach)+'</span>':'';
       html+='<div style="background:#0c1425;border:1px solid #1e2d4d;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:12px">'
         +'<span style="font-size:20px;color:'+col+';font-weight:800;width:20px;text-align:center">'+ic+'</span>'
-        +'<div>'
-        +'<div style="font-size:13px;font-weight:600;color:#e2e8f0">'+escH(f.store_name||f.store_id||'')+'</div>'
-        +(metric?'<div style="font-size:11px;color:#64748b">'+escH(metric)+'</div>':'')
-        +(summary?'<div style="font-size:11px;color:#94a3b8;margin-top:2px">'+escH(summary)+'</div>':'')
+        +'<div style="min-width:0">'
+        +'<div style="font-size:13px;font-weight:600;color:#e2e8f0">'+escH(f.store_name||f.store_id||'')+ac+'</div>'
+        +'<div style="font-size:11px;color:#94a3b8;margin-top:2px">'+trendInfo(f)+'</div>'
+        +'<div style="font-size:10px;color:#475569;margin-top:2px">'+fmtDate(f.metric_date)+(f.consecutive_days_out?' · '+f.consecutive_days_out+' days':'')+'</div>'
         +'</div>'
         +(f.value!=null?'<div style="margin-left:auto;font-size:14px;font-weight:700;color:'+col+'">'+f.value+'</div>':'')
         +'</div>';
     }
-    html+='</div></div>';
+    html+='</div>';
   }
   c.innerHTML=html;
 }
@@ -1746,6 +1796,7 @@ function switchTab(tab,btn){
   if(btn)btn.classList.add('active');
   if(tab==='digest')loadDigest();
   if(tab==='smg')loadSMGComments();
+  if(tab==='trends')loadTrends();
 }
 
 function fmtRole(r){return{rdo:'RDO / Region Coach',area_coach:'Area Coach',vp:'VP Operations'}[r]||r;}
