@@ -309,26 +309,27 @@ async function fetchReportData(jar, startDate, endDate, quickDateValue, unitIds)
     LevelAlignment:                '',
   });
 
-  // Browser DevTools showed ReportBuilder.ashx (not ReportViewer.ashx) for getdata
-  // Try both reporttype=27 (comparison) and reporttype=0 (standard) since browser showed 0
+  // reporttype=0 is the comparison report data endpoint (browser DevTools confirmed)
+  // reporttype=27 returns UI label translations — NOT score data
   const attempts = [
-    { url: `${RB_URL}?function=getdata&reporttype=27&reportsubtype=0&disableunits=false&r=${rand()}`, method: 'POST' },
     { url: `${RB_URL}?function=getdata&reporttype=0&reportsubtype=0&disableunits=false&r=${rand()}`,  method: 'POST' },
-    { url: `${RV_URL}?function=getdata&reporttype=27&reportsubtype=0&disableunits=false&r=${rand()}`, method: 'POST' },
+    { url: `${RB_URL}?function=getdata&reporttype=27&reportsubtype=0&disableunits=false&r=${rand()}`, method: 'POST' },
+    { url: `${RV_URL}?function=getdata&reporttype=0&reportsubtype=0&disableunits=false&r=${rand()}`,  method: 'POST' },
   ];
 
   for (const attempt of attempts) {
-    console.log(`[WinScore] Trying ${attempt.method} ${attempt.url.split('?')[0]} reporttype=${attempt.url.match(/reporttype=(\d+)/)?.[1]}`);
+    console.log(`[WinScore] Trying ${attempt.method} ${attempt.url.split('?')[0].split('/').pop()} reporttype=${attempt.url.match(/reporttype=(\d+)/)?.[1]}`);
     const r = await httpReq(jar, attempt.method, attempt.url, { body: postBody, headers: xhrHdrs });
-    console.log(`[WinScore] → HTTP ${r.status}, ${r.body.length} bytes, snippet: ${r.body.slice(0, 80)}`);
-    if (r.status === 200 && !r.body.startsWith('{"Error"') && r.body.length > 30) {
+    console.log(`[WinScore] → HTTP ${r.status}, ${r.body.length} bytes, snippet: ${r.body.slice(0, 100)}`);
+    // Reject error responses and UI-label responses (which have Title1 key, not score data)
+    if (r.status === 200 && r.body.length > 30 && !r.body.includes('"Error"') && !r.body.includes('"Title1"')) {
       console.log('[WinScore] Report fetch succeeded');
       return r.body;
     }
   }
 
-  // Return last response so caller can log it
-  const last = await httpReq(jar, 'POST', `${RB_URL}?function=getdata&reporttype=27&reportsubtype=0&r=${rand()}`, { body: postBody, headers: xhrHdrs });
+  // Return last response so the caller can log what we actually got
+  const last = await httpReq(jar, 'POST', `${RB_URL}?function=getdata&reporttype=0&reportsubtype=0&r=${rand()}`, { body: postBody, headers: xhrHdrs });
   return last.body;
 }
 
