@@ -562,16 +562,42 @@ async function debugWinScore() {
     try { const ud = JSON.parse(gu.body); out.unitsSample = (ud.Units || ud.units || ud || []).slice(0, 5); }
     catch (e) { out.unitsSnippet = gu.body.slice(0, 500); }
 
-    // Try actual report fetch using ReportViewer.ashx POST
+    // Try actual report fetch — test multiple parameter variations
     const fp = await getFiscalPeriod(jar2);
     out.fiscalPeriod = fp;
     const unitIds = await getUnitIds();
     out.unitIdsSample = unitIds.split(';').slice(0, 5);
-    const raw = await fetchReportData(jar2, fp.startDate, fp.endDate, fp.quickDateValue, unitIds);
-    out.reportLength = raw.length;
-    out.reportSnippet = raw.slice(0, 2000);
-    out.parsedScores = parseReportResponse(raw).length;
-    try { const d = JSON.parse(raw); out.reportTopKeys = Object.keys(Array.isArray(d) ? d[0] : d).slice(0, 20); } catch (_) {}
+
+    const xhrHdrs = { Accept: 'application/json, text/javascript, */*', 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/ReportBuilder.aspx`, Origin: BASE };
+
+    const makeBody = (overrides = {}) => formEncode({
+      StartDate: fp.startDate, EndDate: fp.endDate, CustomQuickDateId: '', CustomStartDate: '', CustomEndDate: '',
+      ReportLevel: LEVEL_STORE, Benchmarks: '', SurveyItems: WIN_SCORE_ITEM, Filters: '[]', CompareBy: '',
+      BreakoutCompareType: 'undefined', MultiParentHierarchyLevelBy: '0', ColumnWrap: 'True', UnitCount: 'false',
+      DateType: 'Survey', CCTypeList: '', HierarchyList: '', CompareToOtherDatesTimePeriod: '0',
+      QuickDateValue: fp.quickDateValue, GroupByLevel: LEVEL_STORE, Units: unitIds,
+      HierarchyStructureScoreType: '', HierarchyStructureType: '', LevelAlignment: '',
+      ...overrides,
+    });
+
+    const probe = async (label, url, body) => {
+      const r = await httpReq(jar2, 'POST', url, { body, headers: xhrHdrs });
+      return { label, status: r.status, len: r.body.length, snippet: r.body.slice(0, 300) };
+    };
+
+    out.probes = await Promise.all([
+      probe('RB rt=0 sub=0',      `${RB_URL}?function=getdata&reporttype=0&reportsubtype=0&disableunits=false&r=${rand()}`,  makeBody()),
+      probe('RB rt=27 sub=0',     `${RB_URL}?function=getdata&reporttype=27&reportsubtype=0&disableunits=false&r=${rand()}`, makeBody()),
+      probe('RB rt=0 noUnits',    `${RB_URL}?function=getdata&reporttype=0&reportsubtype=0&disableunits=false&r=${rand()}`,  makeBody({ Units: '' })),
+      probe('RV rt=0 sub=0',      `${RV_URL}?function=getdata&reporttype=0&reportsubtype=0&disableunits=false&r=${rand()}`,  makeBody()),
+      probe('RV rt=27 sub=0',     `${RV_URL}?function=getdata&reporttype=27&reportsubtype=0&disableunits=false&r=${rand()}`, makeBody()),
+    ]);
+    // Use the probe that has most bytes and no error/label pattern
+    const best = out.probes.reduce((a, b) => b.len > a.len ? b : a, out.probes[0]);
+    out.bestProbe = best.label;
+    out.reportLength = best.len;
+    out.reportSnippet = best.snippet;
+    out.parsedScores = parseReportResponse(best.snippet).length;
   } catch (e) { out.error = e.message; }
 
   return out;
