@@ -284,17 +284,55 @@ async function getFiscalPeriod(jar) {
 
 // ── Report fetch ──────────────────────────────────────────────────────────────
 
-// Load the saved favorite report. Report.aspx?ID=... restores the report definition into
-// the session and redirects to ReportBuilder.aspx?report=Comparison, which renders the
-// Win Score data table directly in the returned HTML. Returns that HTML for parseReportResponse.
+// ASP.NET control IDs for the Comparison report's "Build Report" UpdatePanel postback.
+const RB_PANEL = 'ctl00$TheContentPlaceHolder$TheReportViewerControl$TheReportViewerBridgeControl$TheUpdatePanel';
+const RB_BTN   = 'ctl00$TheContentPlaceHolder$TheReportViewerControl$TheReportViewerBridgeControl$TheBuildReportBTN';
+
+// Load the saved favorite and render its data table.
+//   1. GET Report.aspx?ID=... → restores the report definition into the session and returns
+//      the ReportBuilder shell with a fresh ViewState. (This GET alone does NOT contain any
+//      data — the table is produced only by the build postback below.)
+//   2. POST the ASP.NET async (UpdatePanel) "Build Report" postback → the response delta
+//      contains the rendered Win Score table, which parseReportResponse extracts.
 async function fetchReportData(jar) {
   const reportUrl = `${BASE}/Report.aspx?ID=${WIN_SCORE_REPORT_ID}`;
   console.log(`[WinScore] Loading saved report ${WIN_SCORE_REPORT_ID}`);
-  const r = await httpReq(jar, 'GET', reportUrl, {
+  const shell = await httpReq(jar, 'GET', reportUrl, {
     headers: { Referer: `${BASE}/ReportsAndAnalytics.aspx` },
   });
-  console.log(`[WinScore] Report response: HTTP ${r.status}, ${r.body.length} bytes`);
-  if (r.status !== 200) throw new Error(`Report.aspx HTTP ${r.status}`);
+  if (shell.status !== 200) throw new Error(`Report.aspx HTTP ${shell.status}`);
+
+  const fields = {
+    'ctl00$TheScriptManager': `${RB_PANEL}|${RB_BTN}`,
+    ctl00_TheScriptManager_HiddenField: extractHidden(shell.body, 'ctl00_TheScriptManager_HiddenField'),
+    __EVENTTARGET:        '',
+    __EVENTARGUMENT:      '',
+    __LASTFOCUS:          '',
+    __VIEWSTATE:          extractHidden(shell.body, '__VIEWSTATE'),
+    __VIEWSTATEGENERATOR: extractHidden(shell.body, '__VIEWSTATEGENERATOR'),
+    __EVENTVALIDATION:    extractHidden(shell.body, '__EVENTVALIDATION'),
+    'ctl00$TheTextBox':   '',
+    rbDateTypeRadio:      'on',
+    rbDateRadio:          'on',
+    InsertType:           'Pushed',
+    UnitOptionType:       'UserLevel',
+    [RB_BTN]:             'Build Report',
+    __ASYNCPOST:          'true',
+  };
+
+  console.log('[WinScore] Firing Build Report postback');
+  const r = await httpReq(jar, 'POST', `${BASE}/ReportBuilder.aspx?report=Comparison`, {
+    body: formEncode(fields),
+    headers: {
+      Referer:            `${BASE}/ReportBuilder.aspx?report=Comparison`,
+      Origin:             BASE,
+      'X-Requested-With': 'XMLHttpRequest',
+      'X-MicrosoftAjax':  'Delta=true',
+      'Content-Type':     'application/x-www-form-urlencoded; charset=UTF-8',
+    },
+  });
+  console.log(`[WinScore] Build postback: HTTP ${r.status}, ${r.body.length} bytes`);
+  if (r.status !== 200) throw new Error(`Build postback HTTP ${r.status}`);
   return r.body;
 }
 
