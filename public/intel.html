@@ -1346,10 +1346,15 @@ function openStoreDetail(storeId, storeName, acName){
         const ackBtn=isAck?'<span class="ack-btn done" style="font-size:11px">✓</span>'
           :f.severity==='high'?'<button class="ack-btn" style="font-size:11px;padding:4px 10px" onclick="openAckModal(\''+fid+'\',\''+escH(f.store_name||f.store_id||'')+'\',\''+escH(f.metric_type||'')+'\')">Acknowledge</button>'
           :'<label class="ack-check" style="font-size:11px"><input type="checkbox" onchange="quickAck(this,\''+fid+'\')"> Done</label>';
+        const accId='bacc_'+fid;
+        const hasDetail=['CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE','CHANGE_DOWN_PATTERN','FORGOT_CLOCKOUT','GUEST_COMPLAINT'].includes(f.metric_type);
+        const detBtn=hasDetail?'<button class="acc-toggle-btn" id="btn_'+accId+'" onclick="toggleFlagAcc(\''+accId+'\',this)">▼ Details</button>':'';
         return'<div style="padding:12px;background:#0c1425;border-radius:8px;border-left:3px solid '+(f.severity==='high'?'#ef4444':f.severity==='medium'?'#f59e0b':'#3b82f6')+';margin-bottom:8px">'
           +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
           +'<span class="sev-pill '+sc+'" style="font-size:10px">'+fmtMetric(f.metric_type)+'</span>'+ackBtn+'</div>'
-          +buildFlagDetail(f)+'</div>';
+          +buildFlagDetail(f)
+          +(hasDetail?'<div id="'+accId+'" class="flag-accordion" style="display:none">'+buildFlagAccordion(f)+'</div><div style="margin-top:8px">'+detBtn+'</div>':'')
+          +'</div>';
       }).join('');
   }
 
@@ -1652,8 +1657,8 @@ function buildFlagAccordion(f){
     if(det.summary)out+='<div style="font-size:12px;color:#f59e0b;margin-bottom:8px">'+escH(det.summary)+'</div>';
     const tickets=det.tickets||[];
     out+=section('ODS Change Down Report — Tickets',
-      tickets.length?tbl(['Ticket','Amount','Cashier ID','Cashier Name','Payment','Time'],
-        tickets.map(t=>[t.ticket_id,fmtMny(t.amount),t.cashier_id,t.cashier_name,t.payment_type,t.time]))
+      tickets.length?tbl(['Ticket','Amount','Cashier ID','Cashier Name','Payment','Cancel Type','Discount Type','Time'],
+        tickets.map(t=>[t.ticket_id,fmtMny(t.amount),t.cashier_id,t.cashier_name,t.payment_type,t.cancel_type,t.discount_type,t.time]))
       :'<div style="color:#475569;font-size:12px">No ticket detail available.</div>');
   }
 
@@ -1665,7 +1670,7 @@ function buildFlagAccordion(f){
       +'<div style="font-size:12px;font-weight:700;color:#e2e8f0;margin-bottom:4px">'+escH(c.cashier_name||c.cashier_id||'Unknown')
       +(c.cashier_id?' <span style="color:#64748b;font-size:11px">ID: '+escH(String(c.cashier_id))+'</span>':'')+'</div>'
       +'<div style="font-size:11px;color:#f59e0b;margin-bottom:6px">'+c.count+' change downs · '+c.cash_count+' cash · $'+Number(c.total_amount||0).toFixed(2)+' total</div>'
-      +(c.tickets&&c.tickets.length?tbl(['Ticket','Amount','Payment','Time'],c.tickets.map(t=>[t.ticket_id,fmtMny(t.amount),t.payment_type,t.time])):'')
+      +(c.tickets&&c.tickets.length?tbl(['Ticket','Amount','Payment','Cancel Type','Discount Type','Time'],c.tickets.map(t=>[t.ticket_id,fmtMny(t.amount),t.payment_type,t.cancel_type,t.discount_type,t.time])):'')
       +'</div>').join(''):'<div style="color:#475569;font-size:12px">No cashier detail available.</div>');
   }
 
