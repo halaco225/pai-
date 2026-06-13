@@ -318,6 +318,13 @@ async function fetchReportData(jar, startDate, endDate, quickDateValue, unitIds)
     LevelAlignment:                '',
   });
 
+  // Tell the server which units are selected (required before getdata)
+  console.log('[WinScore] POST SubmitPercentageUnitsSelected');
+  await httpReq(jar, 'POST', `${RB_URL}?function=SubmitPercentageUnitsSelected&r=${rand()}`, {
+    body: formEncode({ Units: unitIds, ReportType: '27', ReportSubType: '0' }),
+    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', Referer: `${BASE}/ReportBuilder.aspx`, Origin: BASE },
+  });
+
   console.log('[WinScore] POST ReportViewer.ashx');
   const r = await httpReq(jar, 'POST', `${RV_URL}?${qs}`, {
     body,
