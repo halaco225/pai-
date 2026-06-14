@@ -1022,11 +1022,14 @@ async function loadTrends(){
   const c=document.getElementById('trendsContainer');
   if(c)c.innerHTML='<div class="loading"><span class="spin">⟳</span></div>';
   try{
-    const data=await fetch('/api/intel/trends?scope='+trendScope+'&date='+selectedDate+vpFilterParam()+globalFilterParam()).then(r=>r.json());
+    const r=await fetch('/api/intel/trends?scope='+trendScope+'&date='+selectedDate+vpFilterParam()+globalFilterParam());
+    if(!r.ok){const txt=await r.text().catch(()=>'');console.error('loadTrends HTTP '+r.status,txt);if(c)c.innerHTML='<div style="color:#ef4444;padding:16px">Could not load trends (HTTP '+r.status+').</div>';return;}
+    const data=await r.json();
+    if(data.error){console.error('loadTrends server error:',data.error);if(c)c.innerHTML='<div style="color:#ef4444;padding:16px">Trends error: '+escH(data.error)+'</div>';return;}
     allTrends=data.trends||[];
     trendAnchor=data.anchor||selectedDate;
     renderTrends();
-  }catch(e){console.error('loadTrends:',e);if(c)c.innerHTML='<div style="color:#ef4444;padding:16px">Could not load trends.</div>';}
+  }catch(e){console.error('loadTrends:',e);if(c)c.innerHTML='<div style="color:#ef4444;padding:16px">Could not load trends: '+escH(e.message)+'</div>';}
 }
 function trendShortD(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}
 function trendBucket(dateStr){
