@@ -1,15 +1,16 @@
 // AYVAZ Master Alignment — embedded directly in code.
 // To update: give Harold the new file, he shares it here, and this gets regenerated.
-// Last updated: P5 REV 042326 (April 2026)
+// Last updated: P6 REV 052626 (May 2026)
 
 const MASTER_ALIGNMENT_TEXT = `
-AYVAZ PIZZA LLC — MASTER STORE ALIGNMENT (P5 REV 042326)
+AYVAZ PIZZA LLC — MASTER STORE ALIGNMENT (P6 REV 052626)
 
 VP of Operations: Matt Hester
 
   Region Coach: Harold Lacoste
 
     AC: Darian Spikes | Area 2011 | dspikes@ayvazpizza.com
+      038876 | Senoia, GA | RGM: OPEN
       039377 | Griffin, GA | RGM: Patricia Washington
       039378 | Union City, GA | RGM: Kirk Browne
       039379 | Newnan, GA | RGM: Jasmine Mozley
@@ -21,20 +22,18 @@ VP of Operations: Matt Hester
       039383 | Stockbridge, GA | RGM: Ronald George
       039388 | McDonough, GA | RGM: Sylvia Brown
       039393 | Hampton, GA | RGM: Judah Howard
-      039429 | McDonough, GA | RGM: Gary Burney
+      039429 | McDonough, GA | RGM: TaCloey Jackson
       039461 | Fayetteville, GA | RGM: Cynthia Vining
       039513 | Stockbridge, GA | RGM: Michael Abernathy
       039521 | McDonogh, GA | RGM: Veronica McWilliams
-      039522 | Ellenwood, GA | RGM: Pierce Smith
+      039522 | Ellenwood, GA | RGM: Gary Burney
 
     AC: Jadon McNeil | Area 2022 | jmcneil@ayvazpizza.com
-      038876 | Dallas-Acworth, GA | RGM: OPEN
       039375 | Kennesaw, GA | RGM: Krystle Presnell
       039376 | Dallas, GA | RGM: Shannel Norville
       039382 | Acworth, GA | RGM: Crystal Caswell
       039387 | Kennesaw, GA | RGM: Alana Pate
       039392 | Woodstock, GA | RGM: Matthew Gaddy
-      039462 | Acworth, GA | RGM: OPEN
 
     AC: Jorge Garcia | Area 2000 | jgarcia@ayvazpizza.com
       039380 | Marietta, GA | RGM: Naaja Bloodsoe
@@ -42,13 +41,10 @@ VP of Operations: Matt Hester
       039389 | Lithia Springs, GA | RGM: Karla Moore
       039410 | Mableton, GA | RGM: Naudia Walker
       039451 | Atlanta, GA | RGM: Keane Leslie
-      039525 | Smyrna, GA | RGM: OPEN
-      039527 | Austell, GA | RGM: Isaac Bowens
 
     AC: Marc Gannon | Area 2015 | mgannon@ayvazpizza.com
       039412 | Fort Walton Beach, FL | RGM: Dawn Lee
       039413 | Navarre, FL | RGM: James Carnes
-      039414 | Gulf Breeze, FL | RGM: OPEN
       039415 | Miramar Beach, FL | RGM: James Haberlin
       039416 | Niceville, FL | RGM: Robert Lowe
       039430 | Fort Walton Beach, FL | RGM: Brandon Seeley
@@ -58,9 +54,8 @@ VP of Operations: Matt Hester
     AC: Michelle Meehan | Area 2034 | mmeehan@ayvazpizza.com
       039381 | Douglasville, GA | RGM: Cheree Leddy
       039385 | Douglasville, GA | RGM: Austin Zavala
-      039390 | Dallas, GA | RGM: OPEN
       039391 | Douglasville, GA | RGM: Stephen Payton
-      039526 | Dallas, GA | RGM: OPEN
+      039526 | Dallas, GA | RGM: Andrea Lowe
 
   Region Coach: Preston Arnwine
 
@@ -69,7 +64,7 @@ VP of Operations: Matt Hester
       039422 | Burlington, NC | RGM: Derius Lloyd
       039423 | Graham, NC | RGM: Anna Quiah
       039432 | Mebane, NC | RGM: Barry Candy
-      039433 | Greensboro, NC | RGM: OPEN
+      039433 | Greensboro, NC | RGM: Anna Taylor
       039455 | Greensboro, NC | RGM: Jessica Lowe
       039456 | Whitsett, NC | RGM: Jason Johnson
 
@@ -77,7 +72,6 @@ VP of Operations: Matt Hester
       039420 | Harrisonburg, VA | RGM: Cristal Humes
       039425 | Elkton, VA | RGM: Michael Eppard
       039426 | Woodstock, VA | RGM: Kristan Sieben
-      039428 | Stuarts Draft, VA | RGM: Tonya Gibson
       039431 | Staunton, VA | RGM: Joseph Eakin
       039435 | Charlottesville, VA | RGM: Debra White
       039450 | Orange, VA | RGM: Stacey Moffitt
@@ -90,23 +84,21 @@ VP of Operations: Matt Hester
       039401 | Darlington, SC | RGM: Tysheika Moore
       039402 | Florence, SC | RGM: Sandra Mason
       039403 | Marion, SC | RGM: Marquisha Grice
-      039409 | Hartsville, SC | RGM: Amber Smith-Bon Homme
+      039409 | Hartsville, SC | RGM: OPEN
 
     AC: Russell Kowalczyk | Area 2048 | rkowalczyk@ayvazpizza.com
       039394 | Elberton, GA | RGM: Kristy Allen
       039395 | Abbeville, SC | RGM: Zea Bond
-      039396 | Hartwell, GA | RGM: Valerie Ramsey
+      039396 | Hartwell, GA | RGM: OPEN
       039398 | Royston, GA | RGM: Louella Ledsome
-      039399 | Lavonia, GA | RGM: Gabriel Sullen
+      039399 | Lavonia, GA | RGM: OPEN
       039404 | Greenwood, SC | RGM: Billy Stone
       039405 | Simpsonville, SC | RGM: Angela Thornton
       039407 | Newberry, SC | RGM: Jackalon Spatafora
-      039408 | Seneca, SC | RGM: Brittany Parmelee
+      039408 | Seneca, SC | RGM: Dakota Wheeler
 
     AC: Stepfen White | Area 2041 | swhite@ayvazpizza.com
-      039417 | Collinsville, VA | RGM: Tammy Holt
       039419 | Martinsville, VA | RGM: April Wright
-      039421 | Greensboro, NC | RGM: OPEN
       039424 | Greensboro, NC | RGM: Megan Cain
       039427 | Greensboro, NC | RGM: Sherla Jensen
       039436 | Greensboro, NC | RGM: Quinten Byrd
@@ -121,7 +113,6 @@ VP of Operations: Matt Hester
       040102 | Deming, NM | RGM: Roy Smith
 
     AC: Constance Miranda | Area 2010 | cmiranda@ayvazpizza.com
-      039180 | El Paso, TX | RGM: Aaron Granados
       039182 | El Paso, TX | RGM: Roger Flores
       039185 | El Paso, TX | RGM: Roberto Vega
       039318 | Socorro, TX | RGM: Roy Murillo Sr
@@ -140,7 +131,7 @@ VP of Operations: Matt Hester
     AC: Javier Martinez | Area 2024 | jmartinez@ayvazpizza.com
       038729 | El Paso, TX | RGM: Skylar Meadows
       039174 | El Paso, TX | RGM: Iris Perez
-      039175 | El Paso, TX | RGM: Oscar Rodriguez
+      039175 | El Paso, TX | RGM: Aaron Granados
       039178 | El Paso, TX | RGM: Abelardo Gonzalez
       039192 | El Paso, TX | RGM: Jose Villegas
       039324 | El Paso, TX | RGM: Carlos Rangel
@@ -150,7 +141,7 @@ VP of Operations: Matt Hester
       040088 | Los Lunas, NM | RGM: OPEN
       040089 | Albuquerque, NM | RGM: FIRE CLOSED
       040096 | Belen, NM | RGM: Alexandra Duran-Sanchez
-      040099 | Albuquerque, NM | RGM: Kathlene Secatero
+      040099 | Albuquerque, NM | RGM: OPEN
       040100 | Truth Or Consequences, NM | RGM: Marcius Snyder
       040110 | Albuquerque, NM | RGM: Ricardo Marquez
 
@@ -175,7 +166,7 @@ VP of Operations: Matt Hester
       040083 | Farmington, NM | RGM: Brian Gravgaard
       040085 | Gallup, NM | RGM: Chanea Saucedo
       040086 | Farmington, NM | RGM: Cynthia Harrison
-      040087 | Gallup, NM | RGM: David Browning
+      040087 | Gallup, NM | RGM: Natasha Romero
       040092 | Aztec, NM | RGM: OPEN
       040112 | Durango, CO | RGM: Scott Latschar
 
@@ -197,32 +188,31 @@ VP of Operations: Tracy Krumwiede
       039249 | The Woodlands, TX | RGM: Jessica Ramirez
       039251 | Humble, TX | RGM: Shawta Godfrey
       039266 | Spring, TX | RGM: Brittany Horn
-      039295 | Spring, TX | RGM: Joe Angel Martinez
       039300 | Spring, TX | RGM: Tara Dugas
       039304 | Tomball, TX | RGM: Miguel Palacios
       039519 | Spring, TX | RGM: Korosh Memar
       039528 | The Woodlands, TX | RGM: Stevie Reid
 
     AC: Imran Awan (Kiosks-Express) | Area 2100 | imranaway@gulshaninc.com
-      0317869 | San Antonio, TX | RGM: Oscar Rodriguez
-      0317870 | San Antonio, TX | RGM: Oscar Rodriguez
-      0317872 | Houston, TX | RGM: TBD
-      0788091 | Houston, TX | RGM: Yolanda Prude
-      0788190 | Houston, TX | RGM: Arshad Hussain
-      0788192 | Houston, TX | RGM: Fawad Mangi
-      0788195 | Pearland, TX | RGM: Javed Baloch
-      0788196 | Houston, TX | RGM: Dewayne Davis
-      0788197 | Houston, TX | RGM: Mehdi Karimi
-      0788378 | Richmond, TX | RGM: Syed Rizvi
-      0788379 | Booth, TX | RGM: Zaid Kapadia
-      0788380 | Katy, TX | RGM: Fouzia Chowdhury
-      0788381 | Houston, TX | RGM: Riaz Rehman
-      0788385 | The Woodlands, TX | RGM: TBD
-      0788411 | The Woodlands, TX | RGM: TBD
-      0788423 | Houston, TX | RGM: Rayonte Hamilton
-      0788424 | Houston, TX | RGM: Brandon Mentor
-      0788426 | Houston, TX | RGM: TBD
-      0788427 | Houston, TX | RGM: TBD
+      317869 | San Antonio, TX | RGM: Oscar Rodriguez
+      317870 | San Antonio, TX | RGM: Oscar Rodriguez
+      317872 | Houston, TX | RGM: TBD
+      788091 | Houston, TX | RGM: Yolanda Prude
+      788190 | Houston, TX | RGM: Arshad Hussain
+      788192 | Houston, TX | RGM: Fawad Mangi
+      788195 | Pearland, TX | RGM: Javed Baloch
+      788196 | Houston, TX | RGM: Dewayne Davis
+      788197 | Houston, TX | RGM: Mehdi Karimi
+      788378 | Richmond, TX | RGM: Syed Rizvi
+      788379 | Booth, TX | RGM: Zaid Kapadia
+      788380 | Katy, TX | RGM: Fouzia Chowdhury
+      788381 | Houston, TX | RGM: Riaz Rehman
+      788385 | The Woodlands, TX | RGM: TBD
+      788411 | The Woodlands, TX | RGM: TBD
+      788423 | Houston, TX | RGM: Rayonte Hamilton
+      788424 | Houston, TX | RGM: Brandon Mentor
+      788426 | Houston, TX | RGM: TBD
+      788427 | Houston, TX | RGM: TBD
 
     AC: Larry (Steve) Battenfield | Area 2050 | sbattenfield@ayvazpizza.com
       039261 | Kingwood, TX | RGM: Stacey Hendrix
@@ -258,7 +248,6 @@ VP of Operations: Tracy Krumwiede
       039479 | Brownsville, TX | RGM: Roberto Serna
       039487 | Brownsville, TX | RGM: Kerry Silva
       039488 | Brownsville, TX | RGM: Carlos Martinez
-      039500 | Brownsville, TX | RGM: OPEN
       039503 | South Padre Island, TX | RGM: Glafira Peña
       039505 | Port Isabel, TX | RGM: Emma Salas
       039523 | Brownsville, TX | RGM: Gabriela Torres
@@ -325,7 +314,6 @@ VP of Operations: Tracy Krumwiede
       039274 | Pasadena, TX | RGM: Martha Seledon
       039284 | Seabrook, TX | RGM: Lauren Bock-Yeager
       039285 | La Porte, TX | RGM: Richardo Castro
-      039294 | Houston, TX | RGM: OPEN
       039297 | Pasadena, TX | RGM: Hector Mosqueda
       039309 | Pasadena, TX | RGM: Frank Elsik
       039463 | League City, TX | RGM: Garry McBride
@@ -334,11 +322,10 @@ VP of Operations: Tracy Krumwiede
     AC: Maria Delgado-Perez | Area 2006 | mperez@ayvazpizza.com
       039255 | Houston, TX | RGM: German Ajucum
       039271 | Houston, TX | RGM: Sandra O'Malley
-      039288 | Houston, TX | RGM: Yuri Lopez
+      039288 | Houston, TX | RGM: James Keaton
       039311 | Houston, TX | RGM: Adrian Marquez
       039322 | Houston, TX | RGM: Ana Nunez
       039444 | Houston, TX | RGM: Camerino Correa
-      039520 | Houston, TX | RGM: James Keaton
       042806 | Pearland, TX | RGM: Jaime Guerrero
 
     AC: Rachel Hightower | Area 2045 | rhightower@ayvazpizza.com
@@ -353,17 +340,15 @@ VP of Operations: Tracy Krumwiede
 
     AC: Ravin Lott | Area 2051 | rlott@ayvazpizza.com
       039247 | Houston, TX | RGM: Thuan Ta
-      039252 | Houston, TX | RGM: Mike Perkins
+      039252 | Houston, TX | RGM: Paul Ward
       039260 | Houston, TX | RGM: Sergio Ruano-Reyes
       039262 | Houston, TX | RGM: Oscar Avilez
-      039268 | Houston, TX | RGM: Paul Ward
-      039277 | Houston, TX | RGM: Reshad Lewis
+      039277 | Houston, TX | RGM: Mike Perkins
       039287 | Houston, TX | RGM: Dina Cortez
       039296 | Houston, TX | RGM: Rashad Matthews
       039307 | Houston, TX | RGM: Everett Dennis
 
     AC: Reginald Brown | Area 2046 | rbrown@ayvazpizza.com
-      039246 | Houston, TX | RGM: OPEN
       039256 | Houston, TX | RGM: Tayler Christian
       039257 | Missouri City, TX | RGM: Michael McMillan
       039263 | Houston, TX | RGM: Fatima Brailey
@@ -375,18 +360,18 @@ VP of Operations: Tracy Krumwiede
     AC: Robert Thomas | Area 2037 | rthomas@ayvazpizza.com
       039276 | Texas City, TX | RGM: Katherine Leonard-Cook
       039282 | Alvin, TX | RGM: Jose Useda
-      039301 | La Marque, TX | RGM: Savannah Sloan
+      039301 | La Marque, TX | RGM: Rhiannon Hernandez
       039306 | Lake Jackson, TX | RGM: Teresa Harper
       039310 | Angleton, TX | RGM: Robert Potter
       039314 | Dickinson, TX | RGM: Avis Hawkins
-      039328 | Santa Fe, TX | RGM: OPEN
+      039328 | Santa Fe, TX | RGM: Audrianna Lawver
       039334 | Galveston, TX | RGM: Mitchell Lewis
 
     AC: Shayda Willison | Area 2059 | swillison@ayvazpizza.com
       039258 | Sugar Land, TX | RGM: Patricio Matias Santos
       039259 | Sugar Land, TX | RGM: Austin Wagner
       039264 | Houston, TX | RGM: Charles Ouedraogo
-      039273 | Houston, TX | RGM: OPEN
+      039273 | Houston, TX | RGM: Reshad Lewis
       039278 | Meadows Place, TX | RGM: Derek Putch
       039283 | Houston, TX | RGM: Eric Figueroa
       039302 | Sugar Land, TX | RGM: Brittany Schottle
@@ -405,9 +390,7 @@ VP of Operations: Tracy Krumwiede
       039158 | Mathis, TX | RGM: Jessica Pina
       039159 | Sinton, TX | RGM: Patricia Beckmann
       039184 | Portland, TX | RGM: Harvey Murbarger
-      039187 | Corpus Christi, TX | RGM: Val Jones
       039189 | Rockport, TX | RGM: Edwardo Gonzales Garcia
-      039193 | Aransas Pass, TX | RGM: Peter Garcia
       039332 | Ingleside, TX | RGM: Zavier Crawford
       039374 | Beeville, TX | RGM: Simeon Garza
 
@@ -438,15 +421,17 @@ VP of Operations: Tracy Krumwiede
       039157 | Yoakum, TX | RGM: Bonita Silvas
       039160 | Edna, TX | RGM: Donna Gonzales
       039161 | Port Lavaca, TX | RGM: Cassandra Briskey
-      039162 | Victoria, TX | RGM: Monica Delgado
+      039162 | Victoria, TX | RGM: Isaac Velasquez
       039165 | Zac Lentz, TX | RGM: Brittney Jones
-      039445 | Refugio, TX | RGM: Erica Flores
+      039445 | Refugio, TX | RGM: Tina Mendoza
 
     AC: Jesse Luna | Area 2028 | jluna@ayvazpizza.com
       039166 | Corpus Christi, TX | RGM: Albert Rosas
       039172 | Corpus Christi, TX | RGM: Ashley West
       039181 | Corpus Christi, TX | RGM: Jose Vallejo
       039183 | Corpus Christi, TX | RGM: Robby Botello
+      039187 | Corpus Christi, TX | RGM: Val Jones
+      039193 | Aransas Pass, TX | RGM: Peter Garcia
       041042 | Corpus Christi, TX | RGM: Joseph Farias
 
     AC: Kyle Smith | Area 2056 | kylesmith@ayvazpizza.com
@@ -455,7 +440,7 @@ VP of Operations: Tracy Krumwiede
       039238 | New Braunfels, TX | RGM: Lorinda Hildebrand
       039241 | Bulverde, TX | RGM: Madalon (Alec) King
       039242 | Boerne, TX | RGM: America Martinez
-      039327 | New Braunfels, TX | RGM: Danny Salaiz
+      039327 | New Braunfels, TX | RGM: PERM CLOSED
 
     AC: Luigi Andinolfi | Area 2036 | landinolfi@ayvazpizza.com
       039226 | Pearsall, TX | RGM: Destiny Moore
@@ -473,7 +458,7 @@ VP of Operations: Chad Magner
 
     AC: Debbra Selvig | Area 2013 | dselvig@ayvazpizza.com
       039341 | Hastings, MN | RGM: Glen Wollin
-      039352 | Maplewood, MN | RGM: OPEN
+      039352 | Maplewood, MN | RGM: Jesse Cortes
       039354 | Cottage Grove, MN | RGM: Lisa Kratzke
       039364 | Inver Grove Heights, MN | RGM: Jesse Cortes
       039366 | Farmington, MN | RGM: Gina Switala
@@ -484,13 +469,13 @@ VP of Operations: Chad Magner
       039336 | Cloquet, MN | RGM: Jamie Mueller
       039337 | Virginia, MN | RGM: Anthony Spotts
       039339 | Baxter, MN | RGM: Joshua Rinde
-      039340 | Bemidji, MN | RGM: OPEN
+      039340 | Bemidji, MN | RGM: Mackenzie Raisch
       039441 | Duluth, MN | RGM: Carson Korkalo
-      039467 | Duluth, MN | RGM: Karlisha Clark
+      039467 | Duluth, MN | RGM: OPEN
 
     AC: Scott Fiksdal | Area 2049 | sfiksdal@ayvazpizza.com
       039338 | Mason City, IA | RGM: Kristine Hempfner
-      039342 | Rochester, MN | RGM: OPEN
+      039342 | Rochester, MN | RGM: Joseph Houston
       039344 | Spring Lake Park, MN | RGM: James Johnson
       039356 | Mankato, MN | RGM: Randy Hutton
       039357 | Rochester, MN | RGM: Allen Hollins
