@@ -1301,9 +1301,10 @@ async function seedStoreAssignmentsFromAlignment() {
     }
     // Module exports { ALIGNMENT, REGIONS, AREA_COACHES, AREAS } — stores are under ALIGNMENT
     const alignment = alignmentModule.ALIGNMENT || alignmentModule;
+    const activeIds = [];
     let count = 0;
     for (const [key, info] of Object.entries(alignment)) {
-      if (!info || typeof info !== 'object' || !info.area_coach) continue; // skip non-store entries
+      if (!info || typeof info !== 'object' || !info.area_coach) continue;
       const store_id = key.replace(/^S/, '');
       await p.query(`
         INSERT INTO store_assignments (store_id, store_name, area_coach, region_coach, vp)
@@ -1314,7 +1315,16 @@ async function seedStoreAssignmentsFromAlignment() {
           region_coach = EXCLUDED.region_coach,
           vp           = EXCLUDED.vp
       `, [store_id, info.name, info.area_coach, info.region_coach, info.vp]);
+      activeIds.push(store_id);
       count++;
+    }
+    // Remove stores that are no longer in the alignment (closed/removed)
+    if (activeIds.length > 0) {
+      const del = await p.query(
+        `DELETE FROM store_assignments WHERE store_id != ALL($1::text[])`,
+        [activeIds]
+      );
+      if (del.rowCount > 0) console.log(`[DB] Removed ${del.rowCount} closed/dropped stores from assignments`);
     }
     console.log(`[DB] Seeded ${count} store assignments from alignment data`);
   } catch(err) {
