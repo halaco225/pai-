@@ -437,4 +437,9 @@ const ALIGNMENT = {
   "S039319":{"name":"Valley Hi","area":"Area 2036","area_coach":"Luigi Andinolfi","region_coach":"Theresa McDaniel","vp":"Tracy Krumwiede"}
 };
 
-module.exports = { ALIGNMENT };
+const stores = Object.values(ALIGNMENT);
+const REGIONS     = [...new Set(stores.map(s => s.region_coach).filter(Boolean))].sort();
+const AREAS       = [...new Set(stores.map(s => s.area_coach).filter(Boolean))].sort();
+const AREA_COACHES = AREAS;
+
+module.exports = { ALIGNMENT, REGIONS, AREAS, AREA_COACHES };
