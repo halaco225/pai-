@@ -22,6 +22,8 @@ button{font-family:inherit;cursor:pointer}
 .memo-para{color:#94a3b8;padding:2px 4px}
 .memo-bullet{color:#cbd5e1;padding:3px 4px 3px 14px;position:relative}
 .memo-bullet::before{content:'';position:absolute;left:4px;top:10px;width:4px;height:4px;border-radius:50%;background:#475569}
+.memo-ac-header{color:#e2e8f0;font-weight:700;font-size:12px;margin:10px 0 2px;padding:3px 8px;background:rgba(255,255,255,.04);border-radius:4px}
+.memo-warn{color:#fbbf24}
 /* ── Weekly Digest dashboard styles ───────────────────────────────────── */
 .digest-kpi-row{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px}
 .digest-kpi{background:#0c1425;border:1px solid #1e2d4d;border-radius:10px;padding:14px 18px;min-width:140px;flex:1}
@@ -1146,6 +1148,12 @@ function renderMemo(text){
       html+='<div class="memo-title">'+escH(line)+'</div>';
     } else if(/^(YESTERDAY|OVERALL PERFORMANCE)/i.test(line)){
       html+='<div class="memo-sec memo-sec-blue">'+escH(line)+'</div>';
+    } else if(/^BY (AREA COACH|STORE|REGION)/i.test(line)){
+      html+='<div class="memo-sec memo-sec-blue">'+escH(line)+'</div>';
+    } else if(/^ATTACK LIST/i.test(line)){
+      html+='<div class="memo-sec memo-sec-red">'+escH(line)+'</div>';
+    } else if(/^SMG CUSTOMER PULSE/i.test(line)){
+      html+='<div class="memo-sec memo-sec-amber">'+escH(line)+'</div>';
     } else if(/^HIGHLIGHT/i.test(line)){
       html+='<div class="memo-sec memo-sec-green">'+escH(line)+'</div>';
     } else if(/^WATCHOUT/i.test(line)){
@@ -1154,6 +1162,10 @@ function renderMemo(text){
       html+='<div class="memo-sec memo-sec-amber">'+escH(line)+'</div>';
     } else if(/^PRIORIT/i.test(line)){
       html+='<div class="memo-sec memo-sec-purple">'+escH(line)+'</div>';
+    } else if(/^\[.+\]$/.test(line)){
+      html+='<div class="memo-ac-header">'+escH(line.replace(/^\[|\]$/g,''))+'</div>';
+    } else if(/^⚠/.test(line)){
+      html+='<div class="memo-bullet memo-warn">'+escH(line)+'</div>';
     } else if(line.startsWith('•')||line.startsWith('-')||/^\d+\./.test(line)){
       html+='<div class="memo-bullet">'+escH(line)+'</div>';
     } else {

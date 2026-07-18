@@ -1500,179 +1500,169 @@ Rules:
 
 // ─── Morning Brief Generator ────────────────────────────────────────────────
 
-async function generateMorningBrief({ date, userName, userRole, fiscalContext, regionMetrics, byAC, byStore, velocity, flags, shoutouts, followUps }) {
-  const fmtDollar = n => n != null ? '$' + Math.round(n).toLocaleString('en-US') : 'N/A';
-  const fmtGrowth = n => n != null ? (n >= 0 ? '+' : '') + Number(n).toFixed(1) + '% vs LY' : 'no LY data';
+async function generateMorningBrief({ date, userName, userRole, fiscalContext,
+  regionMetrics, byAC, byStore, velocity, flags, shoutouts, followUps, operationalAlerts }) {
 
   const isAC = userRole === 'area_coach';
   const isVP = userRole === 'vp';
+  const fmtDollar = n => n != null ? '$' + Math.round(n).toLocaleString('en-US') : 'N/A';
+  const fmtGrowth = n => n != null ? (n >= 0 ? '+' : '') + Number(n).toFixed(1) + '% vs LY' : 'no LY data';
 
-  const totalLine = regionMetrics.store_count > 0
-    ? `${regionMetrics.store_count} store${regionMetrics.store_count !== 1 ? 's' : ''} | Net Sales: ${fmtDollar(regionMetrics.net_sales_day)} | Growth: ${fmtGrowth(regionMetrics.avg_growth_day)}`
-    : 'No DBS data loaded for this date.';
+  // ── Fiscal day code (D = day within Tue–Mon week: Tue=1 … Mon=7) ──
+  const dow = new Date(date + 'T12:00:00Z').getUTCDay(); // 0=Sun,1=Mon,2=Tue…
+  const fiscalDay = [7, 1, 2, 3, 4, 5, 6][dow];
+  const fiscalMatch = (fiscalContext || '').match(/\(P(\d+)W(\d+)\)/);
+  const fiscalCode = fiscalMatch ? `P${fiscalMatch[1]}W${fiscalMatch[2]}D${fiscalDay}` : '';
+  const briefDow = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dow];
 
-  // Role-specific breakdown section
-  let breakdownSection = '';
+  // ── Section 1: Header ─────────────────────────────────────────────
+  const header = `MORNING BRIEF — ${date}${fiscalCode ? ' — ' + fiscalCode : ''}`;
+
+  // ── Section 2: Performance — stat bar + LLM narrative ────────────
+  const statBar = regionMetrics.store_count > 0
+    ? `${fmtDollar(regionMetrics.net_sales_day)} | ${fmtGrowth(regionMetrics.avg_growth_day)} | ${regionMetrics.store_count} stores`
+    : 'No sales data for this date.';
+
+  let acBreakdownForPrompt = '';
   if (isAC && byStore?.length) {
-    // Area Coach: show each store
-    breakdownSection = 'BY STORE:\n' + byStore.map(s =>
-      `  • ${s.store_name || s.store_id}: ${fmtDollar(s.net_sales_day)} | ${fmtGrowth(s.growth_pct_day)}`
-    ).join('\n');
+    acBreakdownForPrompt = 'BY STORE (sorted best→worst growth):\n'
+      + [...byStore].sort((a,b)=>(b.growth_pct_day||0)-(a.growth_pct_day||0))
+          .map(s => `  • ${s.store_name||s.store_id}: ${fmtDollar(s.net_sales_day)} | ${fmtGrowth(s.growth_pct_day)}`).join('\n');
   } else if (byAC?.length) {
-    // RDO/VP: show each AC with their stores if available
-    breakdownSection = (isVP ? 'BY REGION / AREA COACH:\n' : 'BY AREA COACH:\n')
-      + byAC.map(a => {
-          let line = `  • ${a.area_coach}: ${fmtDollar(a.net_sales_day)} | ${fmtGrowth(a.avg_growth_day)} | ${a.high_flags} high flag(s)`;
-          // For RDO, show notable stores under each AC
-          if (!isVP && byStore?.length) {
-            const acStores = byStore.filter(s => s.area_coach === a.area_coach);
-            if (acStores.length) {
-              const top = acStores.sort((x,y) => (y.growth_pct_day||0) - (x.growth_pct_day||0));
-              line += '\n' + top.map(s => `      - ${s.store_name || s.store_id}: ${fmtDollar(s.net_sales_day)} | ${fmtGrowth(s.growth_pct_day)}`).join('\n');
-            }
-          }
-          return line;
+    const sorted = [...byAC].sort((a,b)=>(b.avg_growth_day||0)-(a.avg_growth_day||0));
+    acBreakdownForPrompt = `BY ${isVP ? 'REGION / AREA COACH' : 'AREA COACH'} (sorted best→worst growth):\n`
+      + sorted.map(a => {
+          const storeLines = !isVP && byStore?.length
+            ? byStore.filter(s=>s.area_coach===a.area_coach)
+                .sort((x,y)=>(y.growth_pct_day||0)-(x.growth_pct_day||0))
+                .slice(0,6).map(s=>`      - ${s.store_name||s.store_id}: ${fmtDollar(s.net_sales_day)} | ${fmtGrowth(s.growth_pct_day)}`).join('\n')
+            : '';
+          return `  • ${a.area_coach}: ${fmtDollar(a.net_sales_day)} | ${fmtGrowth(a.avg_growth_day)}${storeLines ? '\n'+storeLines : ''}`;
         }).join('\n');
   }
 
-  const flagLines = flags.length
-    ? flags.slice(0, 30).map(f => {
-        const days = (f.consecutive_days_out||0) > 1 ? ` | ${f.consecutive_days_out}-day pattern` : '';
-        const ac   = !isAC && f.area_coach ? ` (${f.area_coach})` : '';
-        return `  • [${f.severity.toUpperCase()}] ${f.store_name || f.store_id}${ac} — ${f.metric_type}${days}`;
-      }).join('\n')
-    : '  No active flags.';
+  const roleLabel = isAC ? 'Area Coach' : isVP ? 'VP of Operations' : 'Region Coach';
+  const scopeWord = isAC ? 'area' : isVP ? 'territory' : 'region';
 
-  const shoutLines = shoutouts.length
-    ? shoutouts.slice(0, 8).map(s => {
-        const ac = !isAC && s.area_coach ? ` (${s.area_coach})` : '';
-        return `  • ${s.store_name || s.store_id}${ac}: "${(s.summary || s.comment_text || '').slice(0, 120)}"`;
-      }).join('\n')
-    : '  No shoutouts today.';
+  const perfPrompt = `You are writing the performance section of a morning brief for ${userName} (${roleLabel}) at Ayvaz Pizza LLC (Pizza Hut franchisee).
 
-  const followLines = followUps.length
-    ? followUps.map(f => {
-        const ackDate = f.acknowledged_at ? String(f.acknowledged_at).slice(0, 10) : '?';
-        return `  • ${f.store_name || f.store_id} | ${f.metric_type} | ${f.acknowledged_by} committed on ${ackDate}: "${(f.action_taken || '').slice(0, 100)}" | Status: ${f.flag_status || f.status}`;
-      }).join('\n')
-    : '  No outstanding follow-up items.';
+DATE: ${date} (${briefDow})${fiscalCode ? ' — ' + fiscalCode : ''}
 
-  const velLines = (velocity || []).length
-    ? velocity.map(v =>
-        `  • ${v.area_coach || v.store_name || '?'}: OTD ${v.avg_otd_pct != null ? v.avg_otd_pct + '%' : 'N/A'} | <4min ${v.avg_pct_lt4 != null ? v.avg_pct_lt4 + '%' : 'N/A'}`
-      ).join('\n')
-    : '  No velocity data for this date.';
+PERFORMANCE DATA:
+${statBar}
 
-  // Role label for prompt
-  const roleLabel = isAC ? 'Area Coach' : isVP ? 'VP of Operations' : 'Region Coach / RDO';
+${acBreakdownForPrompt}
 
-  // Role-specific output instructions
-  const outputInstructions = isAC
-    ? `YESTERDAY'S PERFORMANCE
-[2-3 sentences covering your total area: combined sales, growth vs LY, overall read on the day]
+Write ONLY these two sections. Be direct. Use exact numbers. Plain text only — no markdown, no asterisks.
 
-STORE BREAKDOWN
-[One bullet per store. Include sales, growth vs LY, any flags or standout moments. Be specific — this is what you'll reference in 1:1s.]
+YESTERDAY'S PERFORMANCE
+[2-3 sentences: total ${scopeWord} sales, growth vs LY, one overall read. Name the top AND bottom ${isAC ? 'store' : 'AC'} with their specific growth %.]
 
-HIGHLIGHTS
-[Stores or moments worth calling out positively — strong growth, great guest reviews, clean operations.]
+${isAC ? 'BY STORE' : isVP ? 'BY REGION' : 'BY AREA COACH'}
+[One bullet per ${isAC ? 'store' : 'AC'}. Format exactly: • Name — $X,XXX | +X.X% vs LY. No extra sentences.]`;
 
-WATCHOUTS
-[Store-level issues: flags, negative growth, patterns. Name the specific store, metric, and how many consecutive days. Be direct.]
+  let perfSection = '';
+  try {
+    const resp = await client.messages.create({
+      model: MODEL, max_tokens: 600,
+      messages: [{ role: 'user', content: perfPrompt }]
+    });
+    perfSection = resp.content[0].text.trim();
+  } catch (_) {
+    perfSection = `YESTERDAY'S PERFORMANCE\n${statBar}\n\n${isAC ? 'BY STORE' : 'BY AREA COACH'}\n${acBreakdownForPrompt}`;
+  }
 
-SPEED OF SERVICE
-[OTD % and <4min % — flag any store below 85% OTD or below 70% <4min. Skip if no data.]
+  // ── Section 3: Attack List (deterministic) ────────────────────────
+  const alerts = operationalAlerts || {};
+  const byCoach = {};
+  const addAlert = (ac, type, item) => {
+    if (!byCoach[ac]) byCoach[ac] = { labor:[], clockOut:[], hutbot:[], otd:[], changeDown:[] };
+    byCoach[ac][type].push(item);
+  };
+  for (const r of alerts.labor     || []) addAlert(r.area_coach||'Unknown','labor',r);
+  for (const r of alerts.clockOut  || []) addAlert(r.area_coach||'Unknown','clockOut',r);
+  for (const r of alerts.hutbot    || []) addAlert(r.area_coach||'Unknown','hutbot',r);
+  for (const r of alerts.otd       || []) addAlert(r.area_coach||'Unknown','otd',r);
+  for (const r of alerts.changeDown|| []) addAlert(r.area_coach||'Unknown','changeDown',r);
 
-FOLLOW-UP ITEMS
-[Commitments made in prior days that are still open or where the issue recurred. Skip if empty.]
+  const totalAlerts = (alerts.labor||[]).length + (alerts.clockOut||[]).length +
+    (alerts.hutbot||[]).length + (alerts.otd||[]).length + (alerts.changeDown||[]).length;
 
-PRIORITIES FOR TODAY
-[2-3 specific actions for today based on the data above]`
-    : isVP
-    ? `YESTERDAY'S PERFORMANCE
-[2-3 sentences on territory-wide performance: total sales, growth vs LY, overall read]
+  const attackLines = [];
+  attackLines.push(`ATTACK LIST — ${totalAlerts > 0
+    ? totalAlerts + ' item' + (totalAlerts !== 1 ? 's' : '') + ' need your attention'
+    : 'No operational alerts today ✓'}`);
 
-BY REGION / AREA COACH
-[Bullet per AC or region. Call out who stood out positively and who needs attention, with numbers.]
+  for (const [ac, items] of Object.entries(byCoach).sort(([a],[b])=>a.localeCompare(b))) {
+    attackLines.push(`\n[${ac}]`);
+    for (const r of items.labor) {
+      const days = r.consecutive_days_out > 1 ? ` · Day ${r.consecutive_days_out}` : '';
+      attackLines.push(`  • ${r.store_name||r.store_id} — Labor $${Math.round(r.value||0)} over budget${days}`);
+    }
+    for (const r of items.clockOut) {
+      const det = r.details || {};
+      const emps = det.employees?.map(e=>e.name||e.cashier_name||'Unknown').join(', ')
+        || `${Math.round(r.value||0)} employee(s)`;
+      attackLines.push(`  • ${r.store_name||r.store_id} — Forgot to clock out: ${emps}`);
+    }
+    for (const r of items.hutbot) {
+      const days = r.consecutive_days_out > 1 ? ` · Day ${r.consecutive_days_out}` : '';
+      const status = r.metric_type === 'ROUTINE_MISSED' ? 'MISSED' : 'LATE';
+      const det = r.details || {};
+      attackLines.push(`  • ${r.store_name||r.store_id} — ${det.routine_name||'Hut Bot'} ${status}${days}`);
+    }
+    for (const r of items.otd) {
+      const days = r.consecutive_days_out > 1 ? ` · Day ${r.consecutive_days_out}` : '';
+      attackLines.push(`  • ${r.store_name||r.store_id} — Prod time ${Math.round(r.value||0)} min (>23 min)${days}`);
+    }
+    for (const r of items.changeDown) {
+      const det = r.details || {};
+      const tickets = det.tickets || [];
+      if (tickets.length) {
+        for (const t of tickets.slice(0, 5)) {
+          const typeLabel = t.cancel_type || t.discount_type
+            || r.metric_type.replace('CHANGE_DOWN_','').toLowerCase();
+          attackLines.push(`  • ${r.store_name||r.store_id} — Ticket #${t.ticket_id}: $${t.amount} ${typeLabel}`);
+        }
+      } else {
+        const typeLabel = r.metric_type === 'CHANGE_DOWN_CASH' ? 'cash' : 'non-cash';
+        attackLines.push(`  • ${r.store_name||r.store_id} — Change down $${Math.round(r.value||0)} (${typeLabel})`);
+      }
+    }
+  }
+  const attackSection = attackLines.join('\n');
 
-HIGHLIGHTS
-[Strongest performers — ACs, regions, or specific stores. Be specific with numbers.]
+  // ── Section 4: SMG Customer Pulse (deterministic) ─────────────────
+  const SMG_FILTER = /rude|attitude|employee|staff|poor service|quality|product|missing|wrong item|didn't receive|order accuracy|food quality|cold|raw/i;
+  const smgAlerts = alerts.smg || [];
+  const relevant = smgAlerts.filter(c =>
+    SMG_FILTER.test((c.categories||[]).join(' ')) || SMG_FILTER.test(c.comment_text||c.summary||'')
+  );
 
-WATCHOUTS
-[Underperforming ACs or regions, high-severity patterns, anything needing VP attention. Be direct.]
+  const nameCounts = {};
+  for (const c of relevant) {
+    if (c.name_mentioned) {
+      const n = c.name_mentioned.trim().toLowerCase();
+      nameCounts[n] = (nameCounts[n]||0) + 1;
+    }
+  }
+  const trendNames = Object.entries(nameCounts).filter(([,cnt])=>cnt>=2).map(([n])=>n);
 
-SPEED OF SERVICE
-[Territory OTD summary. Call out any AC below 85% OTD. Skip if no data.]
+  const smgLines = [];
+  if (relevant.length) {
+    smgLines.push(`SMG CUSTOMER PULSE — ${relevant.length} alert${relevant.length!==1?'s':''}`);
+    if (trendNames.length) smgLines.push(`  ⚠ Trending: "${trendNames.join('", "')}" mentioned across multiple stores`);
+    for (const c of relevant.slice(0, 10)) {
+      const acTag = !isAC && c.area_coach ? ` (${c.area_coach})` : '';
+      const cats  = (c.categories||[]).slice(0,2).join(', ');
+      const excerpt = (c.comment_text||c.summary||'').replace(/"/g,"'").slice(0,100);
+      const nameTag = c.name_mentioned ? ` · Employee: ${c.name_mentioned}` : '';
+      smgLines.push(`  • ${c.store_name||c.store_id}${acTag}${nameTag} — ${cats?cats+': ':''}"${excerpt}"`);
+    }
+  }
+  const smgSection = smgLines.join('\n');
 
-FOLLOW-UP ITEMS
-[Open commitments from prior days. Skip if empty.]
-
-PRIORITIES FOR TODAY
-[2-4 territory-level priorities]`
-    : `YESTERDAY'S PERFORMANCE
-[2-3 sentences: total region sales, growth vs LY, overall read]
-
-BY AREA COACH
-[Bullet per AC with sales, growth vs LY, high flags. Under each AC, list notable stores — best and worst performers with specific numbers.]
-
-HIGHLIGHTS
-[Standout AC or store performances — growth %, guest shoutouts. Be specific.]
-
-WATCHOUTS
-[High-severity flags, negative growth areas, multi-day patterns. Name the store, AC, metric, and consecutive days.]
-
-SPEED OF SERVICE
-[OTD and <4min by AC. Flag anyone below 85% OTD or 70% <4min. Skip if no data.]
-
-FOLLOW-UP ITEMS
-[Commitments from prior days that are still open or recurred. Skip if empty.]
-
-PRIORITIES FOR TODAY
-[2-4 specific priorities for the region today]`;
-
-  // Day of week for the brief date
-  const briefDow = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(date + 'T12:00:00Z').getUTCDay()];
-  const isThursday = briefDow === 'Thursday';
-
-  const prompt = `You are writing a morning executive brief memo for ${userName} (${roleLabel}) at Ayvaz Pizza LLC, a Pizza Hut franchisee.
-
-DATE: ${date} (${briefDow})
-${fiscalContext ? 'FISCAL CONTEXT: ' + fiscalContext : ''}
-IMPORTANT: Do NOT reference "the weekly recap" or "Thursday recap" unless today is actually Thursday. Today is ${briefDow}.
-
-OVERALL PERFORMANCE:
-${totalLine}
-
-${breakdownSection}
-
-SPEED OF SERVICE (Yesterday):
-${velLines}
-
-ACTIVE FLAGS (sorted high → low severity):
-${flagLines}
-
-GUEST SHOUTOUTS:
-${shoutLines}
-
-FOLLOW-UP ITEMS FROM PRIOR DAYS:
-${followLines}
-
----
-Write a professional morning brief memo at the ${roleLabel} level. Use this exact format:
-
-MORNING BRIEF — ${date}
-${fiscalContext || ''}
-
-${outputInstructions}
-
-Rules: Direct and factual. Use exact numbers from the data. Skip a section entirely if there's nothing to say. ${isAC ? 'Aim for 350-500 words.' : 'Aim for 400-600 words.'} Use Pizza Hut operations language (area coach not district manager, net sales not revenue, store not restaurant).`;
-
-  const resp = await client.messages.create({
-    model: MODEL,
-    max_tokens: 2200,
-    messages: [{ role: 'user', content: prompt }]
-  });
-  return resp.content[0].text.trim();
+  return [header, perfSection, attackSection, smgSection].filter(Boolean).join('\n\n');
 }
 
 module.exports = { analyzePL, analyzePLForAC, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail, generateDailyIntelEmail, analyzeAdditionalContent, generateMorningBrief };

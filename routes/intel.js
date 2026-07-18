@@ -2182,6 +2182,37 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
     const byAC    = acMetricsRes.rows.map(a => ({ ...a, high_flags: acFlagCounts[a.area_coach] || 0 }));
     const byStore = storeMetricsRes.rows;
 
+    // Operational alerts for attack list (scoped same as flags query)
+    const opAlertTypes = ['ROUTINE_MISSED','ROUTINE_LATE','FORGOT_CLOCKOUT','CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE','LABOR_OVER_BUDGET','PRODUCTION_TIME','GUEST_COMPLAINT'];
+    const oap = [...fp, opAlertTypes];
+    const opScopeClause = fp.length > 1
+      ? (flagWhere.includes('area_coach=ANY') || flagWhere.includes('area_coach = ANY') ? `AND area_coach = ANY($2::text[])` :
+         flagWhere.includes('region_coach =') || flagWhere.includes('region_coach=') ? `AND region_coach = $2` :
+         flagWhere.includes('territory_vp =') || flagWhere.includes('territory_vp=') ? `AND territory_vp = $2` :
+         flagWhere.includes('area_coach =') || flagWhere.includes('area_coach=') ? `AND area_coach = $2` : '')
+      : '';
+    const opRes = await p.query(
+      `SELECT store_id,store_name,area_coach,region_coach,territory_vp,metric_type,value,details,consecutive_days_out
+       FROM intel_flags WHERE metric_date=$1 AND metric_type=ANY($${oap.length}::text[]) ${opScopeClause}
+       ORDER BY area_coach,metric_type`, oap
+    );
+    const opRows = opRes.rows;
+    const operationalAlerts = {
+      hutbot:     opRows.filter(r => ['ROUTINE_MISSED','ROUTINE_LATE'].includes(r.metric_type)),
+      clockOut:   opRows.filter(r => r.metric_type === 'FORGOT_CLOCKOUT'),
+      labor:      opRows.filter(r => r.metric_type === 'LABOR_OVER_BUDGET'),
+      otd:        opRows.filter(r => r.metric_type === 'PRODUCTION_TIME' && (r.value||0) > 23),
+      changeDown: opRows.filter(r => ['CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE'].includes(r.metric_type)),
+      smg: opRows.filter(r => r.metric_type === 'GUEST_COMPLAINT').flatMap(r => {
+        const det = r.details || {};
+        const complaints = det.complaints || [];
+        if (complaints.length) return complaints.map(c => ({ ...c, store_id: r.store_id, store_name: r.store_name, area_coach: r.area_coach }));
+        return [{ store_id: r.store_id, store_name: r.store_name, area_coach: r.area_coach,
+          comment_text: det.summary || '', categories: det.top_categories || [],
+          name_mentioned: det.names_mentioned?.[0] || null }];
+      }),
+    };
+
     // Cache: in-memory → DB (pipeline) → on-demand
     const cacheKey    = `${user.username}_${date}`;
     const forceRefresh = req.query.refresh === '1';
@@ -2204,6 +2235,7 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
           regionMetrics: metricsRes.rows[0] || {},
           byAC, byStore, velocity: velocityRes.rows,
           flags: flagsRes.rows, shoutouts: shoutoutsRes.rows, followUps: followUpRes.rows,
+          operationalAlerts,
         });
         await db.upsertIntelCache({
           user_id: user.username + '::brief', cache_date: date,

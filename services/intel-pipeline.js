@@ -460,11 +460,40 @@ async function generateMorningBriefs(targetDate) {
       for (const fl of flagsRes.rows) if (fl.severity === 'high') acFlagCounts[fl.area_coach] = (acFlagCounts[fl.area_coach] || 0) + 1;
       const byAC = acRes.rows.map(a => ({ ...a, high_flags: acFlagCounts[a.area_coach] || 0 }));
 
+      // Operational alerts for attack list
+      const opAlertTypes = ['ROUTINE_MISSED','ROUTINE_LATE','FORGOT_CLOCKOUT','CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE','LABOR_OVER_BUDGET','PRODUCTION_TIME','GUEST_COMPLAINT'];
+      const oap = [...fp, opAlertTypes];
+      const opWhereBase = flagWhere.replace(/metric_date=\$1/, 'metric_date=$1').replace(/status!='archived'/, `metric_type=ANY($${oap.length}::text[])`);
+      const opRes = await p.query(
+        `SELECT store_id,store_name,area_coach,region_coach,territory_vp,metric_type,value,details,consecutive_days_out
+         FROM intel_flags WHERE metric_date=$1 AND metric_type=ANY($${oap.length}::text[])
+         ${flagWhere.includes('area_coach=ANY') ? `AND area_coach=ANY($2::text[])` :
+           flagWhere.includes('region_coach=') ? `AND region_coach=$2` :
+           flagWhere.includes('territory_vp=') ? `AND territory_vp=$2` :
+           flagWhere.includes('area_coach=$') ? `AND area_coach=$2` : ''}
+         ORDER BY area_coach,metric_type`, oap);
+      const opRows = opRes.rows;
+      const operationalAlerts = {
+        hutbot:     opRows.filter(r => ['ROUTINE_MISSED','ROUTINE_LATE'].includes(r.metric_type)),
+        clockOut:   opRows.filter(r => r.metric_type === 'FORGOT_CLOCKOUT'),
+        labor:      opRows.filter(r => r.metric_type === 'LABOR_OVER_BUDGET'),
+        otd:        opRows.filter(r => r.metric_type === 'PRODUCTION_TIME' && (r.value||0) > 23),
+        changeDown: opRows.filter(r => ['CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE'].includes(r.metric_type)),
+        smg: opRows.filter(r => r.metric_type === 'GUEST_COMPLAINT').flatMap(r => {
+          const det = r.details || {};
+          const complaints = det.complaints || [];
+          if (complaints.length) return complaints.map(c => ({ ...c, store_id: r.store_id, store_name: r.store_name, area_coach: r.area_coach }));
+          return [{ store_id: r.store_id, store_name: r.store_name, area_coach: r.area_coach,
+            comment_text: det.summary || '', categories: det.top_categories || [],
+            name_mentioned: det.names_mentioned?.[0] || null }];
+        }),
+      };
+
       const memo_text = await generateMorningBrief({
         date: targetDate, userName: name, userRole: role, fiscalContext: fiscal,
         regionMetrics: metricsRes.rows[0] || {}, byAC, byStore: storeRes.rows,
         velocity: velRes.rows, flags: flagsRes.rows,
-        shoutouts: shoutRes.rows, followUps: followRes.rows,
+        shoutouts: shoutRes.rows, followUps: followRes.rows, operationalAlerts,
       });
 
       await db.upsertIntelCache({
