@@ -1608,25 +1608,24 @@ ${isAC ? 'BY STORE' : isVP ? 'BY REGION' : 'BY AREA COACH'}
     for (const r of items.hutbot) {
       const days = r.consecutive_days_out > 1 ? ` · Day ${r.consecutive_days_out}` : '';
       const status = r.metric_type === 'ROUTINE_MISSED' ? 'MISSED' : 'LATE';
-      const det = r.details || {};
-      attackLines.push(`  • ${r.store_name||r.store_id} — ${det.routine_name||'Hut Bot'} ${status}${days}`);
+      attackLines.push(`  • HutBot — ${r.store_name||r.store_id} — ${status}${days}`);
     }
     for (const r of items.otd) {
       const days = r.consecutive_days_out > 1 ? ` · Day ${r.consecutive_days_out}` : '';
-      attackLines.push(`  • ${r.store_name||r.store_id} — Prod time ${Math.round(r.value||0)} min (>23 min)${days}`);
+      attackLines.push(`  • ${r.store_name||r.store_id} — OTD/IST ${Math.round(r.value||0)} min${days}`);
     }
     for (const r of items.changeDown) {
       const det = r.details || {};
       const tickets = det.tickets || [];
       if (tickets.length) {
         for (const t of tickets.slice(0, 5)) {
-          const typeLabel = t.cancel_type || t.discount_type
-            || r.metric_type.replace('CHANGE_DOWN_','').toLowerCase();
-          attackLines.push(`  • ${r.store_name||r.store_id} — Ticket #${t.ticket_id}: $${t.amount} ${typeLabel}`);
+          const typeLabel = t.cancel_type || t.discount_type || (
+            r.metric_type === 'CHANGE_DOWN_CASH' ? 'cash change' : 'large change');
+          attackLines.push(`  • ${r.store_name||r.store_id} — Ticket #${t.ticket_id || '?'}: $${Number(t.amount||0).toFixed(2)} — ${typeLabel}`);
         }
       } else {
-        const typeLabel = r.metric_type === 'CHANGE_DOWN_CASH' ? 'cash' : 'non-cash';
-        attackLines.push(`  • ${r.store_name||r.store_id} — Change down $${Math.round(r.value||0)} (${typeLabel})`);
+        const typeLabel = r.metric_type === 'CHANGE_DOWN_CASH' ? 'cash change-down' : 'large change-down';
+        attackLines.push(`  • ${r.store_name||r.store_id} — ${typeLabel} $${Math.round(r.value||0)}`);
       }
     }
   }

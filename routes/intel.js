@@ -2022,18 +2022,38 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
         ]);
         const { generateMorningBrief } = require('../services/claude');
         const { getFiscalContextString } = require('../services/fiscal-calendar');
+        const acOpRes = await p.query(
+          `SELECT store_id,store_name,area_coach,metric_type,value,details,consecutive_days_out
+           FROM intel_flags WHERE metric_date=$1 AND area_coach=$2
+             AND metric_type=ANY($3::text[])`,
+          [date2, acName, ['ROUTINE_MISSED','ROUTINE_LATE','FORGOT_CLOCKOUT','CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE','LABOR_OVER_BUDGET','PRODUCTION_TIME','GUEST_COMPLAINT']]
+        );
+        const acOpRows = acOpRes.rows;
+        const acOpAlerts = {
+          hutbot:     acOpRows.filter(r=>['ROUTINE_MISSED','ROUTINE_LATE'].includes(r.metric_type)),
+          clockOut:   acOpRows.filter(r=>r.metric_type==='FORGOT_CLOCKOUT'),
+          labor:      acOpRows.filter(r=>r.metric_type==='LABOR_OVER_BUDGET'),
+          otd:        acOpRows.filter(r=>r.metric_type==='PRODUCTION_TIME'&&(r.value||0)>23),
+          changeDown: acOpRows.filter(r=>['CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE'].includes(r.metric_type)),
+          smg: acOpRows.filter(r=>r.metric_type==='GUEST_COMPLAINT').flatMap(r=>{
+            const det=r.details||{};const complaints=det.complaints||[];
+            if(complaints.length) return complaints.map(c=>({...c,store_id:r.store_id,store_name:r.store_name,area_coach:r.area_coach}));
+            return [{store_id:r.store_id,store_name:r.store_name,area_coach:r.area_coach,comment_text:det.summary||'',categories:det.top_categories||[],name_mentioned:det.names_mentioned?.[0]||null}];
+          }),
+        };
         acMemo = await generateMorningBrief({
           date: date2,
-          userName:      acUser?.name || viewAsAC,
-          userRole:      'area_coach',
-          fiscalContext: getFiscalContextString ? getFiscalContextString() : '',
-          regionMetrics: acMetRes.rows[0] || {},
-          byAC:          [],
-          byStore:       acSalesRes.rows,
-          velocity:      acVelRes.rows,
-          flags:         acFlagsRes.rows,
-          shoutouts:     acShoutRes.rows,
-          followUps:     acFollowRes.rows,
+          userName:         acUser?.name || viewAsAC,
+          userRole:         'area_coach',
+          fiscalContext:    getFiscalContextString ? getFiscalContextString() : '',
+          regionMetrics:    acMetRes.rows[0] || {},
+          byAC:             [],
+          byStore:          acSalesRes.rows,
+          velocity:         acVelRes.rows,
+          flags:            acFlagsRes.rows,
+          shoutouts:        acShoutRes.rows,
+          followUps:        acFollowRes.rows,
+          operationalAlerts: acOpAlerts,
         });
         // Cache it so next load is instant
         if (acUser) {

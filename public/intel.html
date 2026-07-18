@@ -24,6 +24,8 @@ button{font-family:inherit;cursor:pointer}
 .memo-bullet::before{content:'';position:absolute;left:4px;top:10px;width:4px;height:4px;border-radius:50%;background:#475569}
 .memo-ac-header{color:#e2e8f0;font-weight:700;font-size:12px;margin:10px 0 2px;padding:3px 8px;background:rgba(255,255,255,.04);border-radius:4px}
 .memo-warn{color:#fbbf24}
+.memo-missed{color:#ef4444;font-weight:700}
+.memo-late{color:#fbbf24;font-weight:700}
 /* ── Weekly Digest dashboard styles ───────────────────────────────────── */
 .digest-kpi-row{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px}
 .digest-kpi{background:#0c1425;border:1px solid #1e2d4d;border-radius:10px;padding:14px 18px;min-width:140px;flex:1}
@@ -1167,7 +1169,10 @@ function renderMemo(text){
     } else if(/^⚠/.test(line)){
       html+='<div class="memo-bullet memo-warn">'+escH(line)+'</div>';
     } else if(line.startsWith('•')||line.startsWith('-')||/^\d+\./.test(line)){
-      html+='<div class="memo-bullet">'+escH(line)+'</div>';
+      const colored=escH(line)
+        .replace(/\bMISSED\b/g,'<span class="memo-missed">MISSED</span>')
+        .replace(/\bLATE\b/g,'<span class="memo-late">LATE</span>');
+      html+='<div class="memo-bullet">'+colored+'</div>';
     } else {
       html+='<div class="memo-para">'+escH(line)+'</div>';
     }
