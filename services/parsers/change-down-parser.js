@@ -25,7 +25,7 @@ const COL_PATTERNS = {
   name:        /emp.*name|cashier.*name|name/i,
   amount:      /amount|change.*down|variance/i,
   payment:     /tender|payment|pay.*type|cash.*type/i,
-  cancel_type: /cancel.*type|type.*cancel|action.*type|transaction.*type|cancel.*reason|reason/i,
+  cancel_type: /cancel.*type|type.*cancel|action.*type|transaction.*type|cancel.*reason|reason|description|trans.*desc|action|^type$/i,
   discount_type: /discount.*type|discount.*reason|promo.*type|coupon.*type|discount.*code|promo/i,
   time:        /time|date.*time/i,
   date:        /^date$/i,

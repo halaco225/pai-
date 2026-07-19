@@ -1619,8 +1619,10 @@ ${isAC ? 'BY STORE' : isVP ? 'BY REGION' : 'BY AREA COACH'}
       const tickets = det.tickets || [];
       if (tickets.length) {
         for (const t of tickets.slice(0, 5)) {
-          const typeLabel = t.cancel_type || t.discount_type || (
-            r.metric_type === 'CHANGE_DOWN_CASH' ? 'cash change' : 'large change');
+          const rawType = t.cancel_type || t.discount_type || t.payment_type || '';
+          const typeLabel = rawType && !/^(cash|credit|visa|mc|mastercard|amex|discover|debit|card|check)$/i.test(rawType)
+            ? rawType
+            : (r.metric_type === 'CHANGE_DOWN_CASH' ? 'cash' : 'non-cash');
           attackLines.push(`  • ${r.store_name||r.store_id} — Ticket #${t.ticket_id || '?'}: $${Number(t.amount||0).toFixed(2)} — ${typeLabel}`);
         }
       } else {
