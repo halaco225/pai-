@@ -1233,7 +1233,7 @@ function briefDesc(f){
     case'ROUTINE_MISSED':return(det.routine_name||'Routine')+' not submitted'+(det.responsible?' · '+det.responsible:'')+trend;
     case'ROUTINE_LATE':return(det.routine_name||'Routine')+' submitted '+(det.minutes_late!=null?det.minutes_late+' min ':'')+' late'+(det.responsible?' · '+det.responsible:'')+trend;
     case'PUSH_SURVEYS':return'No SMG survey responses for 2+ days';
-    case'PRODUCTION_TIME':return'Prod time '+Math.round(f.value||0)+' min (target <'+Math.round(f.target||20)+' min)'+trend;
+    case'PRODUCTION_TIME':return'IST '+Math.round(f.value||0)+' min (target <23 min)'+trend;
     default:return fmtMetric(f.metric_type)+(f.value!=null?' — '+Math.round(Number(f.value)):'')+trend;
   }
 }

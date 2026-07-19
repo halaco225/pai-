@@ -88,28 +88,26 @@ async function processSOS(filePath, targetDate) {
       source:       'SOS',
     };
 
-    // ── Tier 1 Hard Flag: Production > 20 min ────────────────────────────
-    if (s.prod_min != null && s.prod_min > 20) {
+    // ── Tier 1 Hard Flag: IST (In Store Time) > 23 min ─────────────────
+    if (s.ist_min != null && s.ist_min > 23) {
       const prevDays = await db.getConsecutiveDays(s.store_id, 'PRODUCTION_TIME', targetDate);
       const consecutive = prevDays + 1;
-      // Severity by value only — no day escalation; consecutive_days kept for trend display
-      const severity = s.prod_min > 25 ? 'high' : 'medium';
+      const severity = s.ist_min > 30 ? 'high' : 'medium';
       const details  = {
-        label: s.prod_min > 25 ? 'critical' : null,
+        metric_label: 'IST',
         pct_prod_lt15: s.pct_prod_lt15,
         trend_days: consecutive,
         trend_note: consecutive >= 2 ? `${consecutive}-day trend` : null,
       };
       await db.insertIntelFlag({
         ...base, tier: 1, metric_type: 'PRODUCTION_TIME',
-        value: parseFloat(s.prod_min.toFixed(2)), target: 20.0,
-        variance: parseFloat((s.prod_min - 20).toFixed(2)),
+        value: parseFloat(s.ist_min.toFixed(2)), target: 23.0,
+        variance: parseFloat((s.ist_min - 23).toFixed(2)),
         consecutive_days_out: consecutive, severity, is_new: prevDays === 0,
         details,
       });
       hardFlags++;
-    } else if (s.prod_min != null) {
-      // Mark as recovered if previously flagged
+    } else if (s.ist_min != null) {
       await db.resolveRecoveredFlags(s.store_id, 'PRODUCTION_TIME', targetDate);
     }
 

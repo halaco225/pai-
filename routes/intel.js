@@ -1997,7 +1997,7 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
 
       // Fetch flags for this AC's stores (always needed for sidebar)
       const fr = await p.query(
-        `SELECT store_id,store_name,area_coach,metric_type,value,severity,consecutive_days_out,status,created_at AS flag_date,details
+        `SELECT store_id,store_name,area_coach,metric_type,value,severity,consecutive_days_out,status,TO_CHAR(metric_date,'YYYY-MM-DD') AS flag_date,details
          FROM intel_flags WHERE metric_date=$1 AND area_coach=$2 AND status!='archived'
          ORDER BY CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,consecutive_days_out DESC LIMIT 50`,
         [date2, acName]
@@ -2111,7 +2111,7 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
     const [flagsRes, metricsRes, acMetricsRes, storeMetricsRes, shoutoutsRes, velocityRes, followUpRes] = await Promise.all([
       p.query(
         `SELECT store_id, store_name, area_coach, metric_type, value, target, variance,
-                severity, consecutive_days_out, status, created_at AS flag_date, details
+                severity, consecutive_days_out, status, TO_CHAR(metric_date,'YYYY-MM-DD') AS flag_date, details
          FROM intel_flags WHERE ${flagWhere}
          ORDER BY CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
                   consecutive_days_out DESC LIMIT 100`, fp
