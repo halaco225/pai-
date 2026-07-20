@@ -12,10 +12,11 @@ const db   = require('../db');
 
 const COL_PATTERNS = {
   store:        /store|location/i,
+  date:         /^date$|cancel.*date|transaction.*date/i,
   ticket:       /ticket|order|check/i,
-  cashier:      /cashier|emp.*id|empl.*id|operator/i,
-  cashier_name: /emp.*name|cashier.*name|operator.*name|name/i,
-  amount:       /amount|cancel.*amt|total/i,
+  cashier:      /cashier.*id|emp.*id|empl.*id|operator.*id/i,
+  cashier_name: /emp.*name|cashier.*name|operator.*name|^name$/i,
+  amount:       /cash.*out|amount|cancel.*amt|initial/i,
   payment:      /tender|payment|pay.*type/i,
   cancel_type:  /cancel.*type|reason|void.*type/i,
   time:         /time|date.*time|cancel.*time|void.*time/i,
@@ -79,14 +80,17 @@ async function processCancelTender(filePath, targetDate) {
     if (!storeId) continue;
     const storeName = parseStoreName(rawStore);
     if (!byStore[storeId]) byStore[storeId] = { store_id: storeId, store_name: storeName, tickets: [] };
+    const amount = cols.amount != null ? num(row[cols.amount]) : null;
+    if (!amount || amount < 0.01) continue;
     byStore[storeId].tickets.push({
-      ticket_id:    cols.ticket   != null ? String(row[cols.ticket]   || '').trim() : null,
-      cashier_id:   cols.cashier  != null ? String(row[cols.cashier]  || '').trim() : null,
+      ticket_id:    cols.ticket       != null ? String(row[cols.ticket]       || '').trim() : null,
+      date:         cols.date         != null ? String(row[cols.date]         || '').trim() : null,
+      cashier_id:   cols.cashier      != null ? String(row[cols.cashier]      || '').trim() : null,
       cashier_name: cols.cashier_name != null ? String(row[cols.cashier_name] || '').trim() : null,
-      amount:       cols.amount   != null ? num(row[cols.amount])   : null,
-      payment_type: cols.payment  != null ? String(row[cols.payment] || '').trim() : null,
-      cancel_type:  cols.cancel_type != null ? String(row[cols.cancel_type] || '').trim() : null,
-      time:         cols.time     != null ? String(row[cols.time]    || '').trim() : null,
+      amount,
+      payment_type: cols.payment     != null ? String(row[cols.payment]      || '').trim() : null,
+      cancel_type:  cols.cancel_type != null ? String(row[cols.cancel_type]  || '').trim() : null,
+      time:         cols.time        != null ? String(row[cols.time]         || '').trim() : null,
     });
   }
 

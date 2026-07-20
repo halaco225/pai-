@@ -2026,7 +2026,7 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
           `SELECT store_id,store_name,area_coach,metric_type,value,details,consecutive_days_out
            FROM intel_flags WHERE metric_date=$1 AND area_coach=$2
              AND metric_type=ANY($3::text[])`,
-          [date2, acName, ['ROUTINE_MISSED','ROUTINE_LATE','FORGOT_CLOCKOUT','CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE','LABOR_OVER_BUDGET','PRODUCTION_TIME','GUEST_COMPLAINT']]
+          [date2, acName, ['ROUTINE_MISSED','ROUTINE_LATE','FORGOT_CLOCKOUT','CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE','LABOR_OVER_BUDGET','PRODUCTION_TIME','GUEST_COMPLAINT','CANCEL_TENDER']]
         );
         const acOpRows = acOpRes.rows;
         const acOpAlerts = {
@@ -2034,7 +2034,8 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
           clockOut:   acOpRows.filter(r=>r.metric_type==='FORGOT_CLOCKOUT'),
           labor:      acOpRows.filter(r=>r.metric_type==='LABOR_OVER_BUDGET'),
           otd:        acOpRows.filter(r=>r.metric_type==='PRODUCTION_TIME'&&(r.value||0)>23),
-          changeDown: acOpRows.filter(r=>['CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE'].includes(r.metric_type)),
+          changeDown:    acOpRows.filter(r=>['CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE'].includes(r.metric_type)),
+          cancelTender:  acOpRows.filter(r=>r.metric_type==='CANCEL_TENDER'),
           smg: acOpRows.filter(r=>r.metric_type==='GUEST_COMPLAINT').flatMap(r=>{
             const det=r.details||{};const complaints=det.complaints||[];
             if(complaints.length) return complaints.map(c=>({...c,store_id:r.store_id,store_name:r.store_name,area_coach:r.area_coach}));
@@ -2203,7 +2204,7 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
     const byStore = storeMetricsRes.rows;
 
     // Operational alerts for attack list (scoped same as flags query)
-    const opAlertTypes = ['ROUTINE_MISSED','ROUTINE_LATE','FORGOT_CLOCKOUT','CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE','LABOR_OVER_BUDGET','PRODUCTION_TIME','GUEST_COMPLAINT'];
+    const opAlertTypes = ['ROUTINE_MISSED','ROUTINE_LATE','FORGOT_CLOCKOUT','CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE','LABOR_OVER_BUDGET','PRODUCTION_TIME','GUEST_COMPLAINT','CANCEL_TENDER'];
     const oap = [...fp, opAlertTypes];
     const opScopeClause = fp.length > 1
       ? (flagWhere.includes('area_coach=ANY') || flagWhere.includes('area_coach = ANY') ? `AND area_coach = ANY($2::text[])` :
@@ -2222,7 +2223,8 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
       clockOut:   opRows.filter(r => r.metric_type === 'FORGOT_CLOCKOUT'),
       labor:      opRows.filter(r => r.metric_type === 'LABOR_OVER_BUDGET'),
       otd:        opRows.filter(r => r.metric_type === 'PRODUCTION_TIME' && (r.value||0) > 23),
-      changeDown: opRows.filter(r => ['CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE'].includes(r.metric_type)),
+      changeDown:    opRows.filter(r => ['CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE'].includes(r.metric_type)),
+      cancelTender:  opRows.filter(r => r.metric_type === 'CANCEL_TENDER'),
       smg: opRows.filter(r => r.metric_type === 'GUEST_COMPLAINT').flatMap(r => {
         const det = r.details || {};
         const complaints = det.complaints || [];

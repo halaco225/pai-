@@ -1576,17 +1576,19 @@ ${isAC ? 'BY STORE' : isVP ? 'BY REGION' : 'BY AREA COACH'}
   const alerts = operationalAlerts || {};
   const byCoach = {};
   const addAlert = (ac, type, item) => {
-    if (!byCoach[ac]) byCoach[ac] = { labor:[], clockOut:[], hutbot:[], otd:[], changeDown:[] };
+    if (!byCoach[ac]) byCoach[ac] = { labor:[], clockOut:[], hutbot:[], otd:[], changeDown:[], cancelTender:[] };
     byCoach[ac][type].push(item);
   };
-  for (const r of alerts.labor     || []) addAlert(r.area_coach||'Unknown','labor',r);
-  for (const r of alerts.clockOut  || []) addAlert(r.area_coach||'Unknown','clockOut',r);
-  for (const r of alerts.hutbot    || []) addAlert(r.area_coach||'Unknown','hutbot',r);
-  for (const r of alerts.otd       || []) addAlert(r.area_coach||'Unknown','otd',r);
-  for (const r of alerts.changeDown|| []) addAlert(r.area_coach||'Unknown','changeDown',r);
+  for (const r of alerts.labor        || []) addAlert(r.area_coach||'Unknown','labor',r);
+  for (const r of alerts.clockOut     || []) addAlert(r.area_coach||'Unknown','clockOut',r);
+  for (const r of alerts.hutbot       || []) addAlert(r.area_coach||'Unknown','hutbot',r);
+  for (const r of alerts.otd          || []) addAlert(r.area_coach||'Unknown','otd',r);
+  for (const r of alerts.changeDown   || []) addAlert(r.area_coach||'Unknown','changeDown',r);
+  for (const r of alerts.cancelTender || []) addAlert(r.area_coach||'Unknown','cancelTender',r);
 
   const totalAlerts = (alerts.labor||[]).length + (alerts.clockOut||[]).length +
-    (alerts.hutbot||[]).length + (alerts.otd||[]).length + (alerts.changeDown||[]).length;
+    (alerts.hutbot||[]).length + (alerts.otd||[]).length + (alerts.changeDown||[]).length +
+    (alerts.cancelTender||[]).length;
 
   const attackLines = [];
   attackLines.push(`ATTACK LIST — ${totalAlerts > 0
@@ -1628,6 +1630,15 @@ ${isAC ? 'BY STORE' : isVP ? 'BY REGION' : 'BY AREA COACH'}
       } else {
         const typeLabel = r.metric_type === 'CHANGE_DOWN_CASH' ? 'cash change-down' : 'large change-down';
         attackLines.push(`  • ${r.store_name||r.store_id} — ${typeLabel} $${Math.round(r.value||0)}`);
+      }
+    }
+    for (const r of items.cancelTender) {
+      const det = r.details || {};
+      const bigTickets = (det.tickets || []).filter(t => (t.amount || 0) >= 50);
+      for (const t of bigTickets.slice(0, 5)) {
+        const type = t.cancel_type || 'Cancel After Tender';
+        const who  = t.cashier_name || t.cashier_id || '?';
+        attackLines.push(`  • ${r.store_name||r.store_id} — Ticket #${t.ticket_id||'?'}: $${Number(t.amount||0).toFixed(2)} — ${type} (${who})`);
       }
     }
   }

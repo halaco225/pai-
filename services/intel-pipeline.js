@@ -461,7 +461,7 @@ async function generateMorningBriefs(targetDate) {
       const byAC = acRes.rows.map(a => ({ ...a, high_flags: acFlagCounts[a.area_coach] || 0 }));
 
       // Operational alerts for attack list
-      const opAlertTypes = ['ROUTINE_MISSED','ROUTINE_LATE','FORGOT_CLOCKOUT','CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE','LABOR_OVER_BUDGET','PRODUCTION_TIME','GUEST_COMPLAINT'];
+      const opAlertTypes = ['ROUTINE_MISSED','ROUTINE_LATE','FORGOT_CLOCKOUT','CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE','LABOR_OVER_BUDGET','PRODUCTION_TIME','GUEST_COMPLAINT','CANCEL_TENDER'];
       const oap = [...fp, opAlertTypes];
       const opWhereBase = flagWhere.replace(/metric_date=\$1/, 'metric_date=$1').replace(/status!='archived'/, `metric_type=ANY($${oap.length}::text[])`);
       const opRes = await p.query(
@@ -479,6 +479,7 @@ async function generateMorningBriefs(targetDate) {
         labor:      opRows.filter(r => r.metric_type === 'LABOR_OVER_BUDGET'),
         otd:        opRows.filter(r => r.metric_type === 'PRODUCTION_TIME' && (r.value||0) > 23),
         changeDown: opRows.filter(r => ['CHANGE_DOWN_CASH','CHANGE_DOWN_LARGE'].includes(r.metric_type)),
+        cancelTender: opRows.filter(r => r.metric_type === 'CANCEL_TENDER'),
         smg: opRows.filter(r => r.metric_type === 'GUEST_COMPLAINT').flatMap(r => {
           const det = r.details || {};
           const complaints = det.complaints || [];
