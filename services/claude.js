@@ -1634,7 +1634,7 @@ ${isAC ? 'BY STORE' : isVP ? 'BY REGION' : 'BY AREA COACH'}
     }
     for (const r of items.cancelTender) {
       const det = r.details || {};
-      const bigTickets = (det.tickets || []).filter(t => (t.amount || 0) >= 50);
+      const bigTickets = det.tickets || [];
       for (const t of bigTickets.slice(0, 5)) {
         const type = t.cancel_type || 'Cancel After Tender';
         const who  = t.cashier_name || t.cashier_id || '?';

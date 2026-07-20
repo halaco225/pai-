@@ -81,7 +81,7 @@ async function processCancelTender(filePath, targetDate) {
     const storeName = parseStoreName(rawStore);
     if (!byStore[storeId]) byStore[storeId] = { store_id: storeId, store_name: storeName, tickets: [] };
     const amount = cols.amount != null ? num(row[cols.amount]) : null;
-    if (!amount || amount < 0.01) continue;
+    if (amount == null) continue;
     byStore[storeId].tickets.push({
       ticket_id:    cols.ticket       != null ? String(row[cols.ticket]       || '').trim() : null,
       date:         cols.date         != null ? String(row[cols.date]         || '').trim() : null,
