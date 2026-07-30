@@ -1510,13 +1510,18 @@ async function generateMorningBrief({ date, userName, userRole, fiscalContext,
 
   // ── Fiscal day code (D = day within Tue–Mon week: Tue=1 … Mon=7) ──
   const dow = new Date(date + 'T12:00:00Z').getUTCDay(); // 0=Sun,1=Mon,2=Tue…
-  const fiscalDay = [7, 1, 2, 3, 4, 5, 6][dow];
+  // Tue=1,Wed=2,Thu=3,Fri=4,Sat=5,Sun=6,Mon=7
+  const fiscalDay = [6, 7, 1, 2, 3, 4, 5][dow];
   const fiscalMatch = (fiscalContext || '').match(/\(P(\d+)W(\d+)\)/);
   const fiscalCode = fiscalMatch ? `P${fiscalMatch[1]}W${fiscalMatch[2]}D${fiscalDay}` : '';
   const briefDow = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dow];
 
   // ── Section 1: Header ─────────────────────────────────────────────
-  const header = `MORNING BRIEF — ${date}${fiscalCode ? ' — ' + fiscalCode : ''}`;
+  // Show today's briefing date + the data date so it's clear what period is covered
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const header = todayStr !== date
+    ? `MORNING BRIEF — ${todayStr}${fiscalCode ? ' — ' + fiscalCode : ''}\nResults from ${date} (${briefDow})`
+    : `MORNING BRIEF — ${date}${fiscalCode ? ' — ' + fiscalCode : ''}`;
 
   // ── Section 2: Performance — stat bar + LLM narrative ────────────
   const statBar = regionMetrics.store_count > 0
