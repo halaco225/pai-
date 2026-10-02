@@ -121,5 +121,10 @@ app.listen(PORT, async () => {
   } catch (err) {
     console.log(`   Intel DB: init failed (${err.message})`);
   }
+  try {
+    require('./services/scheduler').start();
+  } catch (err) {
+    console.log(`   Scheduler: failed to start (${err.message})`);
+  }
   console.log('');
 });

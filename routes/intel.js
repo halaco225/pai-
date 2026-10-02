@@ -1971,6 +1971,41 @@ router.get('/hutbot/status', requireAuth, async (req, res) => {
 const briefMemoCache = new Map(); // key: `${username}_${date}` → { memo, ts }
 const BRIEF_CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
+// ── Pipeline freshness ───────────────────────────────────────────────────────
+// When a cron dies, the only symptom is data that stops advancing. Velocity
+// froze at 9/27/2026 for five days before anyone reported it. Anything more
+// than STALE_AFTER_DAYS behind is called out on the brief.
+const STALE_AFTER_DAYS = 2;
+
+function daysBehind(latest, today) {
+  if (!latest) return null;
+  return Math.round((Date.parse(today) - Date.parse(latest)) / 86400000);
+}
+
+async function getDataFreshness(p) {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  const feeds = [
+    { key: 'velocity', label: 'Velocity',    sql: `SELECT TO_CHAR(MAX(record_date),'YYYY-MM-DD') AS d FROM velocity_daily_records` },
+    { key: 'intel',    label: 'Daily Intel', sql: `SELECT TO_CHAR(MAX(metric_date),'YYYY-MM-DD') AS d FROM intel_dbs_metrics` },
+  ];
+
+  const stale = [];
+  for (const f of feeds) {
+    try {
+      const r      = await p.query(f.sql);
+      const latest = r.rows[0]?.d || null;
+      const behind = daysBehind(latest, today);
+      if (behind !== null && behind > STALE_AFTER_DAYS) {
+        stale.push({ key: f.key, label: f.label, latest, days_behind: behind });
+      }
+    } catch (e) {
+      // A missing table shouldn't take the brief down.
+      console.error(`[Intel] freshness check failed for ${f.key}:`, e.message);
+    }
+  }
+  return { checked_on: today, stale_after_days: STALE_AFTER_DAYS, stale };
+}
+
 // ── GET /api/intel/morning-brief — AI executive memo + priority flags + shoutouts ──
 router.get('/morning-brief', requireAuth, async (req, res) => {
   try {
@@ -2267,12 +2302,17 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
       briefMemoCache.set(cacheKey, { memo: memo_text, ts: Date.now() });
     }
 
+    // Pipeline staleness — a dead cron shows up as data that quietly stops
+    // advancing, with nothing in the UI to say so. Surface it on the brief.
+    const freshness = await getDataFreshness(p);
+
     res.json({
       date, memo_text,
       priority_flags:  flagsRes.rows,
       shoutouts:       shoutoutsRes.rows,
       follow_up_items: followUpRes.rows,
       metrics_summary: metricsRes.rows[0] || {},
+      data_freshness:  freshness,
     });
   } catch (err) {
     console.error('[Intel] /morning-brief error:', err.message);
