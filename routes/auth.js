@@ -5,19 +5,16 @@ const bcrypt = require('bcryptjs');
 // All users share the default password: welcome1@
 const DEFAULT_PASSWORD_HASH = '$2a$10$CMS4xDFNmb2.SavfTs2FHufXBO1LjX5Z4YtUWH.t8EWdZ6aHLTPuG';
 
-// ── Org hierarchy (from Master Alignment P6 REV 052626) ────────────────────
+// ── Org hierarchy (from Master Alignment P10 REV 092926) ───────────────────
 // scope: { type, ac_name?, area?, region_coach?, rc_name?, area_coaches?, vp_name?, region_coaches? }
 const USER_ROSTER = [
   // ── VPs ──────────────────────────────────────────────────────────────────
-  { username: 'cmagner', email: 'cmagner@ayvazpizza.com', name: 'Chad Magner', role: 'vp',
-    scope: { type: 'vp', vp_name: 'Chad Magner',
-      region_coaches: ['Lori Schwartz'] } },
   { username: 'mhester', email: 'mhester@ayvazpizza.com', name: 'Matt Hester', role: 'vp',
     scope: { type: 'vp', vp_name: 'Matt Hester',
-      region_coaches: ['Harold Lacoste', 'Preston Arnwine', 'Terrance Spillane'] } },
+      region_coaches: ['Harold Lacoste', 'Lori Schwartz', 'Preston Arnwine'] } },
   { username: 'tkrumwiede', email: 'tkrumwiede@ayvazpizza.com', name: 'Tracy Krumwiede', role: 'vp',
     scope: { type: 'vp', vp_name: 'Tracy Krumwiede',
-      region_coaches: ['Jerry Warren', 'Jose Lozano Sr.', 'Papa Diack', 'Theresa McDaniel'] } },
+      region_coaches: ['Jerry Warren', 'Jose Lozano Sr.', 'Papa Diack', 'Terrance Spillane', 'Theresa McDaniel'] } },
 
   // ── RDOs (Region Coaches) ─────────────────────────────────────────────────
   { username: 'hlacoste', email: 'hlacoste@ayvazpizza.com', name: 'Harold Lacoste', role: 'rdo',
@@ -25,16 +22,16 @@ const USER_ROSTER = [
       area_coaches: ['Darian Spikes','Ebony Simmons','Jadon McNeil','Jorge Garcia','Marc Gannon','Michelle Meehan'] } },
   { username: 'parnwine', email: 'parnwine@ayvazpizza.com', name: 'Preston Arnwine', role: 'rdo',
     scope: { type: 'rdo', rc_name: 'Preston Arnwine', vp: 'Matt Hester',
-      area_coaches: ['Emmanuel Boateng','Erin Pizzo','Royal Mitchell','Russell Kowalczyk','Stepfen White'] } },
+      area_coaches: ['Emmanuel Boateng','Erin Pizzo','Jason McNeal','Russell Kowalczyk','Stepfen White'] } },
   { username: 'tspillane', email: 'tspillane@ayvazpizza.com', name: 'Terrance Spillane', role: 'rdo',
-    scope: { type: 'rdo', rc_name: 'Terrance Spillane', vp: 'Matt Hester',
+    scope: { type: 'rdo', rc_name: 'Terrance Spillane', vp: 'Tracy Krumwiede',
       area_coaches: ['Brenda Marta','Constance Miranda','Eric Harstine','Javier Martinez','Kevin Dunn','Max Losey','Oscar Gutierrez','Tami Elliott-Baker'] } },
   { username: 'jwarren', email: 'jwarren@ayvazpizza.com', name: 'Jerry Warren', role: 'rdo',
     scope: { type: 'rdo', rc_name: 'Jerry Warren', vp: 'Tracy Krumwiede',
       area_coaches: ['Alpha Garza','Amanda Spikes','Imran Awan (Kiosks-Express)','Larry (Steve) Battenfield','Thomas Cobb'] } },
   { username: 'jlozano', email: 'jlozano@ayvazpizza.com', name: 'Jose Lozano Sr.', role: 'rdo',
     scope: { type: 'rdo', rc_name: 'Jose Lozano Sr.', vp: 'Tracy Krumwiede',
-      area_coaches: ['Jacob Maldonado','Joel Salinas','Jose Flores','Lee Duran','Maria Avila','Michelle Cavazos','Roberto Sanchez','Ruben Gonzalez'] } },
+      area_coaches: ['Joel Salinas','Jose Flores','Lee Duran','Maria Avila','Michelle Cavazos','Lonie Johnson Jr','Roberto Sanchez','Ruben Gonzalez'] } },
   { username: 'pdiack', email: 'pdiack@ayvazpizza.com', name: 'Papa Diack', role: 'rdo',
     scope: { type: 'rdo', rc_name: 'Papa Diack', vp: 'Tracy Krumwiede',
       area_coaches: ['Jeffrey Washburn','Maria Delgado-Perez','Rachel Hightower','Ravin Lott','Reginald Brown','Robert Thomas','Shayda Willison'] } },
@@ -42,7 +39,7 @@ const USER_ROSTER = [
     scope: { type: 'rdo', rc_name: 'Theresa McDaniel', vp: 'Tracy Krumwiede',
       area_coaches: ['Bahram Kaman','Brian Marzan','Cesar Robles','Donna Dittmar','Freddy (Antonio) Sandoval','Jesse Luna','Kyle Smith','Luigi Andinolfi'] } },
   { username: 'lschwartz', email: 'lschwartz@ayvazpizza.com', name: 'Lori Schwartz', role: 'rdo',
-    scope: { type: 'rdo', rc_name: 'Lori Schwartz', vp: 'Chad Magner',
+    scope: { type: 'rdo', rc_name: 'Lori Schwartz', vp: 'Matt Hester',
       area_coaches: ['Debbra Selvig','Derek King','Scott Fiksdal','Szymon Lubas','Va Vang'] } },
 
   // ── Area Coaches ──────────────────────────────────────────────────────────
@@ -64,29 +61,29 @@ const USER_ROSTER = [
     scope: { type: 'area_coach', ac_name: 'Emmanuel Boateng', area: 'Area 2017', region_coach: 'Preston Arnwine',  vp: 'Matt Hester' } },
   { username: 'epizzo',     email: 'epizzo@ayvazpizza.com',     name: 'Erin Pizzo',       role: 'area_coach',
     scope: { type: 'area_coach', ac_name: 'Erin Pizzo',       area: 'Area 2004', region_coach: 'Preston Arnwine',  vp: 'Matt Hester' } },
-  { username: 'rmitchell',  email: 'rmitchell@ayvazpizza.com',  name: 'Royal Mitchell',   role: 'area_coach',
-    scope: { type: 'area_coach', ac_name: 'Royal Mitchell',   area: 'Area 2009', region_coach: 'Preston Arnwine',  vp: 'Matt Hester' } },
+  { username: 'jmcneal',    email: 'jmcneal@ayvazpizza.com',    name: 'Jason McNeal',     role: 'area_coach',
+    scope: { type: 'area_coach', ac_name: 'Jason McNeal',     area: 'Area 2009', region_coach: 'Preston Arnwine',  vp: 'Matt Hester' } },
   { username: 'rkowalczyk', email: 'rkowalczyk@ayvazpizza.com', name: 'Russell Kowalczyk',role: 'area_coach',
     scope: { type: 'area_coach', ac_name: 'Russell Kowalczyk',area: 'Area 2048', region_coach: 'Preston Arnwine',  vp: 'Matt Hester' } },
   { username: 'swhite',     email: 'swhite@ayvazpizza.com',     name: 'Stepfen White',    role: 'area_coach',
     scope: { type: 'area_coach', ac_name: 'Stepfen White',    area: 'Area 2041', region_coach: 'Preston Arnwine',  vp: 'Matt Hester' } },
   // Terrance Spillane's region
   { username: 'bmarta',     email: 'bmarta@ayvazpizza.com',     name: 'Brenda Marta',     role: 'area_coach',
-    scope: { type: 'area_coach', ac_name: 'Brenda Marta',     area: 'Area 2002', region_coach: 'Terrance Spillane',vp: 'Matt Hester' } },
+    scope: { type: 'area_coach', ac_name: 'Brenda Marta',     area: 'Area 2002', region_coach: 'Terrance Spillane',vp: 'Tracy Krumwiede' } },
   { username: 'cmiranda',   email: 'cmiranda@ayvazpizza.com',   name: 'Constance Miranda',role: 'area_coach',
-    scope: { type: 'area_coach', ac_name: 'Constance Miranda',area: 'Area 2010', region_coach: 'Terrance Spillane',vp: 'Matt Hester' } },
+    scope: { type: 'area_coach', ac_name: 'Constance Miranda',area: 'Area 2010', region_coach: 'Terrance Spillane',vp: 'Tracy Krumwiede' } },
   { username: 'eharstine',  email: 'eharstine@ayvazpizza.com',  name: 'Eric Harstine',    role: 'area_coach',
-    scope: { type: 'area_coach', ac_name: 'Eric Harstine',    area: 'Area 2033', region_coach: 'Terrance Spillane',vp: 'Matt Hester' } },
+    scope: { type: 'area_coach', ac_name: 'Eric Harstine',    area: 'Area 2033', region_coach: 'Terrance Spillane',vp: 'Tracy Krumwiede' } },
   { username: 'jmartinez',  email: 'jmartinez@ayvazpizza.com',  name: 'Javier Martinez',  role: 'area_coach',
-    scope: { type: 'area_coach', ac_name: 'Javier Martinez',  area: 'Area 2024', region_coach: 'Terrance Spillane',vp: 'Matt Hester' } },
+    scope: { type: 'area_coach', ac_name: 'Javier Martinez',  area: 'Area 2024', region_coach: 'Terrance Spillane',vp: 'Tracy Krumwiede' } },
   { username: 'kdunn',      email: 'kdunn@ayvazpizza.com',      name: 'Kevin Dunn',       role: 'area_coach',
-    scope: { type: 'area_coach', ac_name: 'Kevin Dunn',       area: 'Area 2055', region_coach: 'Terrance Spillane',vp: 'Matt Hester' } },
+    scope: { type: 'area_coach', ac_name: 'Kevin Dunn',       area: 'Area 2055', region_coach: 'Terrance Spillane',vp: 'Tracy Krumwiede' } },
   { username: 'mlosey',     email: 'mlosey@ayvazpizza.com',     name: 'Max Losey',        role: 'area_coach',
-    scope: { type: 'area_coach', ac_name: 'Max Losey',        area: 'Area 2039', region_coach: 'Terrance Spillane',vp: 'Matt Hester' } },
+    scope: { type: 'area_coach', ac_name: 'Max Losey',        area: 'Area 2039', region_coach: 'Terrance Spillane',vp: 'Tracy Krumwiede' } },
   { username: 'ogutierrez', email: 'ogutierrez@ayvazpizza.com', name: 'Oscar Gutierrez',  role: 'area_coach',
-    scope: { type: 'area_coach', ac_name: 'Oscar Gutierrez',  area: 'Area 2043', region_coach: 'Terrance Spillane',vp: 'Matt Hester' } },
+    scope: { type: 'area_coach', ac_name: 'Oscar Gutierrez',  area: 'Area 2043', region_coach: 'Terrance Spillane',vp: 'Tracy Krumwiede' } },
   { username: 'tbaker',     email: 'tbaker@ayvazpizza.com',     name: 'Tami Elliott-Baker',role: 'area_coach',
-    scope: { type: 'area_coach', ac_name: 'Tami Elliott-Baker',area:'Area 2008', region_coach: 'Terrance Spillane',vp: 'Matt Hester' } },
+    scope: { type: 'area_coach', ac_name: 'Tami Elliott-Baker',area:'Area 2008', region_coach: 'Terrance Spillane',vp: 'Tracy Krumwiede' } },
   // Jerry Warren's region
   { username: 'agarza',     email: 'agarza@ayvazpizza.com',     name: 'Alpha Garza',      role: 'area_coach',
     scope: { type: 'area_coach', ac_name: 'Alpha Garza',      area: 'Area 2042', region_coach: 'Jerry Warren',     vp: 'Tracy Krumwiede' } },
@@ -99,8 +96,8 @@ const USER_ROSTER = [
   { username: 'tcobb',      email: 'tcobb@ayvazpizza.com',      name: 'Thomas Cobb',      role: 'area_coach',
     scope: { type: 'area_coach', ac_name: 'Thomas Cobb',      area: 'Area 2030', region_coach: 'Jerry Warren',     vp: 'Tracy Krumwiede' } },
   // Jose Lozano's region
-  { username: 'jmaldonado', email: 'jmaldonado@ayvazpizza.com', name: 'Jacob Maldonado',  role: 'area_coach',
-    scope: { type: 'area_coach', ac_name: 'Jacob Maldonado',  area: 'Area 2021', region_coach: 'Jose Lozano Sr.',  vp: 'Tracy Krumwiede' } },
+  { username: 'ljohnson',   email: 'ljohnson@ayvazpizza.com',   name: 'Lonie Johnson Jr', role: 'area_coach',
+    scope: { type: 'area_coach', ac_name: 'Lonie Johnson Jr', area: 'Area 2021', region_coach: 'Jose Lozano Sr.',  vp: 'Tracy Krumwiede' } },
   { username: 'jsalinas',   email: 'jsalinas@ayvazpizza.com',   name: 'Joel Salinas',     role: 'area_coach',
     scope: { type: 'area_coach', ac_name: 'Joel Salinas',     area: 'Area 2019', region_coach: 'Jose Lozano Sr.',  vp: 'Tracy Krumwiede' } },
   { username: 'jflores',    email: 'jflores@ayvazpizza.com',    name: 'Jose Flores',      role: 'area_coach',
@@ -149,15 +146,15 @@ const USER_ROSTER = [
     scope: { type: 'area_coach', ac_name: 'Luigi Andinolfi',  area: 'Area 2036', region_coach: 'Theresa McDaniel', vp: 'Tracy Krumwiede' } },
   // Lori Schwartz's region (Chad Magner)
   { username: 'dselvig',    email: 'dselvig@ayvazpizza.com',    name: 'Debbra Selvig',    role: 'area_coach',
-    scope: { type: 'area_coach', ac_name: 'Debbra Selvig',    area: 'Area 2013', region_coach: 'Lori Schwartz',    vp: 'Chad Magner' } },
+    scope: { type: 'area_coach', ac_name: 'Debbra Selvig',    area: 'Area 2013', region_coach: 'Lori Schwartz',    vp: 'Matt Hester' } },
   { username: 'dking',      email: 'dking@ayvazpizza.com',      name: 'Derek King',       role: 'area_coach',
-    scope: { type: 'area_coach', ac_name: 'Derek King',       area: 'Area 2057', region_coach: 'Lori Schwartz',    vp: 'Chad Magner' } },
+    scope: { type: 'area_coach', ac_name: 'Derek King',       area: 'Area 2057', region_coach: 'Lori Schwartz',    vp: 'Matt Hester' } },
   { username: 'sfiksdal',   email: 'sfiksdal@ayvazpizza.com',   name: 'Scott Fiksdal',    role: 'area_coach',
-    scope: { type: 'area_coach', ac_name: 'Scott Fiksdal',    area: 'Area 2049', region_coach: 'Lori Schwartz',    vp: 'Chad Magner' } },
+    scope: { type: 'area_coach', ac_name: 'Scott Fiksdal',    area: 'Area 2049', region_coach: 'Lori Schwartz',    vp: 'Matt Hester' } },
   { username: 'slubas',     email: 'slubas@ayvazpizza.com',     name: 'Szymon Lubas',     role: 'area_coach',
-    scope: { type: 'area_coach', ac_name: 'Szymon Lubas',     area: 'Area 2044', region_coach: 'Lori Schwartz',    vp: 'Chad Magner' } },
+    scope: { type: 'area_coach', ac_name: 'Szymon Lubas',     area: 'Area 2044', region_coach: 'Lori Schwartz',    vp: 'Matt Hester' } },
   { username: 'vvang',      email: 'vvang@ayvazpizza.com',      name: 'Va Vang',          role: 'area_coach',
-    scope: { type: 'area_coach', ac_name: 'Va Vang',          area: 'Area 2012', region_coach: 'Lori Schwartz',    vp: 'Chad Magner' } },
+    scope: { type: 'area_coach', ac_name: 'Va Vang',          area: 'Area 2012', region_coach: 'Lori Schwartz',    vp: 'Matt Hester' } },
 ];
 
 const USER_MAP = new Map();

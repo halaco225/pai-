@@ -377,6 +377,7 @@ async function generateMorningBriefs(targetDate) {
   if (!p) { console.log('[Intel Pipeline] Morning briefs skipped — no DB pool'); return; }
 
   const { generateMorningBrief } = require('./claude');
+  const { buildScorecard } = require('./scorecard');
   const { getFiscalContextString } = require('./fiscal-calendar');
   const fiscal = getFiscalContextString ? getFiscalContextString() : '';
 
@@ -441,12 +442,9 @@ async function generateMorningBriefs(targetDate) {
                         s.summary,s.full_comment AS comment_text,a.area_coach
                  FROM intel_shoutouts s LEFT JOIN store_assignments a ON s.store_id=a.store_id
                  WHERE s.shoutout_date=$1 LIMIT 10`, [targetDate]),
-        p.query(`SELECT sa.area_coach,
-                        ROUND(AVG(v.on_time_pct)::numeric,1)::float AS avg_otd_pct,
-                        ROUND(AVG(v.pct_lt4)::numeric,1)::float      AS avg_pct_lt4
-                 FROM velocity_daily_records v ${vj}
-                 WHERE v.record_date=$1 AND v.on_time_pct IS NOT NULL
-                 GROUP BY sa.area_coach`, vp2),
+        // Velocity rollup now comes from buildScorecard, which bridges the
+        // "S039377" vs "039377" store-id mismatch this join never handled.
+        Promise.resolve({ rows: [] }),
         p.query(`SELECT ack.acknowledged_by,ack.action_taken,ack.acknowledged_at,
                         f.store_id,f.store_name,f.area_coach,f.metric_type,
                         f.status as flag_status,f.consecutive_days_out
@@ -490,11 +488,20 @@ async function generateMorningBriefs(targetDate) {
         }),
       };
 
+      // Own level + the level directly beneath, five metrics, computed not written.
+      let scorecard = null;
+      try {
+        scorecard = await buildScorecard({ pool: p, targetDate, role, name, scope });
+      } catch (scErr) {
+        console.error(`[Intel Pipeline] Scorecard failed for ${username}:`, scErr.message);
+      }
+
       const memo_text = await generateMorningBrief({
         date: targetDate, userName: name, userRole: role, fiscalContext: fiscal,
         regionMetrics: metricsRes.rows[0] || {}, byAC, byStore: storeRes.rows,
         velocity: velRes.rows, flags: flagsRes.rows,
         shoutouts: shoutRes.rows, followUps: followRes.rows, operationalAlerts,
+        scorecard,
       });
 
       await db.upsertIntelCache({

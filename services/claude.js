@@ -1501,7 +1501,8 @@ Rules:
 // ─── Morning Brief Generator ────────────────────────────────────────────────
 
 async function generateMorningBrief({ date, userName, userRole, fiscalContext,
-  regionMetrics, byAC, byStore, velocity, flags, shoutouts, followUps, operationalAlerts }) {
+  regionMetrics, byAC, byStore, velocity, flags, shoutouts, followUps, operationalAlerts,
+  scorecard }) {
 
   const isAC = userRole === 'area_coach';
   const isVP = userRole === 'vp';
@@ -1523,58 +1524,51 @@ async function generateMorningBrief({ date, userName, userRole, fiscalContext,
     ? `MORNING BRIEF — ${todayStr}${fiscalCode ? ' — ' + fiscalCode : ''}\nResults from ${date} (${briefDow})`
     : `MORNING BRIEF — ${date}${fiscalCode ? ' — ' + fiscalCode : ''}`;
 
-  // ── Section 2: Performance — stat bar + LLM narrative ────────────
+  // ── Section 2: Scorecard — deterministic, plus a two-sentence lede ──
+  // The numbers are rendered from the scorecard, never written by the model, so
+  // nothing here can be hallucinated or rounded differently run to run. The model
+  // only gets to say what the numbers mean, in two sentences, above the table.
+  const { renderScorecard } = require('./scorecard');
+  // No fiscalCode here — the brief header two lines up already carries it.
+  const scorecardSection = scorecard ? renderScorecard(scorecard, {}) : '';
+
   const statBar = regionMetrics.store_count > 0
     ? `${fmtDollar(regionMetrics.net_sales_day)} | ${fmtGrowth(regionMetrics.avg_growth_day)} | ${regionMetrics.store_count} stores`
     : 'No sales data for this date.';
 
-  let acBreakdownForPrompt = '';
-  if (isAC && byStore?.length) {
-    acBreakdownForPrompt = 'BY STORE (sorted best→worst growth):\n'
-      + [...byStore].sort((a,b)=>(b.growth_pct_day||0)-(a.growth_pct_day||0))
-          .map(s => `  • ${s.store_name||s.store_id}: ${fmtDollar(s.net_sales_day)} | ${fmtGrowth(s.growth_pct_day)}`).join('\n');
-  } else if (byAC?.length) {
-    const sorted = [...byAC].sort((a,b)=>(b.avg_growth_day||0)-(a.avg_growth_day||0));
-    acBreakdownForPrompt = `BY ${isVP ? 'REGION / AREA COACH' : 'AREA COACH'} (sorted best→worst growth):\n`
-      + sorted.map(a => {
-          const storeLines = !isVP && byStore?.length
-            ? byStore.filter(s=>s.area_coach===a.area_coach)
-                .sort((x,y)=>(y.growth_pct_day||0)-(x.growth_pct_day||0))
-                .slice(0,6).map(s=>`      - ${s.store_name||s.store_id}: ${fmtDollar(s.net_sales_day)} | ${fmtGrowth(s.growth_pct_day)}`).join('\n')
-            : '';
-          return `  • ${a.area_coach}: ${fmtDollar(a.net_sales_day)} | ${fmtGrowth(a.avg_growth_day)}${storeLines ? '\n'+storeLines : ''}`;
-        }).join('\n');
-  }
-
-  const roleLabel = isAC ? 'Area Coach' : isVP ? 'VP of Operations' : 'Region Coach';
   const scopeWord = isAC ? 'area' : isVP ? 'territory' : 'region';
+  const roleLabel = isAC ? 'Area Coach' : isVP ? 'VP of Operations' : 'Region Coach';
+  const childWord = isAC ? 'store' : isVP ? 'region' : 'area';
 
-  const perfPrompt = `You are writing the performance section of a morning brief for ${userName} (${roleLabel}) at Ayvaz Pizza LLC (Pizza Hut franchisee).
+  let ledeSection = '';
+  if (scorecard) {
+    const own  = scorecard.own;
+    const best  = [...scorecard.rows].filter(r => r.growth_pct != null).pop();
+    const worst = [...scorecard.rows].find(r => r.growth_pct != null);
 
-DATE: ${date} (${briefDow})${fiscalCode ? ' — ' + fiscalCode : ''}
+    const ledePrompt = `You are writing the opening read of a morning brief for ${userName} (${roleLabel}) at Ayvaz Pizza LLC, a Pizza Hut franchisee.
 
-PERFORMANCE DATA:
-${statBar}
+${scopeWord.toUpperCase()} YESTERDAY (${date}):
+  Sales ${fmtDollar(own.sales)} at ${own.growth_pct == null ? 'no LY data' : own.growth_pct.toFixed(1) + '% vs LY'}
+  IST ${own.ist == null ? 'no data' : own.ist.toFixed(1) + ' min'}
+  Labor hours ${own.hrs_variance == null ? 'no data' : (own.hrs_variance >= 0 ? '+' : '') + own.hrs_variance.toFixed(1) + ' vs scheduled'}
+  WIN PTD ${own.win == null ? 'no data' : own.win.toFixed(1) + '%'}
+  Missed routines ${own.missed_routines}
+${best  ? `  Best ${childWord}: ${best.label} at ${best.growth_pct.toFixed(1)}%
+`  : ''}${worst ? `  Worst ${childWord}: ${worst.label} at ${worst.growth_pct.toFixed(1)}%
+` : ''}
+Write exactly two sentences giving the overall read. Name the single thing most worth acting on today.
+Do not restate every number — the full table follows yours. Plain text only, no markdown, no asterisks, no heading.`;
 
-${acBreakdownForPrompt}
-
-Write ONLY these two sections. Be direct. Use exact numbers. Plain text only — no markdown, no asterisks.
-
-YESTERDAY'S PERFORMANCE
-[2-3 sentences: total ${scopeWord} sales, growth vs LY, one overall read. Name the top AND bottom ${isAC ? 'store' : 'AC'} with their specific growth %.]
-
-${isAC ? 'BY STORE' : isVP ? 'BY REGION' : 'BY AREA COACH'}
-[One bullet per ${isAC ? 'store' : 'AC'}. Format exactly: • Name — $X,XXX | +X.X% vs LY. No extra sentences.]`;
-
-  let perfSection = '';
-  try {
-    const resp = await client.messages.create({
-      model: MODEL, max_tokens: 600,
-      messages: [{ role: 'user', content: perfPrompt }]
-    });
-    perfSection = resp.content[0].text.trim();
-  } catch (_) {
-    perfSection = `YESTERDAY'S PERFORMANCE\n${statBar}\n\n${isAC ? 'BY STORE' : 'BY AREA COACH'}\n${acBreakdownForPrompt}`;
+    try {
+      const resp = await client.messages.create({
+        model: MODEL, max_tokens: 200,
+        messages: [{ role: 'user', content: ledePrompt }]
+      });
+      ledeSection = resp.content[0].text.trim();
+    } catch (_) {
+      ledeSection = '';   // the scorecard below carries the facts on its own
+    }
   }
 
   // ── Section 3: Attack List (deterministic) ────────────────────────
@@ -1679,7 +1673,7 @@ ${isAC ? 'BY STORE' : isVP ? 'BY REGION' : 'BY AREA COACH'}
   }
   const smgSection = smgLines.join('\n');
 
-  return [header, perfSection, attackSection, smgSection].filter(Boolean).join('\n\n');
+  return [header, ledeSection, scorecardSection, attackSection, smgSection].filter(Boolean).join('\n\n');
 }
 
 module.exports = { analyzePL, analyzePLForAC, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail, generateDailyIntelEmail, analyzeAdditionalContent, generateMorningBrief };

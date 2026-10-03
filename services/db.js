@@ -557,6 +557,7 @@ async function initIntelDB() {
     CREATE TABLE IF NOT EXISTS store_assignments (
       store_id      VARCHAR(20)  NOT NULL,
       store_name    VARCHAR(100),
+      area          VARCHAR(50),
       area_coach    VARCHAR(100),
       region_coach  VARCHAR(100),
       vp            VARCHAR(100),
@@ -564,6 +565,9 @@ async function initIntelDB() {
       PRIMARY KEY (store_id)
     )
   `);
+
+  // Added after the table shipped — the scorecard labels rows "Area 2011 — Darian Spikes".
+  await p.query(`ALTER TABLE store_assignments ADD COLUMN IF NOT EXISTS area VARCHAR(50)`);
 
   await p.query(`
     CREATE INDEX IF NOT EXISTS idx_store_assignments_ac
@@ -1040,20 +1044,21 @@ async function resolveIntelFlags(storeIds, metricType, metricDate) {
 }
 
 // ── Store assignments (hierarchy lookup) ─────────────────────────────────────
-async function upsertStoreAssignment({ store_id, store_name, area_coach, region_coach, vp }) {
+async function upsertStoreAssignment({ store_id, store_name, area, area_coach, region_coach, vp }) {
   const p = getPool();
   if (!p) return;
   try {
     await p.query(`
-      INSERT INTO store_assignments (store_id, store_name, area_coach, region_coach, vp, updated_at)
-      VALUES ($1, $2, $3, $4, $5, NOW())
+      INSERT INTO store_assignments (store_id, store_name, area, area_coach, region_coach, vp, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW())
       ON CONFLICT (store_id) DO UPDATE SET
         store_name   = EXCLUDED.store_name,
+        area         = EXCLUDED.area,
         area_coach   = EXCLUDED.area_coach,
         region_coach = EXCLUDED.region_coach,
         vp           = EXCLUDED.vp,
         updated_at   = NOW()
-    `, [store_id, store_name ?? null, area_coach ?? null, region_coach ?? null, vp ?? null]);
+    `, [store_id, store_name ?? null, area ?? null, area_coach ?? null, region_coach ?? null, vp ?? null]);
   } catch (err) {
     console.error('DB upsertStoreAssignment error:', err.message);
   }
@@ -1307,14 +1312,15 @@ async function seedStoreAssignmentsFromAlignment() {
       if (!info || typeof info !== 'object' || !info.area_coach) continue;
       const store_id = key.replace(/^S/, '');
       await p.query(`
-        INSERT INTO store_assignments (store_id, store_name, area_coach, region_coach, vp)
-        VALUES ($1,$2,$3,$4,$5)
+        INSERT INTO store_assignments (store_id, store_name, area, area_coach, region_coach, vp)
+        VALUES ($1,$2,$3,$4,$5,$6)
         ON CONFLICT (store_id) DO UPDATE SET
           store_name   = EXCLUDED.store_name,
+          area         = EXCLUDED.area,
           area_coach   = EXCLUDED.area_coach,
           region_coach = EXCLUDED.region_coach,
           vp           = EXCLUDED.vp
-      `, [store_id, info.name, info.area_coach, info.region_coach, info.vp]);
+      `, [store_id, info.name, info.area, info.area_coach, info.region_coach, info.vp]);
       activeIds.push(store_id);
       count++;
     }

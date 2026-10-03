@@ -2077,8 +2077,21 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
             return [{store_id:r.store_id,store_name:r.store_name,area_coach:r.area_coach,comment_text:det.summary||'',categories:det.top_categories||[],name_mentioned:det.names_mentioned?.[0]||null}];
           }),
         };
+        // Same scorecard the nightly pipeline builds, so the on-demand view and
+        // the cached brief cannot disagree.
+        let acScorecard = null;
+        try {
+          const { buildScorecard } = require('../services/scorecard');
+          acScorecard = await buildScorecard({
+            pool: p, targetDate: date2, role: 'area_coach',
+            name: acUser?.name || viewAsAC,
+            scope: acUser?.scope || { ac_name: viewAsAC },
+          });
+        } catch (scErr) { console.error('[Intel] AC scorecard failed:', scErr.message); }
+
         acMemo = await generateMorningBrief({
           date: date2,
+          scorecard:        acScorecard,
           userName:         acUser?.name || viewAsAC,
           userRole:         'area_coach',
           fiscalContext:    getFiscalContextString ? getFiscalContextString() : '',
@@ -2286,8 +2299,17 @@ router.get('/morning-brief', requireAuth, async (req, res) => {
       } else {
         const { generateMorningBrief } = require('../services/claude');
         const { getFiscalContextString } = require('../services/fiscal-calendar');
+        let ownScorecard = null;
+        try {
+          const { buildScorecard } = require('../services/scorecard');
+          ownScorecard = await buildScorecard({
+            pool: p, targetDate: date, role: user.role,
+            name: user.name, scope: user.scope,
+          });
+        } catch (scErr) { console.error('[Intel] scorecard failed:', scErr.message); }
+
         memo_text = await generateMorningBrief({
-          date, userName: user.name, userRole: user.role,
+          date, userName: user.name, userRole: user.role, scorecard: ownScorecard,
           fiscalContext: getFiscalContextString ? getFiscalContextString() : '',
           regionMetrics: metricsRes.rows[0] || {},
           byAC, byStore, velocity: velocityRes.rows,
