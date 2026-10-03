@@ -126,5 +126,30 @@ app.listen(PORT, async () => {
   } catch (err) {
     console.log(`   Scheduler: failed to start (${err.message})`);
   }
+  try {
+    require('./services/rc-people').logRosterDrift();
+  } catch (err) {
+    console.log(`   Roster: drift check failed (${err.message})`);
+  }
+  try {
+    const briefSms = require('./services/brief-sms');
+    const rcDb     = require('./services/rc-db');
+    if (process.env.ENABLE_BRIEF_SMS === 'false') {
+      console.log('   Brief SMS: disabled (ENABLE_BRIEF_SMS=false)');
+    } else if (!rcDb.isConfigured()) {
+      console.log('   Brief SMS: idle — SUPABASE_URL / SUPABASE_SERVICE_KEY not set');
+    } else {
+      // Its own 2-minute timer, not the scheduler's 15-minute tick: an :05
+      // target cannot be hit by a 15-minute cadence, which would scatter an
+      // 8:05 text anywhere up to 8:20.
+      setInterval(() => {
+        briefSms.tick().catch(e => console.error('[BriefSMS] tick:', e.message));
+      }, 2 * 60 * 1000);
+      const at = process.env.PAI_BRIEF_SEND_LOCAL_TIME || '08:05';
+      console.log(`   Brief SMS: armed ✓ (every 2m, ${at} local, to ${briefSms.recipients().join(', ') || 'nobody'})`);
+    }
+  } catch (err) {
+    console.log(`   Brief SMS: failed to start (${err.message})`);
+  }
   console.log('');
 });

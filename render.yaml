@@ -57,6 +57,31 @@ services:
         value: 022f4a0fa4e2ec99541609c47744d599
       - key: INTEL_AUTOMATION_TOKEN
         value: 38b8091924e1f85583454212a9860038
+      # ── RC Tracker's Supabase (follow-ups, SMS history, consent) ──
+      # Same project RC Tracker uses. Read and written in place; nothing is
+      # migrated, so there is no window in which rows can be lost.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      # ── Twilio — the SAME number RC Tracker uses ──
+      # Outbound only. RC Tracker still owns the inbound webhook and the status
+      # callback, so its replies, STOP/START and delivery logging are untouched.
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      # ── Morning brief by text ──
+      - key: PAI_BASE_URL
+        value: https://pai-ayvaz.onrender.com
+      - key: PAI_BRIEF_RECIPIENTS
+        value: hlacoste
+      - key: PAI_BRIEF_SEND_LOCAL_TIME
+        value: "08:05"
 
   # The velocity-ods-pull cron that used to be declared here was never
   # actually running in Render — only intel-dbs-pull below ever fired. The
