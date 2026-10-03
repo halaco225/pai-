@@ -287,4 +287,25 @@ router.get('/diag/scorecard', async (req, res) => {
   res.json(out);
 });
 
+// ── POST /api/brief/winscore/run — pull Win Score PTD now ───────────────────
+// Drives reporting.smg.com with the stored credentials, the same clicks Harold
+// walked me through. Writes smg_win_scores. Token-gated; safe to re-run, since
+// the upsert is keyed on (store_id, period_end_date).
+router.post('/winscore/run', async (req, res) => {
+  if (!authed(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const ws = require('../services/intel-smg-winscore-browser');
+    if (req.query.dry === '1') {
+      const out = await ws.pullWinScores();
+      return res.json({ dryRun: true, periodEnd: out.periodEnd,
+                        stores: out.stores.length, combined: out.combined,
+                        sample: out.stores.slice(0, 5) });
+    }
+    const out = await ws.pullAndStore();
+    res.json(out);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
