@@ -161,7 +161,11 @@ async function pullWinScores() {
   const pass = process.env.SMG_PASSWORD;
   if (!user || !pass) throw new Error('SMG_USER / SMG_PASSWORD are not set');
 
-  const { browser, context } = await launchContext();
+  // launchContext returns a persistent context, not { browser, context }, and
+  // it needs a profile directory. /tmp is writable on Render; the dir is reused
+  // across runs so a warm profile does not have to be rebuilt each morning.
+  const profileDir = process.env.SMG_PROFILE_DIR || '/tmp/smg-winscore-profile';
+  const context = await launchContext(profileDir);
   const page = await context.newPage();
 
   try {
@@ -195,8 +199,8 @@ async function pullWinScores() {
 
     return { periodEnd, stores, combined };
   } finally {
+    // Closing a persistent context shuts its browser down too.
     await context.close().catch(() => {});
-    await browser.close().catch(() => {});
   }
 }
 
