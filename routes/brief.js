@@ -173,4 +173,105 @@ router.post('/send-now', async (req, res) => {
   }
 });
 
+// ── GET /api/brief/rc-backup — count and download RC Tracker's data ─────────
+//
+// Runs inside Render, where the Supabase keys already live, so a backup can be
+// taken without any credential leaving that environment. Read-only.
+//
+// ?mode=count  (default) row counts only — the cheap pre-flight
+// ?mode=dump&table=follow_ups   that table's rows as JSON, to save locally
+router.get('/rc-backup', async (req, res) => {
+  if (!authed(req)) return res.status(401).json({ error: 'Unauthorized' });
+
+  const TABLES = ['user_data', 'follow_ups', 'email_followups',
+                  'sms_reminders', 'sms_consent', 'sms_messages', 'candidates'];
+  const sb = rcDb.getServiceClient();
+  if (!sb) return res.status(503).json({ error: 'Supabase is not configured' });
+
+  const mode = req.query.mode || 'count';
+
+  if (mode === 'count') {
+    const counts = {};
+    for (const t of TABLES) {
+      const { count, error } = await sb.from(t).select('*', { count: 'exact', head: true });
+      counts[t] = error ? `ERROR: ${error.message}` : count;
+    }
+    let bucket;
+    try {
+      const { data, error } = await sb.storage.from('note-images').list('', { limit: 10000 });
+      bucket = error ? `ERROR: ${error.message}` : data.length;
+    } catch (e) { bucket = `ERROR: ${e.message}`; }
+    return res.json({ mode, counts, noteImages: bucket });
+  }
+
+  if (mode === 'dump') {
+    const table = req.query.table;
+    if (!TABLES.includes(table)) {
+      return res.status(400).json({ error: 'Unknown table', allowed: TABLES });
+    }
+    // Paged — a plain select caps at Supabase's row limit and truncates
+    // without saying so, which would look like a complete backup.
+    const PAGE = 1000;
+    const rows = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await sb.from(table).select('*').range(from, from + PAGE - 1);
+      if (error) return res.status(500).json({ error: error.message, partialRows: rows.length });
+      rows.push(...data);
+      if (data.length < PAGE) break;
+    }
+    res.setHeader('Content-Disposition', `attachment; filename="${table}.json"`);
+    return res.json({ table, rowCount: rows.length, rows });
+  }
+
+  res.status(400).json({ error: "mode must be 'count' or 'dump'" });
+});
+
+// ── GET /api/brief/diag/scorecard — why is a column empty? ──────────────────
+//
+// The brief shows "0/37 reporting" for a metric whose pipeline step reported
+// success, which means the step ran but wrote nothing. This says which of the
+// four source tables actually has rows for a date, so the answer is a lookup
+// rather than a guess. Read-only.
+router.get('/diag/scorecard', async (req, res) => {
+  if (!authed(req)) return res.status(401).json({ error: 'Unauthorized' });
+
+  const p = db.getPool();
+  if (!p) return res.status(503).json({ error: 'Database unavailable' });
+
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '')
+    ? req.query.date
+    : briefSms.briefCacheDate();
+
+  const q = async (label, sql, params = [date]) => {
+    try { return { [label]: (await p.query(sql, params)).rows }; }
+    catch (e) { return { [label]: `ERROR: ${e.message}` }; }
+  };
+
+  const out = Object.assign({ date }, ...(await Promise.all([
+    q('dbs_metrics', `SELECT COUNT(*)::int AS stores,
+                             COUNT(net_sales_day)::int AS with_sales
+                        FROM intel_dbs_metrics WHERE metric_date = $1`),
+    q('soft_indicators_by_name', `SELECT indicator, COUNT(*)::int AS rows
+                                    FROM dbs_soft_indicators WHERE metric_date = $1
+                                   GROUP BY indicator ORDER BY indicator`),
+    q('win_scores', `SELECT COUNT(*)::int AS rows,
+                            MAX(period_end_date)::text AS latest_period
+                       FROM smg_win_scores`, []),
+    q('flags', `SELECT metric_type, COUNT(*)::int AS rows
+                  FROM intel_flags WHERE metric_date = $1
+                 GROUP BY metric_type ORDER BY rows DESC LIMIT 10`),
+    q('velocity', `SELECT COUNT(*)::int AS rows,
+                          COUNT(*) FILTER (WHERE store_id LIKE 'S%')::int AS s_prefixed
+                     FROM velocity_daily_records WHERE record_date = $1`),
+    q('store_assignments', `SELECT COUNT(*)::int AS stores FROM store_assignments`, []),
+    q('recent_pipeline_runs', `SELECT TO_CHAR(target_date,'YYYY-MM-DD') AS target_date,
+                                      status, created_at
+                                 FROM intel_automation_log
+                                WHERE job_type = 'pipeline'
+                                ORDER BY created_at DESC LIMIT 5`, []),
+  ])));
+
+  res.json(out);
+});
+
 module.exports = router;
