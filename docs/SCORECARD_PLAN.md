@@ -163,3 +163,93 @@ Changed:
   `store_assignments.area` and re-point flags at the P10 hierarchy.
 - Two new area coaches (Jason McNeal, Lonie Johnson Jr) have roster entries and
   therefore logins on the shared default password. They have never signed in.
+
+---
+
+# Update 2026-10-03 — deployed, and the pull moved to 6am Eastern
+
+Added by the session working on `docs/superpowers/plans/2026-10-02-brief-by-text.md`
+in the `rc-tracker` repo (texting P.AI's morning brief). The two workstreams were
+never separate branches: `feat/brief-by-text` was cut from `363ca7e`, so it
+carried all of the scorecard work from the start.
+
+## Deployed
+
+`origin/main` is now `bbd996f` — was `f1c846f`. Six commits:
+
+| | |
+|---|---|
+| `363ca7e` | hierarchy scorecard + P10 alignment (this document's work) |
+| `c2c59d4` | jest — P.AI had no test suite |
+| `019ad2e` | `services/localtime.js` — timezone helpers |
+| `269cfb7` | both morning pulls gate on 6am Eastern local |
+| `0fae972` | intel pipeline gets its own gate; fixes a bug `269cfb7` introduced |
+| `bbd996f` | seed deletion guard (below) |
+
+31 tests pass. "Nothing committed, nothing deployed" above is now stale.
+
+## The pull runs at 6am Eastern, by local clock
+
+Harold asked for 6am Eastern on the previous day's numbers. Previous-day
+targeting already worked — `missingDates()` starts at yesterday, and the brief
+header already separated today's date from the data date.
+
+The 6am part could not be a cron time: Render's cron is UTC-only and DST-blind,
+so a fixed hour is 6am Eastern for five months a year and 7am for the other
+seven. Both pulls now ask what time it is in `America/New_York` on every tick
+(`services/localtime.js`, asserted across the 2026-11-01 boundary).
+
+**This affects the brief's build window.** The intel pipeline starts at 6am
+Eastern and generates ~60 briefs through Claude. An Eastern recipient's 8:05am
+text leaves 2h05m; Central gets 3h05m, Mountain 4h05m. The sender skips and
+retries rather than reaching back to an older `cache_date` — a late text is
+recoverable, yesterday's numbers labelled as today's are not.
+
+The cron (`0 10 * * *`) is now only a trigger. `services/scheduler.js` is the
+authority and the gap-healer: an undated `run-batch` before 6am Eastern returns
+`{status:'deferred'}`, and the scheduler fires it at 6am instead. An explicit
+date is never gated.
+
+## Seed deletion now has a floor and a ceiling
+
+Bug 4 above is accurate — the seeder runs on every boot, from `initIntelDB`, and
+deletes stores absent from the alignment. Harold has confirmed the three stadium
+kiosks are intended.
+
+The hazard was the guard: `activeIds.length > 0`. A half-loaded alignment module
+yielding one store would have deleted the other 366, from a table with no
+backup, in silence. `seedDeletionAllowed()` now refuses a deletion with fewer
+than 300 active stores or more than 25 removals; inserts still apply either way,
+and `SEED_FORCE_DELETE=true` overrides for a real mass closure someone has
+looked at. 8 tests in `tests/seed-guard.test.js`.
+
+The log now **names** the stores it removes. On the deploy that picks up
+`bbd996f`, expect a line like:
+
+```
+[DB] Removed 3 dropped store(s) from assignments: 0XXXXX AT&T Center, ...
+```
+
+If it says `REFUSING`, the alignment load is wrong and nothing was deleted.
+That line is the cheapest confirmation of bug 4 available.
+
+## Still open from this document
+
+- **`seed-hierarchy` still needs its run** — not for seeding, which boot does,
+  but for steps 2 and 3 of that route: re-pointing `intel_flags` at the P10
+  hierarchy. Nothing automatic does that.
+- **Phase 3, WIN score** — untouched. The `MultiLanguage.aspx` redirect lead
+  looks right and is the next thing to pull on. Matt Hester's territory only.
+- **Live verification of the scorecard** — the `S039377` bridge at
+  `services/scorecard.js:67` reads correctly and both sides derive from the same
+  `key.replace(/^S/, '')` transform, so it should hold. First real brief is the
+  test.
+- **Roster drift now matters elsewhere.** Phase 0 moved Lori to Matt Hester,
+  Terrance to Tracy Krumwiede and retired Chad Magner. `rc-tracker/people.json`
+  — which the brief sender reads for phone numbers and timezones — still carries
+  the old VP assignments. Harmless while Harold is the only recipient; a
+  correctness item before anyone else is added.
+- **Shared password.** Noted here because the Tracker migration adds per-person
+  scoping to follow-ups, and scope filtering is only as strong as the login in
+  front of it. With one shared password any user can sign in as any other. Does
+  not block anything; worth its own piece of work.
