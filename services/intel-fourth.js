@@ -116,9 +116,23 @@ async function findReportUris(jar, reportKey) {
     ? ['Overview Report By Location', 'Labor Details by Locations', 'Labor Breakdown by Location']
     : ['Overtime / Double Time / Special By Location', 'Actual/Scheduled Overtime Hours By Org Level 3'];
 
+  // Case- and whitespace-insensitive. The real report is titled "Overview
+  // Report by Location" with a lower-case "by"; matching it with === against
+  // "By" never hit, so LABOR fell through to the keyword fallbacks and picked
+  // an OVERTIME report. The file then had "Act OT Hrs" where the parser wanted
+  // "Act Hrs", no column matched, and the step wrote nothing while reporting
+  // success. Confirmed against the live report on 2026-10-03.
+  const norm = t => String(t || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+  // A labor pull must never land on an overtime report. If the titles ever
+  // drift again, no result is better than the wrong numbers.
+  const isOvertime = t => /overtime|double ?time|\bot\b|\bdt\b/.test(norm(t));
+  const labourSafe = e => reportKey !== 'LABOR' || !isOvertime(e.title);
+
   // Try exact matches first
   let uris = entries
-    .filter(e => exactNames.some(n => (e.title || '').trim() === n))
+    .filter(e => exactNames.some(n => norm(e.title) === norm(n)))
+    .filter(labourSafe)
     .map(e => e.link);
 
   // Fall back to "by Location" tabular reports containing keyword
@@ -126,9 +140,10 @@ async function findReportUris(jar, reportKey) {
     const kw = reportKey === 'LABOR' ? 'labor' : 'overtime';
     uris = entries
       .filter(e => {
-        const t = (e.title || '').toLowerCase();
+        const t = norm(e.title);
         return t.includes(kw) && (t.includes('by location') || t.includes('by locations'));
       })
+      .filter(labourSafe)
       .map(e => e.link);
   }
 
@@ -136,7 +151,8 @@ async function findReportUris(jar, reportKey) {
   if (!uris.length) {
     const kw = reportKey === 'LABOR' ? 'labor details' : 'overtime';
     uris = entries
-      .filter(e => (e.title || '').toLowerCase().includes(kw) && !(e.title || '').startsWith('KPI'))
+      .filter(e => norm(e.title).includes(kw) && !String(e.title || '').startsWith('KPI'))
+      .filter(labourSafe)
       .map(e => e.link);
   }
 
