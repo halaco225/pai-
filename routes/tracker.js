@@ -248,13 +248,12 @@ router.get('/messages/threads', async (req, res) => {
   res.json([...byPerson.values()]);
 });
 
-router.get('/sms-signups', async (req, res) => {
-  const c = sb(res); if (!c) return;
-  const { data, error } = await c.from('sms_consent').select('*')
-    .order('created_at', { ascending: false });
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
-});
+// Proxied, not reimplemented. RC Tracker joins sms_consent against the roster
+// and returns one row per PERSON with a computed status ('signed up' / 'opted
+// out' / 'not signed up'). Returning raw consent rows here, as an earlier
+// version did, gave the page no status field — so the Message Center showed
+// everyone as not signed up when they were.
+router.get('/sms-signups', (req, res) => proxy(req, res, '/api/sms-signups'));
 
 // ── Actions — proxied to RC Tracker ─────────────────────────────────────────
 //

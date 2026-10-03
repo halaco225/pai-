@@ -74,10 +74,20 @@ describe('isDue', () => {
     expect(isDue({ ...base, now: new Date('2026-10-05T12:05:00Z'), consented: false })).toBe(false);
   });
 
-  test('never due without a phone number', () => {
+  // The phone number lives in RC Tracker, which is what actually sends. What
+  // P.AI needs is a timezone, because that is what decides when 8:05 is.
+  test('due without a local phone number, as long as there is a timezone', () => {
     expect(isDue({
       ...base,
-      person: { ...HAROLD, phone: '' },
+      person: { name: 'Harold Lacoste', tz: 'America/New_York' },
+      now: new Date('2026-10-05T12:05:00Z'),
+    })).toBe(true);
+  });
+
+  test('never due without a timezone', () => {
+    expect(isDue({
+      ...base,
+      person: { ...HAROLD, tz: '' },
       now: new Date('2026-10-05T12:05:00Z'),
     })).toBe(false);
   });

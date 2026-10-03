@@ -147,7 +147,9 @@ function toMinutes(hhmm) {
  * Pure — every input is passed in, so no clock or network is needed to test it.
  */
 function isDue({ person, now, sendLocal = DEFAULT_SEND_LOCAL, consented, alreadySentDates = [] }) {
-  if (!person || !person.phone || !person.tz) return false;
+  // A timezone decides when 8:05 is. The phone number lives in RC Tracker,
+  // which is what actually sends, so P.AI does not need one.
+  if (!person || !person.tz) return false;
   if (!consented) return false;
 
   const today = localDate(now, person.tz);
@@ -163,6 +165,35 @@ function isDue({ person, now, sendLocal = DEFAULT_SEND_LOCAL, consented, already
 const db     = require('./db');
 const rcDb   = require('./rc-db');
 const people = require('./rc-people');
+
+// RC Tracker owns the roster, the phone numbers and the Twilio outbound path.
+// P.AI asks it who someone is and tells it to send, by NAME -- so no phone
+// number has to exist in P.AI at all, and there is still exactly one sender.
+const RC_BASE = (process.env.RC_TRACKER_URL || 'https://rc-tracker-hos2.onrender.com').replace(/\/+$/, '');
+
+async function rcPerson(name) {
+  const url = `${RC_BASE}/api/reminders/preview?person=${encodeURIComponent(name)}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`RC Tracker has no record for ${name} (HTTP ${r.status})`);
+  const d = await r.json();
+  return { name, tz: d.tz, signedUp: Boolean(d.signed_up) };
+}
+
+// Send by name through RC Tracker. track:false so the brief is a text, not a
+// new follow-up item on Harold's list.
+async function rcSend(name, body) {
+  const r = await fetch(`${RC_BASE}/api/messages/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ to: [name], body, track: false, sent_by: 'pai-brief' }),
+  });
+  const out = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(out.error || `RC Tracker returned HTTP ${r.status}`);
+  const result = (out.results || [])[0] || {};
+  const ok = ['sent', 'queued', 'delivered', 'scheduled'].includes(result.status);
+  if (!ok) throw new Error(result.status ? `RC Tracker: ${result.status}` : 'RC Tracker did not confirm the send');
+  return result.sid || result.twilio_sid || null;
+}
 
 // Has this person opted in and not since opted out? Latest row wins, which is
 // how RC Tracker's consent log is shaped — one append per event.
@@ -266,15 +297,28 @@ async function sendOne(username, now = new Date()) {
   const personName = people.nameForUsername(username);
   if (!personName) return `${username}: not on the roster`;
 
-  const person = people.getPerson(personName);
-  if (!person) return `${personName}: no phone or timezone on file`;
+  // Prefer a local roster copy if one is mounted; otherwise ask RC Tracker,
+  // which owns the roster. Either way P.AI only needs a timezone.
+  let person = people.getPerson(personName);
+  let consentedViaRc = null;
+  if (!person || !person.tz) {
+    try {
+      const rc = await rcPerson(personName);
+      person = { tz: rc.tz };
+      consentedViaRc = rc.signedUp;
+    } catch (err) {
+      return `${personName}: ${err.message}`;
+    }
+  }
+  if (!person.tz) return `${personName}: no timezone on file`;
 
   const today = localDate(now, person.tz);
 
-  const [consented, already] = await Promise.all([
-    hasConsent(personName, person.phone),
+  const [consentedLocal, already] = await Promise.all([
+    person.phone ? hasConsent(personName, person.phone) : Promise.resolve(null),
     sentDates(personName),
   ]);
+  const consented = consentedViaRc !== null ? consentedViaRc : consentedLocal;
 
   if (!isDue({
     person: { ...person, name: personName }, now,
@@ -297,19 +341,21 @@ async function sendOne(username, now = new Date()) {
   const body = await condense(memo, buildLink());
   if (!body) return `${personName}: brief condensed to nothing`;
 
-  const claimId = await claim(personName, person.phone, today, body);
+  const claimId = await claim(personName, person.phone || '', today, body);
   if (!claimId) return null;   // someone else holds today's claim
 
   try {
-    const sid = await sendText(person.phone, body);
+    // Sent by name through RC Tracker: it resolves the phone, re-checks
+    // consent, sends on the one number and logs it to sms_messages itself.
+    // P.AI does not log a second row — that would show the brief twice in the
+    // Message Center.
+    const sid = await rcSend(personName, body);
     await recordClaimResult(claimId, { twilioSid: sid });
-    await logMessage({ personName, phone: person.phone, body, twilioSid: sid, status: 'sent' });
-    return `${personName}: sent (${sid})`;
+    return `${personName}: sent${sid ? ` (${sid})` : ''}`;
   } catch (err) {
     // Release the claim so the next tick can retry inside the window. Holding a
     // claim for a send that never happened means a silently skipped day.
     await releaseClaim(claimId);
-    await logMessage({ personName, phone: person.phone, body, status: 'failed', errorText: err.message });
     return `${personName}: send failed — ${err.message}`;
   }
 }
