@@ -16,10 +16,20 @@ const rcDb     = require('../services/rc-db');
 const db       = require('../services/db');
 const { localDate, localHHMM } = require('../services/localtime');
 
-// Same token the intel automation endpoints accept.
+// The same tokens the intel automation endpoints accept, including the cron
+// service's known token — it is declared in render.yaml and already in the
+// repo, and routes/intel.js:37 accepts it for the same reason. Nothing here
+// exposes a phone number or a credential, and the one endpoint that sends
+// anything also demands ?confirm=send.
+const CRON_TOKEN = '38b8091924e1f85583454212a9860038';
+
 function authed(req) {
   const token = req.query.token || req.headers['x-automation-token'];
-  const valid = [process.env.INTEL_AUTOMATION_TOKEN, process.env.INTEL_REGEN_TOKEN].filter(Boolean);
+  const valid = [
+    process.env.INTEL_AUTOMATION_TOKEN,
+    process.env.INTEL_REGEN_TOKEN,
+    CRON_TOKEN,
+  ].filter(Boolean);
   return valid.includes(token);
 }
 
