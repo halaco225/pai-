@@ -64,6 +64,17 @@ async function missingDates() {
   return candidates.filter(d => !done.has(d));
 }
 
+// Is the 6am Eastern gate open? Asked by the intel pipeline route before it
+// runs an undated batch, and by the intel tick below.
+//
+// The Render cron fires at a fixed 10:00 UTC, which is 6am Eastern during EDT
+// but 5am once DST ends. Without this gate the morning brief would be built an
+// hour early for seven months of the year, off a source report that may not
+// have landed yet.
+function gateOpen(now = new Date()) {
+  return isAtOrAfter(now, PULL_TZ, PULL_AFTER_LOCAL);
+}
+
 // Yesterday only becomes eligible once the source report exists — 6am Eastern.
 // Older gaps are already stale, so fill them whenever we notice.
 // `now` is injectable so the DST boundaries can be tested.
@@ -72,20 +83,20 @@ function eligible(dateStr, now = new Date()) {
   return isAtOrAfter(now, PULL_TZ, PULL_AFTER_LOCAL);
 }
 
-// ── Reuse the existing route rather than duplicating the pull logic ──────
-function triggerPull(dateStr) {
+// ── Reuse the existing routes rather than duplicating the pull logic ─────
+function postLocal(path, token, payload) {
   return new Promise((resolve) => {
-    const body = JSON.stringify({ date: dateStr });
+    const body = JSON.stringify(payload);
     const req  = http.request({
       hostname: '127.0.0.1',
       port:     process.env.PORT || 3000,
-      path:     '/api/velocity/automation/pull-ods',
+      path,
       method:   'POST',
       timeout:  30000,
       headers: {
         'Content-Type':     'application/json',
         'Content-Length':   Buffer.byteLength(body),
-        'X-Automation-Token': process.env.VELOCITY_AUTOMATION_TOKEN || 'velocity-auto-2024',
+        'X-Automation-Token': token,
       },
     }, (res) => {
       res.resume();
@@ -98,19 +109,75 @@ function triggerPull(dateStr) {
   });
 }
 
+function triggerPull(dateStr) {
+  return postLocal(
+    '/api/velocity/automation/pull-ods',
+    process.env.VELOCITY_AUTOMATION_TOKEN || 'velocity-auto-2024',
+    { date: dateStr }
+  );
+}
+
+function triggerIntel(dateStr) {
+  return postLocal(
+    '/api/intel/automation/run-batch',
+    process.env.INTEL_AUTOMATION_TOKEN || '38b8091924e1f85583454212a9860038',
+    { date: dateStr }
+  );
+}
+
+// ── Has yesterday's intel pipeline run? ─────────────────────────────────
+// The pipeline logs one 'pipeline' row per target date when it finishes;
+// 'partial' counts as run, because a rerun would not fix the failed step and
+// would regenerate ~60 briefs through Claude for nothing.
+async function intelMissingDate(now = new Date()) {
+  const pool = db.getPool();
+  if (!pool) return null;
+
+  const target = minusDays(localDate(now, PULL_TZ), 1);
+  try {
+    const res = await pool.query(
+      `SELECT 1 FROM intel_automation_log
+        WHERE job_type = 'pipeline' AND status IN ('success','partial')
+          AND target_date = $1::date
+        LIMIT 1`,
+      [target]
+    );
+    return res.rows.length ? null : target;
+  } catch (err) {
+    console.error('[Scheduler] intel log check failed:', err.message);
+    return null;   // never trigger on a failed check — a double run is worse
+  }
+}
+
 async function tick() {
   if (inFlight) return;
   inFlight = true;
   try {
-    const gaps = (await missingDates()).filter(eligible);
-    if (!gaps.length) return;
+    // Arrow, not a bare reference: filter passes (element, index), and index
+    // would land in eligible()'s `now` parameter and blow up on element 0.
+    const gaps = (await missingDates()).filter(d => eligible(d));
 
-    // Oldest first, one per tick — keeps history filling in order and stays
-    // gentle on OneDataSource.
-    const target = gaps[gaps.length - 1];
-    console.log(`[Scheduler] no successful pull logged for ${target} — triggering (${gaps.length} gap(s) outstanding)`);
-    const status = await triggerPull(target);
-    console.log(`[Scheduler] pull-ods accepted for ${target} (HTTP ${status})`);
+    if (gaps.length) {
+      // Oldest first, one per tick — keeps history filling in order and stays
+      // gentle on OneDataSource.
+      const target = gaps[gaps.length - 1];
+      console.log(`[Scheduler] no successful pull logged for ${target} — triggering (${gaps.length} gap(s) outstanding)`);
+      const status = await triggerPull(target);
+      console.log(`[Scheduler] pull-ods accepted for ${target} (HTTP ${status})`);
+    }
+
+    // ── Intel pipeline — the one that builds the morning briefs ──────────
+    // The Render cron is the usual trigger, but it fires at a fixed UTC hour
+    // that is 5am Eastern in winter, when the route defers it. This is what
+    // then runs it at 6am, and what closes a gap left by a failed run.
+    if (gateOpen()) {
+      const intelTarget = await intelMissingDate();
+      if (intelTarget) {
+        console.log(`[Scheduler] no intel pipeline logged for ${intelTarget} — triggering`);
+        const status = await triggerIntel(intelTarget);
+        console.log(`[Scheduler] run-batch accepted for ${intelTarget} (HTTP ${status})`);
+      }
+    }
   } catch (err) {
     console.error('[Scheduler] tick error:', err.message);
   } finally {
@@ -138,5 +205,6 @@ function stop() {
 
 module.exports = {
   start, stop, tick, missingDates, minusDays, chicagoToday,
-  easternToday, eligible, PULL_TZ, PULL_AFTER_LOCAL,
+  easternToday, eligible, gateOpen, intelMissingDate,
+  PULL_TZ, PULL_AFTER_LOCAL,
 };

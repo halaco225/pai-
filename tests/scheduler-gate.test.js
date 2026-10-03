@@ -1,5 +1,5 @@
 // tests/scheduler-gate.test.js
-const { eligible, PULL_AFTER_LOCAL, PULL_TZ } = require('../services/scheduler');
+const { eligible, gateOpen, PULL_AFTER_LOCAL, PULL_TZ } = require('../services/scheduler');
 
 describe('pull gate', () => {
   test('anchors to 6am Eastern', () => {
@@ -24,5 +24,32 @@ describe('pull gate', () => {
 
   test('an older gap is always eligible', () => {
     expect(eligible('2026-10-10', new Date('2026-10-15T09:00:00Z'))).toBe(true);
+  });
+});
+
+// gateOpen is what the intel pipeline route asks before running an undated
+// batch. The Render cron fires at a fixed 10:00 UTC, which is 6am Eastern in
+// summer but 5am once DST ends — without this the brief would be built an hour
+// early for seven months of the year.
+describe('gateOpen', () => {
+  test('shut at 5:59am Eastern', () => {
+    expect(gateOpen(new Date('2026-10-15T09:59:00Z'))).toBe(false);
+  });
+
+  test('open at 6:00am Eastern', () => {
+    expect(gateOpen(new Date('2026-10-15T10:00:00Z'))).toBe(true);
+  });
+
+  // The case that motivated this: the cron's 10:00 UTC is 5am EST.
+  test('shut when the winter cron fires at 10:00 UTC', () => {
+    expect(gateOpen(new Date('2026-11-15T10:00:00Z'))).toBe(false); // 05:00 EST
+  });
+
+  test('open an hour later in winter', () => {
+    expect(gateOpen(new Date('2026-11-15T11:00:00Z'))).toBe(true);  // 06:00 EST
+  });
+
+  test('open through the rest of the day', () => {
+    expect(gateOpen(new Date('2026-11-15T20:00:00Z'))).toBe(true);  // 15:00 EST
   });
 });

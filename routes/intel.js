@@ -39,6 +39,17 @@ router.post('/automation/run-batch', async (req, res) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   const targetDate = req.body.date || req.query.date || null;
+
+  // An undated run means "do yesterday", and yesterday's source report is not
+  // there before 6am Eastern. The Render cron fires at a fixed 10:00 UTC,
+  // which is 6am Eastern in summer but 5am once DST ends — so in winter this
+  // defers and services/scheduler.js triggers it at 6am instead. An explicit
+  // date is a human asking for a particular day, and is never gated.
+  if (!targetDate && !require('../services/scheduler').gateOpen()) {
+    console.log('[Intel] Batch pipeline deferred — before 06:00 America/New_York');
+    return res.json({ status: 'deferred', reason: 'before 06:00 America/New_York' });
+  }
+
   console.log(`[Intel] Batch pipeline triggered for ${targetDate || 'yesterday'}`);
 
   // Respond immediately so cron doesn't timeout, then run async
