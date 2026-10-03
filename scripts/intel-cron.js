@@ -1,7 +1,8 @@
 /**
  * intel-cron.js
- * Runs at 9 AM UTC via Render cron.
- * Wakes the web service first (it may be sleeping), then triggers the pipeline.
+ * Triggered by the Render cron at 10:00 UTC. It only wakes the web service and
+ * calls the pipeline endpoint — the target date (yesterday) and the 6am Eastern
+ * gate both live server-side in services/scheduler.js.
  */
 const https = require('https');
 const http  = require('http');

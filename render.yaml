@@ -67,7 +67,10 @@ services:
     name: intel-dbs-pull
     env: node
     plan: starter
-    schedule: "20 10 * * *"
+    # 10:00 UTC = 6am Eastern during EDT, 5am during EST. This is only the
+    # trigger — services/scheduler.js gates on Eastern local time, so the
+    # hour this fires does not decide when the pull is allowed to run.
+    schedule: "0 10 * * *"
     buildCommand: npm install
     startCommand: node scripts/intel-cron.js
     envVars:

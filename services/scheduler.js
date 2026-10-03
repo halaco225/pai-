@@ -20,24 +20,27 @@ const db   = require('./db');
 
 const TICK_MS             = 15 * 60 * 1000;  // re-check every 15 minutes
 const FIRST_TICK_MS       = 60 * 1000;       // first check 1 min after boot
-const PULL_AFTER_UTC_HOUR = 10;              // same 10:00 UTC as the old cron
+const PULL_TZ             = 'America/New_York'; // the business day these reports describe
+const PULL_AFTER_LOCAL    = '06:00';         // 6am Eastern, DST or not
 const LOOKBACK_DAYS       = 7;               // how far back to heal gaps
 
 let inFlight = false;
 let timer    = null;
 let started  = false;
 
-// ── Date helpers — plain YYYY-MM-DD arithmetic, no TZ drift ──────────────
-function chicagoToday() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+// ── Date helpers ─────────────────────────────────────────────────────────
+// Delegated to services/localtime.js. The gate and "today" have to agree on a
+// zone: this module used to compare UTC hours while computing today in
+// Chicago, and those two part company for an hour every night.
+const { localDate, minusDays, isAtOrAfter } = require('./localtime');
+
+function easternToday() {
+  return localDate(new Date(), PULL_TZ);
 }
 
-function minusDays(dateStr, n) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() - n);
-  return dt.toISOString().slice(0, 10);
-}
+// Kept so existing callers of scheduler.chicagoToday() do not break. It now
+// returns Eastern, because every date decision in this module is Eastern.
+const chicagoToday = easternToday;
 
 // ── Which recent days have no successful pull logged? ────────────────────
 async function missingDates() {
@@ -61,11 +64,12 @@ async function missingDates() {
   return candidates.filter(d => !done.has(d));
 }
 
-// Yesterday only becomes eligible once the source report exists (10:00 UTC).
+// Yesterday only becomes eligible once the source report exists — 6am Eastern.
 // Older gaps are already stale, so fill them whenever we notice.
-function eligible(dateStr) {
-  if (dateStr !== minusDays(chicagoToday(), 1)) return true;
-  return new Date().getUTCHours() >= PULL_AFTER_UTC_HOUR;
+// `now` is injectable so the DST boundaries can be tested.
+function eligible(dateStr, now = new Date()) {
+  if (dateStr !== minusDays(localDate(now, PULL_TZ), 1)) return true;
+  return isAtOrAfter(now, PULL_TZ, PULL_AFTER_LOCAL);
 }
 
 // ── Reuse the existing route rather than duplicating the pull logic ──────
@@ -124,7 +128,7 @@ function start() {
   if (started) return;
   started = true;
   setTimeout(() => { tick(); timer = setInterval(tick, TICK_MS); }, FIRST_TICK_MS);
-  console.log(`   Scheduler: velocity auto-pull armed ✓ (every ${TICK_MS / 60000}m, from ${PULL_AFTER_UTC_HOUR}:00 UTC)`);
+  console.log(`   Scheduler: velocity auto-pull armed ✓ (every ${TICK_MS / 60000}m, from ${PULL_AFTER_LOCAL} ${PULL_TZ})`);
 }
 
 function stop() {
@@ -132,4 +136,7 @@ function stop() {
   started = false;
 }
 
-module.exports = { start, stop, tick, missingDates, minusDays, chicagoToday };
+module.exports = {
+  start, stop, tick, missingDates, minusDays, chicagoToday,
+  easternToday, eligible, PULL_TZ, PULL_AFTER_LOCAL,
+};
