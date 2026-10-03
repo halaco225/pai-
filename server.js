@@ -49,6 +49,7 @@ app.use('/api/alignment', require('./routes/alignment'));
 app.use('/api/velocity', require('./routes/velocity'));
 app.use('/api/intel', require('./routes/intel'));
 app.use('/api/brief', require('./routes/brief'));
+app.use('/api/tracker', require('./routes/tracker'));
 
 // Serve login page as default
 app.get('/', (req, res) => {
