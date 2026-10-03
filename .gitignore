@@ -5,3 +5,7 @@ uploads/
 *.xlsx
 *.pdf
 .DS_Store
+
+# Staff phone numbers — Render Secret File, never in git (see rc-tracker/.gitignore)
+data/people.json
+people.json

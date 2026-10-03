@@ -8,7 +8,33 @@
 // outright. rosterDrift() surfaces the disagreement instead of letting it sit;
 // server.js logs it at boot.
 
-const PEOPLE = require('../data/people.json');
+// people.json holds 62 staff phone numbers and is NOT in git — the same rule
+// RC Tracker has always applied to it (rc-tracker/.gitignore:3). On Render it
+// is a Secret File. Missing, the brief sender simply has no one to text and
+// says so, rather than failing to boot.
+const fs   = require('fs');
+const path = require('path');
+
+function loadPeople() {
+  const candidates = [
+    process.env.PEOPLE_JSON_PATH,                        // explicit override
+    '/etc/secrets/people.json',                          // Render Secret File
+    path.join(__dirname, '..', 'people.json'),           // app root
+    path.join(__dirname, '..', 'data', 'people.json'),   // local dev
+  ].filter(Boolean);
+
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'));
+    } catch (err) {
+      console.error(`[rc-people] ${p} is unreadable: ${err.message}`);
+    }
+  }
+  console.error('[rc-people] people.json not found — brief texts are off until it is added as a Render Secret File');
+  return {};
+}
+
+const PEOPLE = loadPeople();
 const { USER_ROSTER } = require('../routes/auth');
 
 function getPerson(name) {
