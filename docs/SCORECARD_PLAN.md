@@ -244,11 +244,25 @@ That line is the cheapest confirmation of bug 4 available.
   `services/scorecard.js:67` reads correctly and both sides derive from the same
   `key.replace(/^S/, '')` transform, so it should hold. First real brief is the
   test.
-- **Roster drift now matters elsewhere.** Phase 0 moved Lori to Matt Hester,
-  Terrance to Tracy Krumwiede and retired Chad Magner. `rc-tracker/people.json`
-  — which the brief sender reads for phone numbers and timezones — still carries
-  the old VP assignments. Harmless while Harold is the only recipient; a
-  correctness item before anyone else is added.
+- **Roster drift — checked, and it is not the VPs.** An earlier draft of this
+  section claimed `people.json` still carried the pre-P10 VP assignments. That
+  was wrong: all 62 entries carry a `vp`, and Lori Schwartz already reads Matt
+  Hester, Terrance Spillane already reads Tracy Krumwiede. Nothing to fix there.
+
+  What does disagree is three names, in format only:
+
+  | USER_ROSTER | people.json |
+  |---|---|
+  | `Imran Awan (Kiosks-Express)` | `Imran Awan` |
+  | `Larry (Steve) Battenfield` | `Larry Battenfield` |
+  | `Freddy (Antonio) Sandoval` | `Freddy Sandoval` |
+
+  This is a live hazard for the brief sender, which looks a person up by roster
+  name to find their phone. For these three the lookup returns nothing, there is
+  no phone, and `isDue` correctly declines to send — so they would be **silently
+  skipped**, with no error, if added as brief recipients. `rc-people.js`
+  reports the mismatch at boot so it cannot stay invisible. Harmless today;
+  reconcile before the recipient list grows past Harold.
 - **Shared password.** Noted here because the Tracker migration adds per-person
   scoping to follow-ups, and scope filtering is only as strong as the login in
   front of it. With one shared password any user can sign in as any other. Does
