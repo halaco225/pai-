@@ -92,8 +92,10 @@ router.get('/preview', async (req, res) => {
   const person = people.getPerson(name);
   if (!person) return res.status(404).json({ error: `No phone or timezone on file for ${name}` });
 
+  // Default to the same date the sender uses: yesterday-Eastern, which is where
+  // the pipeline caches briefs. Defaulting to today finds nothing, every day.
   const date   = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date
-               : localDate(new Date(), person.tz);
+               : briefSms.briefCacheDate();
   const cached = await db.getIntelCache({ userId: `${username}::brief`, cacheDate: date });
   const memo   = cached && cached.data && cached.data.memo_text;
 
@@ -140,10 +142,11 @@ router.post('/send-now', async (req, res) => {
     return res.status(403).json({ error: `${name} has no opted_in consent record` });
   }
 
-  const date   = localDate(new Date(), person.tz);
-  const cached = await db.getIntelCache({ userId: `${username}::brief`, cacheDate: date });
+  const date     = localDate(new Date(), person.tz);   // send day, for the claim
+  const dataDate = briefSms.briefCacheDate();         // where the brief lives
+  const cached   = await db.getIntelCache({ userId: `${username}::brief`, cacheDate: dataDate });
   const memo   = cached && cached.data && cached.data.memo_text;
-  if (!memo) return res.status(409).json({ error: `No brief cached for ${date}`, sent: false });
+  if (!memo) return res.status(409).json({ error: `No brief cached for ${dataDate}`, sent: false });
 
   const body = await briefSms.condense(memo, briefSms.buildLink());
   if (!body) return res.status(500).json({ error: 'Brief condensed to nothing', sent: false });

@@ -1,5 +1,31 @@
 // tests/brief-due.test.js
-const { isDue, recipients, SEND_WINDOW_MINUTES } = require('../services/brief-sms');
+const { isDue, recipients, briefCacheDate, SEND_WINDOW_MINUTES } = require('../services/brief-sms');
+
+// The pipeline caches each brief under its DATA date (yesterday-Eastern), not
+// the date it runs. Looking it up under today finds nothing, every single day,
+// and the text silently never arrives. Verified against live data: the brief
+// read on Oct 2 was cached at cache_date 2026-10-01.
+describe('briefCacheDate', () => {
+  test('is yesterday in Eastern, not today', () => {
+    expect(briefCacheDate(new Date('2026-10-03T12:05:00Z'))).toBe('2026-10-02'); // 08:05 EDT
+  });
+
+  // 04:30 UTC is 00:30 EDT on the 3rd — Eastern has already rolled over, so
+  // the data date is the 2nd. An hour earlier it would still be the 1st.
+  test('tracks the Eastern day, not the UTC day', () => {
+    expect(briefCacheDate(new Date('2026-10-03T04:30:00Z'))).toBe('2026-10-02'); // 00:30 EDT
+    expect(briefCacheDate(new Date('2026-10-03T03:30:00Z'))).toBe('2026-10-01'); // 23:30 EDT, 2nd
+  });
+
+  test('uses Eastern regardless of the recipient zone', () => {
+    // 07:05 MDT on the 3rd is 09:05 EDT on the 3rd — data date is the 2nd.
+    expect(briefCacheDate(new Date('2026-10-03T13:05:00Z'))).toBe('2026-10-02');
+  });
+
+  test('crosses a month boundary', () => {
+    expect(briefCacheDate(new Date('2026-11-01T12:05:00Z'))).toBe('2026-10-31');
+  });
+});
 
 const HAROLD = { name: 'Harold Lacoste', phone: '+12258101361', tz: 'America/New_York' };
 

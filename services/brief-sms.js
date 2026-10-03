@@ -10,7 +10,17 @@
 // replies, STOP/START or delivery callbacks.
 
 const Anthropic = require('@anthropic-ai/sdk');
-const { localDate, localHHMM } = require('./localtime');
+const { localDate, localHHMM, minusDays } = require('./localtime');
+
+// The pipeline computes its target date as "yesterday, Eastern" and caches each
+// brief under THAT date, not the date it runs (intel-pipeline.js:493, via
+// getYesterdayEST). So the brief a person reads on the 3rd lives at
+// cache_date = the 2nd. Looking it up under today finds nothing, every day.
+const PIPELINE_TZ = 'America/New_York';
+
+function briefCacheDate(now = new Date()) {
+  return minusDays(localDate(now, PIPELINE_TZ), 1);
+}
 
 // 320 = two concatenated GSM-7 segments. Enough for a headline, a few numbers
 // and a link; short enough that it does not arrive as a wall of text.
@@ -272,15 +282,17 @@ async function sendOne(username, now = new Date()) {
     consented, alreadySentDates: already,
   })) return null;   // not due — silent, which is most ticks
 
-  // The brief describes yesterday, and the pipeline caches it under today's
-  // date (the date it was generated for).
-  const cached = await db.getIntelCache({ userId: `${username}::brief`, cacheDate: today });
-  const memo   = cached && cached.data && cached.data.memo_text;
+  // Two different dates, deliberately. `today` is the send day and keys the
+  // one-per-day claim. `dataDate` is yesterday-Eastern, which is where the
+  // pipeline actually caches the brief.
+  const dataDate = briefCacheDate(now);
+  const cached   = await db.getIntelCache({ userId: `${username}::brief`, cacheDate: dataDate });
+  const memo     = cached && cached.data && cached.data.memo_text;
 
-  // No brief yet: say so and try again next tick. Never reach back to an older
-  // cache_date — a late text is recoverable, yesterday's numbers labelled as
-  // today's go into someone's decisions.
-  if (!memo) return `${personName}: brief for ${today} not cached yet — will retry`;
+  // No brief yet: say so and try again next tick. Never reach further back
+  // than this morning's data date — a late text is recoverable, older numbers
+  // labelled as today's go into someone's decisions.
+  if (!memo) return `${personName}: brief for ${dataDate} not cached yet — will retry`;
 
   const body = await condense(memo, buildLink());
   if (!body) return `${personName}: brief condensed to nothing`;
@@ -315,7 +327,7 @@ async function tick(now = new Date()) {
 }
 
 module.exports = {
-  condense, buildLink, clip, isDue, recipients, sendOne, tick,
+  condense, buildLink, clip, isDue, recipients, sendOne, tick, briefCacheDate,
   hasConsent, sentDates, claim, releaseClaim, recordClaimResult, logMessage,
   MAX_SMS_CHARS, BRIEF_MODEL, SEND_WINDOW_MINUTES, DEFAULT_SEND_LOCAL,
   CONDENSE_TIMEOUT_MS,
