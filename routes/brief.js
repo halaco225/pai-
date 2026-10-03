@@ -107,7 +107,12 @@ router.get('/preview', async (req, res) => {
     });
   }
 
-  const body = await briefSms.condense(memo, briefSms.buildLink());
+  // Same path the sender uses, so the preview cannot flatter the real thing.
+  let body;
+  try { body = await briefSms.buildBody(username, date); }
+  catch (e) { body = null; }
+  if (!body) body = await briefSms.condense(memo, briefSms.buildLink());
+
   res.json({
     username, person: name, date, tz: person.tz, cached: true,
     briefChars: memo.length,
@@ -151,8 +156,11 @@ router.post('/send-now', async (req, res) => {
   const memo   = cached && cached.data && cached.data.memo_text;
   if (!memo) return res.status(409).json({ error: `No brief cached for ${dataDate}`, sent: false });
 
-  const body = await briefSms.condense(memo, briefSms.buildLink());
-  if (!body) return res.status(500).json({ error: 'Brief condensed to nothing', sent: false });
+  let body;
+  try { body = await briefSms.buildBody(username, dataDate); }
+  catch (e) { body = null; }
+  if (!body) body = await briefSms.condense(memo, briefSms.buildLink());
+  if (!body) return res.status(500).json({ error: 'Brief produced no message', sent: false });
 
   const claimId = await briefSms.claim(name, person.phone, date, body);
   if (!claimId) {

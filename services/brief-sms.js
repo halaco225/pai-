@@ -128,6 +128,53 @@ ${briefText}`;
   return `${clip(body, room)} ${link}`.trim();
 }
 
+// ── The message body ────────────────────────────────────────────────────────
+//
+// The text IS the scorecard, rendered from the same builder the brief page
+// uses. It is not a model summary of it: the numbers go out exactly as the
+// database holds them, with no chance of a paraphrase rounding something or
+// inventing a store. renderScorecard already produces this layout.
+
+// A table runs past one SMS segment; Twilio concatenates. This is the ceiling
+// before rows get dropped, not a target.
+const MAX_BODY_CHARS = Number(process.env.PAI_BRIEF_MAX_CHARS || 1200);
+
+async function buildBody(username, targetDate) {
+  const { USER_ROSTER } = require('../routes/auth');
+  const user = USER_ROSTER.find(u => u.username === username);
+  if (!user) throw new Error(`${username} is not on the roster`);
+
+  const pool = db.getPool();
+  if (!pool) throw new Error('Database unavailable');
+
+  const { buildScorecard, renderScorecard } = require('./scorecard');
+  const sc = await buildScorecard({
+    pool, targetDate, role: user.role, name: user.name, scope: user.scope,
+  });
+  if (!sc) return null;
+
+  let fiscalCode = '';
+  try {
+    const { getCurrentFiscalPeriod } = require('./fiscal-calendar');
+    const fp = getCurrentFiscalPeriod(new Date(targetDate + 'T12:00:00Z'));
+    fiscalCode = (fp && (fp.code || fp.label)) || '';
+  } catch { /* a missing period code is not worth failing the text over */ }
+
+  let body = renderScorecard(sc, { fiscalCode });
+  if (!body || !body.trim()) return null;
+
+  const NL = String.fromCharCode(10);
+  const link = buildLink();
+  if (body.length + link.length + 2 > MAX_BODY_CHARS) {
+    // Drop whole rows from the end rather than cutting mid-number.
+    const lines = body.split(NL);
+    while (lines.length && lines.join(NL).length + link.length + 20 > MAX_BODY_CHARS) lines.pop();
+    lines.push('…more in P.AI');
+    body = lines.join(NL);
+  }
+  return body + NL + link;
+}
+
 // ── Who is due ───────────────────────────────────────────────────────────────
 
 function recipients(env = process.env) {
@@ -335,8 +382,14 @@ async function sendOne(username, now = new Date()) {
   // labelled as today's go into someone's decisions.
   if (!memo) return `${personName}: brief for ${dataDate} not cached yet — will retry`;
 
-  const body = await condense(memo, buildLink());
-  if (!body) return `${personName}: brief condensed to nothing`;
+  let body;
+  try {
+    body = await buildBody(username, dataDate);
+  } catch (err) {
+    console.error('[BriefSMS] scorecard build failed, falling back:', err.message);
+  }
+  if (!body) body = await condense(memo, buildLink());
+  if (!body) return `${personName}: brief produced no message`;
 
   const claimId = await claim(personName, person.phone || '', today, body);
   if (!claimId) return null;   // someone else holds today's claim
@@ -371,7 +424,7 @@ async function tick(now = new Date()) {
 
 module.exports = {
   condense, buildLink, clip, isDue, recipients, sendOne, tick, briefCacheDate,
-  resolvePerson, rcPerson, rcSend,
+  resolvePerson, rcPerson, rcSend, buildBody, MAX_BODY_CHARS,
   hasConsent, sentDates, claim, releaseClaim, recordClaimResult, logMessage,
   MAX_SMS_CHARS, BRIEF_MODEL, SEND_WINDOW_MINUTES, DEFAULT_SEND_LOCAL,
   CONDENSE_TIMEOUT_MS,
