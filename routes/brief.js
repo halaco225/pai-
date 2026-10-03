@@ -162,7 +162,12 @@ router.post('/send-now', async (req, res) => {
   if (!body) body = await briefSms.condense(memo, briefSms.buildLink());
   if (!body) return res.status(500).json({ error: 'Brief produced no message', sent: false });
 
-  const claimId = await briefSms.claim(name, person.phone, date, body);
+  let claimId;
+  try {
+    claimId = await briefSms.claim(name, person.phone || '', date, body);
+  } catch (err) {
+    return res.status(500).json({ sent: false, error: err.message });
+  }
   if (!claimId) {
     return res.status(409).json({
       error: `A brief is already claimed for ${name} on ${date}`,

@@ -287,10 +287,13 @@ async function claim(personName, phone, localDateStr, body) {
     .single();
 
   if (error) {
-    // 23505 = unique_violation: another tick holds today's claim. Not an error.
+    // 23505 = unique_violation: another tick holds today's claim. That is the
+    // guard working and the only reason to come back empty-handed quietly.
     if (error.code === '23505') return null;
-    console.error('[BriefSMS] claim failed:', error.message);
-    return null;
+    // Anything else is a real failure. Returning null here too made a broken
+    // insert indistinguishable from "already sent today", so a schema or
+    // permission problem reported itself as the dedupe guard doing its job.
+    throw new Error(`claim insert failed (${error.code || 'no code'}): ${error.message}`);
   }
   return data.id;
 }
@@ -391,7 +394,12 @@ async function sendOne(username, now = new Date()) {
   if (!body) body = await condense(memo, buildLink());
   if (!body) return `${personName}: brief produced no message`;
 
-  const claimId = await claim(personName, person.phone || '', today, body);
+  let claimId;
+  try {
+    claimId = await claim(personName, person.phone || '', today, body);
+  } catch (err) {
+    return `${personName}: ${err.message}`;
+  }
   if (!claimId) return null;   // someone else holds today's claim
 
   try {
