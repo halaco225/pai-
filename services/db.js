@@ -1296,6 +1296,19 @@ async function archiveOldRecoveringFlags(targetDate) {
 }
 
 // ── Seed store_assignments from velocity-alignment.js (all stores, all RDOs) ──
+//
+// Guard thresholds for the delete at the end of the seed. The alignment file
+// carries 367 stores; a real refresh drops a handful of closed ones. Anything
+// outside these bounds is far more likely a bad load than 300 closures.
+const SEED_MIN_ACTIVE = 300;   // fewer active stores than this means a bad load
+const SEED_MAX_DELETE = 25;    // a normal refresh drops a handful, not dozens
+
+function seedDeletionAllowed(activeCount, deleteCount, force = false) {
+  if (force) return true;
+  if (activeCount < SEED_MIN_ACTIVE) return false;
+  return deleteCount <= SEED_MAX_DELETE;
+}
+
 async function seedStoreAssignmentsFromAlignment() {
   const p = getPool();
   if (!p) return;
@@ -1324,13 +1337,36 @@ async function seedStoreAssignmentsFromAlignment() {
       activeIds.push(store_id);
       count++;
     }
-    // Remove stores that are no longer in the alignment (closed/removed)
+    // Remove stores that are no longer in the alignment (closed/removed).
+    //
+    // This runs on every boot, from initIntelDB. The old guard was only
+    // `activeIds.length > 0`, which would happily delete 366 of 367 stores if
+    // the alignment module ever half-loaded — and store_assignments has no
+    // backup. So: count first, check the count, and name the rows in the log
+    // so a surprise is visible rather than silent.
     if (activeIds.length > 0) {
-      const del = await p.query(
-        `DELETE FROM store_assignments WHERE store_id != ALL($1::text[])`,
+      const doomed = await p.query(
+        `SELECT store_id, store_name FROM store_assignments WHERE store_id != ALL($1::text[])`,
         [activeIds]
       );
-      if (del.rowCount > 0) console.log(`[DB] Removed ${del.rowCount} closed/dropped stores from assignments`);
+
+      if (doomed.rowCount === 0) {
+        console.log('[DB] No dropped stores to remove from assignments');
+      } else if (seedDeletionAllowed(activeIds.length, doomed.rowCount, process.env.SEED_FORCE_DELETE === 'true')) {
+        const list = doomed.rows.map(r => `${r.store_id} ${r.store_name || ''}`.trim()).join(', ');
+        await p.query(
+          `DELETE FROM store_assignments WHERE store_id != ALL($1::text[])`,
+          [activeIds]
+        );
+        console.log(`[DB] Removed ${doomed.rowCount} dropped store(s) from assignments: ${list}`);
+      } else {
+        console.error(
+          `[DB] REFUSING to delete ${doomed.rowCount} store assignment(s) with only ${activeIds.length} ` +
+          'active in the alignment. That looks like a bad alignment load, not a real set of closures. ' +
+          'The inserts above still applied. Set SEED_FORCE_DELETE=true to override after checking the list: ' +
+          doomed.rows.map(r => r.store_id).join(', ')
+        );
+      }
     }
     console.log(`[DB] Seeded ${count} store assignments from alignment data`);
   } catch(err) {
@@ -1366,7 +1402,8 @@ module.exports = {
   saveIntelCache, upsertIntelCache, getIntelCache, logIntelJob, getIntelLogs,
   // Aliases used by parsers
   insertIntelFlag: upsertIntelFlag,
-  seedStoreAssignmentsFromAlignment,
+  seedStoreAssignmentsFromAlignment, seedDeletionAllowed,
+  SEED_MIN_ACTIVE, SEED_MAX_DELETE,
   upsertSoftIndicator,
   insertShoutout, upsertSurveyLog, getStoresWithNoRecentSurveys,
   resolveRecoveredFlags, getStoreSoftIndicators,
