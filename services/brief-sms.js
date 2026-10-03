@@ -286,6 +286,18 @@ async function sendText(to, body) {
   return msg.sid;
 }
 
+// Local roster copy if one is mounted, otherwise RC Tracker, which owns it.
+// Returns { tz, phone?, consented } or throws with a reason worth reading.
+async function resolvePerson(name) {
+  const local = people.getPerson(name);
+  if (local && local.tz) {
+    const consented = local.phone ? await hasConsent(name, local.phone) : null;
+    return { name, tz: local.tz, phone: local.phone, consented, source: 'people.json' };
+  }
+  const rc = await rcPerson(name);
+  return { name, tz: rc.tz, phone: null, consented: rc.signedUp, source: 'rc-tracker' };
+}
+
 // ── One person ───────────────────────────────────────────────────────────────
 
 /**
@@ -297,28 +309,13 @@ async function sendOne(username, now = new Date()) {
   const personName = people.nameForUsername(username);
   if (!personName) return `${username}: not on the roster`;
 
-  // Prefer a local roster copy if one is mounted; otherwise ask RC Tracker,
-  // which owns the roster. Either way P.AI only needs a timezone.
-  let person = people.getPerson(personName);
-  let consentedViaRc = null;
-  if (!person || !person.tz) {
-    try {
-      const rc = await rcPerson(personName);
-      person = { tz: rc.tz };
-      consentedViaRc = rc.signedUp;
-    } catch (err) {
-      return `${personName}: ${err.message}`;
-    }
-  }
-  if (!person.tz) return `${personName}: no timezone on file`;
+  let person;
+  try { person = await resolvePerson(personName); }
+  catch (err) { return `${personName}: ${err.message}`; }
 
-  const today = localDate(now, person.tz);
-
-  const [consentedLocal, already] = await Promise.all([
-    person.phone ? hasConsent(personName, person.phone) : Promise.resolve(null),
-    sentDates(personName),
-  ]);
-  const consented = consentedViaRc !== null ? consentedViaRc : consentedLocal;
+  const today     = localDate(now, person.tz);
+  const already   = await sentDates(personName);
+  const consented = person.consented;
 
   if (!isDue({
     person: { ...person, name: personName }, now,
@@ -374,6 +371,7 @@ async function tick(now = new Date()) {
 
 module.exports = {
   condense, buildLink, clip, isDue, recipients, sendOne, tick, briefCacheDate,
+  resolvePerson, rcPerson, rcSend,
   hasConsent, sentDates, claim, releaseClaim, recordClaimResult, logMessage,
   MAX_SMS_CHARS, BRIEF_MODEL, SEND_WINDOW_MINUTES, DEFAULT_SEND_LOCAL,
   CONDENSE_TIMEOUT_MS,
