@@ -232,4 +232,39 @@ router.get('/rc-backup', async (req, res) => {
   res.status(400).json({ error: "mode must be 'count' or 'dump'" });
 });
 
+// ── GET /api/brief/tracker/follow-ups — your follow-ups, and only yours ─────
+//
+// The first slice of Tracker inside P.AI. Session-authenticated and filtered
+// through rc-scope: an Area Coach sees their own, an RDO their coaches', a VP
+// their territory. RC Tracker's own page has no authentication at all, so this
+// is the part that the login actually buys.
+router.get('/tracker/follow-ups', async (req, res) => {
+  const user = req.session && req.session.user;
+  if (!user) return res.status(401).json({ error: 'Unauthorized. Please log in.' });
+
+  const { visiblePeople } = require('../services/rc-scope');
+  const names = visiblePeople(user);
+  if (!names.length) return res.json({ scope: [], items: [], note: 'No scope for this account.' });
+
+  const sb = rcDb.getClient() || rcDb.getServiceClient();
+  if (!sb) return res.status(503).json({ error: 'Tracker data is not configured' });
+
+  let q = sb.from('follow_ups').select('*').order('due_date', { ascending: true, nullsFirst: false });
+  if (req.query.include_done !== 'true') q = q.eq('status', 'open');
+
+  // Filtered server-side, never in the browser: an in-page filter would still
+  // have shipped every other area's follow-ups to the client.
+  q = q.in('assigned_to', names);
+
+  const { data, error } = await q;
+  if (error) return res.status(500).json({ error: error.message });
+
+  res.json({
+    viewer: { name: user.name, role: user.role },
+    scope:  names,
+    count:  (data || []).length,
+    items:  data || [],
+  });
+});
+
 module.exports = router;

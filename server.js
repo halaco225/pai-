@@ -86,6 +86,11 @@ app.get('/velocity', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'velocity.html'));
 });
 
+app.get('/tracker', (req, res) => {
+  if (!req.session.user) return res.redirect('/');
+  res.sendFile(path.join(__dirname, 'public', 'tracker.html'));
+});
+
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', version: '1.0.0' }));
 

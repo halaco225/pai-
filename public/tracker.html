@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tracker — P.AI</title>
+<style>
+  :root {
+    --bg:#0d1117; --surface:#161b22; --border:#30363d;
+    --text:#e6edf3; --muted:#8b949e; --accent:#e4002b;
+    --ok:#2ea043; --warn:#d29922; --late:#f85149;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  header { padding:20px 24px; border-bottom:1px solid var(--border); display:flex;
+           align-items:baseline; gap:16px; flex-wrap:wrap; }
+  h1 { margin:0; font-size:20px; letter-spacing:-.3px; }
+  .sub { color:var(--muted); font-size:13px; }
+  a.back { color:var(--muted); text-decoration:none; font-size:13px; }
+  a.back:hover { color:var(--text); }
+  main { padding:24px; max-width:1100px; }
+  .scopebar { background:var(--surface); border:1px solid var(--border); border-radius:8px;
+              padding:12px 14px; margin-bottom:20px; font-size:13px; color:var(--muted); }
+  .scopebar strong { color:var(--text); }
+  table { width:100%; border-collapse:collapse; background:var(--surface);
+          border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  th, td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--border);
+           vertical-align:top; }
+  th { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted);
+       font-weight:700; background:#11161d; }
+  tr:last-child td { border-bottom:none; }
+  .who { white-space:nowrap; font-weight:600; }
+  .due { white-space:nowrap; }
+  .late { color:var(--late); font-weight:600; }
+  .soon { color:var(--warn); }
+  .empty, .error { padding:28px; text-align:center; color:var(--muted);
+                   background:var(--surface); border:1px solid var(--border); border-radius:8px; }
+  .error { color:var(--late); }
+  .note { margin-top:18px; font-size:12px; color:var(--muted); line-height:1.6; }
+  @media (max-width:640px) { main { padding:14px; } th,td { padding:8px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Tracker</h1>
+  <span class="sub" id="sub">Loading…</span>
+  <a class="back" href="/dashboard">← Dashboard</a>
+</header>
+
+<main>
+  <div class="scopebar" id="scopebar">Checking what you can see…</div>
+  <div id="content"><div class="empty">Loading follow-ups…</div></div>
+
+  <p class="note">
+    Follow-ups are read live from RC Tracker — this is the same data, filtered to your
+    scope by your login. The RC Tracker site remains the place to add and edit them,
+    and its daily reminder texts are unchanged.
+  </p>
+</main>
+
+<script>
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// Plain YYYY-MM-DD arithmetic against the local day — no Date parsing, which
+// would read a bare date as UTC midnight and show "1 day late" a day early.
+function todayStr() {
+  return new Date().toLocaleDateString('en-CA');
+}
+
+function dueCell(due) {
+  if (!due) return '<span class="sub">—</span>';
+  const today = todayStr();
+  if (due < today) {
+    const days = Math.round((Date.parse(today) - Date.parse(due)) / 86400000);
+    return '<span class="late">' + esc(due) + ' · ' + days + 'd late</span>';
+  }
+  if (due === today) return '<span class="soon">' + esc(due) + ' · today</span>';
+  return esc(due);
+}
+
+fetch('/api/brief/tracker/follow-ups', { credentials: 'same-origin' })
+  .then(r => {
+    if (r.status === 401) { window.location.href = '/'; return null; }
+    return r.json();
+  })
+  .then(d => {
+    if (!d) return;
+    const content = document.getElementById('content');
+
+    if (d.error) {
+      document.getElementById('scopebar').textContent = 'Could not load Tracker.';
+      content.innerHTML = '<div class="error">' + esc(d.error) + '</div>';
+      return;
+    }
+
+    document.getElementById('sub').textContent =
+      d.viewer ? d.viewer.name + ' · ' + d.viewer.role : '';
+    document.getElementById('scopebar').innerHTML =
+      'You can see <strong>' + d.scope.length + '</strong> ' +
+      (d.scope.length === 1 ? 'person' : 'people') + ': ' + esc(d.scope.join(', '));
+
+    if (!d.items.length) {
+      content.innerHTML = '<div class="empty">No open follow-ups in your scope.</div>';
+      return;
+    }
+
+    const rows = d.items.map(i =>
+      '<tr>' +
+        '<td class="who">' + esc(i.assigned_to || '—') + '</td>' +
+        '<td>' + esc(i.text) + '</td>' +
+        '<td class="due">' + dueCell(i.due_date) + '</td>' +
+        '<td>' + esc(i.source || '') + '</td>' +
+      '</tr>'
+    ).join('');
+
+    content.innerHTML =
+      '<table><thead><tr>' +
+      '<th>Assigned to</th><th>Follow-up</th><th>Due</th><th>Source</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table>';
+  })
+  .catch(e => {
+    document.getElementById('content').innerHTML =
+      '<div class="error">Could not reach Tracker: ' + esc(e.message) + '</div>';
+  });
+</script>
+</body>
+</html>
