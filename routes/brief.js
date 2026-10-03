@@ -232,4 +232,52 @@ router.get('/rc-backup', async (req, res) => {
   res.status(400).json({ error: "mode must be 'count' or 'dump'" });
 });
 
+// ── GET /api/brief/diag/scorecard — why is a column empty? ──────────────────
+//
+// The brief shows "0/37 reporting" for a metric whose pipeline step reported
+// success, which means the step ran but wrote nothing. This says which of the
+// four source tables actually has rows for a date, so the answer is a lookup
+// rather than a guess. Read-only.
+router.get('/diag/scorecard', async (req, res) => {
+  if (!authed(req)) return res.status(401).json({ error: 'Unauthorized' });
+
+  const p = db.getPool();
+  if (!p) return res.status(503).json({ error: 'Database unavailable' });
+
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '')
+    ? req.query.date
+    : briefSms.briefCacheDate();
+
+  const q = async (label, sql, params = [date]) => {
+    try { return { [label]: (await p.query(sql, params)).rows }; }
+    catch (e) { return { [label]: `ERROR: ${e.message}` }; }
+  };
+
+  const out = Object.assign({ date }, ...(await Promise.all([
+    q('dbs_metrics', `SELECT COUNT(*)::int AS stores,
+                             COUNT(net_sales_day)::int AS with_sales
+                        FROM intel_dbs_metrics WHERE metric_date = $1`),
+    q('soft_indicators_by_name', `SELECT indicator, COUNT(*)::int AS rows
+                                    FROM dbs_soft_indicators WHERE metric_date = $1
+                                   GROUP BY indicator ORDER BY indicator`),
+    q('win_scores', `SELECT COUNT(*)::int AS rows,
+                            MAX(period_end_date)::text AS latest_period
+                       FROM smg_win_scores`, []),
+    q('flags', `SELECT metric_type, COUNT(*)::int AS rows
+                  FROM intel_flags WHERE metric_date = $1
+                 GROUP BY metric_type ORDER BY rows DESC LIMIT 10`),
+    q('velocity', `SELECT COUNT(*)::int AS rows,
+                          COUNT(*) FILTER (WHERE store_id LIKE 'S%')::int AS s_prefixed
+                     FROM velocity_daily_records WHERE record_date = $1`),
+    q('store_assignments', `SELECT COUNT(*)::int AS stores FROM store_assignments`, []),
+    q('recent_pipeline_runs', `SELECT TO_CHAR(target_date,'YYYY-MM-DD') AS target_date,
+                                      status, created_at
+                                 FROM intel_automation_log
+                                WHERE job_type = 'pipeline'
+                                ORDER BY created_at DESC LIMIT 5`, []),
+  ])));
+
+  res.json(out);
+});
+
 module.exports = router;
