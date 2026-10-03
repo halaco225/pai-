@@ -139,6 +139,87 @@ ${briefText}`;
 // before rows get dropped, not a target.
 const MAX_BODY_CHARS = Number(process.env.PAI_BRIEF_MAX_CHARS || 1200);
 
+// Render for a phone, not a terminal.
+//
+// renderScorecard lays the brief out in fixed-width columns, which is right in
+// a <pre> block and wrong in a text message: SMS is a proportional font that
+// wraps around 30 characters, so the padding turns into ragged noise and a
+// single area's numbers smear over four lines. This builds short self-
+// describing lines instead, each one under about thirty characters, so a wrap
+// is rare and never splits a number from its label.
+
+// "Area 2034 — Michelle Meehan" -> "Meehan". "Jose Lozano Sr." -> "Lozano".
+function shortLabel(label) {
+  let t = String(label || '').trim();
+  const dash = t.lastIndexOf('—');
+  if (dash !== -1) t = t.slice(dash + 1).trim();
+  const words = t.split(/\s+/).filter(w => !/^(jr\.?|sr\.?|ii|iii)$/i.test(w));
+  return words.length > 1 ? words[words.length - 1] : (words[0] || t);
+}
+
+const m0 = n => n == null ? null : '$' + Math.round(n).toLocaleString('en-US');
+const g0 = n => n == null ? null : (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
+const t0 = n => n == null ? null : n.toFixed(1) + 'm';
+
+// "2026-10-02" -> "Oct 2". Built from the string, not a Date, so no zone can
+// shift it to the day before.
+function dayLabel(dateStr) {
+  const M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const m = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${M[Number(m[2]) - 1]} ${Number(m[3])}` : '';
+}
+
+function renderForSms(sc, opts) {
+  if (!sc) return '';
+  const o = sc.own;
+  const L = [];
+
+  const head = (sc.level || 'scorecard').toUpperCase();
+  L.push([head, opts && opts.fiscalCode, opts && opts.dateLabel].filter(Boolean).join(' · '));
+
+  const salesBits = [m0(o.sales), g0(o.growth_pct)].filter(Boolean);
+  if (salesBits.length) L.push('Sales ' + salesBits.join(' ') + ' vs LY');
+
+  const line2 = [];
+  if (o.ist != null) line2.push('IST ' + t0(o.ist));
+  if (o.missed_routines) line2.push(o.missed_routines + ' missed');
+  if (line2.length) L.push(line2.join(' · '));
+
+  // Say once that something is not reporting, rather than printing a dash in
+  // every row and leaving the reader to work out whether it is a zero.
+  const missing = [];
+  if (o.act_hrs == null) missing.push('Labor');
+  if (o.win == null) missing.push('WIN');
+  if (missing.length) L.push(missing.join(' & ') + ' not reporting');
+  else {
+    const have = [];
+    if (o.act_hrs != null) have.push('Labor ' + (o.hrs_variance >= 0 ? '+' : '') + o.hrs_variance.toFixed(0) + 'h');
+    if (o.win != null) have.push('WIN ' + o.win.toFixed(1) + '%');
+    L.push(have.join(' · '));
+  }
+
+  if (sc.rows && sc.rows.length) {
+    L.push('');
+    L.push((sc.childLevel === 'store' ? 'STORES' : sc.childLevel === 'area' ? 'AREAS' : 'BREAKDOWN') + ' worst first');
+    // Two lines per row: who and the money, then the operational numbers
+    // indented under it. One line fitted only while labor and WIN were
+    // missing -- with both present a row reaches 39 characters and wraps,
+    // which is the mess this whole renderer exists to avoid.
+    for (const r of sc.rows) {
+      L.push([shortLabel(r.label), m0(r.sales), g0(r.growth_pct)].filter(Boolean).join(' '));
+
+      const detail = [];
+      if (r.ist != null) detail.push(t0(r.ist));
+      if (r.win != null) detail.push('W' + r.win.toFixed(0) + '%');
+      if (r.hrs_variance != null) detail.push('L' + (r.hrs_variance >= 0 ? '+' : '') + r.hrs_variance.toFixed(0));
+      if (r.missed_routines) detail.push('!' + r.missed_routines);
+      if (detail.length) L.push('  ' + detail.join(' · '));
+    }
+  }
+
+  return L.join(String.fromCharCode(10));
+}
+
 async function buildBody(username, targetDate) {
   const { USER_ROSTER } = require('../routes/auth');
   const user = USER_ROSTER.find(u => u.username === username);
@@ -147,7 +228,7 @@ async function buildBody(username, targetDate) {
   const pool = db.getPool();
   if (!pool) throw new Error('Database unavailable');
 
-  const { buildScorecard, renderScorecard } = require('./scorecard');
+  const { buildScorecard } = require('./scorecard');
   const sc = await buildScorecard({
     pool, targetDate, role: user.role, name: user.name, scope: user.scope,
   });
@@ -160,7 +241,7 @@ async function buildBody(username, targetDate) {
     fiscalCode = (fp && (fp.code || fp.label)) || '';
   } catch { /* a missing period code is not worth failing the text over */ }
 
-  let body = renderScorecard(sc, { fiscalCode });
+  let body = renderForSms(sc, { fiscalCode, dateLabel: dayLabel(targetDate) });
   if (!body || !body.trim()) return null;
 
   const NL = String.fromCharCode(10);
@@ -433,6 +514,7 @@ async function tick(now = new Date()) {
 module.exports = {
   condense, buildLink, clip, isDue, recipients, sendOne, tick, briefCacheDate,
   resolvePerson, rcPerson, rcSend, buildBody, MAX_BODY_CHARS,
+  renderForSms, shortLabel, dayLabel,
   hasConsent, sentDates, claim, releaseClaim, recordClaimResult, logMessage,
   MAX_SMS_CHARS, BRIEF_MODEL, SEND_WINDOW_MINUTES, DEFAULT_SEND_LOCAL,
   CONDENSE_TIMEOUT_MS,
