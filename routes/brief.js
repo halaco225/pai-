@@ -402,4 +402,32 @@ router.get('/diag/fourth-reports', async (req, res) => {
   }
 });
 
+// ── GET /api/brief/diag/fourth-meta — read Fourth metadata (read-only) ──────
+router.get('/diag/fourth-meta', async (req, res) => {
+  if (!authed(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const f = require('../services/intel-fourth');
+    if (req.query.report === '1') {
+      const uri = await f.labourReportUri();
+      if (!uri) return res.json({ error: 'no labour report uri resolved' });
+      const obj = await f.inspectMeta(uri);
+      const def = obj.report && obj.report.content && obj.report.content.definitions;
+      let defObj = null;
+      if (def && def.length) defObj = await f.inspectMeta(def[def.length - 1]);
+      return res.json({
+        uri,
+        title: obj.report && obj.report.meta && obj.report.meta.title,
+        definitionUris: def || null,
+        definitionContent: defObj && defObj.reportDefinition && defObj.reportDefinition.content,
+      });
+    }
+    const path = String(req.query.path || '');
+    if (!/^\/gdc\//.test(path)) return res.status(400).json({ error: 'path must start with /gdc/' });
+    const out = await f.inspectMeta(path);
+    res.json(out);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

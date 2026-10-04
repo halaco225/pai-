@@ -264,4 +264,22 @@ async function listReportTitles() {
   return entries.map(e => e.title).filter(Boolean);
 }
 
-module.exports = { downloadFourthReport, listReportTitles };
+// Fetch a metadata object or run a query, so the date-filter plumbing can be
+// read rather than guessed. Read-only.
+async function inspectMeta(pathSuffix) {
+  const user = process.env.FOURTH_USER, pass = process.env.FOURTH_PASSWORD;
+  if (!user || !pass) throw new Error('FOURTH_USER / FOURTH_PASSWORD are not set');
+  const jar = await getAuthCookies(user, pass);
+  const resp = await httpRequest('GET', pathSuffix, { cookieJar: jar });
+  if (resp.status !== 200) throw new Error(`${pathSuffix} HTTP ${resp.status}`);
+  return JSON.parse(resp.body);
+}
+
+async function labourReportUri() {
+  const user = process.env.FOURTH_USER, pass = process.env.FOURTH_PASSWORD;
+  const jar = await getAuthCookies(user, pass);
+  const uris = await findReportUris(jar, 'LABOR');
+  return uris[0] || null;
+}
+
+module.exports = { downloadFourthReport, listReportTitles, inspectMeta, labourReportUri, PROJECT_ID };
