@@ -129,11 +129,18 @@ async function findReportUris(jar, reportKey) {
   const isOvertime = t => /overtime|double ?time|\bot\b|\bdt\b/.test(norm(t));
   const labourSafe = e => reportKey !== 'LABOR' || !isOvertime(e.title);
 
-  // Try exact matches first
-  let uris = entries
-    .filter(e => exactNames.some(n => norm(e.title) === norm(n)))
-    .filter(labourSafe)
-    .map(e => e.link);
+  // Try exact matches first, in exactNames PRIORITY order -- not in whatever
+  // order the API happens to list reports. Both "Overview Report by Location"
+  // and "Labor Details by Locations" exist; taking the API's order grabbed the
+  // department-level one, which has a single "Hours" column and no Act/Sch
+  // split at all.
+  let uris = [];
+  for (const n of exactNames) {
+    for (const e of entries) {
+      if (norm(e.title) === norm(n) && labourSafe(e)) uris.push(e.link);
+    }
+    if (uris.length) break;          // first name that matches anything wins
+  }
 
   // Fall back to "by Location" tabular reports containing keyword
   if (!uris.length) {

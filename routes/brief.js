@@ -354,4 +354,27 @@ router.post('/winscore/ingest', express.json({ limit: '256kb' }), async (req, re
   res.json({ periodEnd, written, sample: parsed.slice(0, 3) });
 });
 
+// ── POST /api/brief/diag/purge-bad-labor — remove mis-parsed hour rows ──────
+//
+// A run on 2026-10-04 pulled a department-level report, matched no hour
+// headers, fell back to hardcoded column indices and wrote that file's
+// "Avg Wages" column into sch_labor_hrs. Those rows are plausible-looking and
+// wrong, which is the worst kind. This deletes hour indicators for a date so a
+// corrected run can rewrite them.
+router.post('/diag/purge-bad-labor', async (req, res) => {
+  if (!authed(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const date = String(req.query.date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+
+  const pool = db.getPool();
+  if (!pool) return res.status(503).json({ error: 'Database unavailable' });
+
+  const r = await pool.query(
+    `DELETE FROM dbs_soft_indicators
+      WHERE metric_date = $1::date AND indicator IN ('act_labor_hrs','sch_labor_hrs')`,
+    [date]
+  );
+  res.json({ date, deleted: r.rowCount });
+});
+
 module.exports = router;

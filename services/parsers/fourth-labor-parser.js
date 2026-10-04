@@ -32,12 +32,17 @@ function num(v) {
 // Scan header row to find actual column indices by keyword.
 // Skip FOH/BOH/LY sub-columns — we only want the total labor columns.
 function detectColumns(rows) {
+  // Hours start null on purpose. They used to default to columns 5 and 6, so a
+  // failed header scan read whatever sat there and wrote it as hours — most
+  // recently the "Avg Wages" column of a department-level report, stored as
+  // scheduled hours. A plausible wrong number is worse than a blank one,
+  // because nobody notices it.
   // GoodData "Overview by Location" report structure (confirmed from live API response):
   //  0=Location  1=Week  2=A/F Sales  3=LY Sales
   //  4=Frct Hours  5=Sch Hours  6=Act Hours
   //  7=Sch Labor $  8=Act Labor $
   //  9..=FOH/BOH breakdowns (skip these)
-  const cols = { af_sales: 2, sch_hrs: 5, act_hrs: 6, sch_lab_dollar: 7, act_lab_dollar: 8,
+  const cols = { af_sales: 2, sch_hrs: null, act_hrs: null, sch_lab_dollar: 7, act_lab_dollar: 8,
                  lab_dollar_var: null, act_lab_pct: null, sch_lab_pct: null };
   for (let r = 0; r < Math.min(5, rows.length); r++) {
     const row = rows[r];
@@ -92,8 +97,8 @@ function parseFourthLaborFile(filePath) {
     const af_sales       = num(row[C.af_sales]);
     const act_lab_dollar = num(row[C.act_lab_dollar]);
     const sch_lab_dollar = num(row[C.sch_lab_dollar]);
-    const act_hrs        = num(row[C.act_hrs]);
-    const sch_hrs        = num(row[C.sch_hrs]);
+    const act_hrs        = C.act_hrs == null ? null : num(row[C.act_hrs]);
+    const sch_hrs        = C.sch_hrs == null ? null : num(row[C.sch_hrs]);
     // Compute derived values not present in this report format
     const lab_dollar_var = (act_lab_dollar != null && sch_lab_dollar != null) ? Math.round((act_lab_dollar - sch_lab_dollar) * 100) / 100 : null;
     const hrs_var        = (act_hrs != null && sch_hrs != null) ? Math.round((act_hrs - sch_hrs) * 100) / 100 : null;
