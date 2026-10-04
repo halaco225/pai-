@@ -184,6 +184,7 @@ const BASE_ARGS = [
 // costs a minute on the first call after a deploy and then nothing, and it
 // does not depend on a build command or a dashboard setting being right.
 let _installPromise = null;
+let _lastInstallLog = '';
 
 function ensureBrowser() {
   if (_hasChromium(process.env.PLAYWRIGHT_BROWSERS_PATH)) return Promise.resolve(true);
@@ -207,7 +208,14 @@ function ensureBrowser() {
       if (i >= tries.length) { console.error('[browser-launch] every install method failed'); _installPromise = null; return resolve(false); }
       const [cmd, args] = tries[i];
       console.log(`[browser-launch] install attempt ${i + 1}: ${cmd}`);
-      const c = spawn(cmd, args, { env: process.env, stdio: 'inherit' });
+      // Capture rather than inherit: inherited output goes to Render's log,
+      // which I cannot read, so a failed install looked identical to one that
+      // never ran. The tail is kept and surfaced in the error.
+      const c = spawn(cmd, args, { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+      let out = '';
+      c.stdout.on('data', d => { out += d; });
+      c.stderr.on('data', d => { out += d; });
+      c.on('close', () => { _lastInstallLog = out.slice(-1500); });
       c.on('error', (e) => { console.warn(`[browser-launch] ${cmd} failed: ${e.message}`); attempt(i + 1); });
       c.on('exit', (code) => {
         if (_hasChromium(process.env.PLAYWRIGHT_BROWSERS_PATH)) {
@@ -224,7 +232,11 @@ function ensureBrowser() {
 }
 
 async function launchContext(profileDir, extraOpts = {}) {
-  await ensureBrowser();
+  const ready = await ensureBrowser();
+  if (!ready) {
+    throw new Error('chromium could not be installed. Last install output: ' +
+                    (_lastInstallLog || '(none captured)'));
+  }
   const executablePath = resolveExecutablePath();
   const opts = {
     headless: true,
@@ -235,4 +247,4 @@ async function launchContext(profileDir, extraOpts = {}) {
   return chromium.launchPersistentContext(profileDir, opts);
 }
 
-module.exports = { launchContext, ensureBrowser };
+module.exports = { launchContext, ensureBrowser, lastInstallLog: () => _lastInstallLog };
