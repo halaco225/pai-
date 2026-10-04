@@ -191,6 +191,8 @@ async function findReportUris(jar, reportKey) {
 // 1900-01-01, where 1900-01-01 is 1. Verified against the live metadata:
 // 2026-09-29 is 46293 and 2026-10-05 is 46299.
 const FINANCIAL_DAY_ATTR = '588882';
+// yyyy-mm-dd display form of that attribute, which is where elements live.
+const FINANCIAL_DAY_DF   = '588920';
 
 function dateElementId(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -212,12 +214,23 @@ function fiscalWeekBounds(dateStr) {
   return { start: iso(start), end: iso(end) };
 }
 
+// A MAQL BETWEEN expression was rejected outright -- the execute call failed
+// and the whole download reported "all report URIs failed". The dashboard's
+// own filters use GoodData's `list` constraint, and a week is only seven days,
+// so the range is expressed as an explicit list of day elements instead.
 function weekFilterExpression(projectId, dateStr) {
   const { start, end } = fiscalWeekBounds(dateStr);
   const attr = `/gdc/md/${projectId}/obj/${FINANCIAL_DAY_ATTR}`;
+  const from = dateElementId(start), to = dateElementId(end);
+
+  const elements = [];
+  for (let id = from; id <= to; id++) elements.push(`${attr}/elements?id=${id}`);
+
   return {
-    expression: `[${attr}] BETWEEN [${attr}/elements?id=${dateElementId(start)}] AND [${attr}/elements?id=${dateElementId(end)}]`,
-    start, end,
+    expression: `[${attr}] BETWEEN [${attr}/elements?id=${from}] AND [${attr}/elements?id=${to}]`,
+    filter: { uri: `/gdc/md/${projectId}/obj/${FINANCIAL_DAY_DF}`,
+              constraint: { type: 'list', elements } },
+    start, end, elements,
   };
 }
 
@@ -227,7 +240,7 @@ async function executeAndDownload(jar, reportUri, outPath, targetDate) {
   const report_req = { report: reportUri };
   if (targetDate) {
     const f = weekFilterExpression(PROJECT_ID, targetDate);
-    report_req.filters = [{ expression: f.expression }];
+    report_req.filters = [f.filter];
     console.log(`[Fourth] Filtering to fiscal week ${f.start} .. ${f.end}`);
   }
 
