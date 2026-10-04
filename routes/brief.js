@@ -349,10 +349,14 @@ router.post('/winscore/run', async (req, res) => {
 //
 // Body: { periodEnd: "YYYY-MM-DD", rows: "038876:35:48,039375:14:63,..." }
 //       store_id : survey_count : win_score
-router.post('/winscore/ingest', express.json({ limit: '256kb' }), async (req, res) => {
+// GET is accepted as well as POST. SMG's pages forbid cross-origin fetch, so
+// the only way to hand rows over from that tab is to navigate to this URL --
+// a navigation is not blocked the way an XHR is.
+router.all('/winscore/ingest', express.json({ limit: '256kb' }), async (req, res) => {
   if (!authed(req)) return res.status(401).json({ error: 'Unauthorized' });
 
-  const periodEnd = String(req.body.periodEnd || '');
+  const src = (req.method === 'GET') ? req.query : req.body;
+  const periodEnd = String(src.periodEnd || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(periodEnd)) {
     return res.status(400).json({ error: 'periodEnd must be YYYY-MM-DD' });
   }
@@ -361,7 +365,7 @@ router.post('/winscore/ingest', express.json({ limit: '256kb' }), async (req, re
   if (!pool) return res.status(503).json({ error: 'Database unavailable' });
 
   const parsed = [];
-  for (const chunk of String(req.body.rows || '').split(',')) {
+  for (const chunk of String(src.rows || '').split(',')) {
     const [id, count, score] = chunk.trim().split(':');
     if (!/^\d{6}$/.test(id || '')) continue;          // COMBINED and junk fall out here
     const win = Number(score);
