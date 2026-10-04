@@ -443,9 +443,9 @@ router.get('/diag/fourth-labor-probe', async (req, res) => {
 
     for (const [label, td] of [['filtered', date], ['unfiltered', null]]) {
       try {
-        const file = await f.downloadFourthReport('LABOR', td);
-        if (!file) { out[label] = 'download returned nothing'; continue; }
-        const wb = XLSX.readFile(file);
+        const dl = await f.downloadFourthReport('LABOR', td);
+        if (!dl || !dl.success) { out[label] = 'download failed: ' + ((dl && dl.error) || 'unknown'); continue; }
+        const wb = XLSX.readFile(dl.filePath);
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
         out[label] = { header: (rows[0] || []).slice(0, 13), firstRow: (rows[1] || []).slice(0, 13), rowCount: rows.length };
