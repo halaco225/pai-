@@ -168,11 +168,22 @@ router.post('/send-now', async (req, res) => {
   } catch (err) {
     return res.status(500).json({ sent: false, error: err.message });
   }
+  if (!claimId && req.query.resend === '1') {
+    // Deliberate resend: drop today's claim and take a fresh one. Only ever
+    // from this endpoint with ?resend=1 -- the scheduled sender can never do
+    // this, so the one-per-day guard still holds for the 8:05 run.
+    const sb = rcDb.getServiceClient();
+    if (sb) await sb.from('sms_reminders').delete()
+      .eq('person', name).eq('kind', 'brief').eq('local_date', date);
+    try { claimId = await briefSms.claim(name, person.phone || '', date, body); }
+    catch (err) { return res.status(500).json({ sent: false, error: err.message }); }
+  }
+
   if (!claimId) {
     return res.status(409).json({
       error: `A brief is already claimed for ${name} on ${date}`,
       sent: false,
-      note: 'This is the one-per-day guard working, not a failure.',
+      note: 'This is the one-per-day guard working, not a failure. Add ?resend=1 to send anyway.',
     });
   }
 
