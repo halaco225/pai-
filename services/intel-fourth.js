@@ -247,8 +247,7 @@ async function downloadFourthReport(reportKey, targetDate) {
 async function listReportTitles() {
   const user = process.env.FOURTH_USER, pass = process.env.FOURTH_PASSWORD;
   if (!user || !pass) throw new Error('FOURTH_USER / FOURTH_PASSWORD are not set');
-  const jar = makeCookieJar();
-  await login(jar, user, pass);
+  const jar = await getAuthCookies(user, pass);
   const resp = await httpRequest('GET', `/gdc/md/${PROJECT_ID}/query/reports`, { cookieJar: jar });
   if (resp.status !== 200) throw new Error(`query/reports HTTP ${resp.status}`);
   const entries = (JSON.parse(resp.body).query || {}).entries || [];
