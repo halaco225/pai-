@@ -457,4 +457,21 @@ router.get('/diag/fourth-labor-probe', async (req, res) => {
   }
 });
 
+// ── GET /api/brief/diag/fourth-exec — raw execute/raw response ──────────────
+router.get('/diag/fourth-exec', async (req, res) => {
+  if (!authed(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const f = require('../services/intel-fourth');
+    const shape = String(req.query.shape || 'list');
+    const w = f.weekFilterExpression(f.PROJECT_ID, String(req.query.date || '2026-10-03'));
+    let filters = null;
+    if (shape === 'list')       filters = [w.filter];
+    else if (shape === 'maql')  filters = [{ expression: w.expression }];
+    else if (shape === 'none')  filters = null;
+    res.json(await f.rawExecuteProbe(filters));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

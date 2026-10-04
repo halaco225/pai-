@@ -344,5 +344,23 @@ async function labourReportUri() {
   return uris[0] || null;
 }
 
+// Run execute/raw directly and hand back whatever GoodData says, unswallowed.
+// Two filter shapes were rejected and the only message that reached me was
+// "all report URIs failed", which says nothing about why.
+async function rawExecuteProbe(filters) {
+  const user = process.env.FOURTH_USER, pass = process.env.FOURTH_PASSWORD;
+  const jar  = await getAuthCookies(user, pass);
+  const uris = await findReportUris(jar, 'LABOR');
+  if (!uris.length) return { error: 'no labour report uri' };
+
+  const report_req = { report: uris[0] };
+  if (filters) report_req.filters = filters;
+
+  const resp = await httpRequest('POST', `/gdc/app/projects/${PROJECT_ID}/execute/raw/`, {
+    cookieJar: jar, body: { report_req },
+  });
+  return { status: resp.status, body: String(resp.body).slice(0, 1200), sentFilters: filters || null };
+}
+
 module.exports = { downloadFourthReport, listReportTitles, inspectMeta, labourReportUri,
-  PROJECT_ID, fiscalWeekBounds, dateElementId, weekFilterExpression };
+  PROJECT_ID, fiscalWeekBounds, dateElementId, weekFilterExpression, rawExecuteProbe };
