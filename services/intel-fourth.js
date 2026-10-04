@@ -112,9 +112,14 @@ async function findReportUris(jar, reportKey) {
 
   // Target the exact tabular "by Location" reports the parsers expect.
   // Priority: exact name match → prefix match → keyword fallback.
+  // Real titles, read from the project's report list on 2026-10-04 rather than
+  // guessed. The guesses were missing the "LABOR - " prefix, so the exact match
+  // never hit and the keyword fallback picked "FA - Labor Details by Locations"
+  // -- a department-level report with one "Hours" column and no Act/Sch split.
   const exactNames = reportKey === 'LABOR'
-    ? ['Overview Report By Location', 'Labor Details by Locations', 'Labor Breakdown by Location']
-    : ['Overtime / Double Time / Special By Location', 'Actual/Scheduled Overtime Hours By Org Level 3'];
+    ? ['LABOR - Overview Report By Location']
+    : ['LABOR - Actual/Scheduled Overtime Hours By Org Level 3',
+       'Overtime / Double Time / Special By Location'];
 
   // Case- and whitespace-insensitive. The real report is titled "Overview
   // Report by Location" with a lower-case "by"; matching it with === against
@@ -144,21 +149,26 @@ async function findReportUris(jar, reportKey) {
 
   // Fall back to "by Location" tabular reports containing keyword
   if (!uris.length) {
-    const kw = reportKey === 'LABOR' ? 'labor' : 'overtime';
     uris = entries
       .filter(e => {
         const t = norm(e.title);
-        return t.includes(kw) && (t.includes('by location') || t.includes('by locations'));
+        if (reportKey === 'LABOR') {
+          // Must be the overview, not a details/department cut. Matching any
+          // report with "labor" in the title is how this went wrong twice.
+          return t.includes('overview report') && t.includes('by location') && !t.includes('department');
+        }
+        return t.includes('overtime') && (t.includes('by location') || t.includes('by locations'));
       })
       .filter(labourSafe)
       .map(e => e.link);
   }
 
   // Last resort: any report containing keyword (excludes KPI tiles which are single numbers)
-  if (!uris.length) {
-    const kw = reportKey === 'LABOR' ? 'labor details' : 'overtime';
+  // No third guess for LABOR. Its old last resort was "labor details", which is
+  // the department report that caused this. Finding nothing is the right answer.
+  if (!uris.length && reportKey !== 'LABOR') {
     uris = entries
-      .filter(e => norm(e.title).includes(kw) && !String(e.title || '').startsWith('KPI'))
+      .filter(e => norm(e.title).includes('overtime') && !String(e.title || '').startsWith('KPI'))
       .filter(labourSafe)
       .map(e => e.link);
   }
