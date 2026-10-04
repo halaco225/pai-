@@ -240,7 +240,8 @@ async function executeAndDownload(jar, reportUri, outPath, targetDate) {
   const report_req = { report: reportUri };
   if (targetDate) {
     const f = weekFilterExpression(PROJECT_ID, targetDate);
-    report_req.filters = [f.filter];
+    // Filters live under context; GoodData rejects them beside `report`.
+    report_req.context = { filters: [f.filter] };
     console.log(`[Fourth] Filtering to fiscal week ${f.start} .. ${f.end}`);
   }
 
