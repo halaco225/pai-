@@ -50,8 +50,14 @@ describe('isDue', () => {
     expect(isDue({ ...base, now: new Date('2026-10-05T20:00:00Z') })).toBe(false); // 16:00 EDT
   });
 
+  // Harold asked for "between 8 and 9", which also absorbs a slow pipeline.
   test('window is explicit, not accidental', () => {
-    expect(SEND_WINDOW_MINUTES).toBe(30);
+    expect(SEND_WINDOW_MINUTES).toBe(60);
+  });
+
+  test('still due at the end of the hour, not after it', () => {
+    expect(isDue({ ...base, now: new Date('2026-10-05T13:04:00Z') })).toBe(true);  // 09:04 EDT
+    expect(isDue({ ...base, now: new Date('2026-10-05T13:06:00Z') })).toBe(false); // 09:06 EDT
   });
 
   test('not due twice on the same local date', () => {
@@ -107,8 +113,8 @@ describe('isDue', () => {
 });
 
 describe('recipients', () => {
-  test('defaults to Harold alone', () => {
-    expect(recipients({})).toEqual(['hlacoste']);
+  test('defaults to Harold and Matt', () => {
+    expect(recipients({})).toEqual(['hlacoste', 'mhester']);
   });
 
   test('reads a comma list from the environment', () => {

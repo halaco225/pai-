@@ -37,6 +37,11 @@ console.log(`[browser-launch] PLAYWRIGHT_BROWSERS_PATH=${_browsersPath} (exists:
  */
 function resolveExecutablePath() {
   // Search candidate paths in priority order for an installed Chromium browser
+  // PLAYWRIGHT_BROWSERS_PATH=0 means the browser lives inside node_modules and
+  // Playwright resolves it itself. Returning undefined lets it do that; forcing
+  // a path here would point at a directory that does not exist.
+  if (process.env.PLAYWRIGHT_BROWSERS_PATH === '0') return undefined;
+
   const candidates = [
     process.env.PLAYWRIGHT_BROWSERS_PATH,                         // hardcoded above (playwright-browsers/)
     '/opt/render/project/src/playwright-browsers',                 // explicit fallback (same path, belt+suspenders)
