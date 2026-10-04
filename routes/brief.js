@@ -377,4 +377,18 @@ router.post('/diag/purge-bad-labor', async (req, res) => {
   res.json({ date, deleted: r.rowCount });
 });
 
+// ── GET /api/brief/diag/fourth-reports — what reports actually exist ────────
+router.get('/diag/fourth-reports', async (req, res) => {
+  if (!authed(req)) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { listReportTitles } = require('../services/intel-fourth');
+    const all = await listReportTitles();
+    const q = String(req.query.q || 'labor|overview|hour').toLowerCase();
+    const re = new RegExp(q, 'i');
+    res.json({ total: all.length, matching: all.filter(t => re.test(t)).sort() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

@@ -240,4 +240,19 @@ async function downloadFourthReport(reportKey, targetDate) {
   }
 }
 
-module.exports = { downloadFourthReport };
+// List every report title in the project. "Overview Report by Location" is the
+// one Harold uses, but it may be a dashboard widget rather than a saved report
+// under that exact name -- and guessing names is what put this on an overtime
+// report and then a department report. Read the list instead.
+async function listReportTitles() {
+  const user = process.env.FOURTH_USER, pass = process.env.FOURTH_PASSWORD;
+  if (!user || !pass) throw new Error('FOURTH_USER / FOURTH_PASSWORD are not set');
+  const jar = makeCookieJar();
+  await login(jar, user, pass);
+  const resp = await httpRequest('GET', `/gdc/md/${PROJECT_ID}/query/reports`, { cookieJar: jar });
+  if (resp.status !== 200) throw new Error(`query/reports HTTP ${resp.status}`);
+  const entries = (JSON.parse(resp.body).query || {}).entries || [];
+  return entries.map(e => e.title).filter(Boolean);
+}
+
+module.exports = { downloadFourthReport, listReportTitles };
