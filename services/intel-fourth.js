@@ -295,16 +295,26 @@ async function downloadFourthReport(reportKey, targetDate) {
     const jar        = await getAuthCookies(user, pass);
     const reportUris = await findReportUris(jar, reportKey);
 
+    const failures = [];
     for (const uri of reportUris) {
       try {
         await executeAndDownload(jar, uri, outPath, targetDate);
         return { success: true, filePath: outPath };
       } catch (err) {
         console.warn(`[Fourth] ${uri} failed: ${err.message}`);
+        failures.push(`${uri}: ${err.message}`);
       }
     }
 
-    return { success: false, error: 'All report URIs failed or returned unusable data' };
+    // Carry the real reasons out. The generic message sent me chasing a filter
+    // shape that GoodData had already accepted, because the actual failure was
+    // only ever written to a log I cannot read.
+    return {
+      success: false,
+      error: failures.length
+        ? `All report URIs failed — ${failures.join(' | ')}`
+        : `No report URI matched for ${reportKey}`,
+    };
 
   } catch (err) {
     console.error(`[Fourth] ${reportKey} FAILED:`, err.message);
