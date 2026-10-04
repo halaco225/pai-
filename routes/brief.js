@@ -430,4 +430,31 @@ router.get('/diag/fourth-meta', async (req, res) => {
   }
 });
 
+// ── GET /api/brief/diag/fourth-labor-probe — run the export, compare rows ───
+// Downloads the labor report with and without the fiscal-week filter and shows
+// the first data row of each. If they match, the filter is being ignored.
+router.get('/diag/fourth-labor-probe', async (req, res) => {
+  if (!authed(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const date = String(req.query.date || '2026-10-03');
+  try {
+    const f = require('../services/intel-fourth');
+    const XLSX = require('xlsx');
+    const out = { date, week: f.fiscalWeekBounds(date), filterExpression: f.weekFilterExpression(f.PROJECT_ID, date).expression };
+
+    for (const [label, td] of [['filtered', date], ['unfiltered', null]]) {
+      try {
+        const file = await f.downloadFourthReport('LABOR', td);
+        if (!file) { out[label] = 'download returned nothing'; continue; }
+        const wb = XLSX.readFile(file);
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+        out[label] = { header: (rows[0] || []).slice(0, 13), firstRow: (rows[1] || []).slice(0, 13), rowCount: rows.length };
+      } catch (e) { out[label] = 'ERROR: ' + e.message; }
+    }
+    res.json(out);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
