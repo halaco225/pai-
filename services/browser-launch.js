@@ -192,16 +192,33 @@ function ensureBrowser() {
   _installPromise = new Promise((resolve) => {
     const { spawn } = require('child_process');
     console.log(`[browser-launch] no chromium found; installing into ${process.env.PLAYWRIGHT_BROWSERS_PATH}`);
-    const child = spawn(process.execPath,
-      [require.resolve('playwright-core/cli.js'), 'install', 'chromium-headless-shell'],
-      { env: process.env, stdio: 'inherit' });
-    child.on('error', (e) => { console.error('[browser-launch] install failed:', e.message); resolve(false); });
-    child.on('exit', (code) => {
-      const ok = _hasChromium(process.env.PLAYWRIGHT_BROWSERS_PATH);
-      console.log(`[browser-launch] install exited ${code}; chromium present: ${ok}`);
-      _installPromise = null;
-      resolve(ok);
-    });
+    // require.resolve('playwright-core/cli.js') is blocked by that package's
+    // "exports" map, so go at the CLI the way a shell would. Try each in turn.
+    const pathMod = require('path');
+    const root    = pathMod.join(__dirname, '..', 'node_modules');
+    const tries   = [
+      [pathMod.join(root, '.bin', 'playwright'),        ['install', 'chromium-headless-shell']],
+      [process.execPath, [pathMod.join(root, 'playwright-core', 'cli.js'), 'install', 'chromium-headless-shell']],
+      [process.execPath, [pathMod.join(root, 'playwright', 'cli.js'),      'install', 'chromium-headless-shell']],
+      ['npx', ['--yes', 'playwright', 'install', 'chromium-headless-shell']],
+    ];
+
+    const attempt = (i) => {
+      if (i >= tries.length) { console.error('[browser-launch] every install method failed'); _installPromise = null; return resolve(false); }
+      const [cmd, args] = tries[i];
+      console.log(`[browser-launch] install attempt ${i + 1}: ${cmd}`);
+      const c = spawn(cmd, args, { env: process.env, stdio: 'inherit' });
+      c.on('error', (e) => { console.warn(`[browser-launch] ${cmd} failed: ${e.message}`); attempt(i + 1); });
+      c.on('exit', (code) => {
+        if (_hasChromium(process.env.PLAYWRIGHT_BROWSERS_PATH)) {
+          console.log('[browser-launch] chromium installed');
+          _installPromise = null; return resolve(true);
+        }
+        console.warn(`[browser-launch] ${cmd} exited ${code} without installing`);
+        attempt(i + 1);
+      });
+    };
+    attempt(0);
   });
   return _installPromise;
 }
