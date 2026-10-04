@@ -308,4 +308,50 @@ router.post('/winscore/run', async (req, res) => {
   }
 });
 
+// ── POST /api/brief/winscore/ingest — write Win Score rows pulled by hand ───
+//
+// Playwright is not installed on this deploy (every browsers path is missing),
+// so the automated pull cannot run yet. This accepts rows read out of the live
+// report so the brief has real WIN numbers in the meantime. Same upsert the
+// automated path uses, keyed on (store_id, period_end_date).
+//
+// Body: { periodEnd: "YYYY-MM-DD", rows: "038876:35:48,039375:14:63,..." }
+//       store_id : survey_count : win_score
+router.post('/winscore/ingest', express.json({ limit: '256kb' }), async (req, res) => {
+  if (!authed(req)) return res.status(401).json({ error: 'Unauthorized' });
+
+  const periodEnd = String(req.body.periodEnd || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(periodEnd)) {
+    return res.status(400).json({ error: 'periodEnd must be YYYY-MM-DD' });
+  }
+
+  const pool = db.getPool();
+  if (!pool) return res.status(503).json({ error: 'Database unavailable' });
+
+  const parsed = [];
+  for (const chunk of String(req.body.rows || '').split(',')) {
+    const [id, count, score] = chunk.trim().split(':');
+    if (!/^\d{6}$/.test(id || '')) continue;          // COMBINED and junk fall out here
+    const win = Number(score);
+    if (!Number.isFinite(win)) continue;
+    parsed.push({ store_id: id, survey_count: Number(count) || 0, win_score: win });
+  }
+  if (!parsed.length) return res.status(400).json({ error: 'No store rows parsed' });
+
+  let written = 0;
+  for (const r of parsed) {
+    await pool.query(
+      `INSERT INTO smg_win_scores (store_id, period_end_date, win_score, survey_count, updated_at)
+       VALUES ($1, $2::date, $3, $4, NOW())
+       ON CONFLICT (store_id, period_end_date) DO UPDATE
+         SET win_score = EXCLUDED.win_score,
+             survey_count = EXCLUDED.survey_count,
+             updated_at = NOW()`,
+      [r.store_id, periodEnd, r.win_score, r.survey_count]
+    );
+    written++;
+  }
+  res.json({ periodEnd, written, sample: parsed.slice(0, 3) });
+});
+
 module.exports = router;
