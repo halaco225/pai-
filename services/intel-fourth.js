@@ -179,12 +179,61 @@ async function findReportUris(jar, reportKey) {
 
 // ── Step 3: Execute report → poll → download xlsx ─────────────────────────────
 
-async function executeAndDownload(jar, reportUri, outPath) {
+// ── Fiscal-week date filter ───────────────────────────────────────────────────
+//
+// The export runs standalone, so it inherits nothing from the dashboard and
+// returns every period ever recorded -- Senoia came back with 37,847 hours
+// against the 282 on screen. The dashboard filters DATE (FinancialDay) to the
+// fiscal week (WK40 FY26 = Tue 9/29 - Mon 10/5), and that is what labor should
+// be measured over, so the same filter is applied here.
+//
+// Date (FinancialDay) is obj/588882; its elements are ids counting days from
+// 1900-01-01, where 1900-01-01 is 1. Verified against the live metadata:
+// 2026-09-29 is 46293 and 2026-10-05 is 46299.
+const FINANCIAL_DAY_ATTR = '588882';
+
+function dateElementId(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const days = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1900, 0, 1)) / 86400000);
+  return days + 1;
+}
+
+// Pizza Hut's fiscal week runs Tuesday to Monday. Returns the week containing
+// `dateStr`, so a mid-week run naturally gives week-to-date: the days after
+// today simply have no data yet.
+function fiscalWeekBounds(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const t = Date.UTC(y, m - 1, d);
+  const dow = new Date(t).getUTCDay();          // 0 Sun .. 6 Sat
+  const backToTuesday = (dow - 2 + 7) % 7;      // 2 = Tuesday
+  const start = new Date(t - backToTuesday * 86400000);
+  const end   = new Date(start.getTime() + 6 * 86400000);
+  const iso = x => x.toISOString().slice(0, 10);
+  return { start: iso(start), end: iso(end) };
+}
+
+function weekFilterExpression(projectId, dateStr) {
+  const { start, end } = fiscalWeekBounds(dateStr);
+  const attr = `/gdc/md/${projectId}/obj/${FINANCIAL_DAY_ATTR}`;
+  return {
+    expression: `[${attr}] BETWEEN [${attr}/elements?id=${dateElementId(start)}] AND [${attr}/elements?id=${dateElementId(end)}]`,
+    start, end,
+  };
+}
+
+async function executeAndDownload(jar, reportUri, outPath, targetDate) {
   console.log(`[Fourth] Executing report: ${reportUri}`);
+
+  const report_req = { report: reportUri };
+  if (targetDate) {
+    const f = weekFilterExpression(PROJECT_ID, targetDate);
+    report_req.filters = [{ expression: f.expression }];
+    console.log(`[Fourth] Filtering to fiscal week ${f.start} .. ${f.end}`);
+  }
 
   const execResp = await httpRequest('POST', `/gdc/app/projects/${PROJECT_ID}/execute/raw/`, {
     cookieJar: jar,
-    body: { report_req: { report: reportUri } },
+    body: { report_req },
   });
 
   if (execResp.status !== 200 && execResp.status !== 201) {
@@ -235,7 +284,7 @@ async function downloadFourthReport(reportKey, targetDate) {
 
     for (const uri of reportUris) {
       try {
-        await executeAndDownload(jar, uri, outPath);
+        await executeAndDownload(jar, uri, outPath, targetDate);
         return { success: true, filePath: outPath };
       } catch (err) {
         console.warn(`[Fourth] ${uri} failed: ${err.message}`);
@@ -282,4 +331,5 @@ async function labourReportUri() {
   return uris[0] || null;
 }
 
-module.exports = { downloadFourthReport, listReportTitles, inspectMeta, labourReportUri, PROJECT_ID };
+module.exports = { downloadFourthReport, listReportTitles, inspectMeta, labourReportUri,
+  PROJECT_ID, fiscalWeekBounds, dateElementId, weekFilterExpression };
