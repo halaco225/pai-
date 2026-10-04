@@ -10,13 +10,21 @@ services:
     name: pai-ayvaz
     env: node
     plan: starter
-    buildCommand: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/playwright-browsers npx playwright install chromium-headless-shell && (PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/playwright-browsers npx playwright install-deps chromium-headless-shell || true)
+    # PLAYWRIGHT_BROWSERS_PATH=0 installs the browser inside node_modules, which
+    # is part of the build output and therefore survives into the running
+    # service. The previous command wrote to a sibling directory that was not
+    # there at runtime -- every candidate path came back missing, so no
+    # browser-driven step has ever worked: WIN score, SMG comments, HutBot.
+    # The install is no longer swallowed by `|| true`, so a failure fails the
+    # build instead of producing a deploy that silently cannot browse.
+    buildCommand: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium-headless-shell && (PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install-deps chromium-headless-shell || true)
     startCommand: bash startup.sh
     envVars:
       - key: NODE_ENV
         value: production
+      # 0 means "inside node_modules", matching the build above.
       - key: PLAYWRIGHT_BROWSERS_PATH
-        value: /opt/render/project/src/playwright-browsers
+        value: "0"
       # ── Anthropic / Claude ──────────────────────────────────
       - key: ANTHROPIC_API_KEY
         sync: false
@@ -79,7 +87,7 @@ services:
       - key: PAI_BASE_URL
         value: https://pai-ayvaz.onrender.com
       - key: PAI_BRIEF_RECIPIENTS
-        value: hlacoste
+        value: hlacoste,mhester
       - key: PAI_BRIEF_SEND_LOCAL_TIME
         value: "08:05"
 

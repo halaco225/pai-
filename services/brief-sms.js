@@ -31,9 +31,11 @@ const MAX_SMS_CHARS = 320;
 // output, and vice versa.
 const BRIEF_MODEL = process.env.BRIEF_MODEL || 'claude-sonnet-5';
 
-// How late a send may still go out. A tick that is delayed, or an app that
-// restarts at 8:07, should still send. An app that boots at 4pm should not.
-const SEND_WINDOW_MINUTES = 30;
+// How late a send may still go out. Harold's requirement is "between 8 and 9",
+// so the window is an hour from 08:05 -- that absorbs a slow pipeline morning
+// without ever drifting into the afternoon. An app that boots at 4pm still
+// sends nothing.
+const SEND_WINDOW_MINUTES = Number(process.env.PAI_BRIEF_WINDOW_MINUTES || 60);
 
 const DEFAULT_SEND_LOCAL = '08:05';
 
@@ -270,7 +272,7 @@ async function buildBody(username, targetDate) {
 function recipients(env = process.env) {
   // Deliberately explicit: an empty setting sends to nobody. Defaulting an
   // empty value to "everyone" is how 62 people get an unexpected text.
-  if (env.PAI_BRIEF_RECIPIENTS === undefined) return ['hlacoste'];
+  if (env.PAI_BRIEF_RECIPIENTS === undefined) return ['hlacoste', 'mhester'];
   return env.PAI_BRIEF_RECIPIENTS.split(',').map(s => s.trim()).filter(Boolean);
 }
 
