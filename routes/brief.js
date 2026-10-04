@@ -464,11 +464,17 @@ router.get('/diag/fourth-exec', async (req, res) => {
     const f = require('../services/intel-fourth');
     const shape = String(req.query.shape || 'list');
     const w = f.weekFilterExpression(f.PROJECT_ID, String(req.query.date || '2026-10-03'));
-    let filters = null;
-    if (shape === 'list')       filters = [w.filter];
-    else if (shape === 'maql')  filters = [{ expression: w.expression }];
-    else if (shape === 'none')  filters = null;
-    res.json(await f.rawExecuteProbe(filters));
+    // GoodData said filters belong under "context". Try the plausible shapes
+    // and let it tell us which it accepts, rather than guessing a fourth time.
+    const shapes = {
+      none:        null,
+      ctxFilters:  { context: { filters: [w.filter] } },
+      ctxList:     { context: [w.filter] },
+      ctxExpr:     { context: { filters: [{ expression: w.expression }] } },
+      flatFilters: { filters: [w.filter] },
+    };
+    if (!(shape in shapes)) return res.status(400).json({ error: 'shape must be one of ' + Object.keys(shapes).join(', ') });
+    res.json(await f.rawExecuteProbe(shapes[shape]));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -354,7 +354,7 @@ async function rawExecuteProbe(filters) {
   if (!uris.length) return { error: 'no labour report uri' };
 
   const report_req = { report: uris[0] };
-  if (filters) report_req.filters = filters;
+  if (filters) Object.assign(report_req, filters);   // caller supplies the shape
 
   const resp = await httpRequest('POST', `/gdc/app/projects/${PROJECT_ID}/execute/raw/`, {
     cookieJar: jar, body: { report_req },
