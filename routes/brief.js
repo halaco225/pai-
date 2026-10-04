@@ -305,15 +305,36 @@ router.get('/diag/scorecard', async (req, res) => {
 router.post('/winscore/run', async (req, res) => {
   if (!authed(req)) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    const ws = require('../services/intel-smg-winscore-browser');
-    if (req.query.dry === '1') {
-      const out = await ws.pullWinScores();
-      return res.json({ dryRun: true, periodEnd: out.periodEnd,
-                        stores: out.stores.length, combined: out.combined,
-                        sample: out.stores.slice(0, 5) });
-    }
-    const out = await ws.pullAndStore();
-    res.json(out);
+    const ws  = require('../services/intel-smg-winscore-browser');
+    const dry = req.query.dry === '1';
+
+    // Driving a browser takes minutes; Render's proxy gives up at 100 seconds
+    // and the caller just sees an empty response. Answer immediately and write
+    // the outcome to the automation log, where it can be read afterwards.
+    res.json({ status: 'started', dryRun: dry, readResultAt: '/api/brief/diag/winscore-last' });
+
+    (async () => {
+      try {
+        const out = dry ? await ws.pullWinScores() : await ws.pullAndStore();
+        await db.logIntelJob({
+          jobType: 'winscore:' + (dry ? 'dry' : 'store'),
+          targetDate: out.periodEnd, status: 'success',
+          message: JSON.stringify({
+            periodEnd: out.periodEnd,
+            stores: out.stores ? out.stores.length : out.written,
+            combined: out.combined,
+            sample: (out.stores || []).slice(0, 5),
+          }),
+        });
+        console.log('[WinScore] run finished for', out.periodEnd);
+      } catch (err) {
+        await db.logIntelJob({
+          jobType: 'winscore:' + (dry ? 'dry' : 'store'),
+          targetDate: null, status: 'error', message: String(err.message).slice(0, 900),
+        });
+        console.error('[WinScore] run failed:', err.message);
+      }
+    })();
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -478,6 +499,17 @@ router.get('/diag/fourth-exec', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── GET /api/brief/diag/winscore-last — outcome of the last win-score run ───
+router.get('/diag/winscore-last', async (req, res) => {
+  if (!authed(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const logs = await db.getIntelLogs(60);
+  const row  = (logs || []).find(r => String(r.job_type || '').startsWith('winscore:'));
+  if (!row) return res.json({ note: 'no win-score run logged yet' });
+  let message = row.message;
+  try { message = JSON.parse(message); } catch (_) {}
+  res.json({ jobType: row.job_type, status: row.status, at: row.created_at, message });
 });
 
 module.exports = router;
