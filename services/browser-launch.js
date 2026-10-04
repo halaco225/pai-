@@ -22,7 +22,25 @@
 // (non-hidden directory in the project root — guaranteed to be in the
 // Render deployment artifact).  Hidden dirs (.playwright-browsers inside
 // node_modules) are stripped by Render's packager and never reach the VM.
-process.env.PLAYWRIGHT_BROWSERS_PATH = '/opt/render/project/src/playwright-browsers';
+// Two candidates, in order: the project directory the build is meant to fill,
+// and /tmp, which is always writable at runtime. Whichever already holds a
+// chromium wins; if neither does, ensureBrowser() installs into /tmp below.
+//
+// This has to happen before require('playwright'), because Playwright reads
+// the variable at import time -- a later change is ignored, which is why
+// clearing it inside launchContext did nothing.
+const _fsBoot = require('fs');
+const BUILD_BROWSERS = '/opt/render/project/src/playwright-browsers';
+const TMP_BROWSERS   = '/tmp/ms-playwright';
+
+function _hasChromium(dir) {
+  try { return _fsBoot.readdirSync(dir).some(e => e.startsWith('chromium')); } catch (_) { return false; }
+}
+
+process.env.PLAYWRIGHT_BROWSERS_PATH =
+  _hasChromium(BUILD_BROWSERS) ? BUILD_BROWSERS
+  : _hasChromium(TMP_BROWSERS) ? TMP_BROWSERS
+  : TMP_BROWSERS;   // nothing installed yet — ensureBrowser() will fill this
 
 const { chromium } = require('playwright');
 const fs   = require('fs');
@@ -160,7 +178,36 @@ const BASE_ARGS = [
  * @param {string} profileDir  - persistent profile directory path
  * @param {object} extraOpts   - any additional launchPersistentContext options
  */
+// Install chromium on demand. The build is supposed to do this, but on this
+// service it never has -- every browser-driven feature (WIN score, SMG
+// comments, HutBot) has been dead since it was written. Installing at runtime
+// costs a minute on the first call after a deploy and then nothing, and it
+// does not depend on a build command or a dashboard setting being right.
+let _installPromise = null;
+
+function ensureBrowser() {
+  if (_hasChromium(process.env.PLAYWRIGHT_BROWSERS_PATH)) return Promise.resolve(true);
+  if (_installPromise) return _installPromise;
+
+  _installPromise = new Promise((resolve) => {
+    const { spawn } = require('child_process');
+    console.log(`[browser-launch] no chromium found; installing into ${process.env.PLAYWRIGHT_BROWSERS_PATH}`);
+    const child = spawn(process.execPath,
+      [require.resolve('playwright-core/cli.js'), 'install', 'chromium-headless-shell'],
+      { env: process.env, stdio: 'inherit' });
+    child.on('error', (e) => { console.error('[browser-launch] install failed:', e.message); resolve(false); });
+    child.on('exit', (code) => {
+      const ok = _hasChromium(process.env.PLAYWRIGHT_BROWSERS_PATH);
+      console.log(`[browser-launch] install exited ${code}; chromium present: ${ok}`);
+      _installPromise = null;
+      resolve(ok);
+    });
+  });
+  return _installPromise;
+}
+
 async function launchContext(profileDir, extraOpts = {}) {
+  await ensureBrowser();
   const executablePath = resolveExecutablePath();
   const opts = {
     headless: true,
@@ -171,4 +218,4 @@ async function launchContext(profileDir, extraOpts = {}) {
   return chromium.launchPersistentContext(profileDir, opts);
 }
 
-module.exports = { launchContext };
+module.exports = { launchContext, ensureBrowser };
