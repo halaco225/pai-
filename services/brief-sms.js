@@ -200,12 +200,21 @@ function renderForSms(sc, opts) {
 
   if (sc.rows && sc.rows.length) {
     L.push('');
-    L.push((sc.childLevel === 'store' ? 'STORES' : sc.childLevel === 'area' ? 'AREAS' : 'BREAKDOWN') + ' worst first');
+    // Named for whoever is reading: a VP sees REGIONS, an RDO AREAS, an Area
+    // Coach STORES.
+    const heading = { region: 'REGIONS', area: 'AREAS', store: 'STORES' }[sc.childLevel] || 'BREAKDOWN';
+    L.push(heading + ' best first');
     // Two lines per row: who and the money, then the operational numbers
     // indented under it. One line fitted only while labor and WIN were
     // missing -- with both present a row reaches 39 characters and wraps,
     // which is the mess this whole renderer exists to avoid.
-    for (const r of sc.rows) {
+    const ordered = [...sc.rows].sort((a, b) => {
+      if (a.growth_pct == null) return 1;      // no data sinks to the bottom
+      if (b.growth_pct == null) return -1;
+      return b.growth_pct - a.growth_pct;      // best growth first
+    });
+
+    for (const r of ordered) {
       L.push([shortLabel(r.label), m0(r.sales), g0(r.growth_pct)].filter(Boolean).join(' '));
 
       const detail = [];

@@ -45,9 +45,17 @@ describe('renderForSms', () => {
     expect(out).not.toMatch(/—\s+—/);
   });
 
-  test('worst performer comes first', () => {
-    const body = lines(out).slice(lines(out).indexOf('AREAS worst first') + 1);
-    expect(body[0]).toMatch(/^Meehan/);
+  test('best performer comes first', () => {
+    const body = lines(out).slice(lines(out).indexOf('AREAS best first') + 1);
+    expect(body[0]).toMatch(/^Gannon/);     // +26.5%, the strongest
+  });
+
+  // The heading names whatever the reader is actually looking at.
+  test('heading matches the viewer level', () => {
+    const asVp = renderForSms({ ...REGION, childLevel: 'region' }, {});
+    const asAc = renderForSms({ ...REGION, childLevel: 'store' }, {});
+    expect(asVp).toContain('REGIONS best first');
+    expect(asAc).toContain('STORES best first');
   });
 
   test('a clean area carries no missed-routine marker', () => {
