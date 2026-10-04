@@ -42,6 +42,23 @@ function resolveExecutablePath() {
   // a path here would point at a directory that does not exist.
   if (process.env.PLAYWRIGHT_BROWSERS_PATH === '0') return undefined;
 
+  // Self-heal a stale PLAYWRIGHT_BROWSERS_PATH. Render keeps dashboard env
+  // values over render.yaml, so this can still point at the old directory that
+  // no browser was ever installed into -- and Playwright trusts that variable
+  // over anything we pass, failing with "Executable doesn't exist". Clearing it
+  // when it leads nowhere lets Playwright fall back to its own default, which
+  // is where the build now installs chromium.
+  const configured = process.env.PLAYWRIGHT_BROWSERS_PATH;
+  if (configured) {
+    let usable = false;
+    try { usable = fs.readdirSync(configured).some(e => e.startsWith('chromium')); } catch (_) {}
+    if (!usable) {
+      console.warn(`[browser] PLAYWRIGHT_BROWSERS_PATH=${configured} has no chromium; ignoring it`);
+      delete process.env.PLAYWRIGHT_BROWSERS_PATH;
+      return undefined;
+    }
+  }
+
   const candidates = [
     process.env.PLAYWRIGHT_BROWSERS_PATH,                         // hardcoded above (playwright-browsers/)
     '/opt/render/project/src/playwright-browsers',                 // explicit fallback (same path, belt+suspenders)
