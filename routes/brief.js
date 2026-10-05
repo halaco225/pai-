@@ -473,7 +473,14 @@ router.get('/diag/fourth-labor-probe', async (req, res) => {
         const wb = XLSX.readFile(dl.filePath);
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
-        out[label] = { header: (rows[0] || []).slice(0, 13), firstRow: (rows[1] || []).slice(0, 13), rowCount: rows.length };
+        const want = String(req.query.store || '').trim();
+        const match = want ? rows.find(r => String(r && r[0] || '').includes(want)) : null;
+        out[label] = {
+          header: (rows[0] || []).slice(0, 13),
+          firstRow: (rows[1] || []).slice(0, 13),
+          rowCount: rows.length,
+          ...(want ? { store: want, storeRow: match ? match.slice(0, 13) : 'not found' } : {}),
+        };
       } catch (e) { out[label] = 'ERROR: ' + e.message; }
     }
     res.json(out);
