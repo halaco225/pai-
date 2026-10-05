@@ -196,7 +196,9 @@ function renderForSms(sc, opts) {
   else {
     const have = [];
     if (o.act_hrs != null) have.push('Labor ' + (o.hrs_variance >= 0 ? '+' : '') + o.hrs_variance.toFixed(0) + 'h');
-    if (o.win != null) have.push('WIN ' + o.win.toFixed(1) + '%');
+    // Marked PTD because it is the one metric on a different basis: sales,
+    // growth, IST and labor are all the previous day, WIN is period-to-date.
+    if (o.win != null) have.push('WIN ' + o.win.toFixed(1) + '% PTD');
     L.push(have.join(' · '));
   }
 
