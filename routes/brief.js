@@ -523,4 +523,50 @@ router.get('/diag/winscore-last', async (req, res) => {
   res.json({ jobType: row.job_type, status: row.status, at: row.created_at, message });
 });
 
+// ── GET /api/brief/diag/labor-by-store — what is summing into a region ──────
+// Senoia is identical under both Fourth accounts, yet the region roll-up moved
+// from +34h to +1h. That means the SET of stores being summed changed, not the
+// numbers. This lists them so the difference is visible rather than inferred.
+router.get('/diag/labor-by-store', async (req, res) => {
+  if (!authed(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const date = String(req.query.date || '');
+  const rc   = String(req.query.rc || 'Harold Lacoste');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+
+  const pool = db.getPool();
+  if (!pool) return res.status(503).json({ error: 'Database unavailable' });
+
+  const r = await pool.query(
+    `SELECT sa.store_id, sa.store_name, sa.area_coach,
+            MAX(CASE WHEN si.indicator='act_labor_hrs' THEN si.value END) AS act,
+            MAX(CASE WHEN si.indicator='sch_labor_hrs' THEN si.value END) AS sch
+       FROM store_assignments sa
+       LEFT JOIN dbs_soft_indicators si
+              ON si.store_id = sa.store_id AND si.metric_date = $1::date
+             AND si.indicator IN ('act_labor_hrs','sch_labor_hrs')
+      WHERE sa.region_coach = $2
+      GROUP BY sa.store_id, sa.store_name, sa.area_coach
+      ORDER BY sa.store_id`,
+    [date, rc]
+  );
+
+  const rows = r.rows.map(x => ({
+    store: x.store_id, name: x.store_name, ac: x.area_coach,
+    act: x.act === null ? null : Number(x.act),
+    sch: x.sch === null ? null : Number(x.sch),
+    var: (x.act === null || x.sch === null) ? null : Math.round((Number(x.act) - Number(x.sch)) * 100) / 100,
+  }));
+  const withData = rows.filter(x => x.var !== null);
+  const total = Math.round(withData.reduce((s, x) => s + x.var, 0) * 100) / 100;
+
+  res.json({
+    date, regionCoach: rc,
+    storesInAlignment: rows.length,
+    storesWithLabor: withData.length,
+    missingLabor: rows.filter(x => x.var === null).map(x => x.store + ' ' + (x.name || '')),
+    totalVariance: total,
+    rows: withData,
+  });
+});
+
 module.exports = router;
