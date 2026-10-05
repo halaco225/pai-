@@ -218,8 +218,12 @@ function fiscalWeekBounds(dateStr) {
 // and the whole download reported "all report URIs failed". The dashboard's
 // own filters use GoodData's `list` constraint, and a week is only seven days,
 // so the range is expressed as an explicit list of day elements instead.
+// Single day, not the week. The brief reports yesterday, and Harold reads the
+// last column of Overview Report by Location -- Act Hrs minus Sch Hrs for that
+// one day. Filtering to the fiscal week summed seven days into it and produced
+// -365h where the real figure was +34.
 function weekFilterExpression(projectId, dateStr) {
-  const { start, end } = fiscalWeekBounds(dateStr);
+  const start = dateStr, end = dateStr;
   const attr = `/gdc/md/${projectId}/obj/${FINANCIAL_DAY_ATTR}`;
   const from = dateElementId(start), to = dateElementId(end);
 

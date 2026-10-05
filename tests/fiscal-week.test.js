@@ -51,18 +51,21 @@ describe('dateElementId', () => {
   });
 });
 
-describe('weekFilterExpression', () => {
+// Named for the week it used to cover; it now filters to a single day,
+// because the brief reports yesterday and Harold reads that day's Act-vs-Sch
+// hours. A week's worth summed to -365h where the day was +34.
+describe('weekFilterExpression (single day)', () => {
   const f = weekFilterExpression('PROJ', '2026-10-03');
 
   test('filters the FinancialDay attribute the dashboard uses', () => {
     expect(f.expression).toContain('/gdc/md/PROJ/obj/588882');
   });
 
-  test('spans the whole fiscal week', () => {
-    expect(f.start).toBe('2026-09-29');
-    expect(f.end).toBe('2026-10-05');
-    expect(f.expression).toContain('elements?id=46293');
-    expect(f.expression).toContain('elements?id=46299');
+  test('covers exactly the target day', () => {
+    expect(f.start).toBe('2026-10-03');
+    expect(f.end).toBe('2026-10-03');
+    expect(f.elements).toHaveLength(1);
+    expect(f.elements[0]).toContain('elements?id=' + dateElementId('2026-10-03'));
   });
 
   test('is a BETWEEN over elements, which is what MAQL expects', () => {
