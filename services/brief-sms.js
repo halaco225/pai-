@@ -218,8 +218,15 @@ function renderForSms(sc, opts) {
       return b.growth_pct - a.growth_pct;      // best growth first
     });
 
+    // Coaches get their surname; stores keep their name. Taking the last word
+    // of a store turned "Union City" into "City" and "Miracle Strip" into
+    // "Strip", which is worse than useless to whoever has to act on it.
+    const labelFor = r => sc.childLevel === 'store'
+      ? String(r.label || '').trim().slice(0, 18)
+      : shortLabel(r.label);
+
     for (const r of ordered) {
-      L.push([shortLabel(r.label), m0(r.sales), g0(r.growth_pct)].filter(Boolean).join(' '));
+      L.push([labelFor(r), m0(r.sales), g0(r.growth_pct)].filter(Boolean).join(' '));
 
       const detail = [];
       if (r.ist != null) detail.push(t0(r.ist));
@@ -274,7 +281,13 @@ async function buildBody(username, targetDate) {
 function recipients(env = process.env) {
   // Deliberately explicit: an empty setting sends to nobody. Defaulting an
   // empty value to "everyone" is how 62 people get an unexpected text.
-  if (env.PAI_BRIEF_RECIPIENTS === undefined) return ['hlacoste', 'mhester'];
+  // Harold, Matt, and Harold's six area coaches. All eight have an opted-in
+  // consent record; anyone who has not opted in is skipped at send time
+  // regardless of being listed here.
+  if (env.PAI_BRIEF_RECIPIENTS === undefined) {
+    return ['hlacoste', 'mhester',
+            'dspikes', 'esimmons', 'jmcneil', 'jgarcia', 'mgannon', 'mmeehan'];
+  }
   return env.PAI_BRIEF_RECIPIENTS.split(',').map(s => s.trim()).filter(Boolean);
 }
 

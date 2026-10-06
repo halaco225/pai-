@@ -82,6 +82,37 @@ describe('renderForSms', () => {
   });
 });
 
+// Store rows keep their full name. Surnames are only right for people.
+describe('store rows keep their names', () => {
+  const storeView = {
+    level: 'area', childLevel: 'store',
+    own: { sales: 20691, growth_pct: 7.2, ist: 22.0, act_hrs: 1, sch_hrs: 1,
+           hrs_variance: -20, win: 50.1, missed_routines: 0 },
+    rows: [
+      { label: 'Union City',    sales: 3724, growth_pct: 0.7,  ist: 25, hrs_variance: 1,  win: 44, missed_routines: 0 },
+      { label: 'Jefferson St',  sales: 3266, growth_pct: -5.4, ist: 19, hrs_variance: -9, win: 48, missed_routines: 0 },
+      { label: 'Miracle Strip', sales: 2681, growth_pct: -5.4, ist: 28, hrs_variance: 12, win: 52, missed_routines: 1 },
+    ],
+  };
+  const out = renderForSms(storeView, { dateLabel: 'Oct 4' });
+
+  test('does not reduce a store to its last word', () => {
+    expect(out).toContain('Union City');
+    expect(out).toContain('Jefferson St');
+    expect(out).toContain('Miracle Strip');
+    expect(out).not.toMatch(/^City /m);
+    expect(out).not.toMatch(/^St /m);
+  });
+
+  test('heading says STORES for an area coach', () => {
+    expect(out).toContain('STORES best first');
+  });
+
+  test('still fits a phone', () => {
+    for (const l of out.split(String.fromCharCode(10))) expect(l.length).toBeLessThanOrEqual(PHONE_WIDTH);
+  });
+});
+
 describe('shortLabel', () => {
   test('reduces an area label to the coach surname', () => {
     expect(shortLabel('Area 2034 — Michelle Meehan')).toBe('Meehan');

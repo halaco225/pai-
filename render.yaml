@@ -87,7 +87,7 @@ services:
       - key: PAI_BASE_URL
         value: https://pai-ayvaz.onrender.com
       - key: PAI_BRIEF_RECIPIENTS
-        value: hlacoste,mhester
+        value: hlacoste,mhester,dspikes,esimmons,jmcneil,jgarcia,mgannon,mmeehan
       - key: PAI_BRIEF_SEND_LOCAL_TIME
         value: "08:05"
 

@@ -113,8 +113,9 @@ describe('isDue', () => {
 });
 
 describe('recipients', () => {
-  test('defaults to Harold and Matt', () => {
-    expect(recipients({})).toEqual(['hlacoste', 'mhester']);
+  test('defaults to Harold, Matt and the six area coaches', () => {
+    expect(recipients({})).toEqual(['hlacoste', 'mhester',
+      'dspikes', 'esimmons', 'jmcneil', 'jgarcia', 'mgannon', 'mmeehan']);
   });
 
   test('reads a comma list from the environment', () => {
