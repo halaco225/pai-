@@ -569,4 +569,60 @@ router.get('/diag/labor-by-store', async (req, res) => {
   });
 });
 
+// ── GET /api/brief/diag/labor-gap — stores Fourth has that alignment lacks ──
+// Harold's Fourth rollup is +34h; summing his aligned stores gives +1.25h.
+// Scheduled hours match to the penny and only actual is short, which points at
+// a store carrying actual hours that no alignment row claims.
+router.get('/diag/labor-gap', async (req, res) => {
+  if (!authed(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const date = String(req.query.date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+
+  const pool = db.getPool();
+  if (!pool) return res.status(503).json({ error: 'Database unavailable' });
+
+  try {
+    const f = require('../services/intel-fourth');
+    const XLSX = require('xlsx');
+    const dl = await f.downloadFourthReport('LABOR', date);
+    if (!dl || !dl.success) return res.status(502).json({ error: dl && dl.error });
+
+    const wb = XLSX.readFile(dl.filePath);
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: null });
+
+    const inFourth = new Map();
+    for (const r of rows.slice(1)) {
+      const m = String(r && r[0] || '').match(/\((\d{6})\)/);
+      if (!m) continue;
+      inFourth.set(m[1], { name: String(r[0]), act: Number(r[10]), sch: Number(r[11]) });
+    }
+
+    const sa = await pool.query('SELECT store_id, store_name, area_coach, region_coach FROM store_assignments');
+    const aligned = new Map(sa.rows.map(r => [r.store_id, r]));
+
+    const notAligned = [...inFourth.entries()]
+      .filter(([id]) => !aligned.has(id))
+      .map(([id, v]) => ({ store: id, name: v.name, act: v.act, sch: v.sch }));
+
+    const notInFourth = sa.rows
+      .filter(r => !inFourth.has(r.store_id))
+      .map(r => ({ store: r.store_id, name: r.store_name, rc: r.region_coach }));
+
+    res.json({
+      date,
+      fourthStores: inFourth.size,
+      alignedStores: aligned.size,
+      inFourthNotAligned: notAligned,
+      inAlignmentNotInFourth: notInFourth,
+      // A store with actual hours and no schedule is the shape that explains
+      // a matching sch total alongside a short act total.
+      actWithNoSchedule: [...inFourth.entries()]
+        .filter(([, v]) => v.act > 0 && (!v.sch || v.sch === 0))
+        .map(([id, v]) => ({ store: id, name: v.name, act: v.act, sch: v.sch })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

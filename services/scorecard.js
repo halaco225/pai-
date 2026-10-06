@@ -208,7 +208,10 @@ async function buildScorecard({ pool, targetDate, role, name, scope }) {
   const labelOf = (r) => {
     if (role === 'vp')  return r.region_coach || 'Unassigned';
     if (role === 'rdo') return r.area ? `${r.area} — ${r.area_coach}` : (r.area_coach || 'Unassigned');
-    return r.store_name || r.store_id;
+    // Store number, not name. Two of Harold's stores are both called "Senoia"
+    // and were indistinguishable in the text; the number is what identifies a
+    // store on every other report anyway.
+    return r.store_id || r.store_name;
   };
 
   const own    = blank(name);
