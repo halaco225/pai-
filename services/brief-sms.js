@@ -525,8 +525,59 @@ async function sendOne(username, now = new Date()) {
   }
 }
 
+// ── Refresh labor before the text goes out ───────────────────────────────────
+//
+// Fourth posts the previous day's punches well after the 6am pipeline runs. On
+// 2026-10-05 Senoia read 10.00 actual hours against 26.00 scheduled at 6am and
+// 25.55 by mid-morning -- scheduled never moved, actual more than doubled. The
+// 8:05 text went out saying the region was 535 hours under, when the day was
+// roughly flat. The basis was right the whole time; the data was simply early.
+//
+// So labor is re-pulled shortly before the send. The scorecard is built live
+// from the database at compose time, so a refresh here lands in the message.
+const LABOR_REFRESH_LOCAL = process.env.PAI_LABOR_REFRESH_TIME || '07:30';
+const REFRESH_TZ = 'America/New_York';
+let _refreshedFor = null;
+
+function laborRefreshDue(now) {
+  const today = localDate(now, REFRESH_TZ);
+  if (_refreshedFor === today) return false;
+  const nowMin = toMinutes(localHHMM(now, REFRESH_TZ));
+  const dueMin = toMinutes(LABOR_REFRESH_LOCAL);
+  // Between the refresh time and the send time. Later than that and the text
+  // has already gone; earlier and Fourth has not caught up.
+  return nowMin >= dueMin && nowMin < toMinutes(process.env.PAI_BRIEF_SEND_LOCAL_TIME || DEFAULT_SEND_LOCAL);
+}
+
+function refreshLabor(now = new Date()) {
+  const dataDate = briefCacheDate(now);
+  _refreshedFor = localDate(now, REFRESH_TZ);
+  return new Promise((resolve) => {
+    const body = JSON.stringify({ date: dataDate });
+    const req = require('http').request({
+      hostname: '127.0.0.1', port: process.env.PORT || 3000,
+      path: '/api/intel/automation/run-labor-hutbot', method: 'POST', timeout: 30000,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'X-Automation-Token': process.env.INTEL_AUTOMATION_TOKEN || '38b8091924e1f85583454212a9860038',
+      },
+    }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
+    req.on('error', (e) => { console.error('[BriefSMS] labor refresh failed:', e.message); resolve(0); });
+    req.on('timeout', () => { req.destroy(); resolve(0); });
+    req.end(body);
+  });
+}
+
 async function tick(now = new Date()) {
   if (!rcDb.isConfigured()) return;
+
+  if (laborRefreshDue(now)) {
+    const status = await refreshLabor(now);
+    console.log(`[BriefSMS] labor refresh for ${briefCacheDate(now)} -> HTTP ${status}`);
+    return;   // let it finish before composing; the next tick sends
+  }
+
   for (const username of recipients()) {
     try {
       const outcome = await sendOne(username, now);
@@ -540,6 +591,7 @@ async function tick(now = new Date()) {
 module.exports = {
   condense, buildLink, clip, isDue, recipients, sendOne, tick, briefCacheDate,
   resolvePerson, rcPerson, rcSend, buildBody, MAX_BODY_CHARS,
+  laborRefreshDue, refreshLabor, LABOR_REFRESH_LOCAL,
   renderForSms, shortLabel, dayLabel,
   hasConsent, sentDates, claim, releaseClaim, recordClaimResult, logMessage,
   MAX_SMS_CHARS, BRIEF_MODEL, SEND_WINDOW_MINUTES, DEFAULT_SEND_LOCAL,
