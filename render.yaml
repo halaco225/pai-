@@ -88,8 +88,12 @@ services:
         value: https://pai-ayvaz.onrender.com
       - key: PAI_BRIEF_RECIPIENTS
         value: hlacoste,mhester,dspikes,esimmons,jmcneil,jgarcia,mgannon,mmeehan
+      # 08:30 rather than 08:05: Fourth posts the previous day's punches
+      # through the morning, and the later send gives the catch-up window in
+      # services/brief-sms.js another 25 minutes to get real numbers. Still
+      # inside the 8-to-9 hour that was asked for.
       - key: PAI_BRIEF_SEND_LOCAL_TIME
-        value: "08:05"
+        value: "08:30"
 
   # The velocity-ods-pull cron that used to be declared here was never
   # actually running in Render — only intel-dbs-pull below ever fired. The
