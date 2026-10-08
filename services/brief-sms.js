@@ -189,18 +189,26 @@ function renderForSms(sc, opts) {
 
   // Say once that something is not reporting, rather than printing a dash in
   // every row and leaving the reader to work out whether it is a zero.
+  //
+  // Sales belongs in this list for the same reason the others do. On
+  // 2026-10-08 the ODS pull 404'd, intel_dbs_metrics held nothing for the day,
+  // and the renderer simply left the sales line out -- so the text read as a
+  // normal brief that happened to be about IST, and nobody could tell the two
+  // headline numbers were missing rather than flat.
   const missing = [];
+  if (o.sales == null) missing.push('Sales');
   if (o.act_hrs == null) missing.push('Labor');
   if (o.win == null) missing.push('WIN');
+  // What did arrive still gets printed. Suppressing the whole line because one
+  // of its metrics is absent is how a working labor number went missing from a
+  // text whose only real problem was sales.
+  const have = [];
+  if (o.act_hrs != null) have.push('Labor ' + (o.hrs_variance >= 0 ? '+' : '') + o.hrs_variance.toFixed(0) + 'h');
+  // Marked PTD because it is the one metric on a different basis: sales,
+  // growth, IST and labor are all the previous day, WIN is period-to-date.
+  if (o.win != null) have.push('WIN ' + o.win.toFixed(1) + '% PTD');
+  if (have.length) L.push(have.join(' · '));
   if (missing.length) L.push(missing.join(' & ') + ' not reporting');
-  else {
-    const have = [];
-    if (o.act_hrs != null) have.push('Labor ' + (o.hrs_variance >= 0 ? '+' : '') + o.hrs_variance.toFixed(0) + 'h');
-    // Marked PTD because it is the one metric on a different basis: sales,
-    // growth, IST and labor are all the previous day, WIN is period-to-date.
-    if (o.win != null) have.push('WIN ' + o.win.toFixed(1) + '% PTD');
-    L.push(have.join(' · '));
-  }
 
   if (sc.rows && sc.rows.length) {
     L.push('');
@@ -549,28 +557,90 @@ function laborRefreshDue(now) {
   return nowMin >= dueMin && nowMin < toMinutes(process.env.PAI_BRIEF_SEND_LOCAL_TIME || DEFAULT_SEND_LOCAL);
 }
 
-function refreshLabor(now = new Date()) {
-  const dataDate = briefCacheDate(now);
-  _refreshedFor = localDate(now, REFRESH_TZ);
+// One place to poke our own automation routes. Both the labor refresh and the
+// sales backfill go through the app rather than calling the pipeline directly,
+// so they take the same token check and logging as the cron does.
+function postLocal(path, payload) {
   return new Promise((resolve) => {
-    const body = JSON.stringify({ date: dataDate });
+    const body = JSON.stringify(payload);
     const req = require('http').request({
       hostname: '127.0.0.1', port: process.env.PORT || 3000,
-      path: '/api/intel/automation/run-labor-hutbot', method: 'POST', timeout: 30000,
+      path, method: 'POST', timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body),
         'X-Automation-Token': process.env.INTEL_AUTOMATION_TOKEN || '38b8091924e1f85583454212a9860038',
       },
     }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
-    req.on('error', (e) => { console.error('[BriefSMS] labor refresh failed:', e.message); resolve(0); });
+    req.on('error', (e) => { console.error(`[BriefSMS] ${path} failed:`, e.message); resolve(0); });
     req.on('timeout', () => { req.destroy(); resolve(0); });
     req.end(body);
   });
 }
 
+function refreshLabor(now = new Date()) {
+  _refreshedFor = localDate(now, REFRESH_TZ);
+  return postLocal('/api/intel/automation/run-labor-hutbot', { date: briefCacheDate(now) });
+}
+
+// ── Sales backfill ───────────────────────────────────────────────────────────
+//
+// On 2026-10-08 the 6am ODS pull got a 404 from the CSRF servlet, so DBS, SOS
+// and three other steps wrote nothing and the 8:05 text had no sales or growth
+// in it at all. Re-running the pipeline by hand at 14:03 filled the day in
+// within ninety seconds, which is the whole argument for doing it here: a
+// transient failure at 6am should not cost the two headline numbers.
+//
+// Same window as the labor refresh, and once per day either way -- a pipeline
+// that fails twice is not a blip, and hammering ODS will not change its mind.
+
+let _salesCheckedFor = null;
+
+function salesBackfillDue(now) {
+  const today = localDate(now, REFRESH_TZ);
+  if (_salesCheckedFor === today) return false;
+  const nowMin = toMinutes(localHHMM(now, REFRESH_TZ));
+  const dueMin = toMinutes(LABOR_REFRESH_LOCAL);
+  return nowMin >= dueMin && nowMin < toMinutes(process.env.PAI_BRIEF_SEND_LOCAL_TIME || DEFAULT_SEND_LOCAL);
+}
+
+// Does the day actually have sales? Asked of the table the scorecard reads,
+// not of the pipeline's own status -- the run that produced nothing reported
+// itself 'partial', which is also what a perfectly good day reports.
+async function salesMissing(dataDate) {
+  const pool = db.getPool();
+  if (!pool) return false;
+  const { rows } = await pool.query(
+    'SELECT COUNT(net_sales_day)::int AS n FROM intel_dbs_metrics WHERE metric_date = $1',
+    [dataDate]
+  );
+  return !rows[0] || rows[0].n === 0;
+}
+
+function backfillSales(now = new Date()) {
+  _salesCheckedFor = localDate(now, REFRESH_TZ);
+  return postLocal(`/api/intel/automation/run-batch?date=${briefCacheDate(now)}`,
+                   { date: briefCacheDate(now) });
+}
+
 async function tick(now = new Date()) {
   if (!rcDb.isConfigured()) return;
+
+  // Sales first: it is the slower of the two and the one whose absence guts
+  // the message. Checking costs one COUNT; re-running only happens on a day
+  // the morning pipeline actually came back empty.
+  if (salesBackfillDue(now)) {
+    const dataDate = briefCacheDate(now);
+    let gone = false;
+    try { gone = await salesMissing(dataDate); }
+    catch (e) { console.error('[BriefSMS] sales check failed:', e.message); }
+    _salesCheckedFor = localDate(now, REFRESH_TZ);
+    if (gone) {
+      const status = await backfillSales(now);
+      console.log(`[BriefSMS] no sales for ${dataDate} — pipeline rerun -> HTTP ${status}`);
+      return; // let it land before composing; the next tick sends
+    }
+  }
 
   if (laborRefreshDue(now)) {
     const status = await refreshLabor(now);
@@ -592,6 +662,7 @@ module.exports = {
   condense, buildLink, clip, isDue, recipients, sendOne, tick, briefCacheDate,
   resolvePerson, rcPerson, rcSend, buildBody, MAX_BODY_CHARS,
   laborRefreshDue, refreshLabor, LABOR_REFRESH_LOCAL,
+  salesBackfillDue, salesMissing, backfillSales,
   renderForSms, shortLabel, dayLabel,
   hasConsent, sentDates, claim, releaseClaim, recordClaimResult, logMessage,
   MAX_SMS_CHARS, BRIEF_MODEL, SEND_WINDOW_MINUTES, DEFAULT_SEND_LOCAL,

@@ -154,3 +154,33 @@ describe('dayLabel', () => {
     expect(dayLabel(null)).toBe('');
   });
 });
+
+// 2026-10-08: the ODS pull 404'd, intel_dbs_metrics was empty for Oct 7, and
+// the 8:05 text went out with no sales and no growth anywhere in it — reading
+// like a normal brief that simply had nothing to say about money.
+describe('a day with no sales data', () => {
+  const noSales = {
+    level: 'region', childLevel: 'area',
+    own: { sales: null, growth_pct: null, ist: 20.5, act_hrs: 1, sch_hrs: 1,
+           hrs_variance: -464, win: 56.0, missed_routines: 5 },
+    rows: [
+      { label: 'Area 2016 — Ebony Simmons', sales: null, growth_pct: null,
+        ist: 16.6, win: 60, hrs_variance: -132, missed_routines: 1 },
+    ],
+  };
+  const out = renderForSms(noSales, { dateLabel: 'Oct 7' });
+
+  test('says sales is not reporting rather than going quiet', () => {
+    expect(out).toContain('Sales not reporting');
+  });
+
+  test('still shows the numbers that did arrive', () => {
+    expect(out).toContain('Labor -464h');
+    expect(out).toContain('WIN 56.0% PTD');
+    expect(out).toContain('IST 20.5m');
+  });
+
+  test('still fits a phone', () => {
+    for (const l of out.split(String.fromCharCode(10))) expect(l.length).toBeLessThanOrEqual(PHONE_WIDTH);
+  });
+});

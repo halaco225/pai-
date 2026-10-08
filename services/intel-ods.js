@@ -6,6 +6,7 @@
  */
 const fs   = require('fs');
 const path = require('path');
+const { parseCsrf } = require('./parsers/ods-csrf');
 
 const ODS_URL  = 'https://bi.onedatasource.com';
 const ODS_ORG  = process.env.ODS_ORG  || 'dgi';
@@ -38,9 +39,8 @@ async function getCsrf(cookieStr) {
     headers: { Cookie: cookieStr, 'FETCH-CSRF-TOKEN': '1', 'X-Requested-With': 'XMLHttpRequest', 'User-Agent': 'Mozilla/5.0' },
   });
   const text  = await r.text();
-  const colon = text.indexOf(':');
-  if (colon < 0) throw new Error(`Unexpected CSRF response: ${text.substring(0,100)}`);
-  return { name: text.substring(0,colon).trim(), value: text.substring(colon+1).trim(), cookies: parseCookies(r) };
+  const { name, value } = parseCsrf(text, r.status);
+  return { name, value, cookies: parseCookies(r) };
 }
 
 async function login() {
