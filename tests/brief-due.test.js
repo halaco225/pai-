@@ -27,22 +27,24 @@ describe('briefCacheDate', () => {
   });
 });
 
+const toMin = hhmm => Number(hhmm.split(':')[0]) * 60 + Number(hhmm.split(':')[1]);
+
 const HAROLD = { name: 'Harold Lacoste', phone: '+12258101361', tz: 'America/New_York' };
 
 describe('isDue', () => {
-  const base = { person: HAROLD, sendLocal: '08:05', consented: true, alreadySentDates: [] };
+  const base = { person: HAROLD, sendLocal: '08:30', consented: true, alreadySentDates: [] };
 
   test('due at the send time', () => {
-    expect(isDue({ ...base, now: new Date('2026-10-05T12:05:00Z') })).toBe(true); // 08:05 EDT
+    expect(isDue({ ...base, now: new Date('2026-10-05T12:30:00Z') })).toBe(true); // 08:30 EDT
   });
 
   test('not due before the send time', () => {
-    expect(isDue({ ...base, now: new Date('2026-10-05T12:04:00Z') })).toBe(false); // 08:04 EDT
+    expect(isDue({ ...base, now: new Date('2026-10-05T12:29:00Z') })).toBe(false); // 08:29 EDT
   });
 
   // A restart or a slow tick must not mean a skipped day.
   test('still due a few minutes late', () => {
-    expect(isDue({ ...base, now: new Date('2026-10-05T12:12:00Z') })).toBe(true); // 08:12 EDT
+    expect(isDue({ ...base, now: new Date('2026-10-05T12:37:00Z') })).toBe(true); // 08:37 EDT
   });
 
   // But an app that boots at 4pm must not fire the morning brief.
@@ -50,9 +52,12 @@ describe('isDue', () => {
     expect(isDue({ ...base, now: new Date('2026-10-05T20:00:00Z') })).toBe(false); // 16:00 EDT
   });
 
-  // Harold asked for "between 8 and 9", which also absorbs a slow pipeline.
+  // Harold asked for "between 8 and 9". The send moved to 08:30 to give the
+  // labor catch-up another 25 minutes, so the window is 35 and still lands
+  // inside the hour he asked for.
   test('window is explicit, not accidental', () => {
-    expect(SEND_WINDOW_MINUTES).toBe(60);
+    expect(SEND_WINDOW_MINUTES).toBe(35);
+    expect(toMin(base.sendLocal) + SEND_WINDOW_MINUTES).toBe(toMin('09:05'));
   });
 
   test('still due at the end of the hour, not after it', () => {
@@ -63,7 +68,7 @@ describe('isDue', () => {
   test('not due twice on the same local date', () => {
     expect(isDue({
       ...base,
-      now: new Date('2026-10-05T12:05:00Z'),
+      now: new Date('2026-10-05T12:30:00Z'),
       alreadySentDates: ['2026-10-05'],
     })).toBe(false);
   });
@@ -71,13 +76,13 @@ describe('isDue', () => {
   test('due again the next day', () => {
     expect(isDue({
       ...base,
-      now: new Date('2026-10-06T12:05:00Z'),
+      now: new Date('2026-10-06T12:30:00Z'),
       alreadySentDates: ['2026-10-05'],
     })).toBe(true);
   });
 
   test('never due without consent', () => {
-    expect(isDue({ ...base, now: new Date('2026-10-05T12:05:00Z'), consented: false })).toBe(false);
+    expect(isDue({ ...base, now: new Date('2026-10-05T12:30:00Z'), consented: false })).toBe(false);
   });
 
   // The phone number lives in RC Tracker, which is what actually sends. What
@@ -86,7 +91,7 @@ describe('isDue', () => {
     expect(isDue({
       ...base,
       person: { name: 'Harold Lacoste', tz: 'America/New_York' },
-      now: new Date('2026-10-05T12:05:00Z'),
+      now: new Date('2026-10-05T12:30:00Z'),
     })).toBe(true);
   });
 
@@ -94,21 +99,21 @@ describe('isDue', () => {
     expect(isDue({
       ...base,
       person: { ...HAROLD, tz: '' },
-      now: new Date('2026-10-05T12:05:00Z'),
+      now: new Date('2026-10-05T12:30:00Z'),
     })).toBe(false);
   });
 
-  // 8:05 means 8:05 where they are, in November as in October.
+  // 8:30 means 8:30 where they are, in November as in October.
   test('holds after DST ends', () => {
-    expect(isDue({ ...base, now: new Date('2026-11-05T13:05:00Z') })).toBe(true);  // 08:05 EST
-    expect(isDue({ ...base, now: new Date('2026-11-05T12:05:00Z') })).toBe(false); // 07:05 EST
+    expect(isDue({ ...base, now: new Date('2026-11-05T13:30:00Z') })).toBe(true);  // 08:30 EST
+    expect(isDue({ ...base, now: new Date('2026-11-05T12:30:00Z') })).toBe(false); // 07:30 EST
   });
 
-  // Central and Mountain recipients get their own 8:05, not Harold's.
-  test('each zone gets its own local 8:05', () => {
+  // Central and Mountain recipients get their own 8:30, not Harold's.
+  test('each zone gets its own local send time', () => {
     const ct = { ...HAROLD, name: 'Jerry Warren', tz: 'America/Chicago' };
-    expect(isDue({ ...base, person: ct, now: new Date('2026-10-05T13:05:00Z') })).toBe(true);  // 08:05 CDT
-    expect(isDue({ ...base, person: ct, now: new Date('2026-10-05T12:05:00Z') })).toBe(false); // 07:05 CDT
+    expect(isDue({ ...base, person: ct, now: new Date('2026-10-05T13:30:00Z') })).toBe(true);  // 08:30 CDT
+    expect(isDue({ ...base, person: ct, now: new Date('2026-10-05T12:30:00Z') })).toBe(false); // 07:30 CDT
   });
 });
 

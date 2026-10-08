@@ -32,12 +32,18 @@ const MAX_SMS_CHARS = 320;
 const BRIEF_MODEL = process.env.BRIEF_MODEL || 'claude-sonnet-5';
 
 // How late a send may still go out. Harold's requirement is "between 8 and 9",
-// so the window is an hour from 08:05 -- that absorbs a slow pipeline morning
-// without ever drifting into the afternoon. An app that boots at 4pm still
-// sends nothing.
-const SEND_WINDOW_MINUTES = Number(process.env.PAI_BRIEF_WINDOW_MINUTES || 60);
+// and the window runs to 09:05 so a slow morning never drifts into the
+// afternoon. An app that boots at 4pm still sends nothing.
+//
+// The send sits at 08:30 rather than 08:05 to buy the catch-up below another
+// 25 minutes. Fourth posts the previous day's punches through the morning, and
+// on 2026-10-08 they still were not in at 07:30: the text said the region was
+// 464 hours under schedule where the finished day was 73 hours over. Later
+// inside the hour Harold asked for costs nothing and is far more likely to
+// carry real numbers.
+const SEND_WINDOW_MINUTES = Number(process.env.PAI_BRIEF_WINDOW_MINUTES || 35);
 
-const DEFAULT_SEND_LOCAL = '08:05';
+const DEFAULT_SEND_LOCAL = '08:30';
 
 // ── Message building ─────────────────────────────────────────────────────────
 
@@ -553,25 +559,37 @@ async function sendOne(username, now = new Date()) {
 // So labor is re-pulled shortly before the send. The scorecard is built live
 // from the database at compose time, so a refresh here lands in the message.
 const { LABOR_PLAUSIBLE_RATIO } = require('./scorecard');
-const LABOR_REFRESH_LOCAL = process.env.PAI_LABOR_REFRESH_TIME || '07:30';
 const REFRESH_TZ = 'America/New_York';
-let _refreshedFor = null;
 
-// Fourth keeps posting through the morning, so one pull at 07:30 is a guess at
-// when it finishes. Pull again on each tick while the numbers still look like a
-// half-read day, up to this many times, and stop at the send either way.
-const MAX_LABOR_REFRESHES = Number(process.env.PAI_LABOR_REFRESH_TRIES || 5);
-let _refreshCount = 0;
+// Catch-up runs from here until the send. Naming a single refresh time was the
+// original mistake: 07:30 was a guess at when Fourth finishes posting, and on
+// 2026-10-08 it was wrong. There is no hour that is reliably late enough, so
+// the window keeps trying instead of betting on one.
+const CATCHUP_START    = process.env.PAI_LABOR_REFRESH_TIME || '07:00';
+const LABOR_REFRESH_LOCAL = CATCHUP_START;   // kept under its old name
+
+// Fourth will not have finished in the two minutes since the last pull, so
+// space the attempts. Five tries fired inside ten minutes are one try.
+const RETRY_SPACING_MIN = Number(process.env.PAI_CATCHUP_SPACING_MINUTES || 15);
+
+function sendMinutes() {
+  return toMinutes(process.env.PAI_BRIEF_SEND_LOCAL_TIME || DEFAULT_SEND_LOCAL);
+}
+
+function inCatchupWindow(now) {
+  const m = toMinutes(localHHMM(now, REFRESH_TZ));
+  return m >= toMinutes(CATCHUP_START) && m < sendMinutes();
+}
+
+let _refreshedFor   = null;          // local date of the last labor pull
+let _lastRefreshMin = -Infinity;     // when, in local minutes
+let _refreshCount   = 0;
 
 function laborRefreshDue(now) {
-  const today = localDate(now, REFRESH_TZ);
-  if (_refreshedFor === today && _refreshCount >= MAX_LABOR_REFRESHES) return false;
-  if (_refreshedFor === today && _refreshCount > 0 && !_laborLookedPartial) return false;
-  const nowMin = toMinutes(localHHMM(now, REFRESH_TZ));
-  const dueMin = toMinutes(LABOR_REFRESH_LOCAL);
-  // Between the refresh time and the send time. Later than that and the text
-  // has already gone; earlier and Fourth has not caught up.
-  return nowMin >= dueMin && nowMin < toMinutes(process.env.PAI_BRIEF_SEND_LOCAL_TIME || DEFAULT_SEND_LOCAL);
+  if (!inCatchupWindow(now)) return false;
+  if (_refreshedFor !== localDate(now, REFRESH_TZ)) return true;   // first of the day
+  if (!_laborLookedPartial) return false;                          // the day has landed
+  return toMinutes(localHHMM(now, REFRESH_TZ)) - _lastRefreshMin >= RETRY_SPACING_MIN;
 }
 
 // One place to poke our own automation routes. Both the labor refresh and the
@@ -599,6 +617,7 @@ function refreshLabor(now = new Date()) {
   const today = localDate(now, REFRESH_TZ);
   if (_refreshedFor !== today) { _refreshedFor = today; _refreshCount = 0; }
   _refreshCount++;
+  _lastRefreshMin = toMinutes(localHHMM(now, REFRESH_TZ));
   return postLocal('/api/intel/automation/run-labor-hutbot', { date: briefCacheDate(now) });
 }
 
@@ -629,17 +648,29 @@ async function laborLooksPartial(dataDate) {
 // within ninety seconds, which is the whole argument for doing it here: a
 // transient failure at 6am should not cost the two headline numbers.
 //
-// Same window as the labor refresh, and once per day either way -- a pipeline
-// that fails twice is not a blip, and hammering ODS will not change its mind.
+// Same window as the labor refresh, and spaced the same way. A 404 is usually
+// a blip, so a second and third attempt are worth making -- but re-running the
+// whole pipeline is not free, and a source that is genuinely down will not
+// change its mind before breakfast.
+const MAX_SALES_BACKFILLS = Number(process.env.PAI_SALES_BACKFILL_TRIES || 3);
 
-let _salesCheckedFor = null;
+let _salesCheckedFor  = null;
+let _lastSalesCheckMin = -Infinity;
+let _salesTries        = 0;
 
 function salesBackfillDue(now) {
+  if (!inCatchupWindow(now)) return false;
+  if (_salesCheckedFor !== localDate(now, REFRESH_TZ)) return true;   // first of the day
+  if (_salesTries >= MAX_SALES_BACKFILLS) return false;
+  return toMinutes(localHHMM(now, REFRESH_TZ)) - _lastSalesCheckMin >= RETRY_SPACING_MIN;
+}
+
+// Checking is cheap; re-running is not. Record every check so the spacing
+// holds, and count only the runs against the cap.
+function noteSalesCheck(now) {
   const today = localDate(now, REFRESH_TZ);
-  if (_salesCheckedFor === today) return false;
-  const nowMin = toMinutes(localHHMM(now, REFRESH_TZ));
-  const dueMin = toMinutes(LABOR_REFRESH_LOCAL);
-  return nowMin >= dueMin && nowMin < toMinutes(process.env.PAI_BRIEF_SEND_LOCAL_TIME || DEFAULT_SEND_LOCAL);
+  if (_salesCheckedFor !== today) { _salesCheckedFor = today; _salesTries = 0; }
+  _lastSalesCheckMin = toMinutes(localHHMM(now, REFRESH_TZ));
 }
 
 // Does the day actually have sales? Asked of the table the scorecard reads,
@@ -656,7 +687,8 @@ async function salesMissing(dataDate) {
 }
 
 function backfillSales(now = new Date()) {
-  _salesCheckedFor = localDate(now, REFRESH_TZ);
+  noteSalesCheck(now);
+  _salesTries++;
   return postLocal(`/api/intel/automation/run-batch?date=${briefCacheDate(now)}`,
                    { date: briefCacheDate(now) });
 }
@@ -672,7 +704,7 @@ async function tick(now = new Date()) {
     let gone = false;
     try { gone = await salesMissing(dataDate); }
     catch (e) { console.error('[BriefSMS] sales check failed:', e.message); }
-    _salesCheckedFor = localDate(now, REFRESH_TZ);
+    noteSalesCheck(now);
     if (gone) {
       const status = await backfillSales(now);
       console.log(`[BriefSMS] no sales for ${dataDate} — pipeline rerun -> HTTP ${status}`);
@@ -686,8 +718,8 @@ async function tick(now = new Date()) {
     catch (e) { console.error('[BriefSMS] labor check failed:', e.message); }
     if (_refreshCount === 0 || _laborLookedPartial) {
       const status = await refreshLabor(now);
-      console.log(`[BriefSMS] labor refresh ${_refreshCount}/${MAX_LABOR_REFRESHES} ` +
-                  `for ${dataDate} (partial=${_laborLookedPartial}) -> HTTP ${status}`);
+      console.log(`[BriefSMS] labor refresh #${_refreshCount} for ${dataDate} ` +
+                  `(partial=${_laborLookedPartial}) -> HTTP ${status}`);
       return; // let it finish before composing; the next tick sends
     }
   }
@@ -707,7 +739,8 @@ module.exports = {
   resolvePerson, rcPerson, rcSend, buildBody, MAX_BODY_CHARS,
   laborRefreshDue, refreshLabor, LABOR_REFRESH_LOCAL,
   salesBackfillDue, salesMissing, backfillSales,
-  laborLooksPartial, MAX_LABOR_REFRESHES,
+  laborLooksPartial, inCatchupWindow, CATCHUP_START, RETRY_SPACING_MIN,
+  MAX_SALES_BACKFILLS,
   renderForSms, shortLabel, dayLabel,
   hasConsent, sentDates, claim, releaseClaim, recordClaimResult, logMessage,
   MAX_SMS_CHARS, BRIEF_MODEL, SEND_WINDOW_MINUTES, DEFAULT_SEND_LOCAL,
