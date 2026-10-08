@@ -195,6 +195,10 @@ function renderForSms(sc, opts) {
   // and the renderer simply left the sales line out -- so the text read as a
   // normal brief that happened to be about IST, and nobody could tell the two
   // headline numbers were missing rather than flat.
+  // Labor that is still arriving is worse than labor that is absent: -464h
+  // reads as a catastrophe rather than as a half-read. Say which it is.
+  const laborStillPosting = o.act_hrs != null && sc.own.labor_partial === true;
+
   const missing = [];
   if (o.sales == null) missing.push('Sales');
   if (o.act_hrs == null) missing.push('Labor');
@@ -203,11 +207,14 @@ function renderForSms(sc, opts) {
   // of its metrics is absent is how a working labor number went missing from a
   // text whose only real problem was sales.
   const have = [];
-  if (o.act_hrs != null) have.push('Labor ' + (o.hrs_variance >= 0 ? '+' : '') + o.hrs_variance.toFixed(0) + 'h');
+  if (o.act_hrs != null && !laborStillPosting) {
+    have.push('Labor ' + (o.hrs_variance >= 0 ? '+' : '') + o.hrs_variance.toFixed(0) + 'h');
+  }
   // Marked PTD because it is the one metric on a different basis: sales,
   // growth, IST and labor are all the previous day, WIN is period-to-date.
   if (o.win != null) have.push('WIN ' + o.win.toFixed(1) + '% PTD');
   if (have.length) L.push(have.join(' · '));
+  if (laborStillPosting) L.push('Labor still posting');
   if (missing.length) L.push(missing.join(' & ') + ' not reporting');
 
   if (sc.rows && sc.rows.length) {
@@ -239,7 +246,9 @@ function renderForSms(sc, opts) {
       const detail = [];
       if (r.ist != null) detail.push(t0(r.ist));
       if (r.win != null) detail.push('W' + r.win.toFixed(0) + '%');
-      if (r.hrs_variance != null) detail.push('L' + (r.hrs_variance >= 0 ? '+' : '') + r.hrs_variance.toFixed(0));
+      if (r.hrs_variance != null && !laborStillPosting) {
+        detail.push('L' + (r.hrs_variance >= 0 ? '+' : '') + r.hrs_variance.toFixed(0));
+      }
       if (r.missed_routines) detail.push('!' + r.missed_routines);
       if (detail.length) L.push('  ' + detail.join(' · '));
     }
@@ -543,13 +552,21 @@ async function sendOne(username, now = new Date()) {
 //
 // So labor is re-pulled shortly before the send. The scorecard is built live
 // from the database at compose time, so a refresh here lands in the message.
+const { LABOR_PLAUSIBLE_RATIO } = require('./scorecard');
 const LABOR_REFRESH_LOCAL = process.env.PAI_LABOR_REFRESH_TIME || '07:30';
 const REFRESH_TZ = 'America/New_York';
 let _refreshedFor = null;
 
+// Fourth keeps posting through the morning, so one pull at 07:30 is a guess at
+// when it finishes. Pull again on each tick while the numbers still look like a
+// half-read day, up to this many times, and stop at the send either way.
+const MAX_LABOR_REFRESHES = Number(process.env.PAI_LABOR_REFRESH_TRIES || 5);
+let _refreshCount = 0;
+
 function laborRefreshDue(now) {
   const today = localDate(now, REFRESH_TZ);
-  if (_refreshedFor === today) return false;
+  if (_refreshedFor === today && _refreshCount >= MAX_LABOR_REFRESHES) return false;
+  if (_refreshedFor === today && _refreshCount > 0 && !_laborLookedPartial) return false;
   const nowMin = toMinutes(localHHMM(now, REFRESH_TZ));
   const dueMin = toMinutes(LABOR_REFRESH_LOCAL);
   // Between the refresh time and the send time. Later than that and the text
@@ -579,8 +596,29 @@ function postLocal(path, payload) {
 }
 
 function refreshLabor(now = new Date()) {
-  _refreshedFor = localDate(now, REFRESH_TZ);
+  const today = localDate(now, REFRESH_TZ);
+  if (_refreshedFor !== today) { _refreshedFor = today; _refreshCount = 0; }
+  _refreshCount++;
   return postLocal('/api/intel/automation/run-labor-hutbot', { date: briefCacheDate(now) });
+}
+
+// Company-wide actual against scheduled for the day. Below the plausible ratio
+// the punches are still arriving; a real day lands within a few percent.
+let _laborLookedPartial = true;   // assume so until a read says otherwise
+
+async function laborLooksPartial(dataDate) {
+  const pool = db.getPool();
+  if (!pool) return false;
+  const { rows } = await pool.query(
+    `SELECT SUM(CASE WHEN indicator = 'act_labor_hrs' THEN value ELSE 0 END)::float AS act,
+            SUM(CASE WHEN indicator = 'sch_labor_hrs' THEN value ELSE 0 END)::float AS sch
+       FROM dbs_soft_indicators
+      WHERE metric_date = $1 AND indicator IN ('act_labor_hrs','sch_labor_hrs')`,
+    [dataDate]
+  );
+  const act = rows[0] && rows[0].act, sch = rows[0] && rows[0].sch;
+  if (!sch) return false;                       // nothing scheduled: nothing to judge
+  return (act / sch) < LABOR_PLAUSIBLE_RATIO;
 }
 
 // ── Sales backfill ───────────────────────────────────────────────────────────
@@ -643,9 +681,15 @@ async function tick(now = new Date()) {
   }
 
   if (laborRefreshDue(now)) {
-    const status = await refreshLabor(now);
-    console.log(`[BriefSMS] labor refresh for ${briefCacheDate(now)} -> HTTP ${status}`);
-    return;   // let it finish before composing; the next tick sends
+    const dataDate = briefCacheDate(now);
+    try { _laborLookedPartial = await laborLooksPartial(dataDate); }
+    catch (e) { console.error('[BriefSMS] labor check failed:', e.message); }
+    if (_refreshCount === 0 || _laborLookedPartial) {
+      const status = await refreshLabor(now);
+      console.log(`[BriefSMS] labor refresh ${_refreshCount}/${MAX_LABOR_REFRESHES} ` +
+                  `for ${dataDate} (partial=${_laborLookedPartial}) -> HTTP ${status}`);
+      return; // let it finish before composing; the next tick sends
+    }
   }
 
   for (const username of recipients()) {
@@ -663,6 +707,7 @@ module.exports = {
   resolvePerson, rcPerson, rcSend, buildBody, MAX_BODY_CHARS,
   laborRefreshDue, refreshLabor, LABOR_REFRESH_LOCAL,
   salesBackfillDue, salesMissing, backfillSales,
+  laborLooksPartial, MAX_LABOR_REFRESHES,
   renderForSms, shortLabel, dayLabel,
   hasConsent, sentDates, claim, releaseClaim, recordClaimResult, logMessage,
   MAX_SMS_CHARS, BRIEF_MODEL, SEND_WINDOW_MINUTES, DEFAULT_SEND_LOCAL,

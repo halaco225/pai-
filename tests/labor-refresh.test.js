@@ -32,13 +32,23 @@ describe('laborRefreshDue', () => {
     expect(laborRefreshDue(new Date('2026-10-07T06:00:00Z'))).toBe(false); // 02:00 EDT
   });
 
-  // Only once a day: the two-minute tick would otherwise hammer Fourth for the
-  // whole 35-minute window.
-  test('only fires once for a given day', () => {
+  // 07:30 was itself a guess, and on 10/8 it was still too early: the text
+  // said 464 hours under where the finished day was 73 hours over. So it keeps
+  // pulling while the day still reads half-finished -- but bounded, because a
+  // two-minute tick would otherwise hammer Fourth for the whole window.
+  test('tries again while the day still looks half-read', () => {
     const fresh = require('../services/brief-sms');
     const t = new Date('2026-10-08T11:31:00Z');
     expect(fresh.laborRefreshDue(t)).toBe(true);
-    fresh.refreshLabor(t);                       // marks the day as refreshed
+    fresh.refreshLabor(t);
+    expect(fresh.laborRefreshDue(t)).toBe(true);
+  });
+
+  test('gives up after a bounded number of tries', () => {
+    jest.resetModules();
+    const fresh = require('../services/brief-sms');
+    const t = new Date('2026-10-08T11:31:00Z');
+    for (let i = 0; i < fresh.MAX_LABOR_REFRESHES; i++) fresh.refreshLabor(t);
     expect(fresh.laborRefreshDue(t)).toBe(false);
   });
 

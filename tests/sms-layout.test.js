@@ -184,3 +184,48 @@ describe('a day with no sales data', () => {
     for (const l of out.split(String.fromCharCode(10))) expect(l.length).toBeLessThanOrEqual(PHONE_WIDTH);
   });
 });
+
+// Fourth posts the previous day's punches through the morning. Read early, the
+// region looked 464 hours under schedule; read the same day at 2pm it was 73
+// hours over. A number that wrong is worse than no number at all.
+describe('labor that is still arriving', () => {
+  const halfRead = {
+    level: 'region', childLevel: 'area',
+    own: { sales: 72415, growth_pct: 9.7, ist: 20.5, act_hrs: 735, sch_hrs: 1270,
+           hrs_variance: -464, win: 56.0, missed_routines: 5, labor_partial: true },
+    rows: [
+      { label: 'Area 2016 — Ebony Simmons', sales: 13769, growth_pct: -9.7,
+        ist: 16.6, win: 60, hrs_variance: -132, missed_routines: 1 },
+    ],
+  };
+  const out = renderForSms(halfRead, { dateLabel: 'Oct 7' });
+
+  test('says so instead of printing the variance', () => {
+    expect(out).toContain('Labor still posting');
+    expect(out).not.toContain('-464');
+  });
+
+  test('drops the per-area figure too, which is just as half-read', () => {
+    expect(out).not.toContain('L-132');
+  });
+
+  test('everything else still goes out', () => {
+    expect(out).toContain('Sales $72,415 +9.7%');
+    expect(out).toContain('WIN 56.0% PTD');
+  });
+
+  // Once the punches have landed the flag is absent and the number prints.
+  test('prints the variance once the day is complete', () => {
+    const complete = JSON.parse(JSON.stringify(halfRead));
+    complete.own.labor_partial = false;
+    complete.own.hrs_variance = 73;
+    const o = renderForSms(complete, { dateLabel: 'Oct 7' });
+    expect(o).toContain('Labor +73h');
+    expect(o).not.toContain('still posting');
+    expect(o).toContain('L-132');
+  });
+
+  test('still fits a phone', () => {
+    for (const l of out.split(String.fromCharCode(10))) expect(l.length).toBeLessThanOrEqual(PHONE_WIDTH);
+  });
+});

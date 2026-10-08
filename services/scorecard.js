@@ -155,6 +155,10 @@ function accumulate(acc, r) {
 
 const r1 = n => Math.round(n * 10) / 10;
 
+// Actual hours below this share of scheduled is not a labor result, it is an
+// incomplete read. A genuine heavy underrun is a few percent, not fifteen.
+const LABOR_PLAUSIBLE_RATIO = Number(process.env.LABOR_PLAUSIBLE_RATIO || 0.85);
+
 function finalize(acc) {
   return {
     label:  acc.label,
@@ -172,6 +176,13 @@ function finalize(acc) {
     sch_hrs:        acc.labor_n ? r1(acc.sch_hrs) : null,
     hrs_variance:   acc.labor_n ? r1(acc.act_hrs - acc.sch_hrs) : null,
     labor_coverage: `${acc.labor_n}/${acc.stores}`,
+    // Fourth posts the previous day's punches over the course of the morning,
+    // so actual hours climb while scheduled hours sit still. Read at 6am on
+    // 10/7 the region was 464 hours "under"; read the same day at 2pm it was
+    // 73 hours over. No region runs 36% under schedule -- a ratio that low
+    // means the punches are still arriving, not that anyone saved any labor.
+    labor_partial:  acc.labor_n > 0 && acc.sch_hrs > 0
+                      && (acc.act_hrs / acc.sch_hrs) < LABOR_PLAUSIBLE_RATIO,
 
     win:            acc.win_surveys > 0 ? r1(acc.win_weighted / acc.win_surveys) : null,
     win_surveys:    acc.win_surveys,
@@ -311,5 +322,5 @@ function renderScorecard(sc, opts) {
   return lines.join('\n');
 }
 
-module.exports = { buildScorecard, renderScorecard, LEVELS,
+module.exports = { buildScorecard, renderScorecard, LEVELS, LABOR_PLAUSIBLE_RATIO,
                    _internals: { blank, accumulate, finalize, thin } };
