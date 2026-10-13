@@ -13,13 +13,32 @@ const ODS_ORG  = process.env.ODS_ORG  || 'dgi';
 const ODS_USER = process.env.ODS_USER || 'hlacoste';
 const ODS_PASS = process.env.ODS_PASSWORD || '';
 
+// A value may be a plain URI, or { uri, params } when the report needs more than
+// a date. SUS_DBS is scoped by an organizational level rather than by the login,
+// so without its parameters it returns the viewer's own region instead of the
+// territory -- a quiet wrong answer rather than an error.
 const REPORTS = {
   DBS:            '/Reports/Pizza_Hut/Operations/PH_DGIDBS_1',
   SOS:            '/Reports/Pizza_Hut/Operations/PH_Speed_Of_Service',
   PAYROLL:        '/Reports/Pizza_Hut/Payroll/PH_ForgotToClockOut',
   CHANGE_DOWN:    '/Reports/Pizza_Hut/Operations/PH_ChangeDownReport',
   CANCEL_TENDER:  '/Reports/Pizza_Hut/Operations/PH_Cancels_After_Tender',
+  SUS_DBS: {
+    uri: '/Reports/Pizza_Hut/Operations/SUS_DBS',
+    params: {
+      orgType:                'territory',
+      orgTypeValue:           process.env.ODS_TERRITORY_ID || '26',   // 26 = Matt Hester
+      groupBy:                'store_number',
+      includeDeliveryCharges: 'false',
+      showHistoricalGrowth:   'false',
+      // storeIdsPH is deliberately absent: empty means every store in the
+      // territory, so no store list has to be maintained as the market changes.
+    },
+  },
 };
+
+function reportUri(key)    { const r = REPORTS[key]; return typeof r === 'string' ? r : r && r.uri; }
+function reportParams(key) { const r = REPORTS[key]; return (typeof r === 'string' ? null : r && r.params) || {}; }
 
 const POLL_INTERVAL_MS  = 5000;
 const POLL_MAX_ATTEMPTS = 60;
@@ -71,8 +90,9 @@ async function login() {
 
 async function downloadReport(session, reportKey, targetDate, outPath) {
   const { cookie, csrfName, csrfValue, ua } = session;
-  const reportURI = REPORTS[reportKey];
+  const reportURI = reportUri(reportKey);
   if (!reportURI) throw new Error(`Unknown report key: ${reportKey}`);
+  const extra = reportParams(reportKey);
 
   const hdrs = { Cookie: cookie, 'User-Agent': ua, Accept: 'application/json',
                  'X-Requested-With': 'XMLHttpRequest' };
@@ -83,7 +103,15 @@ async function downloadReport(session, reportKey, targetDate, outPath) {
     headers: { ...hdrs, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       reportUnitUri: reportURI, async: true, outputFormat: 'xlsx',
-      parameters: { reportParameter: [{ name: 'date', value: [targetDate] }] },
+      parameters: {
+        reportParameter: [
+          // The real target date rather than the report's own "YESTERDAY" token,
+          // so a backfill or a re-run of a missed day gets that day's numbers
+          // instead of whatever yesterday is at the moment it reruns.
+          { name: 'date', value: [targetDate] },
+          ...Object.entries(extra).map(([name, v]) => ({ name, value: [v] })),
+        ],
+      },
     }),
   });
   if (!execRes.ok) { const t = await execRes.text(); throw new Error(`Exec failed ${execRes.status}: ${t.substring(0,200)}`); }
