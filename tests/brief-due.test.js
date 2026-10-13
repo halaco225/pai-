@@ -118,20 +118,16 @@ describe('isDue', () => {
 });
 
 describe('recipients', () => {
-  test('defaults to Harold, Matt and every area coach on the roster', () => {
-    const { USER_ROSTER } = require('../routes/auth');
-    const acs = USER_ROSTER.filter(u => u.role === 'area_coach').map(u => u.username);
-    expect(recipients({})).toEqual(['hlacoste', 'mhester', ...acs]);
-    expect(acs.length).toBeGreaterThan(40);          // the whole company, not one region
+  test('defaults to Harold, Matt and the six area coaches', () => {
+    expect(recipients({})).toEqual(['hlacoste', 'mhester',
+      'dspikes', 'esimmons', 'jmcneil', 'jgarcia', 'mgannon', 'mmeehan']);
   });
 
-  // Derived from the roster, so a newly added area coach is not silently left
-  // out of the brief the way a hand-maintained list would leave them out.
-  test('nobody above area coach is added by default', () => {
-    const { USER_ROSTER } = require('../routes/auth');
-    const byName = Object.fromEntries(USER_ROSTER.map(u => [u.username, u.role]));
-    const above = recipients({}).filter(u => byName[u] !== 'area_coach');
-    expect(above).toEqual(['hlacoste', 'mhester']);  // the two who already had it
+  // The list only ever holds people who have signed up. Adding a username
+  // without a consent record sends nothing, so a longer list would only
+  // disagree with who actually gets a text.
+  test('stays at the eight who are signed up', () => {
+    expect(recipients({})).toHaveLength(8);
   });
 
   test('reads a comma list from the environment', () => {
