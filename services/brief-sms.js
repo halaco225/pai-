@@ -317,12 +317,19 @@ async function buildBody(username, targetDate) {
 function recipients(env = process.env) {
   // Deliberately explicit: an empty setting sends to nobody. Defaulting an
   // empty value to "everyone" is how 62 people get an unexpected text.
-  // Harold, Matt, and Harold's six area coaches. All eight have an opted-in
-  // consent record; anyone who has not opted in is skipped at send time
-  // regardless of being listed here.
+  // Every area coach, plus Harold and Matt who were already receiving it.
+  // Area coaches because their breakdown rows are stores, which is the level
+  // cheese variance can actually be acted on -- a region coach's rows are
+  // people, and "Spikes -203" tells you nothing about which store to call.
+  //
+  // Read from the roster rather than listed by hand, so an area coach added
+  // there is not silently left out of the brief. Consent still governs: anyone
+  // without an opted-in record is skipped at send time regardless of appearing
+  // here, so this list is who MAY receive it, not who will.
   if (env.PAI_BRIEF_RECIPIENTS === undefined) {
-    return ['hlacoste', 'mhester',
-            'dspikes', 'esimmons', 'jmcneil', 'jgarcia', 'mgannon', 'mmeehan'];
+    const { USER_ROSTER } = require('../routes/auth');
+    const acs = USER_ROSTER.filter(u => u.role === 'area_coach').map(u => u.username);
+    return ['hlacoste', 'mhester', ...acs];
   }
   return env.PAI_BRIEF_RECIPIENTS.split(',').map(s => s.trim()).filter(Boolean);
 }

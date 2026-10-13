@@ -865,7 +865,7 @@ router.get('/kpis', async (req, res) => {
 
     // Fetch all metrics for the date — storeMap (seeded from store_assignments) scopes in JS.
     // Avoids type-mismatch issues with store_id = ANY() across different DB column types.
-    const [metricsRes, flagCountRes, fcOtRes, surveyRes, routinesRes, laborRes, winScoreRes, actLabRes, schLabRes, schLaborPctRes] = await Promise.all([
+    const [metricsRes, flagCountRes, fcOtRes, surveyRes, routinesRes, laborRes, winScoreRes, actLabRes, schLabRes, schLaborPctRes, cheeseRes] = await Promise.all([
       p.query(`SELECT area_coach, store_id, store_name,
         net_sales_day, growth_pct_day,
         cancel_unmade_day, paidouts_day, cash_variance_day
@@ -892,7 +892,11 @@ router.get('/kpis', async (req, res) => {
       p.query(`SELECT store_id, win_score, survey_count FROM smg_win_scores WHERE period_end_date <= $1 ORDER BY period_end_date DESC`, [date]),
       p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='act_lab_dollar'`, [date]),
       p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='sch_lab_dollar'`, [date]),
-      p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='sch_labor_pct'`, [date])
+      p.query(`SELECT store_id, value FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='sch_labor_pct'`, [date]),
+      // Both sides, so the variance is computed the one way everywhere: ideal
+      // (target) minus actual (value). Positive means less cheese used than
+      // ideal, which is favorable.
+      p.query(`SELECT store_id, value, target FROM dbs_soft_indicators WHERE metric_date=$1 AND indicator='cheese_usage'`, [date])
     ]);
 
     // Build user AC set for fallback scoping when store not in store_assignments
@@ -986,6 +990,15 @@ router.get('/kpis', async (req, res) => {
     for (const r of schLabRes.rows) {
       if (storeMap[r.store_id]) storeMap[r.store_id].sch_lab_dollar = r.value != null ? +r.value : null;
     }
+    for (const r of cheeseRes.rows) {
+      // A store that has not posted is absent from this query entirely, so its
+      // cheese stays null and renders as a dash rather than a flattering 0.00.
+      if (storeMap[r.store_id] && r.value != null && r.target != null) {
+        storeMap[r.store_id].cheese_ideal  = +r.target;
+        storeMap[r.store_id].cheese_actual = +r.value;
+        storeMap[r.store_id].cheese_var    = +(+r.target - +r.value).toFixed(2);
+      }
+    }
 
     const by_store = Object.values(storeMap);
 
@@ -996,7 +1009,8 @@ router.get('/kpis', async (req, res) => {
       if (!acMap[ac]) acMap[ac] = { area_coach: ac, store_count: 0, net_sales: 0,
         gsum: 0, gcnt: 0, cancels: 0, lpsum: 0, lpcnt: 0, ot_hours: 0, comments_pos: 0,
         comments_neg: 0, forgot_clockout: 0, routines_missed: 0, routines_late: 0, flag_count: 0,
-        wssum: 0, wscnt: 0, slpsum: 0, slpcnt: 0, alpsum: 0, alpcnt: 0 };
+        wssum: 0, wscnt: 0, slpsum: 0, slpcnt: 0, alpsum: 0, alpcnt: 0,
+        chzideal: 0, chzactual: 0, chzcnt: 0 };
       const a = acMap[ac];
       a.store_count++;
       if (s.net_sales  != null) a.net_sales  += s.net_sales;
@@ -1005,6 +1019,9 @@ router.get('/kpis', async (req, res) => {
       if (s.labor_pct      != null) { a.lpsum  += s.labor_pct;      a.lpcnt++;  }
       if (s.sched_labor_pct != null) { a.slpsum += s.sched_labor_pct; a.slpcnt++; }
       if (s.act_labor_pct   != null) { a.alpsum += s.act_labor_pct;   a.alpcnt++; }
+      // Summed, not averaged: usage is in units, so an area's variance is the
+      // sum of its stores'.
+      if (s.cheese_var != null) { a.chzideal += s.cheese_ideal; a.chzactual += s.cheese_actual; a.chzcnt++; }
       a.ot_hours       += s.ot_hours       || 0;
       a.comments_pos   += s.comments_pos   || 0;
       a.comments_neg   += s.comments_neg   || 0;
@@ -1039,6 +1056,8 @@ router.get('/kpis', async (req, res) => {
       routines_late:    a.routines_late,
       flag_count:       a.flag_count,
       avg_win_score:    a.wscnt > 0 ? Math.round(a.wssum / a.wscnt * 10) / 10 : null,
+      cheese_var:       a.chzcnt > 0 ? +(a.chzideal - a.chzactual).toFixed(2) : null,
+      cheese_coverage:  `${a.chzcnt}/${a.store_count}`,
       stores:          storesByAC[a.area_coach] || [],
     }));
 
@@ -1052,6 +1071,10 @@ router.get('/kpis', async (req, res) => {
       labor_pct:       (() => { const lp = by_store.filter(s => s.labor_pct != null); return lp.length ? lp.reduce((s,r) => s+r.labor_pct, 0)/lp.length : null; })(),
       sched_labor_pct: (() => { const sp = by_store.filter(s => s.sched_labor_pct != null); return sp.length ? sp.reduce((s,r) => s+r.sched_labor_pct, 0)/sp.length : null; })(),
       ot_hours:        by_store.reduce((s,r) => s+(r.ot_hours||0), 0) || null,
+      // Summed like the areas above, and null rather than 0 when no store
+      // reported -- 0.00 would read as a region exactly on ideal.
+      cheese_var:      (() => { const c = by_store.filter(s => s.cheese_var != null);
+                                return c.length ? +c.reduce((s,r) => s + (r.cheese_ideal - r.cheese_actual), 0).toFixed(2) : null; })(),
       comments_pos:    by_store.reduce((s,r) => s+(r.comments_pos||0), 0),
       comments_neg:    by_store.reduce((s,r) => s+(r.comments_neg||0), 0),
       forgot_clockout:  by_store.reduce((s,r) => s+(r.forgot_clockout||0), 0),
