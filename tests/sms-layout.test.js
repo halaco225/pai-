@@ -36,12 +36,12 @@ describe('renderForSms', () => {
   test('puts the name and money on one line, the rest underneath', () => {
     const i = lines(out).findIndex(l => l.startsWith('Meehan'));
     expect(lines(out)[i]).toBe('Meehan $14,271 -7.9%');
-    expect(lines(out)[i + 1]).toBe('  26.2m · !1');
+    expect(lines(out)[i + 1]).toBe('  26.2m · HB1');
   });
 
   // A dash in every row leaves the reader guessing whether it means zero.
   test('says once that something is not reporting', () => {
-    expect(out).toContain('Labor & WIN not reporting');
+    expect(out).toContain('Labor & WIN & Chz not reporting');
     expect(out).not.toMatch(/—\s+—/);
   });
 
@@ -66,13 +66,16 @@ describe('renderForSms', () => {
   test('shows labor and WIN once they report', () => {
     const withData = JSON.parse(JSON.stringify(REGION));
     withData.own.act_hrs = 11058; withData.own.sch_hrs = 10916; withData.own.hrs_variance = 142;
-    withData.own.win = 58;
+    withData.own.win = 58; withData.own.cheese_var = -48.22;
     withData.rows[0].win = 47; withData.rows[0].hrs_variance = -19;
+    withData.rows[0].cheese_var = 1.9;
     const o = renderForSms(withData, { fiscalCode: 'P10W1', dateLabel: 'Oct 2' });
     expect(o).toContain('Labor +142h');
     expect(o).toContain('WIN 58.0%');
     expect(o).toContain('W47%');
     expect(o).toContain('L-19');
+    expect(o).toContain('chz -48.22');
+    expect(o).toContain('chz +1.90');
     expect(o).not.toContain('not reporting');
     for (const l of lines(o)) expect(l.length).toBeLessThanOrEqual(PHONE_WIDTH);
   });
@@ -171,7 +174,7 @@ describe('a day with no sales data', () => {
   const out = renderForSms(noSales, { dateLabel: 'Oct 7' });
 
   test('says sales is not reporting rather than going quiet', () => {
-    expect(out).toContain('Sales not reporting');
+    expect(out).toContain('Sales & Chz not reporting');
   });
 
   test('still shows the numbers that did arrive', () => {

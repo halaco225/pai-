@@ -168,6 +168,10 @@ function shortLabel(label) {
 const m0 = n => n == null ? null : '$' + Math.round(n).toLocaleString('en-US');
 const g0 = n => n == null ? null : (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
 const t0 = n => n == null ? null : n.toFixed(1) + 'm';
+// Signed to two places: "+1.90" means less cheese used than ideal, which is
+// favorable, and reads at a glance the way L+30 does two fields earlier. Zero
+// is a real reading and prints as +0.00; only null means the report had nothing.
+const chz = n => 'chz ' + (n >= 0 ? '+' : '') + n.toFixed(2);
 
 // "2026-10-02" -> "Oct 2". Built from the string, not a Date, so no zone can
 // shift it to the day before.
@@ -209,6 +213,7 @@ function renderForSms(sc, opts) {
   if (o.sales == null) missing.push('Sales');
   if (o.act_hrs == null) missing.push('Labor');
   if (o.win == null) missing.push('WIN');
+  if (o.cheese_var == null) missing.push('Chz');
   // What did arrive still gets printed. Suppressing the whole line because one
   // of its metrics is absent is how a working labor number went missing from a
   // text whose only real problem was sales.
@@ -220,6 +225,10 @@ function renderForSms(sc, opts) {
   // growth, IST and labor are all the previous day, WIN is period-to-date.
   if (o.win != null) have.push('WIN ' + o.win.toFixed(1) + '% PTD');
   if (have.length) L.push(have.join(' · '));
+  // Its own line rather than appended to the labor line: that line is already
+  // 26 characters and a phone wraps around 32, and a wrapped line is what this
+  // renderer exists to avoid.
+  if (o.cheese_var != null) L.push(chz(o.cheese_var));
   if (laborStillPosting) L.push('Labor still posting');
   if (missing.length) L.push(missing.join(' & ') + ' not reporting');
 
@@ -255,8 +264,12 @@ function renderForSms(sc, opts) {
       if (r.hrs_variance != null && !laborStillPosting) {
         detail.push('L' + (r.hrs_variance >= 0 ? '+' : '') + r.hrs_variance.toFixed(0));
       }
-      if (r.missed_routines) detail.push('!' + r.missed_routines);
+      if (r.missed_routines) detail.push('HB' + r.missed_routines);
       if (detail.length) L.push('  ' + detail.join(' · '));
+      // A third line rather than a fourth field. The detail line is already 26
+      // characters and a phone wraps around 32; appending here produced the
+      // ragged four-line rows this renderer was rewritten to stop.
+      if (r.cheese_var != null) L.push('  ' + chz(r.cheese_var));
     }
   }
 

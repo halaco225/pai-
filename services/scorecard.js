@@ -57,6 +57,8 @@ const STORE_SQL = `
          v.total_orders::int      AS total_orders,
          la.value::float          AS act_hrs,
          ls.value::float          AS sch_hrs,
+         chz.value::float         AS chz_actual,
+         chz.target::float        AS chz_ideal,
          w.win_score::float       AS win_score,
          w.survey_count::int      AS survey_count,
          COALESCE(mr.missed, 0)   AS missed_routines
@@ -71,6 +73,9 @@ const STORE_SQL = `
     LEFT JOIN dbs_soft_indicators ls
            ON ls.store_id = sa.store_id AND ls.metric_date = $1
           AND ls.indicator = 'sch_labor_hrs'
+    LEFT JOIN dbs_soft_indicators chz
+           ON chz.store_id = sa.store_id AND chz.metric_date = $1
+          AND chz.indicator = 'cheese_usage'
     LEFT JOIN LATERAL (
            SELECT win_score, survey_count
              FROM smg_win_scores
@@ -111,6 +116,7 @@ function blank(label) {
     sales: 0, ly_sales: 0, sales_n: 0,
     ist_minutes: 0, ist_orders: 0, ist_n: 0,
     act_hrs: 0, sch_hrs: 0, labor_n: 0,
+    chz_ideal: 0, chz_actual: 0, chz_n: 0,
     win_weighted: 0, win_surveys: 0, win_n: 0,
     missed_routines: 0,
   };
@@ -143,6 +149,15 @@ function accumulate(acc, r) {
     acc.labor_n++;
   }
 
+  // Usage in units, so a group's variance is the sum of its stores' -- unlike
+  // WIN below, which has to be survey-weighted. Both sides must be present:
+  // half a pair is not a variance.
+  if (r.chz_ideal != null && r.chz_actual != null) {
+    acc.chz_ideal  += r.chz_ideal;
+    acc.chz_actual += r.chz_actual;
+    acc.chz_n++;
+  }
+
   if (r.win_score != null) {
     const wt = r.survey_count > 0 ? r.survey_count : 1;
     acc.win_weighted += r.win_score * wt;
@@ -154,6 +169,9 @@ function accumulate(acc, r) {
 }
 
 const r1 = n => Math.round(n * 10) / 10;
+// Cheese is reported to the cent; r1 would turn 1.90 into 1.9 and lose the
+// precision the report itself publishes.
+const r2 = n => Math.round(n * 100) / 100;
 
 // Actual hours below this share of scheduled is not a labor result, it is an
 // incomplete read. A genuine heavy underrun is a few percent, not fifteen.
@@ -183,6 +201,10 @@ function finalize(acc) {
     // means the punches are still arriving, not that anyone saved any labor.
     labor_partial:  acc.labor_n > 0 && acc.sch_hrs > 0
                       && (acc.act_hrs / acc.sch_hrs) < LABOR_PLAUSIBLE_RATIO,
+
+    // Ideal - actual: positive means less cheese used than ideal, which is good.
+    cheese_var:      acc.chz_n ? r2(acc.chz_ideal - acc.chz_actual) : null,
+    cheese_coverage: `${acc.chz_n}/${acc.stores}`,
 
     win:            acc.win_surveys > 0 ? r1(acc.win_weighted / acc.win_surveys) : null,
     win_surveys:    acc.win_surveys,

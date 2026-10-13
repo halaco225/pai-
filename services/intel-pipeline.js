@@ -17,6 +17,7 @@ const path = require('path');
 
 const { pullReport }           = require('./intel-ods');
 const { processDBS }           = require('./parsers/dbs-parser');
+const { parseSusDbs }          = require('./parsers/sus-dbs-parser');
 const { processSOS }           = require('./parsers/sos-parser');
 const { processFourthLabor }   = require('./parsers/fourth-labor-parser');
 const { processFourthOT }      = require('./parsers/fourth-ot-parser');
@@ -98,6 +99,28 @@ async function runIntelPipeline(targetDate) {
     console.error('[Intel Pipeline] DBS failed:', err.message);
   }
   await logStep('dbs', results.steps.dbs, targetDate);
+
+  // ── Step 1b: SUS_DBS cheese usage ─────────────────────────────────────────
+  // Its own step rather than part of Step 1: this is a different report with a
+  // different scope, and a failure here must not cost us the DBS metrics that
+  // the whole brief is built on.
+  console.log('[Intel Pipeline] Step 1b: SUS_DBS cheese');
+  try {
+    const pull = await pullReport('SUS_DBS', targetDate);
+    if (!pull.success) throw new Error(pull.error);
+    const { softIndicators, skipped } = parseSusDbs(pull.filePath, targetDate);
+    for (const si of softIndicators) await db.upsertSoftIndicator(si);
+    cleanupFile(pull.filePath);
+    if (skipped.length) {
+      console.log(`[Intel Pipeline] SUS_DBS: ${skipped.length} store(s) had no cheese number: ${skipped.join(', ')}`);
+    }
+    results.steps.susDbs = { success: true, written: softIndicators.length, skipped: skipped.length };
+  } catch (err) {
+    results.errors.push(`SUS_DBS: ${err.message}`);
+    results.steps.susDbs = { success: false, error: err.message };
+    console.error('[Intel Pipeline] SUS_DBS failed:', err.message);
+  }
+  await logStep('susDbs', results.steps.susDbs, targetDate);
 
   // ── Step 2: SOS ────────────────────────────────────────────────────────────
   console.log('[Intel Pipeline] Step 2: SOS');
