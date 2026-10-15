@@ -27,7 +27,7 @@ const db   = require('../services/db');
 const templates = require('../services/audit-templates');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { visibleStores } = require('../services/rc-scope');
-const { publicForm, grade, missingAnswers } = require('../services/audits');
+const { publicForm, grade, missingAnswers, checkOne } = require('../services/audits');
 
 const DEFAULT_AUDIT = 'steritech-readiness';
 const BUCKET        = 'audit-photos';
@@ -74,6 +74,21 @@ router.get('/stores', async (req, res) => {
     .map(s => ({ num: String(s.store_id), name: s.store_name || '' }))
     .sort((a, b) => a.num.localeCompare(b.num, undefined, { numeric: true }));
   res.json(stores);
+});
+
+// ── Public: mark one question, as soon as it is answered ────────────────────
+//
+// A walk is for teaching, so the wrong answer is worth more at the moment it
+// is given than in a list at the end. That means the key has to reach the
+// phone — but only for a question already answered, and only one at a time.
+// The form itself still goes out without it.
+router.post('/check', async (req, res) => {
+  const def = await templates.getTemplate(req.body.auditId || DEFAULT_AUDIT);
+  if (!def || !def.active) return res.status(404).json({ error: 'That walk does not exist.' });
+
+  const result = checkOne(def, req.body.n, req.body.answer);
+  if (!result) return res.status(400).json({ error: 'Nothing to mark.' });
+  res.json(result);
 });
 
 // ── Public: submit a walk ───────────────────────────────────────────────────

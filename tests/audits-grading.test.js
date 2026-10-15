@@ -113,3 +113,55 @@ describe('missingAnswers', () => {
     expect(missingAnswers(def, answers, photos).map(m => m.n)).toEqual([1]);
   });
 });
+
+// Marking one question at a time, for the verdict shown the moment it is
+// answered. This is the only way the answer key reaches a phone, so what it
+// will and will not reveal is the thing worth pinning down.
+describe('checkOne', () => {
+  const { checkOne } = require('../services/audits');
+
+  test('marks a right answer and explains it anyway', () => {
+    const v = checkOne(def, 3, [2]);
+    expect(v.correct).toBe(true);
+    expect(v.correctChoices).toEqual([2]);
+    expect(v.explanation).toMatch(/EVERY surface/);
+  });
+
+  test('marks a wrong answer and says what was right', () => {
+    const v = checkOne(def, 3, [0]);
+    expect(v.correct).toBe(false);
+    expect(v.correctChoices).toEqual([2]);
+  });
+
+  test('a multi-select still has to be exact', () => {
+    expect(checkOne(def, 6, [0, 1, 2]).correct).toBe(true);
+    expect(checkOne(def, 6, [0, 1]).correct).toBe(false);
+  });
+
+  // The point of the endpoint: you only get the answer to a question you have
+  // actually answered. An empty pick reveals nothing.
+  test('reveals nothing for a question that was not answered', () => {
+    expect(checkOne(def, 3, [])).toBeNull();
+    expect(checkOne(def, 3, null)).toBeNull();
+    expect(checkOne(def, 3, undefined)).toBeNull();
+  });
+
+  test('reveals nothing for a question that is not scored', () => {
+    expect(checkOne(def, 1, 'Harold')).toBeNull();   // name
+    expect(checkOne(def, 4, [0])).toBeNull();        // photo
+    expect(checkOne(def, 20, 'fix the hood')).toBeNull();
+  });
+
+  test('reveals nothing for a question that does not exist', () => {
+    expect(checkOne(def, 999, [0])).toBeNull();
+    expect(checkOne(def, 'oops', [0])).toBeNull();
+  });
+
+  test('agrees with the final grade', () => {
+    for (const q of def.questions.filter(x => x.type === 'single' || x.type === 'multi')){
+      const v = checkOne(def, q.n, q.correct);
+      expect(v.correct).toBe(true);
+      expect(v.points).toBe(q.points);
+    }
+  });
+});

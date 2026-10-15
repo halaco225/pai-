@@ -27,7 +27,8 @@
   .bar span{display:block;height:100%;background:#fff;width:0;transition:width .3s ease;}
   .count{font-size:12.5px;opacity:.9;margin-top:7px;}
 
-  .stage{flex:1;overflow-y:auto;overflow-x:hidden;padding:20px 16px 8px;-webkit-overflow-scrolling:touch;}
+  .stage{flex:1;overflow-y:auto;overflow-x:hidden;padding:20px 16px 8px;
+         -webkit-overflow-scrolling:touch;touch-action:pan-y;}
   .slide{animation:in .22s ease;}
   .slide.back{animation:inBack .22s ease;}
   @keyframes in{from{opacity:0;transform:translateX(26px);}to{opacity:1;transform:none;}}
@@ -42,10 +43,28 @@
   label.opt:active{background:#eef2fb;}
   label.opt.on{border-color:var(--blue);background:#eef3fe;}
   label.opt input{width:23px;height:23px;margin:0;flex:none;accent-color:var(--blue);}
+  /* Once a question is marked the answers stop being touchable, so nobody can
+     see the right one and then switch to it. */
+  label.opt.locked{cursor:default;opacity:.95;}
+  label.opt.right{border-color:var(--green);background:#eafaef;}
+  label.opt.wrong{border-color:var(--red);background:#fdeced;}
+  label.opt .tick{margin-left:auto;font-weight:700;flex:none;}
+  label.opt.right .tick{color:var(--green);}
+  label.opt.wrong .tick{color:var(--red);}
 
   input[type=text],select,textarea{width:100%;padding:15px;font:inherit;border:1.5px solid var(--line);
             border-radius:12px;background:#fff;color:var(--ink);}
   textarea{min-height:150px;resize:vertical;}
+
+  /* Store picker: type the number, or tap it out of the list. */
+  .store-list{margin-top:10px;max-height:290px;overflow-y:auto;border:1px solid var(--line);
+              border-radius:12px;background:#fff;}
+  .store-list button{display:block;width:100%;text-align:left;padding:14px 15px;border:none;
+              border-bottom:1px solid var(--line);background:#fff;font:inherit;cursor:pointer;}
+  .store-list button:last-child{border-bottom:none;}
+  .store-list button:active{background:#eef3fe;}
+  .store-list b{font-variant-numeric:tabular-nums;}
+  .store-list .none{padding:14px 15px;color:var(--muted);font-size:15px;}
 
   .photo-btn{display:block;width:100%;padding:18px;border:2px dashed var(--blue);border-radius:13px;
              background:#eef3fe;color:var(--blue);font:inherit;font-weight:600;cursor:pointer;text-align:center;}
@@ -56,6 +75,16 @@
   .thumb button{position:absolute;top:3px;right:3px;width:27px;height:27px;border:none;border-radius:50%;
                 background:rgba(16,24,40,.78);color:#fff;font-size:15px;line-height:1;cursor:pointer;}
 
+  /* The verdict, right under the question they just answered. */
+  .verdict{border-radius:13px;padding:15px;margin-top:16px;border:1.5px solid;}
+  .verdict.ok{border-color:var(--green);background:#eafaef;}
+  .verdict.no{border-color:var(--red);background:#fdeced;}
+  .verdict .head{font-weight:700;font-size:17px;}
+  .verdict.ok .head{color:#13803a;}
+  .verdict.no .head{color:#a5121b;}
+  .verdict .answer{margin-top:9px;font-weight:600;}
+  .verdict .why{margin-top:9px;font-size:15.5px;line-height:1.5;}
+
   .foot{flex:none;padding:12px 16px calc(14px + env(safe-area-inset-bottom,0px));
         background:#fff;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center;}
   button.go{flex:1;padding:17px;font:inherit;font-weight:700;font-size:17px;color:#fff;background:var(--blue);
@@ -64,7 +93,7 @@
   button.back{padding:17px 18px;font:inherit;font-weight:600;color:var(--blue);background:#fff;
               border:1.5px solid var(--line);border-radius:13px;cursor:pointer;}
   .msg{color:var(--red);font-weight:600;font-size:14.5px;padding:0 16px 10px;background:#fff;}
-  .swipe-tip{text-align:center;color:var(--muted);font-size:12.5px;padding:6px 0 2px;}
+  .swipe-tip{text-align:center;color:var(--muted);font-size:12.5px;padding:10px 0 2px;}
 
   /* Intro and results scroll normally. */
   .scrollable{overflow-y:auto;padding:20px 16px 30px;}
@@ -106,8 +135,10 @@ let STORES = [];
 let at = -1;                 // -1 is the intro screen
 const answers = {};          // { n: string | number[] }
 const photos  = {};          // { n: [{file, url}] }
+const checked = {};          // { n: verdict } — a marked question is locked
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const isGraded = q => q.type === 'single' || q.type === 'multi';
 
 // Draft save/restore. Pictures cannot be saved, so only answers come back.
 function saveDraft(){ try{ localStorage.setItem(DRAFT_KEY, JSON.stringify(answers)); }catch(e){} }
@@ -124,6 +155,8 @@ async function start(){
   FORM = await res.json();
   STORES = await fetch('/api/audits/stores').then(r => r.json()).catch(() => []);
   document.getElementById('title').textContent = FORM.title;
+  // A draft only brings back questions that were never marked; a marked one
+  // is finished and should not reopen.
   Object.assign(answers, loadDraft());
   draw();
 }
@@ -137,8 +170,9 @@ function draw(dir){
   if (at < 0){
     stage.className = 'stage scrollable';
     stage.innerHTML = `<div class="intro">${esc(FORM.description)}</div>
-      <div class="intro quiet">${FORM.questions.length} questions. One at a time —
-        swipe or hit Next to move on.</div>`;
+      <div class="intro quiet">${FORM.questions.length} questions, one at a time.
+        Swipe sideways or hit Next. Scored questions tell you right away whether
+        you got them right.</div>`;
     foot.style.display = 'flex';
     document.getElementById('back').style.display = 'none';
     document.getElementById('next').textContent = 'Start';
@@ -147,20 +181,29 @@ function draw(dir){
   }
 
   const q = FORM.questions[at];
+  const verdict = checked[q.n];
+
   stage.className = 'stage';
   stage.innerHTML = `<div class="slide ${dir === 'back' ? 'back' : ''}">
       <div class="q-num">Question ${at + 1}${q.points ? ' · ' + q.points + (q.points > 1 ? ' points' : ' point') : ''}</div>
       <div class="q-title">${esc(q.title)}</div>
       ${body(q)}
+      ${verdictHtml(q, verdict)}
     </div>
-    <div class="swipe-tip">swipe to move on</div>`;
+    <div class="swipe-tip">swipe sideways to move on</div>`;
 
   wire(q);
   foot.style.display = 'flex';
   document.getElementById('back').style.display = at === 0 ? 'none' : 'block';
-  document.getElementById('next').textContent = at === FORM.questions.length - 1 ? 'Send my answers' : 'Next';
+  document.getElementById('next').textContent = nextLabel(q);
   setProgress((at + 1) / FORM.questions.length, `Question ${at + 1} of ${FORM.questions.length}`);
   stage.scrollTop = 0;
+}
+
+function nextLabel(q){
+  // A scored question is marked before it is left, so the button says so.
+  if (isGraded(q) && !checked[q.n]) return 'Check my answer';
+  return at === FORM.questions.length - 1 ? 'Send my answers' : 'Next';
 }
 
 function setProgress(fraction, label){
@@ -168,17 +211,43 @@ function setProgress(fraction, label){
   document.getElementById('count').textContent = label;
 }
 
+function verdictHtml(q, v){
+  if (!v) return '';
+  if (v.offline) return `<div class="verdict no"><div class="head">Could not check that one</div>
+    <div class="why">No signal. Your answer is saved — keep going.</div></div>`;
+
+  const right = (v.correctChoices || []).map(i => q.choices[i]).join(' · ');
+  return `<div class="verdict ${v.correct ? 'ok' : 'no'}">
+    <div class="head">${v.correct ? '✔ Right' : '✘ Not quite'}</div>
+    ${v.correct ? '' : `<div class="answer">Right answer: ${esc(right)}</div>`}
+    <div class="why">${esc(v.explanation)}</div></div>`;
+}
+
 function body(q){
   const given = answers[q.n];
+  const v = checked[q.n];
 
-  if (q.type === 'single' || q.type === 'multi'){
+  if (isGraded(q)){
     const kind = q.type === 'multi' ? 'checkbox' : 'radio';
     const picked = Array.isArray(given) ? given : [];
-    return (q.type === 'multi' ? '<div class="hint">Pick everything that is true, then hit Next.</div>' : '') +
-      q.choices.map((c, i) => `
-        <label class="opt ${picked.includes(i) ? 'on' : ''}">
-          <input type="${kind}" name="q" value="${i}" ${picked.includes(i) ? 'checked' : ''}>
-          <span>${esc(c)}</span></label>`).join('');
+    return (q.type === 'multi' && !v ? '<div class="hint">Pick everything that is true, then check your answer.</div>' : '') +
+      q.choices.map((c, i) => {
+        let state = picked.includes(i) ? 'on' : '';
+        if (v && !v.offline){
+          const isRight = (v.correctChoices || []).includes(i);
+          if (isRight) state = 'right';
+          else if (picked.includes(i)) state = 'wrong';
+          else state = '';
+        }
+        const tick = v && !v.offline
+          ? ((v.correctChoices || []).includes(i) ? '<span class="tick">✔</span>'
+             : (picked.includes(i) ? '<span class="tick">✘</span>' : ''))
+          : '';
+        return `<label class="opt ${state} ${v ? 'locked' : ''}">
+          <input type="${kind}" name="q" value="${i}" ${picked.includes(i) ? 'checked' : ''}
+            ${v ? 'disabled' : ''}>
+          <span>${esc(c)}</span>${tick}</label>`;
+      }).join('');
   }
 
   if (q.type === 'photo'){
@@ -191,30 +260,31 @@ function body(q){
     return `<textarea id="field" placeholder="Type here">${esc(given || '')}</textarea>`;
   }
 
-  // A store-number question gets the real list when we have one.
-  const looksLikeStore = /store/i.test(q.title) && /number/i.test(q.title);
-  if (looksLikeStore && STORES.length){
-    return `<select id="field"><option value="">Pick your store</option>` +
-      STORES.map(s => `<option value="${esc(s.num)}"${given === s.num ? ' selected' : ''}>
-        ${esc(s.num)}${s.name ? ' — ' + esc(s.name) : ''}</option>`).join('') + `</select>`;
+  // Store number: type it, or tap it out of the list. Typing is faster when
+  // you know your own number, which every shift leader does.
+  if (looksLikeStore(q) && STORES.length){
+    return `<input type="text" id="field" inputmode="numeric" autocomplete="off"
+        value="${esc(given || '')}" placeholder="Type your store number">
+      <div class="store-list" id="storeList"></div>`;
   }
-  return `<input type="text" id="field" ${looksLikeStore ? 'inputmode="numeric"' : ''}
-    value="${esc(given || '')}" placeholder="Type here">`;
+  return `<input type="text" id="field" value="${esc(given || '')}" placeholder="Type here">`;
 }
+
+function looksLikeStore(q){ return /store/i.test(q.title) && /number/i.test(q.title); }
 
 function wire(q){
   const stage = document.getElementById('stage');
 
-  if (q.type === 'single' || q.type === 'multi'){
+  if (isGraded(q)){
+    if (checked[q.n]) return;              // locked: nothing to wire
     stage.querySelectorAll('input[name="q"]').forEach(input => {
       input.addEventListener('change', () => {
         if (q.type === 'single'){
           answers[q.n] = [Number(input.value)];
           saveDraft();
-          // One answer means they are done with this question: move on, after
-          // a beat so they see what they picked.
           stage.querySelectorAll('.opt').forEach(o => o.classList.toggle('on', o.querySelector('input').checked));
-          setTimeout(() => { if (at < FORM.questions.length - 1) go(1); }, 320);
+          // One answer means they are done with this question: mark it now.
+          setTimeout(() => check(q), 220);
         } else {
           answers[q.n] = [...stage.querySelectorAll('input[name="q"]:checked')].map(i => Number(i.value));
           input.closest('.opt').classList.toggle('on', input.checked);
@@ -234,8 +304,58 @@ function wire(q){
   }
 
   const field = document.getElementById('field');
-  field.addEventListener('input', () => { answers[q.n] = field.value; saveDraft(); say(''); });
-  field.addEventListener('change', () => { answers[q.n] = field.value; saveDraft(); say(''); });
+  const onType = () => { answers[q.n] = field.value; saveDraft(); say(''); if (looksLikeStore(q)) drawStores(field.value); };
+  field.addEventListener('input', onType);
+  field.addEventListener('change', onType);
+  if (looksLikeStore(q) && STORES.length) drawStores(field.value);
+}
+
+// The list narrows as they type, so a store number is a few taps either way.
+function drawStores(typed){
+  const box = document.getElementById('storeList');
+  if (!box) return;
+  const needle = String(typed || '').trim().toLowerCase();
+  const hits = (needle
+    ? STORES.filter(s => s.num.toLowerCase().includes(needle) || s.name.toLowerCase().includes(needle))
+    : STORES).slice(0, 60);
+
+  if (!hits.length){
+    box.innerHTML = '<div class="none">No store matches that. You can still type the number.</div>';
+    return;
+  }
+  box.innerHTML = hits.map(s =>
+    `<button type="button" data-num="${esc(s.num)}"><b>${esc(s.num)}</b>${s.name ? ' — ' + esc(s.name) : ''}</button>`).join('');
+
+  box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    const q = FORM.questions[at];
+    answers[q.n] = b.dataset.num;
+    document.getElementById('field').value = b.dataset.num;
+    saveDraft();
+    drawStores(b.dataset.num);
+    say('');
+  }));
+}
+
+// ── Marking ─────────────────────────────────────────────────────────────────
+async function check(q){
+  if (checked[q.n]) return true;
+  try{
+    const res = await fetch('/api/audits/check', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auditId: FORM.id, n: q.n, answer: answers[q.n] }),
+    });
+    if (!res.ok) throw new Error('check failed');
+    checked[q.n] = await res.json();
+  }catch(err){
+    // No signal is not a reason to stop the walk.
+    checked[q.n] = { offline: true };
+  }
+  draw();
+  // Right answers move on by themselves; a wrong one waits so it can be read.
+  if (checked[q.n].correct && at < FORM.questions.length - 1){
+    setTimeout(() => { if (checked[q.n] && checked[q.n].correct) go(1); }, 1500);
+  }
+  return true;
 }
 
 // ── Moving between questions ────────────────────────────────────────────────
@@ -255,6 +375,9 @@ function go(by){
                              : 'Answer this one before you move on.');
       return;
     }
+    // A scored question gets marked before it is left, so nobody reaches the
+    // end without having seen what they got wrong.
+    if (isGraded(q) && !checked[q.n]) return void check(q);
     if (at === FORM.questions.length - 1) return submit();
   }
   const to = at + by;
@@ -272,19 +395,22 @@ function say(message){
 document.getElementById('next').addEventListener('click', () => go(1));
 document.getElementById('back').addEventListener('click', () => go(-1));
 
-// Swipe. Horizontal only, and not while the finger is scrolling a long
-// question up and down.
-let x0 = null, y0 = null;
+// Swipe. A real thumb swipe on a phone is rarely level, so this only asks that
+// the sideways movement beat the up-and-down movement.
+let x0 = null, y0 = null, t0 = 0;
 const stageEl = document.getElementById('stage');
 stageEl.addEventListener('touchstart', e => {
-  x0 = e.changedTouches[0].clientX; y0 = e.changedTouches[0].clientY;
+  x0 = e.changedTouches[0].clientX; y0 = e.changedTouches[0].clientY; t0 = Date.now();
 }, { passive: true });
 stageEl.addEventListener('touchend', e => {
   if (x0 == null) return;
   const dx = e.changedTouches[0].clientX - x0;
   const dy = e.changedTouches[0].clientY - y0;
+  const quick = Date.now() - t0 < 800;
   x0 = null;
-  if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+  if (Math.abs(dx) < 45) return;                       // a tap, or a scroll
+  if (Math.abs(dx) < Math.abs(dy)) return;             // mostly up or down
+  if (!quick && Math.abs(dx) < 110) return;            // a slow drag, not a flick
   go(dx < 0 ? 1 : -1);
 }, { passive: true });
 

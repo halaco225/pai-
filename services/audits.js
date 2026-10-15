@@ -112,4 +112,30 @@ function grade(def, answers = {}) {
   return { score, maxScore: maxScore(def), results };
 }
 
-module.exports = { publicForm, grade, missingAnswers, maxScore };
+/**
+ * Mark one question, for the feedback the walker sees straight away.
+ *
+ * This is how the answer key reaches the phone: one question at a time, only
+ * after that question has been answered, and never as part of the form. The
+ * page locks a question once it is marked, so what gets submitted is the
+ * answer they gave before they saw the result.
+ *
+ * Returns null for a question that is not scored, or one that is not there.
+ */
+function checkOne(def, n, given) {
+  const q = def.questions.find(x => x.n === Number(n));
+  if (!q || !GRADED.has(q.type)) return null;
+
+  const picked = asIndexes(given);
+  if (picked.length === 0) return null;   // nothing answered, nothing to reveal
+
+  return {
+    n: q.n,
+    correct: sameSet(picked, q.correct || []),
+    correctChoices: q.correct,
+    explanation: q.explanation,
+    points: q.points || 0,
+  };
+}
+
+module.exports = { publicForm, grade, missingAnswers, maxScore, checkOne };
