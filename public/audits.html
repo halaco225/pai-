@@ -74,6 +74,40 @@ tr.row:hover td{background:rgba(255,255,255,.035);}
 
 #viewer{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;z-index:500;padding:20px;}
 #viewer img{max-width:100%;max-height:100%;border-radius:8px;}
+
+/* TEMPLATE EDITOR */
+.ed-bar{display:flex;align-items:center;gap:12px;background:rgba(9,9,11,.92);padding:11px 0;margin-bottom:14px;position:sticky;top:59px;z-index:198;}
+.ed-label{display:block;font-size:12px;color:var(--muted);margin:14px 0 6px;font-weight:600;}
+.ed-label:first-of-type{margin-top:0;}
+input[type=text],textarea{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);
+  padding:10px 12px;border-radius:8px;font:inherit;font-size:14px;}
+textarea{resize:vertical;line-height:1.5;}
+input[type=number]{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;
+  border-radius:8px;font:inherit;font-size:13.5px;width:82px;}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
+
+.qcard{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:15px;margin-bottom:12px;}
+.qcard.bad{border-color:var(--brand);}
+.qhead{display:flex;align-items:center;gap:9px;margin-bottom:11px;flex-wrap:wrap;}
+.qnum{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.5px;min-width:78px;}
+.qtools{margin-left:auto;display:flex;gap:5px;}
+.icon-btn{background:var(--surface);border:1px solid var(--border);color:var(--muted);width:30px;height:30px;
+  border-radius:7px;cursor:pointer;font-size:14px;line-height:1;}
+.icon-btn:hover{color:var(--text);border-color:var(--border-hi);}
+.icon-btn.danger:hover{color:#ff8b8f;border-color:var(--brand);}
+.choice{display:flex;align-items:center;gap:10px;margin-bottom:7px;}
+.choice input[type=text]{flex:1;}
+.choice label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap;cursor:pointer;}
+.choice input[type=radio],.choice input[type=checkbox]{accent-color:var(--brand);width:17px;height:17px;cursor:pointer;}
+.qfoot{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);}
+.qfoot label{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:7px;}
+.add-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}
+.problems{background:rgba(229,72,77,.1);border:1px solid var(--brand);border-radius:var(--radius);padding:13px 15px;margin-bottom:14px;}
+.problems li{font-size:13px;margin-left:16px;line-height:1.6;}
+.tpl-row td{vertical-align:middle;}
+.tag{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:600;}
+.tag.on{background:rgba(70,167,88,.16);color:#6ddb86;}
+.tag.off{background:rgba(255,255,255,.07);color:var(--muted);}
 </style>
 </head>
 <body>
@@ -93,6 +127,7 @@ tr.row:hover td{background:rgba(255,255,255,.035);}
   <div class="nav-tab active" id="tab-responses" onclick="showTab('responses')">Responses</div>
   <div class="nav-tab" id="tab-summary" onclick="showTab('summary')">Summary</div>
   <div class="nav-tab" id="tab-stores" onclick="showTab('stores')">By store</div>
+  <div class="nav-tab" id="tab-templates" onclick="showTab('templates')">Templates</div>
 </div>
 
 <div class="wrap">
@@ -104,7 +139,8 @@ tr.row:hover td{background:rgba(255,255,255,.035);}
       <input type="date" id="fFrom" title="From"><input type="date" id="fTo" title="To">
       <button class="btn" onclick="load()">Apply</button>
       <button class="btn" onclick="reset()">Clear</button>
-      <button class="btn primary" onclick="window.location='/api/audits/export.csv'">Export CSV</button>
+      <button class="btn" onclick="exportAs('csv')">Export CSV</button>
+      <button class="btn primary" onclick="exportAs('xlsx')">Export Excel</button>
     </div>
     <div class="card"><div id="list" class="empty">Loading…</div></div>
   </div>
@@ -125,6 +161,48 @@ tr.row:hover td{background:rgba(255,255,255,.035);}
   <div id="pane-stores" style="display:none">
     <div class="card"><div class="card-title">Average score by store (worst first)</div><div id="byStore" class="empty">Loading…</div></div>
   </div>
+
+  <!-- TEMPLATES -->
+  <div id="pane-templates" style="display:none">
+    <div class="filters">
+      <button class="btn primary" onclick="newTemplate()">New audit</button>
+      <span class="muted" style="font-size:12.5px;">These are the walks you send out. Editing one never changes a score somebody already got.</span>
+    </div>
+    <div class="card"><div id="templateList" class="empty">Loading…</div></div>
+  </div>
+
+  <!-- TEMPLATE EDITOR -->
+  <div id="pane-editor" style="display:none">
+    <div class="ed-bar">
+      <button class="btn" onclick="closeEditor()">← All audits</button>
+      <span class="muted" id="edStatus"></span>
+      <span style="flex:1"></span>
+      <span class="muted" id="edPoints"></span>
+      <button class="btn primary" onclick="saveTemplate()">Save</button>
+    </div>
+    <div id="edProblems"></div>
+    <div class="card">
+      <div class="card-title">About this audit</div>
+      <label class="ed-label">Title</label>
+      <input type="text" id="edTitle" placeholder="Steritech Readiness Check">
+      <label class="ed-label">What the shift leader reads first</label>
+      <textarea id="edDesc" rows="3" placeholder="Walk your store while you complete this…"></textarea>
+      <label class="ed-label">Link name <span class="muted">— the end of the web address</span></label>
+      <input type="text" id="edId" placeholder="steritech-readiness">
+      <div class="muted" id="edLink" style="margin-top:7px;font-size:12.5px;"></div>
+    </div>
+    <div id="edQuestions"></div>
+    <div class="card" style="text-align:center;">
+      <div class="card-title" style="margin-bottom:10px;">Add a question</div>
+      <div class="add-row">
+        <button class="btn" onclick="addQuestion('single')">One answer</button>
+        <button class="btn" onclick="addQuestion('multi')">Pick all that apply</button>
+        <button class="btn" onclick="addQuestion('photo')">Picture</button>
+        <button class="btn" onclick="addQuestion('text')">Short text</button>
+        <button class="btn" onclick="addQuestion('longtext')">Long text</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div id="viewer" onclick="this.style.display='none'"><img id="viewerImg" alt=""></div>
@@ -137,14 +215,23 @@ const when = iso => new Date(iso).toLocaleString(undefined, { month:'short', day
 
 let RESPONSES = [];
 
+const TABS = ['responses','summary','stores','templates'];
+
 function showTab(tab){
-  for (const t of ['responses','summary','stores']){
+  for (const t of TABS){
     document.getElementById('pane-' + t).style.display = t === tab ? 'block' : 'none';
     document.getElementById('tab-' + t).classList.toggle('active', t === tab);
   }
   document.getElementById('pane-one').style.display = 'none';
+  document.getElementById('pane-editor').style.display = 'none';
   if (tab === 'summary') loadSummary();
   if (tab === 'stores') loadStores();
+  if (tab === 'templates') loadTemplates();
+}
+
+function exportAs(kind){
+  const q = query();
+  window.location = '/api/audits/export.' + kind + (q ? '?' + q : '');
 }
 
 function query(){
@@ -212,9 +299,11 @@ async function openOne(id){
       <div class="why">${esc(q.explanation)}</div>
     </div>`).join('');
 
+  // The wording is not repeated here: it comes from the template, which may
+  // have been edited since, and this view only shows what the walk captured.
   const photos = r.photoQuestions.map(q => `
     <div style="margin-bottom:16px;">
-      <div class="muted" style="font-size:12.5px;line-height:1.45;margin-bottom:6px;">Question ${q.n} — ${esc(q.title)}</div>
+      <div class="muted" style="font-size:12.5px;line-height:1.45;margin-bottom:6px;">Question ${q.n}</div>
       ${q.paths.length ? `<div class="thumbs">${q.paths.map(path =>
         `<img src="/api/audits/photo?path=${encodeURIComponent(path)}" alt="" loading="lazy" onclick="zoom(this.src)">`).join('')}</div>`
         : '<div class="muted">No pictures.</div>'}
@@ -276,6 +365,253 @@ async function loadStores(){
       <td><span class="pill ${band(pct(r.averageScore, s.maxScore))}">${r.averageScore}/${s.maxScore}</span></td></tr>`).join('') +
     '</tbody></table>';
 }
+
+// ── Templates ───────────────────────────────────────────────────────────────
+//
+// EDITING holds the audit being edited. Everything the editor does changes
+// that object and redraws; nothing reaches the server until Save, so a
+// half-finished question can never go out to a store.
+let EDITING = null;
+
+const TYPE_NAMES = { single:'One answer', multi:'Pick all that apply', photo:'Picture', text:'Short text', longtext:'Long text' };
+
+async function loadTemplates(){
+  const list = await fetch('/api/audits/templates').then(r => r.json());
+  const el = document.getElementById('templateList');
+  if (!list.length){
+    el.className = 'empty';
+    el.textContent = 'No audits yet. Hit "New audit" to build one.';
+    return;
+  }
+  el.className = '';
+  el.innerHTML = `<table><thead><tr><th>Audit</th><th>Questions</th><th>Points</th><th>Version</th><th>Status</th><th></th></tr></thead><tbody>` +
+    list.map(t => `<tr class="tpl-row">
+      <td><div style="font-weight:600;">${esc(t.title)}</div>
+          <div class="muted" style="font-size:12px;">/audit?id=${esc(t.id)}${t.updatedBy ? ' · last edited by ' + esc(t.updatedBy) : ''}</div></td>
+      <td>${t.questions}</td>
+      <td>${t.points}</td>
+      <td class="muted">v${t.version}</td>
+      <td><span class="tag ${t.active ? 'on' : 'off'}">${t.active ? 'Sending' : 'Paused'}</span></td>
+      <td style="text-align:right;white-space:nowrap;">
+        <button class="btn" onclick="editTemplate('${esc(t.id)}')">Edit</button>
+        <button class="btn" onclick="copyAuditLink('${esc(t.id)}')">Copy link</button>
+        <button class="btn" onclick="toggleActive('${esc(t.id)}',${!t.active})">${t.active ? 'Pause' : 'Send'}</button>
+        <button class="btn" onclick="removeTemplate('${esc(t.id)}','${esc(t.title)}')">Delete</button>
+      </td></tr>`).join('') + '</tbody></table>';
+}
+
+function copyAuditLink(id){
+  const url = location.origin + '/audit?id=' + encodeURIComponent(id);
+  if (navigator.clipboard) navigator.clipboard.writeText(url).then(
+    () => alert('Copied:\n' + url), () => prompt('Copy this link:', url));
+  else prompt('Copy this link:', url);
+}
+
+async function toggleActive(id, active){
+  const res = await fetch('/api/audits/templates/' + encodeURIComponent(id) + '/active', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ active }) });
+  if (!res.ok) return alert((await res.json()).error || 'That did not work.');
+  loadTemplates();
+}
+
+async function removeTemplate(id, title){
+  if (!confirm(`Delete "${title}"?\n\nWalks people already did keep their scores and photos. The link stops working.`)) return;
+  const res = await fetch('/api/audits/templates/' + encodeURIComponent(id), { method:'DELETE' });
+  if (!res.ok) return alert((await res.json()).error || 'That did not work.');
+  loadTemplates();
+}
+
+function newTemplate(){
+  EDITING = { id:'', title:'', description:'', version:0, questions:[
+    { n:1, title:'Your first and last name', type:'text', points:0, required:true },
+    { n:2, title:'Your store number', type:'text', points:0, required:true },
+  ]};
+  openEditor('New audit — not saved yet');
+}
+
+async function editTemplate(id){
+  EDITING = await fetch('/api/audits/templates/' + encodeURIComponent(id)).then(r => r.json());
+  openEditor(`Version ${EDITING.version}${EDITING.updatedBy ? ' · last edited by ' + EDITING.updatedBy : ''}`);
+}
+
+function openEditor(status){
+  document.getElementById('edTitle').value = EDITING.title || '';
+  document.getElementById('edDesc').value = EDITING.description || '';
+  document.getElementById('edId').value = EDITING.id || '';
+  document.getElementById('edStatus').textContent = status;
+  document.getElementById('edProblems').innerHTML = '';
+  for (const t of TABS) document.getElementById('pane-' + t).style.display = 'none';
+  document.getElementById('pane-one').style.display = 'none';
+  document.getElementById('pane-editor').style.display = 'block';
+  drawQuestions();
+  window.scrollTo(0, 0);
+}
+
+function closeEditor(){ showTab('templates'); }
+
+// The link name is derived from the title until someone types their own, the
+// way a new page gets a slug. Once it is saved it stops moving, because the
+// link is already on somebody's phone.
+function slug(s){ return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,80); }
+
+function readHeader(){
+  EDITING.title = document.getElementById('edTitle').value;
+  EDITING.description = document.getElementById('edDesc').value;
+  const idField = document.getElementById('edId');
+  if (!idField.value.trim() && !EDITING.version) idField.value = slug(EDITING.title);
+  EDITING.id = idField.value.trim().toLowerCase();
+  document.getElementById('edLink').textContent = EDITING.id
+    ? location.origin + '/audit?id=' + EDITING.id : '';
+}
+
+function addQuestion(type){
+  const q = { title:'', type, points: (type==='single'||type==='multi') ? 1 : 0, required:true };
+  if (type === 'single' || type === 'multi'){ q.choices = ['',''];  q.correct = []; q.explanation = ''; }
+  if (type === 'photo') q.maxPhotos = 3;
+  EDITING.questions.push(q);
+  drawQuestions();
+  const cards = document.querySelectorAll('.qcard');
+  const last = cards[cards.length - 1];
+  if (last){ last.scrollIntoView({behavior:'smooth', block:'center'}); last.querySelector('textarea').focus(); }
+}
+
+function moveQuestion(i, by){
+  const to = i + by;
+  if (to < 0 || to >= EDITING.questions.length) return;
+  const [q] = EDITING.questions.splice(i, 1);
+  EDITING.questions.splice(to, 0, q);
+  drawQuestions();
+}
+
+function deleteQuestion(i){
+  if (!confirm('Delete question ' + (i + 1) + '?')) return;
+  EDITING.questions.splice(i, 1);
+  drawQuestions();
+}
+
+function changeType(i, type){
+  const q = EDITING.questions[i];
+  q.type = type;
+  if (type === 'single' || type === 'multi'){
+    q.choices = q.choices && q.choices.length ? q.choices : ['',''];
+    q.correct = (q.correct || []).filter(n => n < q.choices.length);
+    if (type === 'single' && q.correct.length > 1) q.correct = [q.correct[0]];
+    if (q.explanation == null) q.explanation = '';
+    if (!q.points) q.points = 1;
+  } else {
+    // Only multiple-choice can be graded, so points go with the choices.
+    delete q.choices; delete q.correct; delete q.explanation;
+    q.points = 0;
+  }
+  if (type === 'photo' && !q.maxPhotos) q.maxPhotos = 3;
+  drawQuestions();
+}
+
+function setCorrect(i, c, on){
+  const q = EDITING.questions[i];
+  if (q.type === 'single') q.correct = on ? [c] : [];
+  else {
+    const set = new Set(q.correct || []);
+    on ? set.add(c) : set.delete(c);
+    q.correct = [...set].sort((a,b) => a-b);
+  }
+  drawQuestions();
+}
+
+function addChoice(i){ EDITING.questions[i].choices.push(''); drawQuestions(); }
+
+function removeChoice(i, c){
+  const q = EDITING.questions[i];
+  q.choices.splice(c, 1);
+  // Everything after the removed answer shifts down one, so the marks move too.
+  q.correct = (q.correct || []).filter(n => n !== c).map(n => n > c ? n - 1 : n);
+  drawQuestions();
+}
+
+function drawQuestions(){
+  readHeader();
+  const wrap = document.getElementById('edQuestions');
+
+  wrap.innerHTML = EDITING.questions.map((q, i) => {
+    const graded = q.type === 'single' || q.type === 'multi';
+    const kind = q.type === 'multi' ? 'checkbox' : 'radio';
+
+    const choices = !graded ? '' : `
+      <label class="ed-label">Answers <span class="muted">— tick the right one${q.type==='multi' ? 's' : ''}</span></label>
+      ${q.choices.map((c, ci) => `
+        <div class="choice">
+          <label><input type="${kind}" name="correct${i}" ${(q.correct||[]).includes(ci) ? 'checked' : ''}
+            onchange="setCorrect(${i},${ci},this.checked)"> right</label>
+          <input type="text" value="${esc(c)}" placeholder="Answer ${ci+1}"
+            oninput="EDITING.questions[${i}].choices[${ci}]=this.value">
+          <button class="icon-btn danger" onclick="removeChoice(${i},${ci})" title="Remove this answer">×</button>
+        </div>`).join('')}
+      <button class="btn" onclick="addChoice(${i})" style="margin-top:4px;">Add an answer</button>
+      <label class="ed-label">Why — shown after they submit</label>
+      <textarea rows="2" placeholder="The auditor checks every surface in the back…"
+        oninput="EDITING.questions[${i}].explanation=this.value">${esc(q.explanation || '')}</textarea>`;
+
+    const photo = q.type !== 'photo' ? '' : `
+      <label class="ed-label">How many pictures can they add</label>
+      <input type="number" min="1" max="10" value="${q.maxPhotos || 3}"
+        oninput="EDITING.questions[${i}].maxPhotos=Number(this.value)">`;
+
+    return `<div class="qcard" id="qcard${i}">
+      <div class="qhead">
+        <span class="qnum">QUESTION ${i + 1}</span>
+        <select onchange="changeType(${i}, this.value)">
+          ${Object.entries(TYPE_NAMES).map(([v, label]) =>
+            `<option value="${v}"${q.type === v ? ' selected' : ''}>${label}</option>`).join('')}
+        </select>
+        <div class="qtools">
+          <button class="icon-btn" onclick="moveQuestion(${i},-1)" title="Move up">↑</button>
+          <button class="icon-btn" onclick="moveQuestion(${i},1)" title="Move down">↓</button>
+          <button class="icon-btn danger" onclick="deleteQuestion(${i})" title="Delete">🗑</button>
+        </div>
+      </div>
+      <textarea rows="2" placeholder="What are you asking?"
+        oninput="EDITING.questions[${i}].title=this.value; updatePoints()">${esc(q.title)}</textarea>
+      ${choices}${photo}
+      <div class="qfoot">
+        ${graded ? `<label>Points <input type="number" min="0" max="100" value="${q.points || 0}"
+          oninput="EDITING.questions[${i}].points=Number(this.value); updatePoints()"></label>`
+        : '<span class="muted" style="font-size:12.5px;">Not scored</span>'}
+        <label><input type="checkbox" ${q.required !== false ? 'checked' : ''}
+          onchange="EDITING.questions[${i}].required=this.checked"> Must be answered</label>
+      </div>
+    </div>`;
+  }).join('');
+
+  updatePoints();
+}
+
+function updatePoints(){
+  const total = EDITING.questions.reduce((s, q) => s + (Number(q.points) || 0), 0);
+  document.getElementById('edPoints').textContent =
+    `${EDITING.questions.length} questions · ${total} points`;
+}
+
+async function saveTemplate(){
+  readHeader();
+  const res = await fetch('/api/audits/templates', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(EDITING) });
+  const data = await res.json();
+
+  const box = document.getElementById('edProblems');
+  if (!res.ok){
+    box.innerHTML = `<div class="problems"><b>Not saved yet:</b><ul>` +
+      (data.problems || [data.error]).map(p => `<li>${esc(p)}</li>`).join('') + '</ul></div>';
+    box.scrollIntoView({behavior:'smooth', block:'center'});
+    return;
+  }
+  box.innerHTML = '';
+  EDITING = data;
+  document.getElementById('edStatus').textContent = `Saved · version ${data.version}`;
+  drawQuestions();
+}
+
+document.getElementById('edTitle').addEventListener('input', readHeader);
+document.getElementById('edId').addEventListener('input', readHeader);
 
 document.getElementById('copyLink').addEventListener('click', e => {
   const url = location.origin + '/audit';

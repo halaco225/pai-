@@ -1,34 +1,16 @@
 // services/audits.js
 //
-// The Steritech readiness walk: loading the question set, stripping the answer
-// key for the browser, checking a submission is complete, and grading it.
+// Grading an audit walk: stripping the answer key for the browser, checking a
+// submission is complete, and scoring it.
 //
-// Pure — no I/O beyond reading the JSON once — so the grading boundaries are
-// testable without a database or a running server.
+// Pure — every function takes the question set as an argument — so the grading
+// boundaries are testable without a database or a running server. The
+// questions themselves live in services/audit-templates.js, because Harold
+// edits them in the Audits tab.
 //
 // The answer key never leaves this file except through grade(). publicForm()
 // is what the browser gets before submit; if `correct` or `explanation` ever
 // appears there, a shift leader can read the answers out of devtools.
-
-const fs = require('fs');
-const path = require('path');
-
-const AUDIT_DIR = path.join(__dirname, '..', 'data', 'audits');
-
-const cache = new Map();
-
-function loadAudit(id) {
-  // Reject anything that could climb out of data/audits.
-  if (!/^[a-z0-9-]+$/.test(id)) return null;
-  if (cache.has(id)) return cache.get(id);
-
-  const file = path.join(AUDIT_DIR, `${id}.json`);
-  if (!fs.existsSync(file)) return null;
-
-  const def = JSON.parse(fs.readFileSync(file, 'utf8'));
-  cache.set(id, def);
-  return def;
-}
 
 const GRADED = new Set(['single', 'multi']);
 
@@ -130,4 +112,4 @@ function grade(def, answers = {}) {
   return { score, maxScore: maxScore(def), results };
 }
 
-module.exports = { loadAudit, publicForm, grade, missingAnswers, maxScore };
+module.exports = { publicForm, grade, missingAnswers, maxScore };

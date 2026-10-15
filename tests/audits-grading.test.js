@@ -4,9 +4,10 @@
 // worth nothing, as in the Forms quiz this replaces), and the answer key must
 // never reach the browser before submit.
 
-const { loadAudit, publicForm, grade, missingAnswers, maxScore } = require('../services/audits');
+const { publicForm, grade, missingAnswers, maxScore } = require('../services/audits');
 
-const def = loadAudit('steritech-readiness');
+// The seed file, which is what the table is first filled from.
+const def = require('../data/audits/steritech-readiness.json');
 
 describe('the audit definition', () => {
   test('loads', () => {
@@ -14,14 +15,9 @@ describe('the audit definition', () => {
     expect(def.questions).toHaveLength(20);
   });
 
-  // Guards the total against a future edit to the JSON.
+  // Guards the total against a future edit to the seed.
   test('is worth exactly 20 points', () => {
     expect(maxScore(def)).toBe(20);
-  });
-
-  test('rejects an id that climbs out of data/audits', () => {
-    expect(loadAudit('../../package')).toBeNull();
-    expect(loadAudit('nope')).toBeNull();
   });
 });
 

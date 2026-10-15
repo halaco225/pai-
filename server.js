@@ -141,6 +141,12 @@ app.listen(PORT, async () => {
     console.log(`   Intel DB: init failed (${err.message})`);
   }
   try {
+    await require('./services/audit-templates').initAuditTemplates();
+    console.log(`   Audit templates: initialized ✓`);
+  } catch (err) {
+    console.log(`   Audit templates: init failed (${err.message})`);
+  }
+  try {
     require('./services/scheduler').start();
   } catch (err) {
     console.log(`   Scheduler: failed to start (${err.message})`);
