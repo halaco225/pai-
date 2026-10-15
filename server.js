@@ -142,6 +142,7 @@ app.listen(PORT, async () => {
   }
   try {
     await require('./services/audit-templates').initAuditTemplates();
+    await require('./services/audit-walks').initAuditWalks();
     console.log(`   Audit templates: initialized ✓`);
   } catch (err) {
     console.log(`   Audit templates: init failed (${err.message})`);

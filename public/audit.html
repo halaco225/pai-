@@ -129,6 +129,25 @@
 <script>
 const AUDIT_ID = new URLSearchParams(location.search).get('id') || 'steritech-readiness';
 const DRAFT_KEY = 'audit-draft-' + AUDIT_ID;
+const WALK_KEY  = 'audit-walk-' + AUDIT_ID;
+
+// One id for this walk, kept so a reload carries on the same walk instead of
+// starting a clean one. The server writes each answer down against it the
+// first time it is given, and grades that — not what this page sends at the
+// end. Coming back to a question after seeing the verdict changes nothing.
+const WALK_ID = (() => {
+  try {
+    const kept = localStorage.getItem(WALK_KEY);
+    if (kept) return kept;
+  } catch (e) {}
+  const made = (crypto.randomUUID ? crypto.randomUUID()
+    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+      }));
+  try { localStorage.setItem(WALK_KEY, made); } catch (e) {}
+  return made;
+})();
 
 let FORM = null;
 let STORES = [];
@@ -143,7 +162,7 @@ const isGraded = q => q.type === 'single' || q.type === 'multi';
 // Draft save/restore. Pictures cannot be saved, so only answers come back.
 function saveDraft(){ try{ localStorage.setItem(DRAFT_KEY, JSON.stringify(answers)); }catch(e){} }
 function loadDraft(){ try{ return JSON.parse(localStorage.getItem(DRAFT_KEY) || '{}'); }catch(e){ return {}; } }
-function clearDraft(){ try{ localStorage.removeItem(DRAFT_KEY); }catch(e){} }
+function clearDraft(){ try{ localStorage.removeItem(DRAFT_KEY); localStorage.removeItem(WALK_KEY); }catch(e){} }
 
 async function start(){
   const res = await fetch('/api/audits/form?id=' + encodeURIComponent(AUDIT_ID));
@@ -342,7 +361,7 @@ async function check(q){
   try{
     const res = await fetch('/api/audits/check', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ auditId: FORM.id, n: q.n, answer: answers[q.n] }),
+      body: JSON.stringify({ auditId: FORM.id, walkId: WALK_ID, n: q.n, answer: answers[q.n] }),
     });
     if (!res.ok) throw new Error('check failed');
     checked[q.n] = await res.json();
@@ -496,6 +515,7 @@ async function submit(){
   const next = document.getElementById('next');
   const body = new FormData();
   body.append('auditId', FORM.id);
+  body.append('walkId', WALK_ID);
   body.append('answers', JSON.stringify(answers));
   let count = 0;
   for (const [n, list] of Object.entries(photos)){

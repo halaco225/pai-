@@ -25,6 +25,7 @@ const router = express.Router();
 const rcDb = require('../services/rc-db');
 const db   = require('../services/db');
 const templates = require('../services/audit-templates');
+const walks = require('../services/audit-walks');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { visibleStores } = require('../services/rc-scope');
 const { publicForm, grade, missingAnswers, checkOne } = require('../services/audits');
@@ -82,11 +83,23 @@ router.get('/stores', async (req, res) => {
 // is given than in a list at the end. That means the key has to reach the
 // phone — but only for a question already answered, and only one at a time.
 // The form itself still goes out without it.
+// The answer is written down before it is marked, and the first one written
+// is the one that counts — so reading the verdict and going back to change
+// the pick achieves nothing. submit() grades what was written down.
 router.post('/check', async (req, res) => {
   const def = await templates.getTemplate(req.body.auditId || DEFAULT_AUDIT);
   if (!def || !def.active) return res.status(404).json({ error: 'That walk does not exist.' });
 
-  const result = checkOne(def, req.body.n, req.body.answer);
+  let answer = req.body.answer;
+  try {
+    const onRecord = await walks.recordAnswer(req.body.walkId, def.id, req.body.n, answer);
+    if (onRecord !== undefined) answer = onRecord;
+  } catch (err) {
+    // No database is not a reason to stop a shift leader mid-walk.
+    console.error('audit walk record failed:', err.message);
+  }
+
+  const result = checkOne(def, req.body.n, answer);
   if (!result) return res.status(400).json({ error: 'Nothing to mark.' });
   res.json(result);
 });
@@ -104,6 +117,16 @@ router.post('/submit', upload.any(), async (req, res) => {
     answers = JSON.parse(req.body.answers || '{}');
   } catch {
     return res.status(400).json({ error: 'Your answers did not come through. Try submitting again.' });
+  }
+
+  // Scored questions are taken from what the walk wrote down as each one was
+  // answered, not from this request. The phone was told the right answers
+  // along the way, so it does not get to report the score as well.
+  try {
+    const recorded = await walks.getAnswers(req.body.walkId);
+    answers = walks.sealed(recorded, answers, def);
+  } catch (err) {
+    console.error('audit walk read failed:', err.message);
   }
 
   const files = req.files || [];
