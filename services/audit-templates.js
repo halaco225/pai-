@@ -89,10 +89,31 @@ async function listTemplates() {
 }
 
 async function getTemplate(id) {
+  if (!id) return null;
   const p = getPool();
-  if (!p || !id) return null;
+  if (!p) return seedDef(id);          // no database configured: serve the file
   const { rows } = await p.query('SELECT * FROM audit_templates WHERE id = $1', [String(id)]);
   return rowToDef(rows[0]);
+}
+
+/**
+ * The walk as it ships in data/audits.
+ *
+ * Only used when there is no database at all — on a developer's machine, or
+ * if pai-db is unreachable at startup. A shift leader standing in a kitchen
+ * should get the questions either way; what they lose is any edit made since,
+ * which is better than a page that says come back later.
+ */
+function seedDef(id) {
+  if (!/^[a-z0-9-]{1,80}$/.test(String(id))) return null;
+  const file = path.join(SEED_DIR, `${id}.json`);
+  if (!fs.existsSync(file)) return null;
+  try {
+    const def = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return { ...def, version: 0, active: true, updatedBy: 'file' };
+  } catch {
+    return null;
+  }
 }
 
 /**

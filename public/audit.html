@@ -93,11 +93,13 @@
   button.back{padding:17px 18px;font:inherit;font-weight:600;color:var(--blue);background:#fff;
               border:1.5px solid var(--line);border-radius:13px;cursor:pointer;}
   .msg{color:var(--red);font-weight:600;font-size:14.5px;padding:0 16px 10px;background:#fff;}
-  .swipe-tip{text-align:center;color:var(--muted);font-size:12.5px;padding:10px 0 2px;}
 
   /* Intro and results scroll normally. */
   .scrollable{overflow-y:auto;padding:20px 16px 30px;}
   .intro{background:#fff;border:1px solid var(--line);border-radius:14px;padding:17px;margin-bottom:16px;}
+  .sent{background:#eafaef;border:1.5px solid var(--green);color:#13803a;border-radius:14px;
+        padding:16px;margin-bottom:16px;font-weight:700;font-size:17px;}
+  .sent span{display:block;margin-top:6px;font-weight:400;font-size:15px;color:#2c6b43;}
   .score{background:var(--blue);color:#fff;border-radius:16px;padding:24px;text-align:center;margin-bottom:18px;}
   .score b{display:block;font-size:42px;line-height:1.1;}
   .r{background:#fff;border:1px solid var(--line);border-left:5px solid var(--green);border-radius:12px;padding:15px;margin-bottom:12px;}
@@ -190,8 +192,8 @@ function draw(dir){
     stage.className = 'stage scrollable';
     stage.innerHTML = `<div class="intro">${esc(FORM.description)}</div>
       <div class="intro quiet">${FORM.questions.length} questions, one at a time.
-        Swipe sideways or hit Next. Scored questions tell you right away whether
-        you got them right.</div>`;
+        Scored questions are marked as soon as you check them, so you find out
+        there and then — and you can read why before moving on.</div>`;
     foot.style.display = 'flex';
     document.getElementById('back').style.display = 'none';
     document.getElementById('next').textContent = 'Start';
@@ -208,8 +210,7 @@ function draw(dir){
       <div class="q-title">${esc(q.title)}</div>
       ${body(q)}
       ${verdictHtml(q, verdict)}
-    </div>
-    <div class="swipe-tip">swipe sideways to move on</div>`;
+    </div>`;
 
   wire(q);
   foot.style.display = 'flex';
@@ -249,7 +250,11 @@ function body(q){
   if (isGraded(q)){
     const kind = q.type === 'multi' ? 'checkbox' : 'radio';
     const picked = Array.isArray(given) ? given : [];
-    return (q.type === 'multi' && !v ? '<div class="hint">Pick everything that is true, then check your answer.</div>' : '') +
+    const hint = v ? ''
+      : q.type === 'multi'
+        ? '<div class="hint">Pick everything that is true, then check your answer.</div>'
+        : '<div class="hint">Pick your answer, then check it.</div>';
+    return hint +
       q.choices.map((c, i) => {
         let state = picked.includes(i) ? 'on' : '';
         if (v && !v.offline){
@@ -302,8 +307,6 @@ function wire(q){
           answers[q.n] = [Number(input.value)];
           saveDraft();
           stage.querySelectorAll('.opt').forEach(o => o.classList.toggle('on', o.querySelector('input').checked));
-          // One answer means they are done with this question: mark it now.
-          setTimeout(() => check(q), 220);
         } else {
           answers[q.n] = [...stage.querySelectorAll('input[name="q"]:checked')].map(i => Number(i.value));
           input.closest('.opt').classList.toggle('on', input.checked);
@@ -370,10 +373,10 @@ async function check(q){
     checked[q.n] = { offline: true };
   }
   draw();
-  // Right answers move on by themselves; a wrong one waits so it can be read.
-  if (checked[q.n].correct && at < FORM.questions.length - 1){
-    setTimeout(() => { if (checked[q.n] && checked[q.n].correct) go(1); }, 1500);
-  }
+  // The verdict lands below the answers, which on a phone is off the bottom
+  // of the screen. Bring it up rather than leaving them to find it.
+  const panel = document.querySelector('.verdict');
+  if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
   return true;
 }
 
@@ -413,25 +416,6 @@ function say(message){
 
 document.getElementById('next').addEventListener('click', () => go(1));
 document.getElementById('back').addEventListener('click', () => go(-1));
-
-// Swipe. A real thumb swipe on a phone is rarely level, so this only asks that
-// the sideways movement beat the up-and-down movement.
-let x0 = null, y0 = null, t0 = 0;
-const stageEl = document.getElementById('stage');
-stageEl.addEventListener('touchstart', e => {
-  x0 = e.changedTouches[0].clientX; y0 = e.changedTouches[0].clientY; t0 = Date.now();
-}, { passive: true });
-stageEl.addEventListener('touchend', e => {
-  if (x0 == null) return;
-  const dx = e.changedTouches[0].clientX - x0;
-  const dy = e.changedTouches[0].clientY - y0;
-  const quick = Date.now() - t0 < 800;
-  x0 = null;
-  if (Math.abs(dx) < 45) return;                       // a tap, or a scroll
-  if (Math.abs(dx) < Math.abs(dy)) return;             // mostly up or down
-  if (!quick && Math.abs(dx) < 110) return;            // a slow drag, not a flick
-  go(dx < 0 ? 1 : -1);
-}, { passive: true });
 
 // A keyboard works too, for anyone filling this in on a laptop.
 document.addEventListener('keydown', e => {
@@ -567,6 +551,8 @@ function showResults(data){
   const stage = document.getElementById('stage');
   stage.className = 'stage scrollable';
   stage.innerHTML = `
+    <div class="sent">✔ Sent. Your answers and pictures are in.
+      <span>Nothing else to do — you can close this page. What is below is yours to read.</span></div>
     <div class="score">You got <b>${data.score} out of ${data.maxScore}</b></div>
     ${blocks}
     <div class="intro"><b>Fix what you found before the audit.</b> Your manager will see your photos.</div>`;
