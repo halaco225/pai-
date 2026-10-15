@@ -16,8 +16,9 @@ const { getPool } = require('./db');
 
 const SEED_DIR = path.join(__dirname, '..', 'data', 'audits');
 
-const TYPES = new Set(['text', 'longtext', 'single', 'multi', 'photo']);
-const GRADED_TYPES = new Set(['single', 'multi']);
+const TYPES = new Set(['text', 'longtext', 'single', 'multi', 'photo', 'hotspot']);
+const CHOICE_TYPES = new Set(['single', 'multi']);
+const GRADED_TYPES = new Set(['single', 'multi', 'hotspot']);
 
 async function initAuditTemplates() {
   const p = getPool();
@@ -146,7 +147,20 @@ function validateTemplate(def) {
       problems.push(`${where}: points must be a whole number from 0 to 100.`);
     }
 
-    if (GRADED_TYPES.has(q.type)) {
+    if (q.type === 'hotspot') {
+      if (!String(q.image || '').trim()) problems.push(`${where}: needs a picture.`);
+      const spots = Array.isArray(q.hotspots) ? q.hotspots : [];
+      if (spots.length === 0) problems.push(`${where}: needs at least one thing to find in the picture.`);
+      if (spots.some(h => !h || !Number.isFinite(Number(h.x)) || !Number.isFinite(Number(h.y)))) {
+        problems.push(`${where}: one of the things to find has no place in the picture.`);
+      }
+      if (spots.some(h => !String((h && h.label) || '').trim())) {
+        problems.push(`${where}: one of the things to find has no name.`);
+      }
+      return;                       // inside forEach, so return is the skip
+    }
+
+    if (CHOICE_TYPES.has(q.type)) {
       const choices = Array.isArray(q.choices) ? q.choices : [];
       if (choices.length < 2) problems.push(`${where}: needs at least two answers to choose from.`);
       if (choices.some(c => !String(c || '').trim())) problems.push(`${where}: one of the answers is blank.`);
@@ -160,7 +174,7 @@ function validateTemplate(def) {
         problems.push(`${where}: a one-answer question can only have one right answer.`);
       }
     } else if (points > 0) {
-      problems.push(`${where}: only multiple-choice questions can be worth points.`);
+      problems.push(`${where}: only scored questions can be worth points.`);
     }
 
     if (q.type === 'photo') {
@@ -188,12 +202,25 @@ function cleanTemplate(def) {
         points: GRADED_TYPES.has(q.type) ? Number(q.points || 0) : 0,
         required: q.required !== false,
       };
-      if (GRADED_TYPES.has(q.type)) {
+      if (CHOICE_TYPES.has(q.type)) {
         out.choices = (q.choices || []).map(c => String(c));
         out.correct = [...new Set((q.correct || []).map(Number))].sort((a, b) => a - b);
         out.explanation = String(q.explanation || '').trim();
       }
       if (q.type === 'photo') out.maxPhotos = Number(q.maxPhotos || 3);
+      // The editor cannot draw hotspots yet, so it carries them through
+      // exactly as they are. Dropping them here would empty the question the
+      // next time anything else on the form was saved.
+      if (q.type === 'hotspot') {
+        out.image = String(q.image || '');
+        out.extraTaps = Number(q.extraTaps || 0);
+        out.explanation = String(q.explanation || '').trim();
+        out.hotspots = (q.hotspots || []).map(h => ({
+          x: Number(h.x), y: Number(h.y),
+          rx: Number(h.rx || 5), ry: Number(h.ry || 5),
+          label: String(h.label || ''), why: String(h.why || ''),
+        }));
+      }
       return out;
     }),
   };

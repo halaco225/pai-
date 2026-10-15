@@ -379,7 +379,7 @@ async function loadStores(){
 // half-finished question can never go out to a store.
 let EDITING = null;
 
-const TYPE_NAMES = { single:'One answer', multi:'Pick all that apply', photo:'Picture', text:'Short text', longtext:'Long text' };
+const TYPE_NAMES = { single:'One answer', multi:'Pick all that apply', photo:'Picture', text:'Short text', longtext:'Long text', hotspot:'Tap the picture' };
 
 async function loadTemplates(){
   const list = await fetch('/api/audits/templates').then(r => r.json());
@@ -539,6 +539,7 @@ function drawQuestions(){
   const wrap = document.getElementById('edQuestions');
 
   wrap.innerHTML = EDITING.questions.map((q, i) => {
+    if (q.type === 'hotspot') return hotspotCard(q, i);
     const graded = q.type === 'single' || q.type === 'multi';
     const kind = q.type === 'multi' ? 'checkbox' : 'radio';
 
@@ -589,6 +590,45 @@ function drawQuestions(){
   }).join('');
 
   updatePoints();
+}
+
+// Shown, not dismantled. Drawing the spots on a picture is not in the editor
+// yet, so this card carries them through untouched rather than offering an
+// edit that would quietly empty the question.
+function hotspotCard(q, i){
+  const spots = q.hotspots || [];
+  return `<div class="qcard">
+    <div class="qhead">
+      <span class="qnum">QUESTION ${i + 1}</span>
+      <span class="tag on">Tap the picture</span>
+      <div class="qtools">
+        <button class="icon-btn" onclick="moveQuestion(${i},-1)" title="Move up">↑</button>
+        <button class="icon-btn" onclick="moveQuestion(${i},1)" title="Move down">↓</button>
+        <button class="icon-btn danger" onclick="deleteQuestion(${i})" title="Delete">🗑</button>
+      </div>
+    </div>
+    <textarea rows="2" placeholder="What are you asking?"
+      oninput="EDITING.questions[${i}].title=this.value">${esc(q.title)}</textarea>
+    <div style="display:flex;gap:14px;margin-top:12px;flex-wrap:wrap;align-items:flex-start;">
+      <img src="${esc(q.image)}" alt="" style="width:220px;border-radius:9px;border:1px solid var(--border);">
+      <div style="flex:1;min-width:220px;">
+        <div class="muted" style="font-size:12.5px;font-weight:700;letter-spacing:.4px;margin-bottom:7px;">
+          ${spots.length} THINGS TO FIND · ${spots.length + (q.extraTaps || 0)} TAPS ALLOWED</div>
+        <ol style="margin-left:17px;font-size:13px;line-height:1.7;">
+          ${spots.map(h => `<li>${esc(h.label)}</li>`).join('')}
+        </ol>
+      </div>
+    </div>
+    <label class="ed-label">Why — shown after they submit</label>
+    <textarea rows="2" oninput="EDITING.questions[${i}].explanation=this.value">${esc(q.explanation || '')}</textarea>
+    <div class="qfoot">
+      <label>Points <input type="number" min="0" max="100" value="${q.points || 0}"
+        oninput="EDITING.questions[${i}].points=Number(this.value); updatePoints()"></label>
+      <label><input type="checkbox" ${q.required !== false ? 'checked' : ''}
+        onchange="EDITING.questions[${i}].required=this.checked"> Must be answered</label>
+      <span class="muted" style="font-size:12.5px;">The picture and its spots are kept as they are.</span>
+    </div>
+  </div>`;
 }
 
 function updatePoints(){

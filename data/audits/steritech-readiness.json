@@ -194,19 +194,70 @@
     },
     {
       "n": 15,
-      "title": "A team member is putting toppings on pizzas with gloves on. They answer their phone, then go right back to making pizzas with the same gloves. What should happen?",
-      "type": "single",
+      "title": "Tap everything that is wrong in this picture. There are 7 things. You get 10 taps, so look before you tap.",
+      "type": "hotspot",
       "points": 3,
-      "choices": [
-        "Nothing. They still have gloves on.",
-        "Wipe the gloves with a towel and keep going.",
-        "Stop. Throw away the gloves, wash hands, put on new gloves, and remake the pizzas they touched.",
-        "Finish the order, then change gloves."
+      "image": "/audits/kitchen-check-1.webp",
+      "extraTaps": 3,
+      "hotspots": [
+        {
+          "x": 6.5,
+          "y": 35.2,
+          "rx": 5.9,
+          "ry": 7.8,
+          "label": "On a phone with gloves on",
+          "why": "The phone puts germs on the gloves, and those gloves go back on the food. Throw the gloves away, wash your hands, put new ones on, and remake anything they touched."
+        },
+        {
+          "x": 16.4,
+          "y": 25.6,
+          "rx": 5.3,
+          "ry": 5.6,
+          "label": "Cheese left out on the shelf",
+          "why": "Cheese has to stay 41 degrees or colder. Sitting out on a dry shelf it is out of temperature, and it has to be thrown away."
+        },
+        {
+          "x": 20.2,
+          "y": 73.9,
+          "rx": 9.8,
+          "ry": 9.5,
+          "label": "Box of cheese on the floor",
+          "why": "Food is never stored on the floor. Everything goes at least 6 inches up, and this box needs to be in the walk-in anyway."
+        },
+        {
+          "x": 48.3,
+          "y": 52.8,
+          "rx": 7.6,
+          "ry": 6.9,
+          "label": "Open cheese pan on the table",
+          "why": "Food left uncovered collects whatever is in the air. Keep it covered whenever you are not using it."
+        },
+        {
+          "x": 59.0,
+          "y": 58.6,
+          "rx": 4.0,
+          "ry": 6.6,
+          "label": "Somebody's drink on the prep table",
+          "why": "Your own drink never sits where food is made. Drinks stay in the break area, away from the store's food."
+        },
+        {
+          "x": 76.0,
+          "y": 59.4,
+          "rx": 7.3,
+          "ry": 6.2,
+          "label": "Open pepperoni pan on the table",
+          "why": "Same as the cheese: covered when it is not being used."
+        },
+        {
+          "x": 58.9,
+          "y": 75.7,
+          "rx": 9.6,
+          "ry": 6.2,
+          "label": "Wiping towel on the table",
+          "why": "Towels live in the sanitizer bucket when you are not wiping with them, and the bucket needs a label and a test strip."
+        }
       ],
-      "correct": [
-        2
-      ],
-      "explanation": "The phone put germs on the gloves, and now those germs are on the food. This is one of the most serious things an auditor can find. Gloves do NOT replace washing your hands. Throw away anything the dirty gloves touched. Other common ones: raw meat touching food that's ready to eat, and unwashed vegetables stored right next to ready-to-eat food.",
+      "explanation": "Every one of these costs points, and the phone is the worst of them: gloves do not replace washing your hands, and anything those gloves touched has to be remade. The rest are the ones that get missed on a busy shift. Food out of the cooler, food on the floor, food left uncovered, a personal drink on the line, and a towel out of its bucket. Watch for raw meat touching food that is ready to eat as well, and unwashed vegetables stored next to it.",
       "required": true
     },
     {

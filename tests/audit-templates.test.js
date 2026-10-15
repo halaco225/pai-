@@ -59,10 +59,10 @@ describe('validateTemplate', () => {
       .toContain('Question 2: a one-answer question can only have one right answer.');
   });
 
-  test('only multiple-choice can carry points', () => {
+  test('only a scored question can carry points', () => {
     const def = ok(); def.questions[0].points = 5;
     expect(validateTemplate(def))
-      .toContain('Question 1: only multiple-choice questions can be worth points.');
+      .toContain('Question 1: only scored questions can be worth points.');
   });
 
   test('points must be a sane whole number', () => {

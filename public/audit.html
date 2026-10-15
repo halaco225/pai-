@@ -66,6 +66,32 @@
   .store-list b{font-variant-numeric:tabular-nums;}
   .store-list .none{padding:14px 15px;color:var(--muted);font-size:15px;}
 
+  /* Tap-the-picture question. Everything is positioned in percentages of the
+     picture, so it lines up at any screen size. */
+  .shot{position:relative;border-radius:13px;overflow:hidden;border:1.5px solid var(--line);
+        background:#0b0d10;line-height:0;touch-action:manipulation;}
+  .shot img{width:100%;display:block;}
+  .layer{position:absolute;inset:0;}
+  .tap{position:absolute;width:32px;height:32px;margin:-16px 0 0 -16px;border-radius:50%;
+       border:3px solid var(--blue);background:rgba(0,73,201,.22);cursor:pointer;}
+  .tap b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+         color:var(--blue);font-size:13px;font-weight:700;line-height:1;}
+  .spot{position:absolute;border:3px solid;border-radius:50%;pointer-events:none;}
+  .spot.found{border-color:var(--green);background:rgba(28,177,69,.14);}
+  .spot.missed{border-color:var(--red);background:rgba(217,24,35,.14);}
+  .spot i{position:absolute;top:-11px;left:-11px;width:24px;height:24px;border-radius:50%;
+          color:#fff;font-style:normal;font-size:13px;font-weight:700;line-height:24px;text-align:center;}
+  .spot.found i{background:var(--green);}
+  .spot.missed i{background:var(--red);}
+  .tapcount{margin-top:11px;font-size:15px;color:var(--muted);font-weight:600;}
+  .findings{margin-top:14px;}
+  .finding{display:flex;gap:11px;padding:12px 0;border-top:1px solid var(--line);}
+  .finding .no{flex:none;width:24px;height:24px;border-radius:50%;color:#fff;font-size:13px;
+               font-weight:700;line-height:24px;text-align:center;}
+  .finding.found .no{background:var(--green);}
+  .finding.missed .no{background:var(--red);}
+  .finding .what{font-weight:600;}
+  .finding .why{font-size:15px;color:var(--muted);margin-top:4px;line-height:1.45;}
   .photo-btn{display:block;width:100%;padding:18px;border:2px dashed var(--blue);border-radius:13px;
              background:#eef3fe;color:var(--blue);font:inherit;font-weight:600;cursor:pointer;text-align:center;}
   .photo-btn:disabled{border-color:var(--line);background:#fff;color:var(--muted);}
@@ -159,7 +185,10 @@ const photos  = {};          // { n: [{file, url}] }
 const checked = {};          // { n: verdict } — a marked question is locked
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const isGraded = q => q.type === 'single' || q.type === 'multi';
+// Scored (so it gets marked and locked) is a different question from
+// answered-by-picking-a-choice (so it renders as a list of options).
+const isChoice = q => q.type === 'single' || q.type === 'multi';
+const isGraded = q => isChoice(q) || q.type === 'hotspot';
 
 // Draft save/restore. Pictures cannot be saved, so only answers come back.
 function saveDraft(){ try{ localStorage.setItem(DRAFT_KEY, JSON.stringify(answers)); }catch(e){} }
@@ -236,6 +265,24 @@ function verdictHtml(q, v){
   if (v.offline) return `<div class="verdict no"><div class="head">Could not check that one</div>
     <div class="why">No signal. Your answer is saved — keep going.</div></div>`;
 
+  if (q.type === 'hotspot'){
+    const list = (v.hotspots || []).map((h, i) => {
+      const got = (v.found || []).includes(i);
+      return `<div class="finding ${got ? 'found' : 'missed'}">
+        <span class="no">${i + 1}</span>
+        <div><div class="what">${got ? '' : 'Missed: '}${esc(h.label)}</div>
+          <div class="why">${esc(h.why)}</div></div></div>`;
+    }).join('');
+
+    const got = (v.found || []).length;
+    const all = (v.hotspots || []).length;
+    return `<div class="verdict ${v.correct ? 'ok' : 'no'}">
+      <div class="head">${v.correct ? '✔ You found all ' + all : '✘ You found ' + got + ' of ' + all}</div>
+      ${v.correct ? '' : '<div class="answer">The ones circled in red are what you walked past.</div>'}
+      <div class="why">${esc(v.explanation)}</div></div>
+      <div class="findings">${list}</div>`;
+  }
+
   const right = (v.correctChoices || []).map(i => q.choices[i]).join(' · ');
   return `<div class="verdict ${v.correct ? 'ok' : 'no'}">
     <div class="head">${v.correct ? '✔ Right' : '✘ Not quite'}</div>
@@ -247,7 +294,7 @@ function body(q){
   const given = answers[q.n];
   const v = checked[q.n];
 
-  if (isGraded(q)){
+  if (isChoice(q)){
     const kind = q.type === 'multi' ? 'checkbox' : 'radio';
     const picked = Array.isArray(given) ? given : [];
     const hint = v ? ''
@@ -272,6 +319,30 @@ function body(q){
             ${v ? 'disabled' : ''}>
           <span>${esc(c)}</span>${tick}</label>`;
       }).join('');
+  }
+
+  if (q.type === 'hotspot'){
+    const taps = Array.isArray(given) ? given : [];
+    const v = checked[q.n];
+
+    // Before it is marked: their own taps. After: the real problems, green
+    // for the ones they found and red for the ones they walked past.
+    const layer = v && !v.offline
+      ? (v.hotspots || []).map((h, i) => {
+          const got = (v.found || []).includes(i);
+          return `<div class="spot ${got ? 'found' : 'missed'}" style="left:${h.x - h.rx}%;top:${h.y - h.ry}%;width:${h.rx * 2}%;height:${h.ry * 2}%;"><i>${i + 1}</i></div>`;
+        }).join('')
+      : taps.map((t, i) => `<div class="tap" data-i="${i}" style="left:${t.x}%;top:${t.y}%;"><b>${i + 1}</b></div>`).join('');
+
+    const count = v
+      ? ''
+      : `<div class="tapcount" id="tapcount">${taps.length} of ${q.maxTaps} taps used · ${q.toFind} problems to find</div>
+         <div class="hint" style="margin:8px 0 0;">Tap a mark again to take it back.</div>`;
+
+    return `<div class="shot" id="shot">
+        <img src="${esc(q.image)}" alt="A kitchen to look over">
+        <div class="layer" id="layer">${layer}</div>
+      </div>${count}`;
   }
 
   if (q.type === 'photo'){
@@ -299,7 +370,7 @@ function looksLikeStore(q){ return /store/i.test(q.title) && /number/i.test(q.ti
 function wire(q){
   const stage = document.getElementById('stage');
 
-  if (isGraded(q)){
+  if (isChoice(q)){
     if (checked[q.n]) return;              // locked: nothing to wire
     stage.querySelectorAll('input[name="q"]').forEach(input => {
       input.addEventListener('change', () => {
@@ -314,6 +385,43 @@ function wire(q){
         }
         say('');
       });
+    });
+    return;
+  }
+
+  if (q.type === 'hotspot'){
+    if (checked[q.n]) return;                 // marked: the picture is a result now
+    const shot = document.getElementById('shot');
+
+    const redraw = () => {
+      const taps = answers[q.n] || [];
+      document.getElementById('layer').innerHTML = taps
+        .map((t, i) => `<div class="tap" data-i="${i}" style="left:${t.x}%;top:${t.y}%;"><b>${i + 1}</b></div>`).join('');
+      const counter = document.getElementById('tapcount');
+      if (counter) counter.textContent =
+        `${taps.length} of ${q.maxTaps} taps used · ${q.toFind} problems to find`;
+    };
+
+    shot.addEventListener('click', e => {
+      const taking = e.target.closest('.tap');
+      const taps = Array.isArray(answers[q.n]) ? answers[q.n] : (answers[q.n] = []);
+
+      if (taking){                            // tapping a mark takes it back
+        taps.splice(Number(taking.dataset.i), 1);
+      } else {
+        if (taps.length >= q.maxTaps){
+          say(`That is all ${q.maxTaps} taps. Take one back if you want to move it.`);
+          return;
+        }
+        const box = shot.getBoundingClientRect();
+        taps.push({
+          x: +(((e.clientX - box.left) / box.width) * 100).toFixed(2),
+          y: +(((e.clientY - box.top) / box.height) * 100).toFixed(2),
+        });
+      }
+      saveDraft();
+      say('');
+      redraw();
     });
     return;
   }

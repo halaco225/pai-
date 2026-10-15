@@ -12,7 +12,13 @@
 // is what the browser gets before submit; if `correct` or `explanation` ever
 // appears there, a shift leader can read the answers out of devtools.
 
-const GRADED = new Set(['single', 'multi']);
+const CHOICE = new Set(['single', 'multi']);          // answered by picking
+const SCORED = new Set(['single', 'multi', 'hotspot']); // answered and worth points
+
+// How much wider than the drawn circle still counts as a hit. A thumb on a
+// phone is not a cursor, and the point of the question is whether they spotted
+// the problem, not whether they tapped its centre.
+const TAP_TOLERANCE = 1.3;
 
 function maxScore(def) {
   return def.questions.reduce((sum, q) => sum + (q.points || 0), 0);
@@ -33,6 +39,13 @@ function publicForm(def) {
       required: q.required !== false,
       ...(q.choices ? { choices: q.choices } : {}),
       ...(q.maxPhotos ? { maxPhotos: q.maxPhotos } : {}),
+      // A hotspot question gets the picture and how many problems are in it.
+      // Where they are is the answer key and stays on the server.
+      ...(q.type === 'hotspot' ? {
+        image: q.image,
+        toFind: (q.hotspots || []).length,
+        maxTaps: (q.hotspots || []).length + (q.extraTaps || 0),
+      } : {}),
     })),
   };
 }
@@ -41,6 +54,51 @@ function asIndexes(value) {
   if (Array.isArray(value)) return value.map(Number).filter(n => Number.isInteger(n));
   if (Number.isInteger(value)) return [value];
   return [];
+}
+
+function asTaps(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(t => t && Number.isFinite(Number(t.x)) && Number.isFinite(Number(t.y)))
+    .map(t => ({ x: Number(t.x), y: Number(t.y) }));
+}
+
+/**
+ * Which problems in the picture they found, and which taps hit nothing.
+ *
+ * Everything is a percentage of the picture's width and height, so it does not
+ * matter what size screen it was tapped on. One tap can only claim one
+ * problem, and a problem only needs one tap.
+ */
+function matchTaps(q, rawTaps) {
+  const spots = q.hotspots || [];
+  // Filtered here as well as at the call sites: this is exported, so it has
+  // to cope with whatever it is handed.
+  const taps = asTaps(rawTaps);
+  const found = new Set();
+  const strays = [];
+
+  for (const tap of taps) {
+    let hit = -1;
+    for (let i = 0; i < spots.length; i++) {
+      if (found.has(i)) continue;
+      const s = spots[i];
+      const dx = (tap.x - s.x) / ((s.rx || 5) * TAP_TOLERANCE);
+      const dy = (tap.y - s.y) / ((s.ry || 5) * TAP_TOLERANCE);
+      if (dx * dx + dy * dy <= 1) { hit = i; break; }
+    }
+    if (hit >= 0) found.add(hit); else strays.push(tap);
+  }
+
+  const allowed = spots.length + (q.extraTaps || 0);
+  return {
+    found: [...found].sort((a, b) => a - b),
+    strays,
+    tapsUsed: taps.length,
+    maxTaps: allowed,
+    // Everything found, without tapping the whole picture to get there.
+    correct: found.size === spots.length && spots.length > 0 && taps.length <= allowed,
+  };
 }
 
 function sameSet(a, b) {
@@ -65,7 +123,13 @@ function missingAnswers(def, answers = {}, photos = {}) {
       continue;
     }
     const given = answers[q.n];
-    if (GRADED.has(q.type)) {
+    if (q.type === 'hotspot') {
+      if (asTaps(given).length === 0) {
+        missing.push({ n: q.n, message: `Question ${q.n} needs you to tap what is wrong.` });
+      }
+      continue;
+    }
+    if (CHOICE.has(q.type)) {
       if (asIndexes(given).length === 0) {
         missing.push({ n: q.n, message: `Question ${q.n} needs an answer.` });
       }
@@ -88,7 +152,30 @@ function grade(def, answers = {}) {
   const results = [];
 
   for (const q of def.questions) {
-    if (!GRADED.has(q.type)) continue;
+    if (!SCORED.has(q.type)) continue;
+
+    if (q.type === 'hotspot') {
+      const taps = asTaps(answers[q.n]);
+      const m = matchTaps(q, taps);
+      const earned = m.correct ? (q.points || 0) : 0;
+      score += earned;
+      results.push({
+        n: q.n,
+        title: q.title,
+        type: q.type,
+        points: q.points || 0,
+        earned,
+        correct: m.correct,
+        image: q.image,
+        taps,
+        hotspots: q.hotspots,
+        found: m.found,
+        tapsUsed: m.tapsUsed,
+        maxTaps: m.maxTaps,
+        explanation: q.explanation,
+      });
+      continue;
+    }
 
     const given = asIndexes(answers[q.n]);
     const correct = sameSet(given, q.correct || []);
@@ -124,7 +211,25 @@ function grade(def, answers = {}) {
  */
 function checkOne(def, n, given) {
   const q = def.questions.find(x => x.n === Number(n));
-  if (!q || !GRADED.has(q.type)) return null;
+  if (!q || !SCORED.has(q.type)) return null;
+
+  if (q.type === 'hotspot') {
+    const taps = asTaps(given);
+    if (taps.length === 0) return null;    // nothing tapped, nothing to reveal
+    const m = matchTaps(q, taps);
+    return {
+      n: q.n,
+      correct: m.correct,
+      // Now they have had their go, the circles can be drawn on the picture.
+      hotspots: q.hotspots,
+      found: m.found,
+      taps,
+      tapsUsed: m.tapsUsed,
+      maxTaps: m.maxTaps,
+      explanation: q.explanation,
+      points: q.points || 0,
+    };
+  }
 
   const picked = asIndexes(given);
   if (picked.length === 0) return null;   // nothing answered, nothing to reveal
@@ -138,4 +243,4 @@ function checkOne(def, n, given) {
   };
 }
 
-module.exports = { publicForm, grade, missingAnswers, maxScore, checkOne };
+module.exports = { publicForm, grade, missingAnswers, maxScore, checkOne, matchTaps };

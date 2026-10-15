@@ -42,6 +42,17 @@ describe('publicForm', () => {
   });
 });
 
+// Every question answered the right way, including tapping each problem in
+// the picture question.
+function perfectAnswers() {
+  const answers = {};
+  for (const q of def.questions) {
+    if (q.correct) answers[q.n] = q.correct;
+    else if (q.type === 'hotspot') answers[q.n] = q.hotspots.map(h => ({ x: h.x, y: h.y }));
+  }
+  return answers;
+}
+
 describe('grade', () => {
   test('single choice is all or nothing', () => {
     expect(grade(def, { 3: [2] }).score).toBe(1);
@@ -57,20 +68,20 @@ describe('grade', () => {
   });
 
   test('a perfect walk scores 20', () => {
-    const answers = {};
-    for (const q of def.questions) if (q.correct) answers[q.n] = q.correct;
-    const result = grade(def, answers);
+    const result = grade(def, perfectAnswers());
     expect(result.score).toBe(20);
     expect(result.maxScore).toBe(20);
   });
 
-  test('an empty submission scores 0 and still explains every graded question', () => {
+  test('an empty submission scores 0 and still explains every scored question', () => {
     const result = grade(def, {});
     expect(result.score).toBe(0);
     expect(result.results).toHaveLength(12);
     for (const r of result.results) {
       expect(r.explanation).toBeTruthy();
-      expect(r.correctChoices.length).toBeGreaterThan(0);
+      // A picture question answers with hotspots rather than choices.
+      if (r.type === 'hotspot') expect(r.hotspots.length).toBeGreaterThan(0);
+      else expect(r.correctChoices.length).toBeGreaterThan(0);
     }
   });
 
@@ -86,6 +97,7 @@ describe('missingAnswers', () => {
     for (const q of def.questions) {
       if (q.type === 'photo') photos[q.n] = ['audit-photos/x.jpg'];
       else if (q.correct) answers[q.n] = q.correct;
+      else if (q.type === 'hotspot') answers[q.n] = q.hotspots.map(h => ({ x: h.x, y: h.y }));
       else answers[q.n] = 'something';
     }
     return { answers, photos };
@@ -163,5 +175,71 @@ describe('checkOne', () => {
       expect(v.correct).toBe(true);
       expect(v.points).toBe(q.points);
     }
+  });
+});
+
+// The tap-the-picture question. Taps are percentages of the picture, so they
+// mean the same thing on any screen; what matters is which problems a set of
+// taps claims, and whether tapping everywhere can pass.
+describe('matchTaps', () => {
+  const { matchTaps } = require('../services/audits');
+  const q = def.questions.find(x => x.type === 'hotspot');
+  const at = i => ({ x: q.hotspots[i].x, y: q.hotspots[i].y });
+
+  test('the picture question is in the walk and worth points', () => {
+    expect(q).toBeTruthy();
+    expect(q.hotspots.length).toBe(7);
+    expect(q.points).toBe(3);
+    expect(q.image).toBe('/audits/kitchen-check-1.webp');
+  });
+
+  test('every problem tapped dead centre is found', () => {
+    const m = matchTaps(q, q.hotspots.map((h, i) => at(i)));
+    expect(m.found).toHaveLength(7);
+    expect(m.correct).toBe(true);
+  });
+
+  test('a near miss still counts, because a thumb is not a cursor', () => {
+    const h = q.hotspots[0];
+    const m = matchTaps(q, [{ x: h.x + h.rx, y: h.y }]);
+    expect(m.found).toEqual([0]);
+  });
+
+  test('a tap nowhere near anything is a stray', () => {
+    const m = matchTaps(q, [{ x: 99, y: 1 }]);
+    expect(m.found).toHaveLength(0);
+    expect(m.strays).toHaveLength(1);
+    expect(m.correct).toBe(false);
+  });
+
+  test('missing one means no points', () => {
+    const m = matchTaps(q, q.hotspots.slice(0, 6).map((h, i) => at(i)));
+    expect(m.found).toHaveLength(6);
+    expect(m.correct).toBe(false);
+  });
+
+  // The reason there is a tap limit at all.
+  test('tapping the whole picture does not pass', () => {
+    const everywhere = [];
+    for (let x = 2; x < 100; x += 6) for (let y = 2; y < 100; y += 6) everywhere.push({ x, y });
+    const m = matchTaps(q, everywhere);
+    expect(m.found).toHaveLength(7);        // it does find them all
+    expect(m.tapsUsed).toBeGreaterThan(m.maxTaps);
+    expect(m.correct).toBe(false);          // and it still fails
+  });
+
+  test('two taps on the same problem only claim it once', () => {
+    const m = matchTaps(q, [at(0), at(0)]);
+    expect(m.found).toEqual([0]);
+    expect(m.tapsUsed).toBe(2);
+  });
+
+  test('the allowance is the problems plus the spare taps', () => {
+    expect(matchTaps(q, [at(0)]).maxTaps).toBe(7 + q.extraTaps);
+  });
+
+  test('rubbish in the taps is ignored rather than crashing', () => {
+    const m = matchTaps(q, [null, { x: 'no' }, {}, at(0)]);
+    expect(m.found).toEqual([0]);
   });
 });
