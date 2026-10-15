@@ -587,8 +587,9 @@ function drawQuestions(){
 
 function updatePoints(){
   const total = EDITING.questions.reduce((s, q) => s + (Number(q.points) || 0), 0);
+  const n = EDITING.questions.length;
   document.getElementById('edPoints').textContent =
-    `${EDITING.questions.length} questions · ${total} points`;
+    `${n} question${n === 1 ? '' : 's'} · ${total} point${total === 1 ? '' : 's'}`;
 }
 
 async function saveTemplate(){
