@@ -28,6 +28,7 @@ const templates = require('../services/audit-templates');
 const walks = require('../services/audit-walks');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { visibleStores } = require('../services/rc-scope');
+const insights = require('../services/audit-insights');
 const { publicForm, grade, missingAnswers, checkOne } = require('../services/audits');
 
 const DEFAULT_AUDIT = 'steritech-readiness';
@@ -336,6 +337,32 @@ router.get('/responses/:id', async (req, res) => {
   });
 });
 
+// ── Throw a walk away ───────────────────────────────────────────────────────
+//
+// Test walks have to be clearable, or the first real round starts with
+// rubbish in the averages. Scoped the same as reading one, so nobody can
+// delete a walk they could not have opened, and the pictures go with it.
+router.delete('/responses/:id', requireRole('rdo', 'vp'), async (req, res) => {
+  const scoped = await scopedRows(req, res); if (!scoped) return;
+  const row = scoped.rows.find(r => r.id === req.params.id);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+
+  const c = serviceClient(res); if (!c) return;
+
+  const paths = Object.values(row.photos || {}).flat().filter(Boolean);
+  if (paths.length) {
+    const { error } = await c.storage.from(BUCKET).remove(paths);
+    // A photo that will not delete is not a reason to keep the row; it would
+    // leave the walk in the averages forever. Say so in the log instead.
+    if (error) console.error('audit photo delete failed:', error.message);
+  }
+
+  const { error } = await c.from('audit_responses').delete().eq('id', row.id);
+  if (error) return res.status(502).json({ error: error.message });
+
+  res.json({ ok: true, photosRemoved: paths.length });
+});
+
 // ── A photo, through a short-lived signed URL ───────────────────────────────
 router.get('/photo', async (req, res) => {
   const path = String(req.query.path || '');
@@ -363,15 +390,8 @@ async function summarise(req, res) {
   const keep = new Set(applyFilters(withStoreInfo(scoped.rows, assignments), req.query).map(r => r.id));
   const rows = scoped.rows.filter(r => keep.has(r.id));
 
-  const byQuestion = {};
-  for (const row of rows) {
-    const graded = await frozenGrade(row);
-    for (const r of graded.results) {
-      const q = byQuestion[r.n] = byQuestion[r.n] || { n: r.n, title: r.title, points: r.points, right: 0, total: 0 };
-      q.total += 1;
-      if (r.correct) q.right += 1;
-    }
-  }
+  const graded = [];
+  for (const row of rows) graded.push(await frozenGrade(row));
 
   const byStore = {};
   for (const r of rows) {
@@ -385,15 +405,19 @@ async function summarise(req, res) {
     s.totalScore += r.score;
   }
 
+  const read = insights.build(rows, graded, assignments);
+
   return {
-    rows, assignments,
+    rows, assignments, graded,
     summary: {
       responses: rows.length,
-      averageScore: rows.length ? +(rows.reduce((s, r) => s + r.score, 0) / rows.length).toFixed(1) : 0,
-      maxScore: rows.length ? rows[0].max_score : 0,
-      questions: Object.values(byQuestion)
-        .map(q => ({ ...q, percent: q.total ? Math.round((q.right / q.total) * 100) : 0 }))
-        .sort((a, b) => a.percent - b.percent),
+      averageScore: read.averageScore,
+      maxScore: read.maxScore,
+      questions: read.questions,
+      standouts: read.standouts,
+      repeats: read.repeats,
+      days: read.days,
+      coaches: read.coaches,
       stores: Object.values(byStore)
         .map(s => ({ ...s, averageScore: +(s.totalScore / s.responses).toFixed(1) }))
         .sort((a, b) => a.averageScore - b.averageScore),
@@ -411,9 +435,7 @@ async function exportRows(req, res) {
   const result = await summarise(req, res);
   if (!result) return null;
 
-  const { rows, assignments } = result;
-  const graded = [];
-  for (const row of rows) graded.push(await frozenGrade(row));
+  const { rows, assignments, graded } = result;
 
   // Columns follow the union of every question seen, so a response taken
   // before a question was added still lines up under the right heading.

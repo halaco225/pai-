@@ -78,6 +78,27 @@ tr.row:hover td{background:#242831;}
 .muted{color:var(--muted);}
 .empty{color:var(--muted);text-align:center;padding:34px 10px;font-size:13.5px;}
 
+/* READING THE RESULTS */
+.standouts{display:flex;flex-direction:column;gap:0;}
+.stand{display:flex;gap:12px;padding:13px 0;border-top:1px solid var(--border);font-size:14px;line-height:1.5;}
+.stand:first-child{border-top:none;}
+.stand .dot{flex:none;width:9px;height:9px;border-radius:50%;margin-top:6px;}
+.stand.question .dot{background:var(--brand);}
+.stand.repeat .dot{background:#f5a623;}
+.stand.trend .dot{background:var(--accent);}
+.stand.coach .dot{background:#9d6bd8;}
+.stand.clear .dot,.stand.thin .dot{background:var(--muted);}
+.stand.thin,.stand.clear{color:var(--muted);}
+.why-wrong{margin-top:6px;font-size:12.5px;color:var(--muted);}
+.why-wrong b{color:#ff8b8f;font-weight:600;}
+.spark{display:flex;align-items:flex-end;gap:5px;height:76px;margin-top:6px;}
+.spark .col{flex:1;min-width:14px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;}
+.spark .bar2{width:100%;border-radius:4px 4px 0 0;background:var(--accent);}
+.spark .lab{font-size:10.5px;color:var(--muted);white-space:nowrap;}
+.kpis{display:flex;gap:34px;flex-wrap:wrap;}
+.kpi .k{font-size:11.5px;letter-spacing:.5px;color:var(--muted);}
+.kpi .v{font-size:27px;font-weight:700;}
+
 #viewer{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;z-index:500;padding:20px;}
 #viewer img{max-width:100%;max-height:100%;border-radius:8px;}
 
@@ -159,8 +180,11 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
 
   <!-- SUMMARY -->
   <div id="pane-summary" style="display:none">
-    <div class="card"><div class="card-title">Across every response</div><div id="sumHead" class="empty">Loading…</div></div>
+    <div class="card"><div class="card-title">What stands out</div><div id="sumStand" class="empty">Loading…</div></div>
+    <div class="card"><div class="card-title">Across every response</div><div id="sumHead" class="empty"></div></div>
     <div class="card"><div class="card-title">Questions the region keeps missing (worst first)</div><div id="sumQ"></div></div>
+    <div class="card"><div class="card-title">Same store, same mistake, more than once</div><div id="sumRepeat"></div></div>
+    <div class="card"><div class="card-title">By Area Coach (lowest first)</div><div id="sumCoach"></div></div>
   </div>
 
   <!-- BY STORE -->
@@ -322,7 +346,10 @@ async function openOne(id){
           <div style="font-size:17px;font-weight:700;">Store ${esc(r.store_number)}${r.store_name ? ' — ' + esc(r.store_name) : ''}</div>
           <div class="muted" style="margin-top:4px;">${esc(r.name)} · ${esc(when(r.created_at))}${r.area_coach ? ' · AC ' + esc(r.area_coach) : ''}</div>
         </div>
-        <span class="pill ${band(p)}" style="font-size:15px;padding:6px 14px;">${r.score} / ${r.max_score}</span>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span class="pill ${band(p)}" style="font-size:15px;padding:6px 14px;">${r.score} / ${r.max_score}</span>
+          <button class="btn" onclick="removeResponse('${r.id}','${esc(r.name)}')">Delete</button>
+        </div>
       </div>
     </div>
     <div class="card"><div class="card-title">Their top 3 fixes</div>
@@ -335,6 +362,15 @@ async function openOne(id){
   window.scrollTo(0, 0);
 }
 
+// Test walks have to be clearable or they sit in the averages forever.
+async function removeResponse(id, who){
+  if (!confirm(`Delete the walk by ${who}?\n\nThe answers and the pictures go for good. This cannot be undone.`)) return;
+  const res = await fetch('/api/audits/responses/' + encodeURIComponent(id), { method: 'DELETE' });
+  if (!res.ok) return alert((await res.json()).error || 'That did not work.');
+  showTab('responses');
+  load();
+}
+
 function zoom(src){
   document.getElementById('viewerImg').src = src;
   document.getElementById('viewer').style.display = 'flex';
@@ -342,22 +378,73 @@ function zoom(src){
 
 async function loadSummary(){
   const s = await fetch('/api/audits/summary?' + query()).then(r => r.json());
-  document.getElementById('sumHead').className = '';
-  document.getElementById('sumHead').innerHTML = s.responses
-    ? `<div style="display:flex;gap:34px;flex-wrap:wrap;">
-         <div><div class="muted" style="font-size:11.5px;letter-spacing:.5px;">WALKS FINISHED</div>
-              <div style="font-size:27px;font-weight:700;">${s.responses}</div></div>
-         <div><div class="muted" style="font-size:11.5px;letter-spacing:.5px;">AVERAGE SCORE</div>
-              <div style="font-size:27px;font-weight:700;">${s.averageScore} <span class="muted" style="font-size:15px;">/ ${s.maxScore}</span></div></div>
-       </div>`
+
+  // What stands out, in sentences. This is the part worth reading first.
+  const stand = document.getElementById('sumStand');
+  stand.className = s.standouts && s.standouts.length ? 'standouts' : 'empty';
+  stand.innerHTML = s.standouts && s.standouts.length
+    ? s.standouts.map(x => `<div class="stand ${esc(x.kind)}"><span class="dot"></span><div>${esc(x.text)}</div></div>`).join('')
+    : 'Nothing to read yet.';
+
+  // The headline numbers, with the walks-over-time bars beside them.
+  const head = document.getElementById('sumHead');
+  head.className = s.responses ? '' : 'empty';
+  head.innerHTML = s.responses
+    ? `<div class="kpis">
+         <div class="kpi"><div class="k">WALKS FINISHED</div><div class="v">${s.responses}</div></div>
+         <div class="kpi"><div class="k">AVERAGE SCORE</div>
+              <div class="v">${s.averageScore} <span class="muted" style="font-size:15px;">/ ${s.maxScore}</span></div></div>
+         <div class="kpi"><div class="k">STORES WALKED</div><div class="v">${(s.stores || []).length}</div></div>
+       </div>${sparkline(s.days || [], s.maxScore)}`
+    : 'Nothing to summarize yet.';
+
+  // Per question: how often it is right, and what people say instead.
+  document.getElementById('sumQ').innerHTML = (s.questions || []).length
+    ? s.questions.map(q => `
+        <div class="q-row">
+          <div class="q-text">${esc(q.title)}${whyWrong(q)}</div>
+          <div class="bar ${band(q.percent)}"><span style="width:${q.percent}%"></span></div>
+          <div style="text-align:right;font-weight:700;font-size:13px;">${q.percent}%
+            <div class="muted" style="font-weight:400;font-size:11px;">${q.right}/${q.total}</div></div>
+        </div>`).join('')
     : '<div class="empty">Nothing to summarize yet.</div>';
 
-  document.getElementById('sumQ').innerHTML = s.questions.length ? s.questions.map(q => `
-    <div class="q-row">
-      <div class="q-text">${esc(q.title)}</div>
-      <div class="bar ${band(q.percent)}"><span style="width:${q.percent}%"></span></div>
-      <div style="text-align:right;font-weight:700;font-size:13px;">${q.percent}%</div>
-    </div>`).join('') : '<div class="empty">Nothing to summarize yet.</div>';
+  document.getElementById('sumRepeat').innerHTML = (s.repeats || []).length
+    ? `<table><thead><tr><th>Store</th><th>Question</th><th>Times missed</th></tr></thead><tbody>` +
+      s.repeats.map(r => `<tr><td>${esc(r.store_number)}</td>
+        <td class="q-text">${esc(r.title)}</td>
+        <td><span class="pill bad">${r.times}</span></td></tr>`).join('') + '</tbody></table>'
+    : '<div class="empty">No store has missed the same question twice yet.</div>';
+
+  document.getElementById('sumCoach').innerHTML = (s.coaches || []).length
+    ? `<table><thead><tr><th>Area Coach</th><th>Stores</th><th>Walks</th><th>Average</th></tr></thead><tbody>` +
+      s.coaches.map(c => `<tr><td>${esc(c.coach)}</td><td>${c.stores}</td><td>${c.responses}</td>
+        <td><span class="pill ${band(pct(c.averageScore, c.maxScore))}">${c.averageScore}/${c.maxScore}</span></td></tr>`).join('') +
+      '</tbody></table>'
+    : '<div class="empty">Nothing yet.</div>';
+}
+
+// The wrong answer people actually give is more use than the percentage.
+function whyWrong(q){
+  if (q.percent === 100) return '';
+  if (q.commonWrong && q.commonWrong.count > 1)
+    return `<div class="why-wrong">${q.commonWrong.count} chose <b>${esc(q.commonWrong.label)}</b></div>`;
+  if (q.commonMissed && q.commonMissed.count > 1)
+    return `<div class="why-wrong">${q.commonMissed.count} left out <b>${esc(q.commonMissed.label)}</b></div>`;
+  if (q.commonMissedSpot && q.commonMissedSpot.count > 1)
+    return `<div class="why-wrong">${q.commonMissedSpot.count} walked past <b>${esc(q.commonMissedSpot.label)}</b></div>`;
+  return '';
+}
+
+function sparkline(days, maxScore){
+  if (days.length < 2) return '';
+  const top = Math.max(maxScore || 1, 1);
+  return `<div class="card-title" style="margin:20px 0 0;">Average by day</div>
+    <div class="spark">${days.map(d => `
+      <div class="col" title="${esc(d.day)}: ${d.averageScore} from ${d.responses} walk(s)">
+        <div class="bar2" style="height:${Math.max(4, Math.round((d.averageScore / top) * 62))}px;"></div>
+        <div class="lab">${esc(d.day.slice(5))}</div>
+      </div>`).join('')}</div>`;
 }
 
 async function loadStores(){
