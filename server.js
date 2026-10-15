@@ -50,13 +50,25 @@ app.use('/api/velocity', require('./routes/velocity'));
 app.use('/api/intel', require('./routes/intel'));
 app.use('/api/brief', require('./routes/brief'));
 app.use('/api/tracker', require('./routes/tracker'));
+app.use('/api/audits', require('./routes/audits'));
 
 // Serve login page as default
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// The readiness walk itself — no login. Shift leaders have no P.AI account;
+// Harold texts them this link from his own phone.
+app.get('/audit', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'audit.html'));
+});
+
 // Protected pages — redirect to login if not authenticated
+app.get('/audits', (req, res) => {
+  if (!req.session.user) return res.redirect('/');
+  res.sendFile(path.join(__dirname, 'public', 'audits.html'));
+});
+
 app.get('/dashboard', (req, res) => {
   if (!req.session.user) return res.redirect('/');
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));

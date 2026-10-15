@@ -51,4 +51,26 @@ function canSee(user, personName) {
   return visiblePeople(user).includes(personName);
 }
 
-module.exports = { visiblePeople, canSee };
+/**
+ * Store numbers this user may see, as a Set of strings.
+ *
+ * `assignments` is store_assignments keyed by store_id (services/db.js). A
+ * store counts as visible when any one of its three coaches is in scope —
+ * which keeps a store whose Area Coach seat is empty visible to the RDO above
+ * it instead of invisible to everyone. A store with no coach at all belongs to
+ * nobody: deny by default, never "everyone".
+ */
+function visibleStores(user, assignments = {}) {
+  const people = new Set(visiblePeople(user));
+  const out = new Set();
+  if (people.size === 0) return out;
+
+  for (const s of Object.values(assignments)) {
+    if (people.has(s.area_coach) || people.has(s.region_coach) || people.has(s.vp)) {
+      out.add(String(s.store_id));
+    }
+  }
+  return out;
+}
+
+module.exports = { visiblePeople, canSee, visibleStores };

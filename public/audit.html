@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Steritech Readiness Check</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --blue:#0049C9; --blue-dark:#003799; --red:#D91823; --green:#1CB145;
+    --ink:#101828; --muted:#5a6475; --line:#dfe3ea; --bg:#f4f6fa;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+       font-size:17px;line-height:1.5;}
+  header{background:var(--blue);color:#fff;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));}
+  header img{height:34px;display:block;margin-bottom:10px;}
+  header h1{margin:0;font-size:21px;font-weight:700;letter-spacing:-.3px;}
+  main{max-width:640px;margin:0 auto;padding:16px 16px 48px;}
+  .intro{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:18px;}
+  .q{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px;scroll-margin-top:16px;}
+  .q.flag{border-color:var(--red);box-shadow:0 0 0 3px rgba(217,24,35,.12);}
+  .q-num{font-size:13px;font-weight:700;color:var(--blue);letter-spacing:.4px;text-transform:uppercase;}
+  .q-title{margin:6px 0 14px;font-weight:600;}
+  .hint{font-size:14px;color:var(--muted);margin:-8px 0 12px;}
+  /* Big tap targets: a whole row is the control, not just the dot. */
+  label.opt{display:flex;gap:12px;align-items:flex-start;padding:14px;border:1.5px solid var(--line);
+            border-radius:11px;margin-bottom:9px;cursor:pointer;background:#fff;}
+  label.opt:active{background:#eef2fb;}
+  label.opt.on{border-color:var(--blue);background:#eef3fe;}
+  label.opt input{width:23px;height:23px;margin:0;flex:none;accent-color:var(--blue);}
+  input[type=text], select, textarea{width:100%;padding:14px;font:inherit;border:1.5px solid var(--line);
+            border-radius:11px;background:#fff;color:var(--ink);}
+  textarea{min-height:120px;resize:vertical;}
+  .photo-btn{display:block;width:100%;padding:16px;border:2px dashed var(--blue);border-radius:12px;
+             background:#eef3fe;color:var(--blue);font:inherit;font-weight:600;cursor:pointer;text-align:center;}
+  .thumbs{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+  .thumb{position:relative;width:88px;height:88px;border-radius:10px;overflow:hidden;border:1px solid var(--line);}
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  .thumb button{position:absolute;top:3px;right:3px;width:26px;height:26px;border:none;border-radius:50%;
+                background:rgba(16,24,40,.78);color:#fff;font-size:15px;line-height:1;cursor:pointer;}
+  .err{color:var(--red);font-size:14.5px;font-weight:600;margin-top:10px;}
+  .submit{position:sticky;bottom:0;padding:14px 0 calc(14px + env(safe-area-inset-bottom,0px));background:linear-gradient(180deg,rgba(244,246,250,0) 0%,var(--bg) 35%);}
+  button.go{width:100%;padding:17px;font:inherit;font-weight:700;font-size:18px;color:#fff;background:var(--blue);
+            border:none;border-radius:13px;cursor:pointer;}
+  button.go:disabled{background:#92a6c9;cursor:default;}
+  .banner{background:#fff;border:1.5px solid var(--red);border-radius:12px;padding:14px;margin-bottom:14px;color:var(--red);font-weight:600;}
+  /* Results */
+  .score{background:var(--blue);color:#fff;border-radius:16px;padding:22px;text-align:center;margin-bottom:18px;}
+  .score b{display:block;font-size:40px;line-height:1.1;}
+  .r{background:#fff;border:1px solid var(--line);border-left:5px solid var(--green);border-radius:12px;padding:15px;margin-bottom:12px;}
+  .r.wrong{border-left-color:var(--red);}
+  .mark{font-weight:700;}
+  .mark.ok{color:var(--green);} .mark.no{color:var(--red);}
+  .r ul{margin:8px 0 0;padding-left:20px;}
+  .why{background:#f4f6fa;border-radius:9px;padding:11px;margin-top:11px;font-size:15.5px;}
+  .quiet{color:var(--muted);font-size:14.5px;}
+</style>
+</head>
+<body>
+
+<header>
+  <img src="/images/logo-wordmark.png" alt="Ayvaz Pizza" onerror="this.style.display='none'">
+  <h1 id="title">Steritech Readiness Check</h1>
+</header>
+
+<main>
+  <div id="form">
+    <div class="intro" id="intro">Loading…</div>
+    <div id="questions"></div>
+    <!-- The message rides with the sticky button: the page scrolls to the
+         first unfinished question, so a banner at the bottom is never seen. -->
+    <div class="submit">
+      <div id="banner"></div>
+      <button class="go" id="go" disabled>Send my answers</button>
+    </div>
+  </div>
+  <div id="results" style="display:none"></div>
+</main>
+
+<script>
+const DRAFT_KEY = 'steritech-draft-v1';
+let FORM = null;
+const answers = {};          // { n: string | number[] }
+const photos  = {};          // { n: [{file, url}] }
+
+// Draft save/restore. Pictures cannot be saved, so only answers come back.
+function saveDraft(){
+  try{ localStorage.setItem(DRAFT_KEY, JSON.stringify(answers)); }catch(e){}
+}
+function loadDraft(){
+  try{ return JSON.parse(localStorage.getItem(DRAFT_KEY) || '{}'); }catch(e){ return {}; }
+}
+function clearDraft(){ try{ localStorage.removeItem(DRAFT_KEY); }catch(e){} }
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function start(){
+  const res = await fetch('/api/audits/form');
+  FORM = await res.json();
+  document.getElementById('title').textContent = FORM.title;
+  document.getElementById('intro').textContent = FORM.description;
+  Object.assign(answers, loadDraft());
+  await render();
+  document.getElementById('go').disabled = false;
+}
+
+async function render(){
+  const stores = await fetch('/api/audits/stores').then(r => r.json()).catch(() => []);
+  const wrap = document.getElementById('questions');
+  wrap.innerHTML = '';
+
+  for (const q of FORM.questions){
+    const box = document.createElement('div');
+    box.className = 'q';
+    box.id = 'q' + q.n;
+    let body = '';
+
+    if (q.type === 'single' || q.type === 'multi'){
+      const kind = q.type === 'multi' ? 'checkbox' : 'radio';
+      if (q.type === 'multi') body += '<div class="hint">Pick everything that is true.</div>';
+      body += q.choices.map((c, i) =>
+        `<label class="opt" data-n="${q.n}" data-i="${i}">
+           <input type="${kind}" name="q${q.n}" value="${i}"><span>${esc(c)}</span></label>`).join('');
+    } else if (q.type === 'photo'){
+      body += `<button type="button" class="photo-btn" data-photo="${q.n}">Take a picture</button>
+               <input type="file" accept="image/*" capture="environment" multiple id="file${q.n}" style="display:none">
+               <div class="thumbs" id="thumbs${q.n}"></div>`;
+    } else if (q.type === 'longtext'){
+      body += `<textarea data-text="${q.n}" placeholder="Type here"></textarea>`;
+    } else if (q.n === 2 && stores.length){
+      body += `<select data-text="2"><option value="">Pick your store</option>` +
+              stores.map(s => `<option value="${esc(s.num)}">${esc(s.num)}${s.name ? ' — ' + esc(s.name) : ''}</option>`).join('') +
+              `</select>`;
+    } else {
+      const numeric = q.n === 2 ? ' inputmode="numeric"' : '';
+      body += `<input type="text" data-text="${q.n}"${numeric} placeholder="Type here">`;
+    }
+
+    box.innerHTML = `<div class="q-num">Question ${q.n}${q.points ? ' · ' + q.points + (q.points > 1 ? ' points' : ' point') : ''}</div>
+                     <div class="q-title">${esc(q.title)}</div>${body}`;
+    wrap.appendChild(box);
+  }
+
+  // Put the draft back on the page.
+  for (const q of FORM.questions){
+    const v = answers[q.n];
+    if (v == null) continue;
+    if (Array.isArray(v)){
+      for (const i of v){
+        const input = document.querySelector(`input[name="q${q.n}"][value="${i}"]`);
+        if (input){ input.checked = true; input.closest('.opt').classList.add('on'); }
+      }
+    } else {
+      const field = document.querySelector(`[data-text="${q.n}"]`);
+      if (field) field.value = v;
+    }
+  }
+
+  wrap.addEventListener('change', onChange);
+  wrap.addEventListener('input', onChange);
+  wrap.addEventListener('click', e => {
+    const btn = e.target.closest('[data-photo]');
+    if (btn) document.getElementById('file' + btn.dataset.photo).click();
+    const rm = e.target.closest('[data-remove]');
+    if (rm){
+      const [n, i] = rm.dataset.remove.split(':');
+      photos[n].splice(Number(i), 1);
+      drawThumbs(Number(n));
+    }
+  });
+  for (const q of FORM.questions){
+    if (q.type !== 'photo') continue;
+    document.getElementById('file' + q.n).addEventListener('change', e => addPhotos(q, e.target));
+  }
+}
+
+function onChange(e){
+  const t = e.target;
+  if (t.dataset && t.dataset.text){
+    answers[t.dataset.text] = t.value;
+  } else if (t.name && t.name.startsWith('q')){
+    const n = t.name.slice(1);
+    if (t.type === 'radio'){
+      answers[n] = [Number(t.value)];
+      document.querySelectorAll(`input[name="${t.name}"]`).forEach(i => i.closest('.opt').classList.toggle('on', i.checked));
+    } else {
+      const picked = [...document.querySelectorAll(`input[name="${t.name}"]:checked`)].map(i => Number(i.value));
+      answers[n] = picked;
+      t.closest('.opt').classList.toggle('on', t.checked);
+    }
+  }
+  const box = t.closest('.q'); if (box) box.classList.remove('flag');
+  saveDraft();
+}
+
+// Shrink on the phone: longest side 1600px, JPEG 0.7. A full round of 40+
+// stores at full phone resolution would fill the storage bucket.
+function shrink(file){
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try{
+        const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(img.width  * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(blob => {
+          URL.revokeObjectURL(url);
+          // No blob means the canvas could not read it — send the original.
+          resolve(blob ? new File([blob], 'photo.jpg', { type: 'image/jpeg' }) : file);
+        }, 'image/jpeg', 0.7);
+      }catch(err){ URL.revokeObjectURL(url); resolve(file); }
+    };
+    // iPhone HEIC the browser cannot decode: upload the original instead.
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
+async function addPhotos(q, input){
+  const max = q.maxPhotos || 3;
+  photos[q.n] = photos[q.n] || [];
+  const btn = document.querySelector(`[data-photo="${q.n}"]`);
+  btn.textContent = 'Getting the picture ready…';
+
+  for (const file of [...input.files]){
+    if (photos[q.n].length >= max) break;
+    const small = await shrink(file);
+    photos[q.n].push({ file: small, url: URL.createObjectURL(small) });
+  }
+  input.value = '';
+  btn.textContent = 'Take a picture';
+  drawThumbs(q.n);
+}
+
+function drawThumbs(n){
+  const list = photos[n] || [];
+  document.getElementById('thumbs' + n).innerHTML = list.map((p, i) =>
+    `<div class="thumb"><img src="${p.url}" alt="">
+       <button type="button" data-remove="${n}:${i}" aria-label="Remove this picture">×</button></div>`).join('');
+  const q = FORM.questions.find(x => x.n === n);
+  const btn = document.querySelector(`[data-photo="${n}"]`);
+  const max = q.maxPhotos || 3;
+  btn.textContent = list.length >= max ? `You have ${max} pictures` : (list.length ? 'Take another picture' : 'Take a picture');
+  btn.disabled = list.length >= max;
+  document.getElementById('q' + n).classList.remove('flag');
+}
+
+function say(message){
+  const banner = document.getElementById('banner');
+  banner.innerHTML = message ? `<div class="banner">${esc(message)}</div>` : '';
+}
+
+document.getElementById('go').addEventListener('click', submit);
+
+async function submit(){
+  const go = document.getElementById('go');
+  document.querySelectorAll('.q.flag').forEach(el => el.classList.remove('flag'));
+
+  // Check here too, so a missing answer never costs an upload.
+  const missing = [];
+  for (const q of FORM.questions){
+    if (q.type === 'photo'){
+      if (!(photos[q.n] || []).length) missing.push(q.n);
+    } else {
+      const v = answers[q.n];
+      if (Array.isArray(v) ? v.length === 0 : !String(v || '').trim()) missing.push(q.n);
+    }
+  }
+  if (missing.length){
+    missing.forEach(n => document.getElementById('q' + n).classList.add('flag'));
+    const what = missing.length === 1 ? `Question ${missing[0]} is not` : `${missing.length} questions are not`;
+    say(`${what} finished yet. We marked them in red.`);
+    document.getElementById('q' + missing[0]).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  say('');
+
+  const body = new FormData();
+  body.append('auditId', FORM.id);
+  body.append('answers', JSON.stringify(answers));
+  let count = 0;
+  for (const [n, list] of Object.entries(photos)){
+    for (const p of list){ body.append('photo_' + n, p.file, 'photo.jpg'); count++; }
+  }
+
+  go.disabled = true;
+  go.textContent = `Sending ${count} pictures…`;
+
+  try{
+    const res = await fetch('/api/audits/submit', { method: 'POST', body });
+    const data = await res.json();
+    if (!res.ok){
+      // Everything they typed and every picture is still on the page.
+      (data.missing || []).forEach(m => document.getElementById('q' + m.n).classList.add('flag'));
+      say(data.error || 'That did not send. Try again.');
+      go.disabled = false; go.textContent = 'Send my answers';
+      return;
+    }
+    clearDraft();
+    showResults(data);
+  }catch(err){
+    say('That did not send. Your answers are still here — check your signal and hit the button again.');
+    go.disabled = false; go.textContent = 'Send my answers';
+  }
+}
+
+function showResults(data){
+  const names = (q, list) => (list || []).map(i => q.choices[i]).join(' · ');
+  const blocks = data.results.map(r => {
+    const q = FORM.questions.find(x => x.n === r.n);
+    return `<div class="r ${r.correct ? '' : 'wrong'}">
+      <div class="q-num">Question ${r.n}</div>
+      <div class="q-title">${esc(q.title)}</div>
+      <div><span class="mark ${r.correct ? 'ok' : 'no'}">${r.correct ? '✔ You got it right' : '✘ Not quite'}</span></div>
+      <div class="quiet" style="margin-top:8px">You said: ${esc(names(q, r.given) || 'nothing')}</div>
+      <div style="margin-top:4px"><b>Right answer:</b> ${esc(names(q, r.correctChoices))}</div>
+      <div class="why">${esc(r.explanation)}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('form').style.display = 'none';
+  const out = document.getElementById('results');
+  out.style.display = 'block';
+  out.innerHTML = `
+    <div class="score">You got <b>${data.score} out of ${data.maxScore}</b></div>
+    ${blocks}
+    <div class="intro"><b>Fix what you found before the audit.</b> Your manager will see your photos.</div>`;
+  window.scrollTo(0, 0);
+}
+
+start();
+</script>
+</body>
+</html>

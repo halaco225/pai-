@@ -1,0 +1,286 @@
+{
+  "id": "steritech-readiness",
+  "title": "Steritech Readiness Check — Shift Leader Walk",
+  "description": "Walk your store while you complete this. Answer each question. Take photos when it asks. Take a picture of the WORST thing you find, not the best. If something is wrong, fix it, or tell your manager. After you hit submit, you will see the right answers and why.",
+  "totalPoints": 20,
+  "questions": [
+    {
+      "n": 1,
+      "title": "Your first and last name",
+      "type": "text",
+      "points": 0,
+      "required": true
+    },
+    {
+      "n": 2,
+      "title": "Your store number",
+      "type": "text",
+      "points": 0,
+      "required": true
+    },
+    {
+      "n": 3,
+      "title": "The middle of the kitchen floor is mopped. But there is dirt where the floor meets the wall behind the makeline, and dust on a ceiling vent. Will the store pass the kitchen cleaning check?",
+      "type": "single",
+      "points": 1,
+      "choices": [
+        "Yes. The floor was mopped.",
+        "Yes. Ceiling vents don't count.",
+        "No. Floors, walls, ceilings, vents and shelves ALL have to be clean.",
+        "No, but only if there are bugs."
+      ],
+      "correct": [
+        2
+      ],
+      "explanation": "The auditor checks EVERY surface in the back: corners, where the floor meets the wall, under and behind equipment, walls, ceilings, vents and shelves. Look low and high, just like the auditor will.",
+      "required": true
+    },
+    {
+      "n": 4,
+      "title": "PHOTO: Take 2 pictures. (1) Where the floor meets the wall under or behind the makeline or oven. (2) The dirtiest ceiling vent or shelf you can find. Take a picture of the WORST spot, not the best one. If it's dirty, get it cleaned before the audit.",
+      "type": "photo",
+      "points": 0,
+      "maxPhotos": 3,
+      "required": true
+    },
+    {
+      "n": 5,
+      "title": "You find a cracked floor tile and a broken ceiling tile. A work order was put in last week, but it is still not fixed on audit day. Does the store lose points?",
+      "type": "single",
+      "points": 1,
+      "choices": [
+        "No, because a work order was put in.",
+        "Yes. The auditor grades what they see that day. A work order does not save the points.",
+        "No. Repairs are the landlord's job.",
+        "No. Broken stuff isn't graded."
+      ],
+      "correct": [
+        1
+      ],
+      "explanation": "The auditor grades what is broken on audit day. Repairs can take weeks, so report broken tiles, peeling walls, rusty shelves and damaged vents the same day you see them, then keep following up.",
+      "required": true
+    },
+    {
+      "n": 6,
+      "title": "Which of these does the auditor check to make sure they are clean? Pick ALL that apply.",
+      "type": "multi",
+      "points": 1,
+      "choices": [
+        "The hoods over the oven and fryer",
+        "Handles on the cooler doors, oven and makeline",
+        "Equipment and shelves: dishwasher, make table, cut table",
+        "The manager's office computer"
+      ],
+      "correct": [
+        0,
+        1,
+        2
+      ],
+      "explanation": "Hoods, handles, and equipment and shelves like the dishwasher, make table and cut table all get checked for grease, dirt and buildup. The most-missed spots are hood edges and filters, grimy handles that everyone touches, and the shelves under the make table and cut table. The office computer is not part of the food safety check.",
+      "required": true
+    },
+    {
+      "n": 7,
+      "title": "PHOTO: Take 2 pictures. (1) The dirtiest part of your make table, cut table or dishwasher. Check inside, underneath and the handles. (2) The shelves under the make table or cut table. Take a picture of the worst spot, not the best one.",
+      "type": "photo",
+      "points": 0,
+      "maxPhotos": 3,
+      "required": true
+    },
+    {
+      "n": 8,
+      "title": "The rubber seal on the makeline cooler door is clean, but it is ripped in one corner. Will it pass?",
+      "type": "single",
+      "points": 1,
+      "choices": [
+        "Yes. It's clean.",
+        "Yes. Only the walk-in door seal is checked.",
+        "No. Door seals must be clean AND not ripped or torn.",
+        "No, but only if there is mold."
+      ],
+      "correct": [
+        2
+      ],
+      "explanation": "The rubber door seals on every cooler, freezer, proofer and warmer get checked. They must be clean (no mold or gunk) AND in good shape (not ripped, torn or flat). A ripped seal needs a work order right away.",
+      "required": true
+    },
+    {
+      "n": 9,
+      "title": "PHOTO: Open every cooler, freezer, proofer and warmer door. Take a picture of the WORST rubber door seal you find. Pull the fold back so we can see inside it.",
+      "type": "photo",
+      "points": 0,
+      "maxPhotos": 3,
+      "required": true
+    },
+    {
+      "n": 10,
+      "title": "This question is about your pans, utensils and food containers. Which of these would cost the store points? Pick ALL that apply.",
+      "type": "multi",
+      "points": 1,
+      "choices": [
+        "Pans stacked on the shelf while they are still wet",
+        "A sauce ladle that has been used for 5 hours without being washed",
+        "A cheese cup with its handle sitting down in the cheese",
+        "A cracked or chipped pan or container",
+        "Clean pans stored upside down on a shelf at least 6 inches off the floor"
+      ],
+      "correct": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "explanation": "Utensils you are using (like sauce ladles) must be washed at least every 4 hours. Pans must dry all the way before you stack them. Handles stay out of the food. Cracked or chipped pans get thrown out. Delivery bags must be clean too. Clean pans stored upside down, 6 inches off the floor, is the RIGHT way.",
+      "required": true
+    },
+    {
+      "n": 11,
+      "title": "How high off the floor do food, boxes and pans need to be stored?",
+      "type": "single",
+      "points": 1,
+      "choices": [
+        "2 inches",
+        "4 inches",
+        "6 inches",
+        "12 inches"
+      ],
+      "correct": [
+        2
+      ],
+      "explanation": "At least 6 inches off the floor. Also: damaged food goes in its own spot marked DO NOT USE, food stays covered, and your own food and medicine stay away from the store's food.",
+      "required": true
+    },
+    {
+      "n": 12,
+      "title": "When you are not using a wiping towel, where should it be?",
+      "type": "single",
+      "points": 1,
+      "choices": [
+        "Over your shoulder or in your apron",
+        "Folded on the makeline",
+        "Soaking in a sanitizer bucket that is labeled and tested with a test strip",
+        "In the hand sink"
+      ],
+      "correct": [
+        2
+      ],
+      "explanation": "Towels stay in sanitizer water when you're not using them. Test the bucket with a test strip and change the water when it gets too weak. The bucket needs a label. If your store has raw chicken, use different colored towels and buckets for it. Test strips must be in the store and not expired.",
+      "required": true
+    },
+    {
+      "n": 13,
+      "title": "PHOTO: Dip a test strip in a sanitizer bucket (and in the sanitizer side of the 3-sink if it's set up). Take a picture of each strip held next to the color chart on the test strip container.",
+      "type": "photo",
+      "points": 0,
+      "maxPhotos": 3,
+      "required": true
+    },
+    {
+      "n": 14,
+      "title": "You find a spray bottle of sanitizer with no label, sitting on the shelf above the dough. What is wrong?",
+      "type": "single",
+      "points": 1,
+      "choices": [
+        "Nothing. It's just sanitizer.",
+        "Only where it is stored",
+        "Only the missing label",
+        "Both. Every chemical needs a label, and chemicals can never be stored above food."
+      ],
+      "correct": [
+        3
+      ],
+      "explanation": "Every chemical needs a label, including spray bottles and sanitizer buckets. Keep chemicals in the chemical area, never above food, and never in the customer bathroom.",
+      "required": true
+    },
+    {
+      "n": 15,
+      "title": "A team member is putting toppings on pizzas with gloves on. They answer their phone, then go right back to making pizzas with the same gloves. What should happen?",
+      "type": "single",
+      "points": 3,
+      "choices": [
+        "Nothing. They still have gloves on.",
+        "Wipe the gloves with a towel and keep going.",
+        "Stop. Throw away the gloves, wash hands, put on new gloves, and remake the pizzas they touched.",
+        "Finish the order, then change gloves."
+      ],
+      "correct": [
+        2
+      ],
+      "explanation": "The phone put germs on the gloves, and now those germs are on the food. This is one of the most serious things an auditor can find. Gloves do NOT replace washing your hands. Throw away anything the dirty gloves touched. Other common ones: raw meat touching food that's ready to eat, and unwashed vegetables stored right next to ready-to-eat food.",
+      "required": true
+    },
+    {
+      "n": 16,
+      "title": "What is the right way to wash your hands?",
+      "type": "single",
+      "points": 3,
+      "choices": [
+        "Rinse, hand sanitizer, paper towel, then gloves",
+        "Wet hands, soap and scrub, rinse, dry with a paper towel, hand sanitizer, then gloves",
+        "Put gloves on, then wash with the gloves on",
+        "Wet hands, soap, rinse, dry on your apron, then gloves"
+      ],
+      "correct": [
+        1
+      ],
+      "explanation": "The right way: wet, soap and scrub, rinse, dry with a paper towel, hand sanitizer, then gloves. Wash your hands before putting on gloves, and after touching raw food, taking a break, using your phone, touching your face, handling money, or cleaning. Never 'wash' with gloves on. Never take gloves off and put them back on. Only wash at the hand sink.",
+      "required": true
+    },
+    {
+      "n": 17,
+      "title": "Which of these would make a hand sink FAIL? Pick ALL that apply.",
+      "type": "multi",
+      "points": 3,
+      "choices": [
+        "A utensil or food sitting in the sink",
+        "A trash can or rack blocking the sink",
+        "No handwashing sign",
+        "The water won't get warm (at least 100°F)",
+        "Gloves and a trash can within 6 feet of the sink"
+      ],
+      "correct": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "explanation": "The hand sink is ONLY for washing hands. Nothing can block it, it must be clean and working, it needs a sign, and the water must get to at least 100°F. Gloves and a trash can within 6 feet are REQUIRED, so that one is not a problem. Keep it stocked with soap, paper towels and hand sanitizer. A broken or blocked hand sink is one of the most serious problems an auditor can find.",
+      "required": true
+    },
+    {
+      "n": 18,
+      "title": "PHOTO: Take a picture of each hand sink in the back. Show that nothing is blocking it, and show the soap, paper towels, hand sanitizer and the sign.",
+      "type": "photo",
+      "points": 0,
+      "maxPhotos": 3,
+      "required": true
+    },
+    {
+      "n": 19,
+      "title": "Which of these would FAIL the audit? Pick ALL that apply.",
+      "type": "multi",
+      "points": 3,
+      "choices": [
+        "A pan of food thawing with no ready date or expiration date",
+        "An opened bag of sauce in the walk-in with no expiration date",
+        "Cheese on the makeline that is 44°F",
+        "Walk-in cooler air at 38°F",
+        "Freezer air at 0°F"
+      ],
+      "correct": [
+        0,
+        1,
+        2
+      ],
+      "explanation": "Cold food must be 41°F or colder. A cooler at 41°F or below and a freezer at 10°F or below are passing. Food that is thawing must be labeled with when it's ready and when it expires. Anything opened or prepped needs an expiration date, and nothing can be past its date. These are serious problems that cost big points.",
+      "required": true
+    },
+    {
+      "n": 20,
+      "title": "After this walk, list the top 3 things you are going to fix before the audit, who will do each one, and by when.",
+      "type": "longtext",
+      "points": 0,
+      "required": true
+    }
+  ]
+}

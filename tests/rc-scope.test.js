@@ -72,3 +72,53 @@ describe('unknown or missing scope', () => {
     expect(canSee({}, 'Harold Lacoste')).toBe(false);
   });
 });
+
+// Which stores' audit responses a viewer may read. Same deny-by-default rule,
+// applied to stores instead of people.
+describe('visibleStores', () => {
+  const { visibleStores } = require('../services/rc-scope');
+
+  const assignments = {
+    '39167': { store_id: '39167', area_coach: 'Darian Spikes',  region_coach: 'Harold Lacoste', vp: 'Matt Hester' },
+    '39170': { store_id: '39170', area_coach: 'Ebony Simmons',  region_coach: 'Harold Lacoste', vp: 'Matt Hester' },
+    '39500': { store_id: '39500', area_coach: 'Erin Pizzo',     region_coach: 'Preston Arnwine', vp: 'Matt Hester' },
+    '39600': { store_id: '39600', area_coach: 'Jerry Warren',   region_coach: 'Jerry Warren',    vp: 'Tracy Krumwiede' },
+    '39700': { store_id: '39700', area_coach: null,             region_coach: 'Harold Lacoste', vp: 'Matt Hester' },
+    '39800': { store_id: '39800', area_coach: null,             region_coach: null,              vp: null },
+  };
+
+  test('an area coach sees only their own stores', () => {
+    expect([...visibleStores(darian, assignments)]).toEqual(['39167']);
+  });
+
+  test('an RDO sees their area coaches\' stores', () => {
+    expect([...visibleStores(harold, assignments)].sort()).toEqual(['39167', '39170', '39700']);
+  });
+
+  test('an RDO does not see another region', () => {
+    expect(visibleStores(harold, assignments).has('39500')).toBe(false);
+    expect(visibleStores(harold, assignments).has('39600')).toBe(false);
+  });
+
+  test('a VP sees every store under their region coaches', () => {
+    const seen = visibleStores(matt, assignments);
+    expect(seen.has('39167')).toBe(true);
+    expect(seen.has('39500')).toBe(true);
+    expect(seen.has('39600')).toBe(false); // other VP
+  });
+
+  test('a store with an empty AC seat still rolls up to its RDO', () => {
+    expect(visibleStores(harold, assignments).has('39700')).toBe(true);
+  });
+
+  test('a store with no coach at all belongs to nobody', () => {
+    for (const user of [darian, harold, matt]) {
+      expect(visibleStores(user, assignments).has('39800')).toBe(false);
+    }
+  });
+
+  test('an unknown scope sees no stores', () => {
+    expect([...visibleStores({}, assignments)]).toEqual([]);
+    expect([...visibleStores(null, assignments)]).toEqual([]);
+  });
+});

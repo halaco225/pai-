@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Audits — P.AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --brand:#e5484d; --brand-dark:#aa2429; --accent:#70b8ff;
+  --green:#46a758; --yellow:#f5d90a; --bg:#09090b; --card:rgba(255,255,255,.03);
+  --surface:rgba(255,255,255,.055); --border:rgba(255,255,255,.08); --border-hi:rgba(255,255,255,.14);
+  --text:#ededef; --muted:#84848c; --radius:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{background:#09090b;}
+body{font-family:'Inter',-apple-system,sans-serif;background:radial-gradient(1200px 500px at 70% -10%,rgba(229,72,77,.07),transparent),var(--bg);
+     color:var(--text);font-size:14px;-webkit-font-smoothing:antialiased;min-height:100vh;}
+a{color:inherit;}
+
+.topbar{background:rgba(9,9,11,.85);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);display:flex;align-items:center;
+        justify-content:space-between;padding:12px 22px;position:sticky;top:0;z-index:200;border-bottom:1px solid rgba(229,72,77,.25);}
+.topbar h1{font-size:15px;font-weight:700;letter-spacing:.6px;}
+.topbar h1 .t-accent{color:var(--brand);}
+.topbar-sub{font-size:11.5px;color:var(--muted);margin-top:2px;}
+
+.nav-tabs{display:flex;gap:8px;background:rgba(9,9,11,.85);padding:10px 18px;position:sticky;top:59px;z-index:199;}
+.nav-tab{padding:7px 16px;color:var(--muted);cursor:pointer;font-size:13px;font-weight:500;background:rgba(255,255,255,.05);
+         border-radius:20px;user-select:none;transition:all .15s;}
+.nav-tab:hover{color:var(--text);background:rgba(255,255,255,.09);}
+.nav-tab.active{color:#fff;background:var(--brand);font-weight:600;}
+
+.wrap{max-width:1100px;margin:0 auto;padding:20px 18px 60px;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:14px;}
+.card-title{font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-bottom:12px;}
+
+.filters{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin-bottom:14px;}
+select,input[type=date]{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 11px;
+        border-radius:8px;font:inherit;font-size:13px;}
+select option{background:#18181b;}
+.btn{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 13px;border-radius:8px;
+     font:inherit;font-size:13px;cursor:pointer;}
+.btn:hover{border-color:var(--border-hi);}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600;}
+
+table{width:100%;border-collapse:collapse;}
+th{text-align:left;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--border);}
+td{padding:11px 10px;border-bottom:1px solid var(--border);font-size:13.5px;}
+tr.row{cursor:pointer;}
+tr.row:hover td{background:rgba(255,255,255,.035);}
+.pill{display:inline-block;padding:3px 10px;border-radius:20px;font-weight:700;font-size:12.5px;}
+.pill.good{background:rgba(70,167,88,.16);color:#6ddb86;}
+.pill.mid{background:rgba(245,217,10,.14);color:var(--yellow);}
+.pill.bad{background:rgba(229,72,77,.16);color:#ff8b8f;}
+
+.bar{height:7px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden;}
+.bar span{display:block;height:100%;background:var(--green);}
+.bar.bad span{background:var(--brand);}
+.bar.mid span{background:var(--yellow);}
+
+.q-row{display:grid;grid-template-columns:1fr 140px 52px;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);}
+.q-row:last-child{border-bottom:none;}
+.q-text{font-size:13px;line-height:1.45;}
+
+.result{border-left:3px solid var(--green);background:var(--surface);border-radius:8px;padding:12px;margin-bottom:10px;}
+.result.wrong{border-left-color:var(--brand);}
+.mark{font-weight:700;font-size:12.5px;}
+.mark.ok{color:#6ddb86;} .mark.no{color:#ff8b8f;}
+.why{color:var(--muted);font-size:12.5px;margin-top:8px;line-height:1.5;}
+.thumbs{display:flex;flex-wrap:wrap;gap:9px;margin-top:9px;}
+.thumbs img{width:104px;height:104px;object-fit:cover;border-radius:9px;border:1px solid var(--border);cursor:pointer;display:block;}
+.muted{color:var(--muted);}
+.empty{color:var(--muted);text-align:center;padding:34px 10px;font-size:13.5px;}
+
+#viewer{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;z-index:500;padding:20px;}
+#viewer img{max-width:100%;max-height:100%;border-radius:8px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <h1>P<span class="t-accent">.AI</span> AUDITS</h1>
+    <div class="topbar-sub">Steritech Readiness Check</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <button class="btn" id="copyLink">Copy the link for shift leaders</button>
+    <a href="/dashboard" style="font-size:12px;color:var(--muted);text-decoration:none;padding:6px 10px;">← Dashboard</a>
+  </div>
+</div>
+
+<div class="nav-tabs">
+  <div class="nav-tab active" id="tab-responses" onclick="showTab('responses')">Responses</div>
+  <div class="nav-tab" id="tab-summary" onclick="showTab('summary')">Summary</div>
+  <div class="nav-tab" id="tab-stores" onclick="showTab('stores')">By store</div>
+</div>
+
+<div class="wrap">
+  <!-- RESPONSES -->
+  <div id="pane-responses">
+    <div class="filters">
+      <select id="fStore"><option value="">Every store</option></select>
+      <select id="fCoach"><option value="">Every Area Coach</option></select>
+      <input type="date" id="fFrom" title="From"><input type="date" id="fTo" title="To">
+      <button class="btn" onclick="load()">Apply</button>
+      <button class="btn" onclick="reset()">Clear</button>
+      <button class="btn primary" onclick="window.location='/api/audits/export.csv'">Export CSV</button>
+    </div>
+    <div class="card"><div id="list" class="empty">Loading…</div></div>
+  </div>
+
+  <!-- ONE RESPONSE -->
+  <div id="pane-one" style="display:none">
+    <button class="btn" onclick="showTab('responses')" style="margin-bottom:14px">← All responses</button>
+    <div id="one"></div>
+  </div>
+
+  <!-- SUMMARY -->
+  <div id="pane-summary" style="display:none">
+    <div class="card"><div class="card-title">Across every response</div><div id="sumHead" class="empty">Loading…</div></div>
+    <div class="card"><div class="card-title">Questions the region keeps missing (worst first)</div><div id="sumQ"></div></div>
+  </div>
+
+  <!-- BY STORE -->
+  <div id="pane-stores" style="display:none">
+    <div class="card"><div class="card-title">Average score by store (worst first)</div><div id="byStore" class="empty">Loading…</div></div>
+  </div>
+</div>
+
+<div id="viewer" onclick="this.style.display='none'"><img id="viewerImg" alt=""></div>
+
+<script>
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pct = (a, b) => b ? Math.round((a / b) * 100) : 0;
+const band = p => p >= 85 ? 'good' : p >= 70 ? 'mid' : 'bad';
+const when = iso => new Date(iso).toLocaleString(undefined, { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+
+let RESPONSES = [];
+
+function showTab(tab){
+  for (const t of ['responses','summary','stores']){
+    document.getElementById('pane-' + t).style.display = t === tab ? 'block' : 'none';
+    document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+  }
+  document.getElementById('pane-one').style.display = 'none';
+  if (tab === 'summary') loadSummary();
+  if (tab === 'stores') loadStores();
+}
+
+function query(){
+  const p = new URLSearchParams();
+  for (const [key, id] of [['store','fStore'],['coach','fCoach'],['from','fFrom'],['to','fTo']]){
+    const v = document.getElementById(id).value;
+    if (v) p.set(key, v);
+  }
+  return p.toString();
+}
+
+function reset(){
+  ['fStore','fCoach','fFrom','fTo'].forEach(id => document.getElementById(id).value = '');
+  load();
+}
+
+async function load(){
+  const data = await fetch('/api/audits/responses?' + query()).then(r => r.json());
+  RESPONSES = data.responses || [];
+
+  fill('fStore', data.stores, 'Every store');
+  fill('fCoach', data.coaches, 'Every Area Coach');
+
+  const list = document.getElementById('list');
+  if (!RESPONSES.length){
+    list.className = 'empty';
+    list.textContent = 'No one has finished a walk yet. Copy the link above and text it to a shift leader.';
+    return;
+  }
+  list.className = '';
+  list.innerHTML = `<table><thead><tr>
+      <th>When</th><th>Store</th><th>Who</th><th>Area Coach</th><th>Score</th></tr></thead><tbody>` +
+    RESPONSES.map(r => {
+      const p = pct(r.score, r.max_score);
+      return `<tr class="row" onclick="openOne('${r.id}')">
+        <td class="muted">${esc(when(r.created_at))}</td>
+        <td>${esc(r.store_number)}${r.store_name ? ' <span class="muted">' + esc(r.store_name) + '</span>' : ''}</td>
+        <td>${esc(r.name)}</td>
+        <td class="muted">${esc(r.area_coach || '—')}</td>
+        <td><span class="pill ${band(p)}">${r.score}/${r.max_score}</span></td></tr>`;
+    }).join('') + '</tbody></table>';
+}
+
+// Keep whatever is selected when the option list is rebuilt.
+function fill(id, values, allLabel){
+  const sel = document.getElementById(id);
+  const keep = sel.value;
+  const merged = [...new Set([...(values || []), ...(keep ? [keep] : [])])];
+  sel.innerHTML = `<option value="">${allLabel}</option>` +
+    merged.map(v => `<option value="${esc(v)}"${v === keep ? ' selected' : ''}>${esc(v)}</option>`).join('');
+}
+
+async function openOne(id){
+  const r = await fetch('/api/audits/responses/' + encodeURIComponent(id)).then(x => x.json());
+  const p = pct(r.score, r.max_score);
+
+  const names = (choices, list) => (list || []).map(i => choices[i]).join(' · ');
+  const results = r.results.map(q => `
+    <div class="result ${q.correct ? '' : 'wrong'}">
+      <div class="muted" style="font-size:11.5px;font-weight:700;letter-spacing:.4px;">QUESTION ${q.n} · ${q.points} ${q.points > 1 ? 'points' : 'point'}</div>
+      <div style="margin:5px 0 8px;font-size:13.5px;">${esc(q.title)}</div>
+      <div><span class="mark ${q.correct ? 'ok' : 'no'}">${q.correct ? '✔ Right' : '✘ Wrong'}</span></div>
+      <div class="muted" style="margin-top:6px;font-size:12.5px;">They said: ${esc(names(q.choices, q.given) || 'nothing')}</div>
+      ${q.correct ? '' : `<div style="margin-top:4px;font-size:12.5px;"><b>Right answer:</b> ${esc(names(q.choices, q.correctChoices))}</div>`}
+      <div class="why">${esc(q.explanation)}</div>
+    </div>`).join('');
+
+  const photos = r.photoQuestions.map(q => `
+    <div style="margin-bottom:16px;">
+      <div class="muted" style="font-size:12.5px;line-height:1.45;margin-bottom:6px;">Question ${q.n} — ${esc(q.title)}</div>
+      ${q.paths.length ? `<div class="thumbs">${q.paths.map(path =>
+        `<img src="/api/audits/photo?path=${encodeURIComponent(path)}" alt="" loading="lazy" onclick="zoom(this.src)">`).join('')}</div>`
+        : '<div class="muted">No pictures.</div>'}
+    </div>`).join('');
+
+  document.getElementById('one').innerHTML = `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:17px;font-weight:700;">Store ${esc(r.store_number)}${r.store_name ? ' — ' + esc(r.store_name) : ''}</div>
+          <div class="muted" style="margin-top:4px;">${esc(r.name)} · ${esc(when(r.created_at))}${r.area_coach ? ' · AC ' + esc(r.area_coach) : ''}</div>
+        </div>
+        <span class="pill ${band(p)}" style="font-size:15px;padding:6px 14px;">${r.score} / ${r.max_score}</span>
+      </div>
+    </div>
+    <div class="card"><div class="card-title">Their top 3 fixes</div>
+      <div style="white-space:pre-wrap;font-size:13.5px;line-height:1.55;">${esc(r.fixes || 'They did not write anything.')}</div></div>
+    <div class="card"><div class="card-title">What they found</div>${photos}</div>
+    <div class="card"><div class="card-title">Every graded question</div>${results}</div>`;
+
+  for (const t of ['responses','summary','stores']) document.getElementById('pane-' + t).style.display = 'none';
+  document.getElementById('pane-one').style.display = 'block';
+  window.scrollTo(0, 0);
+}
+
+function zoom(src){
+  document.getElementById('viewerImg').src = src;
+  document.getElementById('viewer').style.display = 'flex';
+}
+
+async function loadSummary(){
+  const s = await fetch('/api/audits/summary?' + query()).then(r => r.json());
+  document.getElementById('sumHead').className = '';
+  document.getElementById('sumHead').innerHTML = s.responses
+    ? `<div style="display:flex;gap:34px;flex-wrap:wrap;">
+         <div><div class="muted" style="font-size:11.5px;letter-spacing:.5px;">WALKS FINISHED</div>
+              <div style="font-size:27px;font-weight:700;">${s.responses}</div></div>
+         <div><div class="muted" style="font-size:11.5px;letter-spacing:.5px;">AVERAGE SCORE</div>
+              <div style="font-size:27px;font-weight:700;">${s.averageScore} <span class="muted" style="font-size:15px;">/ ${s.maxScore}</span></div></div>
+       </div>`
+    : '<div class="empty">Nothing to summarize yet.</div>';
+
+  document.getElementById('sumQ').innerHTML = s.questions.length ? s.questions.map(q => `
+    <div class="q-row">
+      <div class="q-text">${esc(q.title)}</div>
+      <div class="bar ${band(q.percent)}"><span style="width:${q.percent}%"></span></div>
+      <div style="text-align:right;font-weight:700;font-size:13px;">${q.percent}%</div>
+    </div>`).join('') : '<div class="empty">Nothing to summarize yet.</div>';
+}
+
+async function loadStores(){
+  const s = await fetch('/api/audits/summary?' + query()).then(r => r.json());
+  const el = document.getElementById('byStore');
+  if (!s.stores.length){ el.className = 'empty'; el.textContent = 'Nothing yet.'; return; }
+  el.className = '';
+  el.innerHTML = `<table><thead><tr><th>Store</th><th>Area Coach</th><th>Walks</th><th>Average</th></tr></thead><tbody>` +
+    s.stores.map(r => `<tr><td>${esc(r.store_number)}${r.store_name ? ' <span class="muted">' + esc(r.store_name) + '</span>' : ''}</td>
+      <td class="muted">${esc(r.area_coach || '—')}</td><td>${r.responses}</td>
+      <td><span class="pill ${band(pct(r.averageScore, s.maxScore))}">${r.averageScore}/${s.maxScore}</span></td></tr>`).join('') +
+    '</tbody></table>';
+}
+
+document.getElementById('copyLink').addEventListener('click', e => {
+  const url = location.origin + '/audit';
+  const done = () => { e.target.textContent = 'Copied'; setTimeout(() => e.target.textContent = 'Copy the link for shift leaders', 1800); };
+  if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, () => prompt('Copy this link:', url));
+  else prompt('Copy this link:', url);
+});
+
+load();
+</script>
+</body>
+</html>
