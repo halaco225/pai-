@@ -56,3 +56,44 @@ describe('isUuid', () => {
     expect(isUuid('3f2504e0-4f89-41d3-9a0c')).toBe(false);
   });
 });
+
+// The bug this exists to stop: a walk left open while the questions were
+// edited. Question 15 was a multiple choice; it became a tap-the-picture
+// question. The answer written down against the old one is not an answer to
+// the new one, and marking it as though it were told the walker there was no
+// signal when the real problem was a stale record.
+describe('fits', () => {
+  const { fits } = require('../services/audit-walks');
+
+  const choice  = { n: 15, type: 'single' };
+  const picture = { n: 15, type: 'hotspot' };
+
+  test('a choice answer does not fit a picture question', () => {
+    expect(fits(picture, [2])).toBe(false);
+  });
+
+  test('taps do not fit a choice question', () => {
+    expect(fits(choice, [{ x: 10, y: 20 }])).toBe(false);
+  });
+
+  test('each shape fits its own question', () => {
+    expect(fits(choice, [2])).toBe(true);
+    expect(fits(picture, [{ x: 10, y: 20 }])).toBe(true);
+  });
+
+  test('nothing recorded fits nothing', () => {
+    expect(fits(picture, null)).toBe(false);
+    expect(fits(picture, [])).toBe(false);
+    expect(fits(choice, [])).toBe(false);
+  });
+
+  test('half-formed taps do not fit', () => {
+    expect(fits(picture, [{ x: 10 }])).toBe(false);
+    expect(fits(picture, [{ x: 'a', y: 'b' }])).toBe(false);
+  });
+
+  test('a question with no stored shape to check is left alone', () => {
+    expect(fits({ type: 'text' }, 'Harold')).toBe(true);
+    expect(fits({ type: 'photo' }, 'anything')).toBe(true);
+  });
+});

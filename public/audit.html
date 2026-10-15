@@ -403,6 +403,13 @@ function wire(q){
     };
 
     shot.addEventListener('click', e => {
+      // Before the picture has loaded the box has no height, so a tap would
+      // be recorded in the wrong place entirely.
+      const pic = shot.querySelector('img');
+      if (!pic || !pic.complete || !pic.naturalWidth){
+        say('Give the picture a second to load.');
+        return;
+      }
       const taking = e.target.closest('.tap');
       const taps = Array.isArray(answers[q.n]) ? answers[q.n] : (answers[q.n] = []);
 
@@ -474,7 +481,13 @@ async function check(q){
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ auditId: FORM.id, walkId: WALK_ID, n: q.n, answer: answers[q.n] }),
     });
-    if (!res.ok) throw new Error('check failed');
+    if (!res.ok){
+      // The server turned it down — say why, and leave the question open so
+      // they can put it right. This is not the same as having no signal.
+      const data = await res.json().catch(() => ({}));
+      say(data.error || 'That did not go through. Try again.');
+      return false;
+    }
     checked[q.n] = await res.json();
   }catch(err){
     // No signal is not a reason to stop the walk.

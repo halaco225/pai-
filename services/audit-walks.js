@@ -23,9 +23,12 @@ async function initAuditWalks() {
       walk_id    UUID         PRIMARY KEY,
       audit_id   VARCHAR(80)  NOT NULL,
       answers    JSONB        NOT NULL DEFAULT '{}'::jsonb,
+      version    INT          NOT NULL DEFAULT 0,
       created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
     )
   `);
+
+  await p.query(`ALTER TABLE audit_walks ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 0`);
 
   await p.query(`
     CREATE INDEX IF NOT EXISTS idx_audit_walks_created
@@ -45,34 +48,43 @@ const isUuid = s => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
  * Returns undefined when there is no database, and the caller falls back to
  * marking whatever was sent.
  */
-async function recordAnswer(walkId, auditId, n, answer) {
+async function recordAnswer(walkId, auditId, version, n, answer) {
   const p = getPool();
   if (!p || !isUuid(walkId)) return undefined;
 
   const key = String(Number(n));
   if (key === 'NaN') return undefined;
 
+  // A walk started before the questions were edited is not the same walk any
+  // more: question 15 might have been a multiple choice an hour ago and a
+  // picture now, and the answer written down then means nothing against the
+  // question being asked now. A new version starts the record clean.
   const { rows } = await p.query(`
-    INSERT INTO audit_walks (walk_id, audit_id, answers)
-    VALUES ($1, $2, jsonb_build_object($3::text, $4::jsonb))
+    INSERT INTO audit_walks (walk_id, audit_id, answers, version)
+    VALUES ($1, $2, jsonb_build_object($3::text, $4::jsonb), $5)
     ON CONFLICT (walk_id) DO UPDATE SET
+      version = $5,
       answers = CASE
+        WHEN audit_walks.version <> $5 THEN jsonb_build_object($3::text, $4::jsonb)
         WHEN jsonb_exists(audit_walks.answers, $3::text) THEN audit_walks.answers
         ELSE audit_walks.answers || jsonb_build_object($3::text, $4::jsonb)
       END
     RETURNING answers -> $3::text AS stored
-  `, [walkId, String(auditId), key, JSON.stringify(answer ?? null)]);
+  `, [walkId, String(auditId), key, JSON.stringify(answer ?? null), Number(version) || 0]);
 
   return rows[0] ? rows[0].stored : undefined;
 }
 
 /** Everything written down for this walk, keyed by question number. */
-async function getAnswers(walkId) {
+async function getAnswers(walkId, version) {
   const p = getPool();
   if (!p || !isUuid(walkId)) return null;
 
-  const { rows } = await p.query('SELECT answers FROM audit_walks WHERE walk_id = $1', [walkId]);
-  return rows[0] ? rows[0].answers : null;
+  const { rows } = await p.query('SELECT answers, version FROM audit_walks WHERE walk_id = $1', [walkId]);
+  if (!rows[0]) return null;
+  // Written against a different set of questions: not this walk's answers.
+  if (version != null && rows[0].version !== Number(version)) return null;
+  return rows[0].answers;
 }
 
 /**
@@ -96,10 +108,31 @@ function sealed(recorded, sent, def) {
   return out;
 }
 
+/**
+ * Could this recorded answer still be an answer to this question?
+ *
+ * The version check should already have cleared anything stale, but a stored
+ * answer of the wrong shape would otherwise be marked as if it were real —
+ * which is how a picture question came to be handed a multiple-choice answer
+ * and told the walker there was no signal.
+ */
+function fits(q, answer) {
+  if (answer == null) return false;
+  if (q.type === 'hotspot') {
+    return Array.isArray(answer) && answer.length > 0
+      && answer.every(t => t && typeof t === 'object' && !Array.isArray(t)
+        && Number.isFinite(Number(t.x)) && Number.isFinite(Number(t.y)));
+  }
+  if (q.type === 'single' || q.type === 'multi') {
+    return Array.isArray(answer) && answer.length > 0 && answer.every(n => Number.isInteger(n));
+  }
+  return true;
+}
+
 async function deleteWalk(walkId) {
   const p = getPool();
   if (!p || !isUuid(walkId)) return;
   await p.query('DELETE FROM audit_walks WHERE walk_id = $1', [walkId]);
 }
 
-module.exports = { initAuditWalks, recordAnswer, getAnswers, sealed, deleteWalk, isUuid };
+module.exports = { initAuditWalks, recordAnswer, getAnswers, sealed, deleteWalk, isUuid, fits };

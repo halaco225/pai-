@@ -90,17 +90,25 @@ router.post('/check', async (req, res) => {
   const def = await templates.getTemplate(req.body.auditId || DEFAULT_AUDIT);
   if (!def || !def.active) return res.status(404).json({ error: 'That walk does not exist.' });
 
+  const q = def.questions.find(x => x.n === Number(req.body.n));
+  if (!q) return res.status(400).json({ error: 'That question is not in this walk.' });
+
   let answer = req.body.answer;
   try {
-    const onRecord = await walks.recordAnswer(req.body.walkId, def.id, req.body.n, answer);
-    if (onRecord !== undefined) answer = onRecord;
+    const onRecord = await walks.recordAnswer(req.body.walkId, def.id, def.version, req.body.n, answer);
+    // Only use what was written down if it is still an answer to this
+    // question. A walk left open across an edit can hold an answer to the
+    // question that used to be here.
+    if (onRecord !== undefined && walks.fits(q, onRecord)) answer = onRecord;
   } catch (err) {
     // No database is not a reason to stop a shift leader mid-walk.
     console.error('audit walk record failed:', err.message);
   }
 
   const result = checkOne(def, req.body.n, answer);
-  if (!result) return res.status(400).json({ error: 'Nothing to mark.' });
+  if (!result) {
+    return res.status(400).json({ error: 'Answer this one before checking it.' });
+  }
   res.json(result);
 });
 
@@ -123,7 +131,7 @@ router.post('/submit', upload.any(), async (req, res) => {
   // answered, not from this request. The phone was told the right answers
   // along the way, so it does not get to report the score as well.
   try {
-    const recorded = await walks.getAnswers(req.body.walkId);
+    const recorded = await walks.getAnswers(req.body.walkId, def.version);
     answers = walks.sealed(recorded, answers, def);
   } catch (err) {
     console.error('audit walk read failed:', err.message);
