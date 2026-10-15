@@ -78,6 +78,24 @@ tr.row:hover td{background:#242831;}
 .muted{color:var(--muted);}
 .empty{color:var(--muted);text-align:center;padding:34px 10px;font-size:13.5px;}
 
+/* DRILL-DOWNS - every number opens onto the walks behind it */
+.openable{cursor:pointer;}
+.openable:hover td,.openable:hover{background:#242831;}
+.caret{display:inline-block;width:13px;color:var(--muted);font-size:11px;}
+.drill{background:#191c23;border:1px solid var(--border);border-radius:10px;padding:13px 15px;margin:4px 0 12px;}
+.drill h4{font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-weight:700;}
+.walk{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--border);flex-wrap:wrap;}
+.walk:first-of-type{border-top:none;}
+.walk .who{font-weight:600;font-size:13.5px;min-width:150px;}
+.walk .when{color:var(--muted);font-size:12.5px;min-width:112px;}
+.walk .missed{flex:1;min-width:220px;font-size:12.5px;color:var(--muted);line-height:1.5;}
+.walk .missed b{color:#ff8b8f;font-weight:600;}
+.qchip{display:inline-block;padding:1px 7px;margin:2px 3px 2px 0;border-radius:5px;font-size:11.5px;font-weight:700;}
+.qchip.ok{background:rgba(70,167,88,.16);color:#6ddb86;}
+.qchip.no{background:rgba(229,72,77,.18);color:#ff8b8f;}
+.said{font-size:12.5px;color:var(--muted);margin-top:3px;}
+.said b{color:var(--text);font-weight:600;}
+
 /* READING THE RESULTS */
 .standouts{display:flex;flex-direction:column;gap:0;}
 .stand{display:flex;gap:12px;padding:13px 0;border-top:1px solid var(--border);font-size:14px;line-height:1.5;}
@@ -279,6 +297,7 @@ function reset(){
 }
 
 async function load(){
+  forgetMatrix();
   const data = await fetch('/api/audits/responses?' + query()).then(r => r.json());
   RESPONSES = data.responses || [];
 
@@ -376,6 +395,81 @@ function zoom(src){
   document.getElementById('viewer').style.display = 'flex';
 }
 
+// Everyone's answers, loaded once and reused by every drill-down on the page.
+let MATRIX = null;
+
+async function matrix(){
+  if (MATRIX) return MATRIX;
+  MATRIX = await fetch('/api/audits/matrix?' + query()).then(r => r.json());
+  return MATRIX;
+}
+function forgetMatrix(){ MATRIX = null; }
+
+const dayOf = iso => new Date(iso).toLocaleDateString(undefined, { month:'short', day:'numeric' });
+
+// One walk, as a line: who, when, score, and what they got wrong.
+function walkLine(w, opts = {}){
+  const wrong = Object.entries(w.answers).filter(([, a]) => !a.correct);
+  const missed = wrong.length
+    ? wrong.map(([n]) => `<span class="qchip no">Q${n}</span>`).join('')
+    : '<span class="qchip ok">nothing missed</span>';
+  return `<div class="walk">
+    <span class="when">${esc(dayOf(w.created_at))}</span>
+    <span class="who">${esc(w.name)}</span>
+    ${opts.showStore ? `<span class="when">${esc(w.store_number)}${w.store_name ? ' ' + esc(w.store_name) : ''}</span>` : ''}
+    <span class="pill ${band(pct(w.score, w.max_score))}">${w.score}/${w.max_score}</span>
+    <span class="missed">${missed}</span>
+    <button class="btn" onclick="openOne('${w.id}')">Open</button>
+  </div>`;
+}
+
+// Open or close a drill-down row under the thing that was clicked.
+function toggleDrill(id, build){
+  const box = document.getElementById(id);
+  if (!box) return;
+  if (box.innerHTML){ box.innerHTML = ''; return; }
+  box.innerHTML = build();
+}
+
+async function drillStore(store){
+  const m = await matrix();
+  const walks = m.responses.filter(w => w.store_number === store);
+  toggleDrill('drill-store-' + store, () => `<div class="drill">
+    <h4>${walks.length} walk${walks.length === 1 ? '' : 's'} at store ${esc(store)}</h4>
+    ${walks.map(w => walkLine(w)).join('')}</div>`);
+}
+
+async function drillCoach(coach){
+  const m = await matrix();
+  const walks = m.responses.filter(w => (w.area_coach || 'Nobody assigned') === coach);
+  toggleDrill('drill-coach-' + cssId(coach), () => `<div class="drill">
+    <h4>${walks.length} walk${walks.length === 1 ? '' : 's'} under ${esc(coach)}</h4>
+    ${walks.map(w => walkLine(w, { showStore: true })).join('')}</div>`);
+}
+
+// The one that answers "who, and what did they say instead".
+async function drillQuestion(n){
+  const m = await matrix();
+  const asked = m.responses.filter(w => w.answers[n]);
+  const wrong = asked.filter(w => !w.answers[n].correct);
+  const right = asked.filter(w => w.answers[n].correct);
+
+  toggleDrill('drill-q-' + n, () => `<div class="drill">
+    <h4>Question ${n} — ${wrong.length} missed it, ${right.length} got it</h4>
+    ${wrong.map(w => `<div class="walk">
+        <span class="when">${esc(dayOf(w.created_at))}</span>
+        <span class="who">${esc(w.name)}</span>
+        <span class="when">${esc(w.store_number)}${w.store_name ? ' ' + esc(w.store_name) : ''}</span>
+        <span class="missed"><div class="said">said <b>${esc(w.answers[n].said)}</b></div></span>
+        <button class="btn" onclick="openOne('${w.id}')">Open</button>
+      </div>`).join('')}
+    ${right.length ? `<div class="walk"><span class="missed">Got it right: ${
+      right.map(w => esc(w.name) + ' (' + esc(w.store_number) + ')').join(', ')}</span></div>` : ''}
+  </div>`);
+}
+
+const cssId = s => String(s).replace(/[^a-z0-9]/gi, '-');
+
 async function loadSummary(){
   const s = await fetch('/api/audits/summary?' + query()).then(r => r.json());
 
@@ -401,12 +495,13 @@ async function loadSummary(){
   // Per question: how often it is right, and what people say instead.
   document.getElementById('sumQ').innerHTML = (s.questions || []).length
     ? s.questions.map(q => `
-        <div class="q-row">
-          <div class="q-text">${esc(q.title)}${whyWrong(q)}</div>
+        <div class="q-row openable" onclick="drillQuestion(${q.n})">
+          <div class="q-text"><span class="caret">▸</span>${esc(q.title)}${whyWrong(q)}</div>
           <div class="bar ${band(q.percent)}"><span style="width:${q.percent}%"></span></div>
           <div style="text-align:right;font-weight:700;font-size:13px;">${q.percent}%
             <div class="muted" style="font-weight:400;font-size:11px;">${q.right}/${q.total}</div></div>
-        </div>`).join('')
+        </div>
+        <div id="drill-q-${q.n}"></div>`).join('')
     : '<div class="empty">Nothing to summarize yet.</div>';
 
   document.getElementById('sumRepeat').innerHTML = (s.repeats || []).length
@@ -418,8 +513,10 @@ async function loadSummary(){
 
   document.getElementById('sumCoach').innerHTML = (s.coaches || []).length
     ? `<table><thead><tr><th>Area Coach</th><th>Stores</th><th>Walks</th><th>Average</th></tr></thead><tbody>` +
-      s.coaches.map(c => `<tr><td>${esc(c.coach)}</td><td>${c.stores}</td><td>${c.responses}</td>
-        <td><span class="pill ${band(pct(c.averageScore, c.maxScore))}">${c.averageScore}/${c.maxScore}</span></td></tr>`).join('') +
+      s.coaches.map(c => `<tr class="openable" onclick="drillCoach('${esc(c.coach)}')">
+        <td><span class="caret">▸</span>${esc(c.coach)}</td><td>${c.stores}</td><td>${c.responses}</td>
+        <td><span class="pill ${band(pct(c.averageScore, c.maxScore))}">${c.averageScore}/${c.maxScore}</span></td></tr>
+        <tr><td colspan="4" style="padding:0;border:none;"><div id="drill-coach-${cssId(c.coach)}"></div></td></tr>`).join('') +
       '</tbody></table>'
     : '<div class="empty">Nothing yet.</div>';
 }
@@ -453,9 +550,11 @@ async function loadStores(){
   if (!s.stores.length){ el.className = 'empty'; el.textContent = 'Nothing yet.'; return; }
   el.className = '';
   el.innerHTML = `<table><thead><tr><th>Store</th><th>Area Coach</th><th>Walks</th><th>Average</th></tr></thead><tbody>` +
-    s.stores.map(r => `<tr><td>${esc(r.store_number)}${r.store_name ? ' <span class="muted">' + esc(r.store_name) + '</span>' : ''}</td>
+    s.stores.map(r => `<tr class="openable" onclick="drillStore('${esc(r.store_number)}')">
+      <td><span class="caret">▸</span>${esc(r.store_number)}${r.store_name ? ' <span class="muted">' + esc(r.store_name) + '</span>' : ''}</td>
       <td class="muted">${esc(r.area_coach || '—')}</td><td>${r.responses}</td>
-      <td><span class="pill ${band(pct(r.averageScore, s.maxScore))}">${r.averageScore}/${s.maxScore}</span></td></tr>`).join('') +
+      <td><span class="pill ${band(pct(r.averageScore, s.maxScore))}">${r.averageScore}/${s.maxScore}</span></td></tr>
+      <tr><td colspan="4" style="padding:0;border:none;"><div id="drill-store-${esc(r.store_number)}"></div></td></tr>`).join('') +
     '</tbody></table>';
 }
 

@@ -425,6 +425,59 @@ async function summarise(req, res) {
   };
 }
 
+// ── Everyone's answers, one question at a time ──────────────────────────────
+//
+// A percentage you cannot click into is a dead end: it says a question is
+// being missed and leaves you to guess by whom. This is the same scoped set
+// the summary is built from, laid out per person per question, so the tab
+// can open any number on it and show the walks behind it.
+//
+// Small by nature -- a round is tens of walks, not thousands -- so it goes
+// in one payload rather than a request per drill-down.
+router.get('/matrix', async (req, res) => {
+  const result = await summarise(req, res);
+  if (!result) return;
+  const { rows, assignments, graded } = result;
+
+  const seen = new Map();
+  for (const g of graded) {
+    for (const r of g.results) {
+      if (!seen.has(r.n)) seen.set(r.n, { n: r.n, title: r.title, type: r.type, points: r.points });
+    }
+  }
+
+  const label = r => {
+    if (r.type === 'hotspot') {
+      const missed = (r.hotspots || [])
+        .filter((_, i) => !(r.found || []).includes(i))
+        .map(h => h.label);
+      return missed.length ? 'Walked past: ' + missed.join(', ') : 'Found all of them';
+    }
+    const names = (r.given || []).map(i => (r.choices || [])[i]).filter(Boolean);
+    return names.length ? names.join(' · ') : 'No answer';
+  };
+
+  res.json({
+    questions: [...seen.values()].sort((a, b) => a.n - b.n),
+    responses: rows.map((row, i) => {
+      const store = assignments[row.store_number] || {};
+      return {
+        id: row.id,
+        created_at: row.created_at,
+        name: row.respondent_name,
+        store_number: row.store_number,
+        store_name: store.store_name || '',
+        area_coach: store.area_coach || '',
+        score: row.score,
+        max_score: row.max_score,
+        answers: Object.fromEntries(graded[i].results.map(r => [r.n, {
+          correct: r.correct, earned: r.earned, said: label(r),
+        }])),
+      };
+    }),
+  });
+});
+
 router.get('/summary', async (req, res) => {
   const result = await summarise(req, res);
   if (result) res.json(result.summary);
