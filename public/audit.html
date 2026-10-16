@@ -184,7 +184,9 @@
      explanation into a column about four words wide. */
   @media (max-width:430px){
     .coach{gap:7px;}
-    .adam{height:128px;}
+    /* The cheering pose is much wider than the others; without a cap on
+       the width it squeezed the explanation to three words a line. */
+    .adam{height:112px;max-width:104px;object-fit:contain;object-position:50% 0;}
     .bubble{padding:11px 12px;}
   }
 
