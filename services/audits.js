@@ -46,6 +46,7 @@ function publicForm(def) {
     id: def.id,
     title: def.title,
     description: def.description,
+    kind: def.kind || (maxScore(def) > 0 ? 'test' : 'audit'),
     totalPoints: maxScore(def),
     questions: def.questions.map(q => ({
       n: q.n,
@@ -53,6 +54,12 @@ function publicForm(def) {
       type: q.type,
       points: q.points || 0,
       required: q.required !== false,
+      // What to look for is wording, not an answer, so it goes with the form.
+      ...(q.help ? { help: q.help } : {}),
+      ...(q.type === 'scale' ? {
+        min: Number(q.min ?? 1), max: Number(q.max ?? 10), step: Number(q.step || 1),
+        minLabel: q.minLabel || '', maxLabel: q.maxLabel || '',
+      } : {}),
       ...(q.choices ? { choices: q.choices } : {}),
       ...(q.maxPhotos ? { maxPhotos: q.maxPhotos } : {}),
       // A hotspot question gets the picture and how many problems are in it.
@@ -170,6 +177,12 @@ function missingAnswers(def, answers = {}, photos = {}) {
     if (q.type === 'hotspot') {
       if (asTaps(given).length === 0) {
         missing.push({ n: q.n, message: `Question ${q.n} needs you to tap what is wrong.` });
+      }
+      continue;
+    }
+    if (q.type === 'scale') {
+      if (!Number.isFinite(Number(given))) {
+        missing.push({ n: q.n, message: `Question ${q.n} needs a number on the slider.` });
       }
       continue;
     }

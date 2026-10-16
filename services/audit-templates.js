@@ -16,7 +16,7 @@ const { getPool } = require('./db');
 
 const SEED_DIR = path.join(__dirname, '..', 'data', 'audits');
 
-const TYPES = new Set(['text', 'longtext', 'single', 'multi', 'photo', 'hotspot', 'order']);
+const TYPES = new Set(['text', 'longtext', 'single', 'multi', 'photo', 'hotspot', 'order', 'scale']);
 const CHOICE_TYPES = new Set(['single', 'multi']);
 const GRADED_TYPES = new Set(['single', 'multi', 'hotspot', 'order']);
 
@@ -167,6 +167,17 @@ function validateTemplate(def) {
       return;                       // inside forEach, so return is the skip
     }
 
+    // A slider records a judgement on a scale. It is never scored: there is no
+    // right number, which is the point of asking for one.
+    if (q.type === 'scale') {
+      const lo = Number(q.min), hi = Number(q.max), step = Number(q.step || 1);
+      if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) {
+        problems.push(`${where}: the slider needs a low number and a higher one.`);
+      } else if (!(step > 0) || (hi - lo) / step > 100) {
+        problems.push(`${where}: that step leaves too many stops on the slider.`);
+      }
+    }
+
     if (CHOICE_TYPES.has(q.type)) {
       const choices = Array.isArray(q.choices) ? q.choices : [];
       if (choices.length < 2) problems.push(`${where}: needs at least two answers to choose from.`);
@@ -205,6 +216,9 @@ function cleanTemplate(def) {
     id: String(def.id || '').trim().toLowerCase(),
     title: String(def.title || '').trim(),
     description: String(def.description || '').trim(),
+    // A test is marked and tells them how they did; an audit records what was
+    // there. Older templates carry no kind, so having points still decides it.
+    kind: def.kind === 'audit' ? 'audit' : def.kind === 'test' ? 'test' : undefined,
     questions: (def.questions || []).map((q, i) => {
       const out = {
         n: i + 1,                       // numbering always follows the order on screen
@@ -213,6 +227,18 @@ function cleanTemplate(def) {
         points: GRADED_TYPES.has(q.type) ? Number(q.points || 0) : 0,
         required: q.required !== false,
       };
+      // What to look for, shown with the question while it is still open. Not
+      // an answer, so it reaches the phone with the rest of the wording.
+      const help = String(q.help || '').trim();
+      if (help) out.help = help;
+
+      if (q.type === 'scale') {
+        out.min = Number(q.min ?? 1);
+        out.max = Number(q.max ?? 10);
+        out.step = Number(q.step || 1);
+        out.minLabel = String(q.minLabel || '').trim();
+        out.maxLabel = String(q.maxLabel || '').trim();
+      }
       if (CHOICE_TYPES.has(q.type)) {
         out.choices = (q.choices || []).map(c => String(c));
         out.correct = [...new Set((q.correct || []).map(Number))].sort((a, b) => a - b);

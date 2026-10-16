@@ -36,6 +36,19 @@
 
   .q-num{font-size:12.5px;font-weight:700;color:var(--blue);letter-spacing:.5px;text-transform:uppercase;}
   .q-title{margin:9px 0 18px;font-weight:600;font-size:19px;line-height:1.4;}
+  /* What to look for, from whoever wrote the question. Sits under the
+     wording, before the answers, because that is when it is useful. */
+  .lookfor{margin:-8px 0 17px;padding:12px 14px;border-radius:11px;background:#eef3fe;
+           border:1px solid #cddbf8;font-size:15px;line-height:1.45;color:#16325f;}
+  .lookfor b{display:block;font-size:12px;letter-spacing:.4px;text-transform:uppercase;
+           color:var(--blue);margin-bottom:3px;}
+
+  /* Slider */
+  .slider{margin:4px 0 0;}
+  .slider input[type=range]{width:100%;margin:0;accent-color:var(--blue);height:34px;}
+  .slider .ends{display:flex;justify-content:space-between;gap:10px;font-size:14px;color:var(--muted);}
+  .slider .now{text-align:center;font-size:34px;font-weight:700;line-height:1.1;margin-bottom:2px;}
+
   /* Says where the point of no return is, before they reach it. */
   .lockline{margin:14px 0 0;font-size:14px;color:var(--muted);display:flex;gap:7px;align-items:flex-start;}
   .lockline b{color:var(--ink);font-weight:600;}
@@ -305,7 +318,8 @@ function coachHtml(line, why, pose){
     <img class="adam" src="/images/adam-${which}.webp" alt="Adam">
     <div class="bubble"><span class="who">Adam</span>
       <div class="line">${esc(line)}</div>
-      ${why ? `<div class="why">${esc(why)}</div>` : ''}
+      ${[].concat(why || []).filter(Boolean)
+         .map(part => `<div class="why">${esc(part)}</div>`).join('')}
     </div></div>`;
 }
 
@@ -347,7 +361,7 @@ async function start(){
     return;
   }
   FORM = await res.json();
-  IS_TEST = FORM.questions.some(q => Number(q.points) > 0);
+  IS_TEST = FORM.kind ? FORM.kind === 'test' : FORM.questions.some(q => Number(q.points) > 0);
   STORES = await fetch('/api/audits/stores').then(r => r.json()).catch(() => []);
   document.getElementById('title').textContent = FORM.title;
   // A draft only brings back questions that were never marked; a marked one
@@ -364,12 +378,14 @@ function draw(dir){
 
   if (at < 0){
     stage.className = 'stage scrollable';
-    stage.innerHTML = (IS_TEST
-        ? coachHtml(`Hi, I'm Adam. I'll walk you through this one.`,
-            `${FORM.questions.length} questions, one at a time. Check your answer and I'll `
-            + `tell you straight away how you did and why. Take your time.`, 'hello')
-        : `<div class="intro quiet">${FORM.questions.length} questions, one at a time.</div>`)
-      + `<div class="intro">${esc(FORM.description)}</div>`;
+    stage.innerHTML = IS_TEST
+      ? coachHtml(`Hi, I'm Adam. I'll walk you through this one.`, [
+          FORM.description,
+          `${FORM.questions.length} questions, one at a time. Check your answer and I'll `
+          + `tell you straight away how you did and why. Take your time.`,
+        ], 'hello')
+      : `<div class="intro quiet">${FORM.questions.length} questions, one at a time.</div>`
+        + `<div class="intro">${esc(FORM.description)}</div>`;
     foot.style.display = 'flex';
     document.getElementById('back').style.display = 'none';
     document.getElementById('next').textContent = 'Start';
@@ -384,6 +400,7 @@ function draw(dir){
   stage.innerHTML = `<div class="slide ${dir === 'back' ? 'back' : ''}">
       <div class="q-num">Question ${at + 1}${q.points ? ' · ' + q.points + (q.points > 1 ? ' points' : ' point') : ''}</div>
       <div class="q-title">${esc(q.title)}</div>
+      ${q.help ? `<div class="lookfor"><b>What to look for</b>${esc(q.help)}</div>` : ''}
       ${body(q)}
       ${isGraded(q) && !verdict ? `<div class="lockline">✎️
         <span>Change your answer as many times as you like. <b>Checking it locks it in.</b></span></div>` : ''}
@@ -455,6 +472,19 @@ function verdictHtml(q, v){
 function body(q){
   const given = answers[q.n];
   const v = checked[q.n];
+
+  if (q.type === 'scale'){
+    const lo = Number(q.min ?? 1), hi = Number(q.max ?? 10), step = Number(q.step || 1);
+    // Starts in the middle rather than at one end, so a slider nobody moves
+    // does not quietly read as the lowest score.
+    const at = Number.isFinite(Number(given)) ? Number(given) : Math.round((lo + hi) / 2);
+    answers[q.n] = at;
+    return `<div class="slider">
+      <div class="now" id="scaleNow">${at}</div>
+      <input type="range" id="scale" min="${lo}" max="${hi}" step="${step}" value="${at}">
+      <div class="ends"><span>${esc(q.minLabel || lo)}</span><span>${esc(q.maxLabel || hi)}</span></div>
+    </div>`;
+  }
 
   if (isChoice(q)){
     const kind = q.type === 'multi' ? 'checkbox' : 'radio';
@@ -590,6 +620,17 @@ function wire(q){
         }
         say('');
       });
+    });
+    return;
+  }
+
+  if (q.type === 'scale'){
+    const bar = document.getElementById('scale');
+    const now = document.getElementById('scaleNow');
+    bar.addEventListener('input', () => {
+      answers[q.n] = Number(bar.value);
+      now.textContent = bar.value;
+      saveDraft();
     });
     return;
   }

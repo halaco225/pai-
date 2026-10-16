@@ -122,6 +122,29 @@ tr.row:hover td{background:#242831;}
 
 /* TEMPLATE EDITOR */
 .ed-bar{display:flex;align-items:center;gap:12px;background:#15171c;padding:11px 0;margin-bottom:14px;position:sticky;top:59px;z-index:198;}
+#kindAsk{display:none;position:fixed;inset:0;background:rgba(10,12,16,.72);z-index:60;
+         align-items:center;justify-content:center;padding:18px;}
+#kindAsk.on{display:flex;}
+.kind-box{background:var(--card);border:1px solid var(--border);border-radius:16px;
+          padding:20px;max-width:520px;width:100%;display:flex;flex-direction:column;gap:11px;}
+.kind-title{font-size:19px;font-weight:650;margin-bottom:3px;}
+.kind-pick{display:block;width:100%;text-align:left;background:var(--surface);color:inherit;
+           border:1.5px solid var(--border);border-radius:13px;padding:15px 16px;cursor:pointer;font:inherit;}
+.kind-pick:hover{border-color:var(--accent);background:#20242d;}
+.kind-pick b{display:block;font-size:16.5px;margin-bottom:4px;}
+.kind-pick span{display:block;color:var(--muted);font-size:14px;line-height:1.5;}
+.pic-empty{border:1.5px dashed var(--border);border-radius:12px;padding:26px;text-align:center;
+           color:var(--muted);display:flex;flex-direction:column;gap:11px;align-items:center;}
+.pic-wrap{position:relative;display:inline-block;max-width:100%;cursor:crosshair;line-height:0;}
+.pic-wrap img{max-width:100%;border-radius:10px;border:1px solid var(--border);display:block;}
+.spot{position:absolute;transform:translate(-50%,-50%);border:2.5px solid #ff4d57;border-radius:50%;
+      box-shadow:0 0 0 2px rgba(255,255,255,.55);pointer-events:none;}
+.spot i{position:absolute;top:-9px;left:-9px;width:19px;height:19px;border-radius:50%;background:#ff4d57;
+      color:#fff;font:700 11px/19px Inter,sans-serif;font-style:normal;text-align:center;}
+.spot-row{display:flex;gap:9px;align-items:flex-start;margin-bottom:9px;flex-wrap:wrap;}
+.spot-row .no{flex:none;width:26px;height:26px;border-radius:50%;background:var(--surface);
+      border:1px solid var(--border);color:var(--muted);font-size:12.5px;font-weight:700;
+      display:flex;align-items:center;justify-content:center;margin-top:9px;}
 .ed-label{display:block;font-size:12px;color:var(--muted);margin:14px 0 6px;font-weight:600;}
 .ed-label:first-of-type{margin-top:0;}
 input[type=text],textarea{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);
@@ -249,13 +272,38 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
     <div class="card" style="text-align:center;">
       <div class="card-title" style="margin-bottom:10px;">Add a question</div>
       <div class="add-row">
+        <button class="btn" onclick="addQuestion('single','yesno')">Yes / No</button>
+        <button class="btn" onclick="addQuestion('single','truefalse')">True / False</button>
         <button class="btn" onclick="addQuestion('single')">One answer</button>
         <button class="btn" onclick="addQuestion('multi')">Pick all that apply</button>
+        <button class="btn" onclick="addQuestion('scale')">Slider</button>
         <button class="btn" onclick="addQuestion('photo')">Picture</button>
+        <button class="btn" onclick="addQuestion('hotspot')">Tap what is wrong in a picture</button>
+        <button class="btn" onclick="addQuestion('order')">Put in order</button>
         <button class="btn" onclick="addQuestion('text')">Short text</button>
         <button class="btn" onclick="addQuestion('longtext')">Long text</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Asked once, before anything is typed, because it decides whether the
+     questions are worth points and whether Adam turns up. -->
+<div id="kindAsk">
+  <div class="kind-box">
+    <div class="kind-title">What are you making?</div>
+    <button class="kind-pick" onclick="startTemplate('test')">
+      <b>A test</b>
+      <span>Questions have right answers. It is marked as they go, they see why,
+            and you get scores, repeat misses and who needs a hand. Adam walks them through it.</span>
+    </button>
+    <button class="kind-pick" onclick="startTemplate('audit')">
+      <b>An audit</b>
+      <span>A record of what was actually there — answers, photos, ratings.
+            Nothing is marked and nothing is scored.</span>
+    </button>
+    <button class="btn" onclick="document.getElementById('kindAsk').style.display='none'"
+            style="margin-top:4px;">Cancel</button>
   </div>
 </div>
 
@@ -587,7 +635,8 @@ let EDITING = null;
 // What the audit was worth when it was opened, so a save can notice a drop.
 let SAVED_TOTAL = null;
 
-const TYPE_NAMES = { single:'One answer', multi:'Pick all that apply', photo:'Picture', text:'Short text', longtext:'Long text', hotspot:'Tap the picture', order:'Put in order' };
+const TYPE_NAMES = { single:'One answer', multi:'Pick all that apply', photo:'Picture', text:'Short text', longtext:'Long text', hotspot:'Tap the picture', order:'Put in order',
+                     scale:'Slider' };
 
 async function loadTemplates(){
   const list = await fetch('/api/audits/templates').then(r => r.json());
@@ -636,16 +685,26 @@ async function removeTemplate(id, title){
 }
 
 function newTemplate(){
+  document.getElementById('kindAsk').className = 'on';
+}
+
+function startTemplate(kind){
+  document.getElementById('kindAsk').className = '';
   SAVED_TOTAL = null;
-  EDITING = { id:'', title:'', description:'', version:0, questions:[
+  EDITING = { id:'', title:'', description:'', version:0, kind, questions:[
     { n:1, title:'Your first and last name', type:'text', points:0, required:true },
     { n:2, title:'Your store number', type:'text', points:0, required:true },
   ]};
-  openEditor('New audit — not saved yet');
+  openEditor(`New ${kind} — not saved yet`);
 }
+
+const isTest = () => EDITING && EDITING.kind === 'test';
 
 async function editTemplate(id){
   EDITING = await fetch('/api/audits/templates/' + encodeURIComponent(id)).then(r => r.json());
+  if (!EDITING.kind) {
+    EDITING.kind = EDITING.questions.some(q => Number(q.points) > 0) ? 'test' : 'audit';
+  }
   SAVED_TOTAL = EDITING.questions.reduce((s, q) => s + (Number(q.points) || 0), 0);
   openEditor(`Version ${EDITING.version}${EDITING.updatedBy ? ' · last edited by ' + EDITING.updatedBy : ''}`);
 }
@@ -680,15 +739,27 @@ function readHeader(){
     ? location.origin + '/audit?id=' + EDITING.id : '';
 }
 
-function addQuestion(type){
-  const q = { title:'', type, points: (type==='single'||type==='multi') ? 1 : 0, required:true };
+// preset only fills the answers in for you; it is still an ordinary
+// one-answer question afterwards, and you can edit or add to the list.
+function addQuestion(type, preset){
+  const scored = isTest() && (type==='single' || type==='multi' || type==='hotspot' || type==='order');
+  const q = { title:'', type, points: scored ? 1 : 0, required:true };
   if (type === 'single' || type === 'multi'){ q.choices = ['',''];  q.correct = []; q.explanation = ''; }
+  if (preset === 'yesno')     q.choices = ['Yes', 'No'];
+  if (preset === 'truefalse') q.choices = ['True', 'False'];
   if (type === 'photo') q.maxPhotos = 3;
+  if (type === 'scale'){ q.min = 1; q.max = 10; q.step = 1; q.minLabel = ''; q.maxLabel = ''; }
+  if (type === 'hotspot'){ q.image = ''; q.hotspots = []; q.extraTaps = 0; q.explanation = ''; }
+  if (type === 'order'){ q.steps = ['', '']; q.explanation = ''; }
   EDITING.questions.push(q);
   drawQuestions();
   const cards = document.querySelectorAll('.qcard');
   const last = cards[cards.length - 1];
-  if (last){ last.scrollIntoView({behavior:'smooth', block:'center'}); last.querySelector('textarea').focus(); }
+  if (last){
+    last.scrollIntoView({behavior:'smooth', block:'center'});
+    const first = last.querySelector('textarea');
+    if (first) first.focus();
+  }
 }
 
 function moveQuestion(i, by){
@@ -720,6 +791,13 @@ function changeType(i, type){
     q.points = 0;
   }
   if (type === 'photo' && !q.maxPhotos) q.maxPhotos = 3;
+  if (type === 'scale'){
+    if (q.min == null) q.min = 1;
+    if (q.max == null) q.max = 10;
+    if (!q.step) q.step = 1;
+  } else {
+    delete q.min; delete q.max; delete q.step; delete q.minLabel; delete q.maxLabel;
+  }
   if (type === 'order'){
     q.steps = q.steps && q.steps.length ? q.steps : ['', ''];
     if (q.explanation == null) q.explanation = '';
@@ -751,6 +829,23 @@ function removeChoice(i, c){
   drawQuestions();
 }
 
+// What to look for: the note the walker sees with the question, before they
+// answer. Every type can carry one, which is why it lives in one place.
+function helpField(q, i){
+  return `<label class="ed-label">What to look for
+      <span class="muted">— shown with the question, before they answer</span></label>
+    <textarea rows="2" placeholder="Open every cooler door. Check the corners, not the middle…"
+      oninput="EDITING.questions[${i}].help=this.value">${esc(q.help || '')}</textarea>`;
+}
+
+// Points only make sense on a test. On an audit there is nothing to score,
+// so the box is not there to be wondered about.
+function pointsField(q, i, scorable){
+  if (!isTest() || !scorable) return '<span class="muted" style="font-size:12.5px;">Not scored</span>';
+  return `<label>Points <input type="number" min="0" max="100" value="${q.points || 0}"
+    oninput="EDITING.questions[${i}].points=Number(this.value); updatePoints()"></label>`;
+}
+
 function drawQuestions(){
   readHeader();
   const wrap = document.getElementById('edQuestions');
@@ -762,7 +857,8 @@ function drawQuestions(){
     const kind = q.type === 'multi' ? 'checkbox' : 'radio';
 
     const choices = !graded ? '' : `
-      <label class="ed-label">Answers <span class="muted">— tick the right one${q.type==='multi' ? 's' : ''}</span></label>
+      <label class="ed-label">Answers ${isTest()
+        ? `<span class="muted">— tick the right one${q.type==='multi' ? 's' : ''}</span>` : ''}</label>
       ${q.choices.map((c, ci) => `
         <div class="choice">
           <label><input type="${kind}" name="correct${i}" ${(q.correct||[]).includes(ci) ? 'checked' : ''}
@@ -781,6 +877,26 @@ function drawQuestions(){
       <input type="number" min="1" max="10" value="${q.maxPhotos || 3}"
         oninput="EDITING.questions[${i}].maxPhotos=Number(this.value)">`;
 
+    const scale = q.type !== 'scale' ? '' : `
+      <label class="ed-label">The scale</label>
+      <div class="choice">
+        <input type="number" value="${q.min ?? 1}" title="Lowest"
+          oninput="EDITING.questions[${i}].min=Number(this.value)">
+        <span class="muted">to</span>
+        <input type="number" value="${q.max ?? 10}" title="Highest"
+          oninput="EDITING.questions[${i}].max=Number(this.value)">
+        <span class="muted">in steps of</span>
+        <input type="number" min="1" value="${q.step || 1}" title="Step"
+          oninput="EDITING.questions[${i}].step=Number(this.value)">
+      </div>
+      <label class="ed-label">What each end means <span class="muted">— optional</span></label>
+      <div class="choice">
+        <input type="text" value="${esc(q.minLabel || '')}" placeholder="Low end, e.g. Not at all"
+          oninput="EDITING.questions[${i}].minLabel=this.value">
+        <input type="text" value="${esc(q.maxLabel || '')}" placeholder="High end, e.g. Perfect"
+          oninput="EDITING.questions[${i}].maxLabel=this.value">
+      </div>`;
+
     return `<div class="qcard" id="qcard${i}">
       <div class="qhead">
         <span class="qnum">QUESTION ${i + 1}</span>
@@ -796,11 +912,10 @@ function drawQuestions(){
       </div>
       <textarea rows="2" placeholder="What are you asking?"
         oninput="EDITING.questions[${i}].title=this.value; updatePoints()">${esc(q.title)}</textarea>
-      ${choices}${photo}
+      ${helpField(q, i)}
+      ${choices}${photo}${scale}
       <div class="qfoot">
-        ${graded ? `<label>Points <input type="number" min="0" max="100" value="${q.points || 0}"
-          oninput="EDITING.questions[${i}].points=Number(this.value); updatePoints()"></label>`
-        : '<span class="muted" style="font-size:12.5px;">Not scored</span>'}
+        ${pointsField(q, i, graded)}
         <label><input type="checkbox" ${q.required !== false ? 'checked' : ''}
           onchange="EDITING.questions[${i}].required=this.checked"> Must be answered</label>
       </div>
@@ -835,6 +950,7 @@ function orderCard(q, i){
     </div>
     <textarea rows="2" placeholder="What are you asking?"
       oninput="EDITING.questions[${i}].title=this.value">${esc(q.title)}</textarea>
+    ${helpField(q, i)}
 
     <label class="ed-label">The steps, in the right order
       <span class="muted">— they reach the phone shuffled, and get tapped back into this order</span></label>
@@ -853,8 +969,7 @@ function orderCard(q, i){
     <textarea rows="2" oninput="EDITING.questions[${i}].explanation=this.value">${esc(q.explanation || '')}</textarea>
 
     <div class="qfoot">
-      <label>Points <input type="number" min="0" max="100" value="${q.points || 0}"
-        oninput="EDITING.questions[${i}].points=Number(this.value); updatePoints()"></label>
+      ${pointsField(q, i, true)}
       <label><input type="checkbox" ${q.required !== false ? 'checked' : ''}
         onchange="EDITING.questions[${i}].required=this.checked"> Must be answered</label>
       <span class="muted" style="font-size:12.5px;">All ${steps.length} in place to score.</span>
@@ -880,8 +995,47 @@ function addStep(i){
   drawQuestions();
 }
 
+// A tap-the-picture question, built here rather than carried through.
+//
+// The picture is kept in the template as a data URL. That sounds heavy, but
+// it is one shrunk webp per question and it saves a public bucket, an upload
+// endpoint and a second thing to back up — and Render's disk does not survive
+// a restart, so a file written there would vanish anyway.
+//
+// Spots are placed by clicking the picture. Everything is a percentage of the
+// picture, so it lines up whatever size the phone draws it at.
 function hotspotCard(q, i){
   const spots = q.hotspots || [];
+  const picture = !q.image
+    ? `<div class="pic-empty">
+         <div>No picture yet.</div>
+         <button class="btn primary" onclick="pickHotspotImage(${i})">Choose a picture</button>
+       </div>`
+    : `<div class="pic-wrap" id="pic${i}" onclick="placeSpot(event, ${i})" title="Click what is wrong">
+         <img src="${esc(q.image)}" alt="">
+         ${spots.map((h, si) => `<span class="spot" style="
+             left:${h.x}%;top:${h.y}%;width:${(h.rx || 6) * 2}%;height:${(h.ry || 6) * 2}%;
+           "><i>${si + 1}</i></span>`).join('')}
+       </div>
+       <div class="muted" style="font-size:12.5px;margin-top:7px;">
+         Click the picture to mark something wrong.
+         <button class="btn" style="margin-left:8px;" onclick="pickHotspotImage(${i})">Replace the picture</button>
+       </div>`;
+
+  const list = spots.map((h, si) => `
+    <div class="spot-row">
+      <span class="no">${si + 1}</span>
+      <div style="flex:1;min-width:200px;">
+        <input type="text" value="${esc(h.label)}" placeholder="What is wrong here?"
+          oninput="EDITING.questions[${i}].hotspots[${si}].label=this.value">
+        <textarea rows="2" style="margin-top:6px;" placeholder="Why it matters — shown after they submit"
+          oninput="EDITING.questions[${i}].hotspots[${si}].why=this.value">${esc(h.why || '')}</textarea>
+      </div>
+      <button class="icon-btn" onclick="sizeSpot(${i},${si},-1)" title="Smaller target">−</button>
+      <button class="icon-btn" onclick="sizeSpot(${i},${si},1)" title="Bigger target">+</button>
+      <button class="icon-btn danger" onclick="removeSpot(${i},${si})" title="Remove">×</button>
+    </div>`).join('');
+
   return `<div class="qcard">
     <div class="qhead">
       <span class="qnum">QUESTION ${i + 1}</span>
@@ -889,31 +1043,100 @@ function hotspotCard(q, i){
       <div class="qtools">
         <button class="icon-btn" onclick="moveQuestion(${i},-1)" title="Move up">↑</button>
         <button class="icon-btn" onclick="moveQuestion(${i},1)" title="Move down">↓</button>
-        <button class="icon-btn danger" onclick="deleteQuestion(${i})" title="Delete">🗑</button>
+        <button class="icon-btn danger" onclick="deleteQuestion(${i})" title="Delete">\U0001F5D1</button>
       </div>
     </div>
-    <textarea rows="2" placeholder="What are you asking?"
+    <textarea rows="2" placeholder="What are you asking? e.g. Tap everything that is wrong in this picture."
       oninput="EDITING.questions[${i}].title=this.value">${esc(q.title)}</textarea>
-    <div style="display:flex;gap:14px;margin-top:12px;flex-wrap:wrap;align-items:flex-start;">
-      <img src="${esc(q.image)}" alt="" style="width:220px;border-radius:9px;border:1px solid var(--border);">
-      <div style="flex:1;min-width:220px;">
-        <div class="muted" style="font-size:12.5px;font-weight:700;letter-spacing:.4px;margin-bottom:7px;">
-          ${spots.length} THINGS TO FIND · ${spots.length + (q.extraTaps || 0)} TAPS ALLOWED</div>
-        <ol style="margin-left:17px;font-size:13px;line-height:1.7;">
-          ${spots.map(h => `<li>${esc(h.label)}</li>`).join('')}
-        </ol>
-      </div>
-    </div>
+    ${helpField(q, i)}
+
+    <label class="ed-label">The picture</label>
+    ${picture}
+
+    <label class="ed-label">What is wrong in it
+      <span class="muted">— ${spots.length} to find, ${spots.length + (q.extraTaps || 0)} taps allowed</span></label>
+    ${list || '<div class="muted" style="font-size:13.5px;">Nothing marked yet.</div>'}
+
+    <label class="ed-label">Spare taps <span class="muted">— wrong guesses they are allowed before they run out</span></label>
+    <input type="number" min="0" max="20" value="${q.extraTaps || 0}" style="max-width:120px;"
+      oninput="EDITING.questions[${i}].extraTaps=Number(this.value)">
+
     <label class="ed-label">Why — shown after they submit</label>
     <textarea rows="2" oninput="EDITING.questions[${i}].explanation=this.value">${esc(q.explanation || '')}</textarea>
     <div class="qfoot">
-      <label>Points <input type="number" min="0" max="100" value="${q.points || 0}"
-        oninput="EDITING.questions[${i}].points=Number(this.value); updatePoints()"></label>
+      ${pointsField(q, i, true)}
       <label><input type="checkbox" ${q.required !== false ? 'checked' : ''}
         onchange="EDITING.questions[${i}].required=this.checked"> Must be answered</label>
-      <span class="muted" style="font-size:12.5px;">The picture and its spots are kept as they are.</span>
     </div>
   </div>`;
+}
+
+// Click anywhere on the picture to mark something wrong there.
+function placeSpot(e, i){
+  if (e.target.closest('.spot')) return;          // clicking a mark is not a new one
+  const box = document.getElementById('pic' + i).getBoundingClientRect();
+  const x = ((e.clientX - box.left) / box.width) * 100;
+  const y = ((e.clientY - box.top) / box.height) * 100;
+  const q = EDITING.questions[i];
+  (q.hotspots = q.hotspots || []).push({
+    x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10,
+    rx: 6, ry: 6, label: '', why: '',
+  });
+  drawQuestions();
+  const rows = document.querySelectorAll('.spot-row');
+  if (rows.length) rows[rows.length - 1].querySelector('input').focus();
+}
+
+function sizeSpot(i, si, by){
+  const h = EDITING.questions[i].hotspots[si];
+  h.rx = Math.min(30, Math.max(2, (h.rx || 6) + by));
+  h.ry = Math.min(30, Math.max(2, (h.ry || 6) + by));
+  drawQuestions();
+}
+
+function removeSpot(i, si){
+  EDITING.questions[i].hotspots.splice(si, 1);
+  drawQuestions();
+}
+
+// Shrunk here rather than uploaded whole: a phone photo is several megabytes
+// and none of that detail survives being looked at on a phone anyway.
+function pickHotspotImage(i){
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    try {
+      EDITING.questions[i].image = await shrinkToDataUrl(file, 1400);
+      drawQuestions();
+    } catch (err) {
+      alert('That picture could not be read. Try a JPEG or PNG.');
+    }
+  };
+  input.click();
+}
+
+function shrinkToDataUrl(file, maxSide){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * scale);
+        c.height = Math.round(img.height * scale);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/webp', 0.78));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function updatePoints(){

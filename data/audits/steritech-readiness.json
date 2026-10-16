@@ -45,19 +45,19 @@
     },
     {
       "n": 5,
-      "title": "You find a cracked floor tile and a broken ceiling tile. A work order was put in last week, but it is still not fixed on audit day. Does the store lose points?",
+      "title": "Where must you fill the fry basket with wings before dropping them?",
       "type": "single",
       "points": 1,
       "choices": [
-        "No, because a work order was put in.",
-        "Yes. The auditor grades what they see that day. A work order does not save the points.",
-        "No. Repairs are the landlord's job.",
-        "No. Broken stuff isn't graded."
+        "Over the sink",
+        "On top of the freezer lid",
+        "Over the sheet pan at the fry prep station",
+        "Over the fryer so crumbs fall into the oil"
       ],
       "correct": [
-        1
+        2
       ],
-      "explanation": "The auditor grades what is broken on audit day. Repairs can take weeks, so report broken tiles, peeling walls, rusty shelves and damaged vents the same day you see them, then keep following up.",
+      "explanation": "Over the sheet pan at the fry prep station, so whatever falls lands somewhere you can clean. Over the fryer it goes in the oil, over the sink or the freezer lid it goes everywhere.",
       "required": true
     },
     {
