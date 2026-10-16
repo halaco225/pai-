@@ -180,6 +180,15 @@
               animation:fall linear forwards;}
   @keyframes fall{to{transform:translateY(106vh) rotate(760deg);}}
 
+  /* On a phone his head and the bubble padding were squeezing the
+     explanation into a column about four words wide. */
+  @media (max-width:430px){
+    .coach{gap:9px;}
+    .adam{width:52px;height:52px;border-width:2.5px;}
+    .bubble{padding:11px 12px;}
+    .bubble::before{top:17px;}
+  }
+
   @media (prefers-reduced-motion: reduce){
     .adam,.coach.cheer .adam{animation:none;}
   }
