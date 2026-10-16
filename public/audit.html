@@ -332,8 +332,10 @@ function verdictHtml(q, v){
   }
 
   const right = (v.correctChoices || []).map(i => q.choices[i]).join(' · ');
+  // Part marks on a pick-all: say what they got, or "Not quite" reads as zero.
+  const part = (!v.correct && v.earned > 0) ? ` — ${v.earned} of ${v.points}` : '';
   return `<div class="verdict ${v.correct ? 'ok' : 'no'}">
-    <div class="head">${v.correct ? '✔ Right' : '✘ Not quite'}</div>
+    <div class="head">${v.correct ? '✔ Right' : '✘ Not quite' + part}</div>
     ${v.correct ? '' : `<div class="answer">Right answer: ${esc(right)}</div>`}
     <div class="why">${esc(v.explanation)}</div></div>`;
 }
@@ -920,7 +922,8 @@ function showResults(data){
     return `<div class="r ${r.correct ? '' : 'wrong'}">
       <div class="q-num">Question ${r.n}</div>
       <div class="q-title" style="font-size:17px;margin:7px 0 11px;">${esc(q.title)}</div>
-      <div><span class="mark ${r.correct ? 'ok' : 'no'}">${r.correct ? '✔ You got it right' : '✘ Not quite'}</span></div>
+      <div><span class="mark ${r.correct ? 'ok' : 'no'}">${r.correct ? '✔ You got it right'
+        : '✘ Not quite' + (r.earned > 0 ? ` — ${r.earned} of ${r.points}` : '')}</span></div>
       <div class="quiet" style="margin-top:8px">You said: ${esc(names(q, r.given) || 'nothing')}</div>
       <div style="margin-top:4px"><b>Right answer:</b> ${esc(names(q, r.correctChoices))}</div>
       <div class="why">${esc(r.explanation)}</div>

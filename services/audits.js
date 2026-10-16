@@ -187,9 +187,29 @@ function missingAnswers(def, answers = {}, photos = {}) {
 }
 
 /**
- * Grade a submission. Single and multi are all-or-nothing: a multi-select is
- * only right when the picked set is exactly the correct set, the same way the
- * Microsoft Forms quiz this replaces scored it. A partial pick earns 0.
+ * What a pick-all question earns. Each right box ticked is worth its share of
+ * the points; each wrong one cancels its share of the wrong boxes, so ticking
+ * everything still earns nothing. Never below zero.
+ *
+ * "Right" stays exact — a near miss is still a miss in the report — but the
+ * walk no longer scores zero for getting six of seven.
+ */
+function choiceScore(q, given) {
+  const right = q.correct || [];
+  const points = q.points || 0;
+  if (!right.length || !points) return 0;
+
+  const wrongPool = (q.choices || []).length - right.length;
+  const hit = given.filter(i => right.includes(i)).length;
+  const miss = given.filter(i => !right.includes(i)).length;
+
+  const share = hit / right.length - (wrongPool ? miss / wrongPool : 0);
+  return Math.max(0, Math.round(share * points * 10) / 10);
+}
+
+/**
+ * Grade a submission. A pick-all earns per box (see choiceScore); a hotspot
+ * and an order question are still all-or-nothing.
  */
 function grade(def, answers = {}) {
   let score = 0;
@@ -215,12 +235,6 @@ function grade(def, answers = {}) {
       continue;
     }
 
-    if (q.type === 'order') {
-      if (asIndexes(given).length < (q.steps || []).length) {
-        missing.push({ n: q.n, message: `Question ${q.n} needs every step put in order.` });
-      }
-      continue;
-    }
     if (q.type === 'hotspot') {
       const taps = asTaps(answers[q.n]);
       const m = matchTaps(q, taps);
@@ -246,7 +260,7 @@ function grade(def, answers = {}) {
 
     const given = asIndexes(answers[q.n]);
     const correct = sameSet(given, q.correct || []);
-    const earned = correct ? (q.points || 0) : 0;
+    const earned = choiceScore(q, given);
     score += earned;
 
     results.push({
@@ -263,7 +277,8 @@ function grade(def, answers = {}) {
     });
   }
 
-  return { score, maxScore: maxScore(def), results };
+  // Part marks make fractions; one decimal, and no float dust in the total.
+  return { score: Math.round(score * 10) / 10, maxScore: maxScore(def), results };
 }
 
 /**
@@ -317,10 +332,13 @@ function checkOne(def, n, given) {
   return {
     n: q.n,
     correct: sameSet(picked, q.correct || []),
+    earned: choiceScore(q, picked),
     correctChoices: q.correct,
     explanation: q.explanation,
     points: q.points || 0,
   };
 }
 
-module.exports = { publicForm, grade, missingAnswers, maxScore, checkOne, matchTaps, shuffle, isScored };
+module.exports = {
+  publicForm, grade, missingAnswers, maxScore, checkOne, matchTaps, shuffle, isScored, choiceScore,
+};

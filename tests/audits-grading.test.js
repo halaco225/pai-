@@ -59,12 +59,16 @@ describe('grade', () => {
     expect(grade(def, { 3: [0] }).score).toBe(0);
   });
 
-  test('multi-select needs the exact set', () => {
-    // Q6 is worth 1, correct = [0,1,2].
+  test('multi-select pays per box, and ticking everything pays nothing', () => {
+    // Q6 is worth 1, correct = [0,1,2] out of 4 choices.
     expect(grade(def, { 6: [0, 1, 2] }).score).toBe(1);
-    expect(grade(def, { 6: [0, 1] }).score).toBe(0);       // partial earns nothing
-    expect(grade(def, { 6: [0, 1, 2, 3] }).score).toBe(0); // one extra earns nothing
-    expect(grade(def, { 6: [2, 0, 1] }).score).toBe(1);    // order does not matter
+    expect(grade(def, { 6: [2, 0, 1] }).score).toBe(1);      // order does not matter
+    expect(grade(def, { 6: [0, 1] }).score).toBe(0.7);       // two of three
+    expect(grade(def, { 6: [0, 1, 2, 3] }).score).toBe(0);   // the one wrong box cancels
+    expect(grade(def, { 6: [3] }).score).toBe(0);            // never below zero
+
+    // The full set is still the only "right", so the report keeps its signal.
+    expect(grade(def, { 6: [0, 1] }).results.find(r => r.n === 6).correct).toBe(false);
   });
 
   test('a perfect walk scores 23', () => {
