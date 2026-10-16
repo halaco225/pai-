@@ -146,6 +146,44 @@
   .verdict .answer{margin-top:9px;font-weight:600;}
   .verdict .why{margin-top:9px;font-size:15.5px;line-height:1.5;}
 
+  /* ── Adam ───────────────────────────────────────────────────────────────
+     The guide for every walk. He opens the audit, cheers a right answer and
+     turns up with the explanation when one is wrong. One picture; the mood
+     comes from what he says and how he moves. */
+  .coach{display:flex;gap:12px;align-items:flex-start;margin:0 0 18px;}
+  .verdict .coach{margin:13px 0 0;}
+  .adam{flex:none;width:64px;height:64px;border-radius:50%;object-fit:cover;object-position:50% 12%;
+        border:3px solid #fff;background:#fff;box-shadow:0 3px 11px rgba(16,24,40,.2);
+        animation:adamIn .34s cubic-bezier(.2,1.5,.5,1) both;}
+  .coach.cheer .adam{animation:adamIn .34s cubic-bezier(.2,1.5,.5,1) both,
+                               adamCheer .62s .3s ease-in-out 2;}
+  .bubble{position:relative;flex:1;min-width:0;background:#fff;border:1.5px solid var(--line);
+          border-radius:14px;padding:12px 15px;font-size:15.5px;line-height:1.5;
+          box-shadow:0 2px 7px rgba(16,24,40,.06);}
+  .bubble::before{content:'';position:absolute;left:-8px;top:21px;width:14px;height:14px;background:#fff;
+          border-left:1.5px solid var(--line);border-bottom:1.5px solid var(--line);transform:rotate(45deg);}
+  .bubble .who{display:block;font-weight:700;font-size:13px;color:var(--blue);
+          letter-spacing:.3px;margin-bottom:2px;}
+  .bubble .line{font-weight:600;}
+  .bubble .why{margin-top:7px;color:var(--muted);font-size:15px;}
+  .verdict.ok .bubble,.verdict.ok .bubble::before{border-color:var(--green);}
+  .verdict.no .bubble,.verdict.no .bubble::before{border-color:var(--red);}
+  @keyframes adamIn{from{opacity:0;transform:scale(.4) rotate(-14deg);}to{opacity:1;transform:none;}}
+  @keyframes adamCheer{0%,100%{transform:none;}
+                       25%{transform:translateY(-10px) rotate(-8deg);}
+                       50%{transform:translateY(0) rotate(0);}
+                       75%{transform:translateY(-6px) rotate(7deg);}}
+
+  /* Thrown over everything for a second when they get one right. */
+  .confetti{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:40;}
+  .confetti i{position:absolute;top:-16px;width:9px;height:15px;border-radius:2px;
+              animation:fall linear forwards;}
+  @keyframes fall{to{transform:translateY(106vh) rotate(760deg);}}
+
+  @media (prefers-reduced-motion: reduce){
+    .adam,.coach.cheer .adam{animation:none;}
+  }
+
   .foot{flex:none;padding:12px 16px calc(14px + env(safe-area-inset-bottom,0px));
         background:#fff;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center;}
   button.go{flex:1;padding:17px;font:inherit;font-weight:700;font-size:17px;color:#fff;background:var(--blue);
@@ -227,6 +265,53 @@ const isChoice = q => q.type === 'single' || q.type === 'multi';
 // recorded — no Check, no verdict, straight on to the next one.
 const isGraded = q => (isChoice(q) || q.type === 'hotspot' || q.type === 'order') && q.points > 0;
 
+// ── Adam ────────────────────────────────────────────────────────────────────
+// He says the same kind of thing every time, in different words, so twenty
+// questions do not read like twenty copies of one sentence. The line is picked
+// off the question number, not at random, so it does not change under them
+// when the screen redraws.
+const ADAM_YES  = ['Nailed it.', 'That is the one.', 'Dead right.', 'Spot on.',
+                   'You know your stuff.', 'Textbook.'];
+const ADAM_PART = ['Close — part marks for that one.', 'Nearly. You missed one.',
+                   'Most of it. Have a read.'];
+const ADAM_NO   = ['Not quite. Here is why.', 'Miss — and this one is worth knowing.',
+                   'Not this time. Read this bit.', 'Nope. This is the one people get caught on.'];
+const adamSay = (lines, n) => lines[Math.abs(Number(n) || 0) % lines.length];
+
+function coachHtml(line, why, cheer){
+  return `<div class="coach ${cheer ? 'cheer' : ''}">
+    <img class="adam" src="/images/adam.png" alt="Adam">
+    <div class="bubble"><span class="who">Adam</span>
+      <div class="line">${esc(line)}</div>
+      ${why ? `<div class="why">${esc(why)}</div>` : ''}
+    </div></div>`;
+}
+
+// What Adam says about a marked question, and the explanation under it.
+function coachVerdict(v, n){
+  const line = v.correct ? adamSay(ADAM_YES, n)
+             : v.earned > 0 ? adamSay(ADAM_PART, n)
+             : adamSay(ADAM_NO, n);
+  return coachHtml(line, v.explanation, v.correct);
+}
+
+function celebrate(){
+  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const box = document.createElement('div');
+  box.className = 'confetti';
+  const colours = ['#0049C9', '#1CB145', '#FFC400', '#D91823', '#7B3FE4', '#00B5D8'];
+  for (let i = 0; i < 26; i++){
+    const bit = document.createElement('i');
+    bit.style.left = (Math.random() * 100) + 'vw';
+    bit.style.background = colours[i % colours.length];
+    bit.style.animationDuration = (1.1 + Math.random() * 0.9) + 's';
+    bit.style.animationDelay = (Math.random() * 0.35) + 's';
+    box.appendChild(bit);
+  }
+  document.body.appendChild(box);
+  setTimeout(() => box.remove(), 2800);
+}
+
 // Draft save/restore. Pictures cannot be saved, so only answers come back.
 function saveDraft(){ try{ localStorage.setItem(DRAFT_KEY, JSON.stringify(answers)); }catch(e){} }
 function loadDraft(){ try{ return JSON.parse(localStorage.getItem(DRAFT_KEY) || '{}'); }catch(e){ return {}; } }
@@ -256,10 +341,11 @@ function draw(dir){
 
   if (at < 0){
     stage.className = 'stage scrollable';
-    stage.innerHTML = `<div class="intro">${esc(FORM.description)}</div>
-      <div class="intro quiet">${FORM.questions.length} questions, one at a time.
-        Scored questions are marked as soon as you check them, so you find out
-        there and then — and you can read why before moving on.</div>`;
+    stage.innerHTML = coachHtml(
+        `Hi, I'm Adam. I'll walk you through this one.`,
+        `${FORM.questions.length} questions, one at a time. Check your answer and I'll `
+        + `tell you straight away how you did and why. Take your time.`)
+      + `<div class="intro">${esc(FORM.description)}</div>`;
     foot.style.display = 'flex';
     document.getElementById('back').style.display = 'none';
     document.getElementById('next').textContent = 'Start';
@@ -310,7 +396,7 @@ function verdictHtml(q, v){
     return `<div class="verdict ${v.correct ? 'ok' : 'no'}">
       <div class="head">${v.correct ? '\u2714 That is the order' : '\u2718 ' + inPlace + ' of ' + steps.length + ' in the right place'}</div>
       ${v.correct ? '' : '<div class="answer">The right order is numbered above.</div>'}
-      <div class="why">${esc(v.explanation)}</div></div>`;
+      ${coachVerdict(v, q.n)}</div>`;
   }
 
   if (q.type === 'hotspot'){
@@ -327,7 +413,7 @@ function verdictHtml(q, v){
     return `<div class="verdict ${v.correct ? 'ok' : 'no'}">
       <div class="head">${v.correct ? '✔ You found all ' + all : '✘ You found ' + got + ' of ' + all}</div>
       ${v.correct ? '' : '<div class="answer">The ones circled in red are what you walked past.</div>'}
-      <div class="why">${esc(v.explanation)}</div></div>
+      ${coachVerdict(v, q.n)}</div>
       <div class="findings">${list}</div>`;
   }
 
@@ -337,7 +423,7 @@ function verdictHtml(q, v){
   return `<div class="verdict ${v.correct ? 'ok' : 'no'}">
     <div class="head">${v.correct ? '✔ Right' : '✘ Not quite' + part}</div>
     ${v.correct ? '' : `<div class="answer">Right answer: ${esc(right)}</div>`}
-    <div class="why">${esc(v.explanation)}</div></div>`;
+    ${coachVerdict(v, q.n)}</div>`;
 }
 
 function body(q){
@@ -760,6 +846,7 @@ async function check(q){
   // of the screen. Bring it up rather than leaving them to find it.
   const panel = document.querySelector('.verdict');
   if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (checked[q.n] && checked[q.n].correct) celebrate();
   return true;
 }
 
@@ -935,13 +1022,21 @@ function showResults(data){
   setProgress(1, 'Finished');
   const stage = document.getElementById('stage');
   stage.className = 'stage scrollable';
+  // Adam signs off on how it went, and means it either way.
+  const share = data.maxScore ? data.score / data.maxScore : 1;
+  const signOff = share >= 0.9 ? 'That is a strong walk. Nice work.'
+                : share >= 0.7 ? 'Good walk. Read the ones you missed and you have got it.'
+                : 'Worth another look at the ones below — that is what they are for.';
+
   stage.innerHTML = `
     <div class="sent">✔ Sent. Your answers and pictures are in.
       <span>Nothing else to do — you can close this page. What is below is yours to read.</span></div>
     <div class="score">You got <b>${data.score} out of ${data.maxScore}</b></div>
+    ${coachHtml(signOff, 'Thanks for walking it. See you on the next one.', share >= 0.9)}
     ${blocks}
     <div class="intro"><b>Fix what you found before the audit.</b> Your manager will see your photos.</div>`;
   stage.scrollTop = 0;
+  if (share >= 0.9) celebrate();
 }
 
 start();
