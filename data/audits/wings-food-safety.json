@@ -1,0 +1,169 @@
+{
+  "id": "wings-food-safety",
+  "title": "Wings Food Safety Quiz",
+  "description": "Handling raw wings: hand washing, the Food Safety Mitt, the fryer process, the blue towel and keeping raw away from ready-to-eat. Answer each question, then check it. You will see straight away whether you got it right and why.",
+  "questions": [
+    { "n": 1, "title": "Your first and last name", "type": "text", "points": 0, "required": true },
+    { "n": 2, "title": "Your store number", "type": "text", "points": 0, "required": true },
+    {
+      "n": 3,
+      "title": "What is the very first step before handling any raw wing product?",
+      "type": "single",
+      "points": 10,
+      "choices": [
+        "Grab the fry basket",
+        "Put on gloves",
+        "Wash and sanitize hands at the dedicated hand sink",
+        "Pull wings from freezer"
+      ],
+      "correct": [2],
+      "explanation": "Hands first, at the hand sink, every time. Gloves go on after — a glove pulled over an unwashed hand just moves the germs somewhere you cannot see them.",
+      "required": true
+    },
+    {
+      "n": 4,
+      "title": "What is the purpose of the Food Safety Mitt when grabbing wings?",
+      "type": "single",
+      "points": 10,
+      "choices": [
+        "To protect your hand from the cold freezer",
+        "To keep your hands dry",
+        "To keep the wings from thawing",
+        "To maintain plastic-to-plastic contact with the bag and prevent bare-hand contact with raw chicken"
+      ],
+      "correct": [3],
+      "explanation": "It is not for the cold. It keeps plastic on plastic so your skin never touches raw chicken, which is how raw chicken ends up on everything you touch next.",
+      "required": true
+    },
+    {
+      "n": 5,
+      "title": "When getting wings out of the freezer, you should use the hand that has the Mitt on it to open the freezer door.",
+      "type": "single",
+      "points": 10,
+      "choices": ["True", "False"],
+      "correct": [1],
+      "explanation": "The other hand opens the door. The mitt hand is the one going near the raw product — put it on the door handle and you have just made the handle a raw chicken surface for everybody after you.",
+      "required": true
+    },
+    {
+      "n": 6,
+      "title": "After using the Food Safety Mitt to remove wings from the freezer, what do you do with it?",
+      "type": "single",
+      "points": 10,
+      "choices": [
+        "Hang it back up for the next cook",
+        "Shake it off and discard it along with the plastic bag",
+        "Rinse it and reuse it",
+        "Set it on the prep station"
+      ],
+      "correct": [1],
+      "explanation": "Shake it off and bin it with the bag. It touched raw chicken, so it is finished — hanging it back up or rinsing it carries that straight to the next person.",
+      "required": true
+    },
+    {
+      "n": 7,
+      "title": "Which hand do you use to grab wings when wearing the Food Safety Mitt?",
+      "type": "single",
+      "points": 10,
+      "choices": [
+        "Your non-dominant hand only",
+        "Either hand — it does not matter",
+        "Both hands",
+        "The hand with the mitt on it"
+      ],
+      "correct": [3],
+      "explanation": "Only the mitt hand goes near the wings. The whole point is one hand stays clean for doors, handles and everything else.",
+      "required": true
+    },
+    {
+      "n": 8,
+      "title": "Where must you fill the fry basket with wings before dropping them?",
+      "type": "single",
+      "points": 10,
+      "choices": [
+        "Over the sink",
+        "On top of the freezer lid",
+        "Over the sheet pan at the fry prep station",
+        "Over the fryer so crumbs fall into the oil"
+      ],
+      "correct": [2],
+      "explanation": "Over the sheet pan at the fry prep station, so whatever falls lands somewhere you can clean. Over the fryer it goes in the oil, over the sink or the freezer lid it goes everywhere.",
+      "required": true
+    },
+    {
+      "n": 9,
+      "title": "If a cook is NOT using the Food Safety Mitt process, when must they wash and sanitize hands and wipe down the area?",
+      "type": "single",
+      "points": 10,
+      "choices": [
+        "Every 30 minutes on a set schedule",
+        "Only at the end of the batch",
+        "Only if they touched their face",
+        "Before product finishes cooking AND before moving to any non-prep area"
+      ],
+      "correct": [3],
+      "explanation": "Before the product is out of the fryer, and again before going anywhere else in the kitchen. Waiting for the end of the batch means raw chicken has been on your hands the whole time.",
+      "required": true
+    },
+    {
+      "n": 10,
+      "title": "What colour sanitizer towel is used to clean the raw prep area, and where can it be used?",
+      "type": "single",
+      "points": 10,
+      "choices": [
+        "Green towel — used on the fryer and prep station",
+        "Any colour towel — colour does not matter",
+        "Blue towel — used on raw prep areas only",
+        "Blue towel — used anywhere in the kitchen"
+      ],
+      "correct": [2],
+      "explanation": "Blue, and only on raw prep areas. The colour is the whole system — it is how anyone can see at a glance that a towel has been on raw chicken.",
+      "required": true
+    },
+    {
+      "n": 11,
+      "title": "Which surfaces must be wiped with the blue sanitizer towel during the sanitization step?",
+      "type": "single",
+      "points": 10,
+      "choices": [
+        "Fryer, fryer control panel, fry basket handle, bump bar pad, prep station, and freezer door handle",
+        "Fryer and freezer door handle only",
+        "Just the prep station surface",
+        "Prep station and sink area"
+      ],
+      "correct": [0],
+      "explanation": "All six. The ones people forget are the control panel and the bump bar pad, because they are touched with the same hands and never look dirty.",
+      "required": true
+    },
+    {
+      "n": 12,
+      "title": "How often must the raw prep area be wiped down during continuous use?",
+      "type": "single",
+      "points": 10,
+      "choices": [
+        "Every two hours, or more often as build-up occurs",
+        "Every 30 minutes",
+        "Once per shift",
+        "Only when visibly soiled"
+      ],
+      "correct": [0],
+      "explanation": "Every two hours at the least, and sooner if it is building up. \"When it looks dirty\" is too late — by then it has been dirty for a while.",
+      "required": true
+    },
+    {
+      "n": 13,
+      "title": "What is the most critical rule about the blue sanitizer towel to prevent cross-contamination?",
+      "type": "single",
+      "points": 10,
+      "choices": [
+        "Rinse it between uses",
+        "Replace it every hour",
+        "Use it only on raw prep areas — never on ready-to-eat food areas or shared surfaces",
+        "Store it on top of the fryer between uses"
+      ],
+      "correct": [2],
+      "explanation": "It never leaves the raw area. One wipe of the make table with a blue towel takes raw chicken straight to food that is going out the door as it is.",
+      "required": true
+    }
+  ]
+}
