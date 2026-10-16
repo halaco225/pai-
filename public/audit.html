@@ -288,6 +288,12 @@ const ADAM_NO   = ['Not quite. Here is why.', 'Miss — and this one is worth kn
                    'Not this time. Read this bit.', 'Nope. This is the one people get caught on.'];
 const adamSay = (lines, n) => lines[Math.abs(Number(n) || 0) % lines.length];
 
+// Adam belongs on tests, not on audits. A test is worth points and tells you
+// how you did; an audit records what was there, and a mascot cheering over a
+// photo of a cheese pizza helps nobody. Nothing to set per audit — scoring
+// the questions is what makes it a test.
+let IS_TEST = false;
+
 // pose: 'hello' to open the walk, 'cheer' for a right answer, 'explain' for
 // everything else. Cheer is the only one that moves.
 function coachHtml(line, why, pose){
@@ -338,6 +344,7 @@ async function start(){
     return;
   }
   FORM = await res.json();
+  IS_TEST = FORM.questions.some(q => Number(q.points) > 0);
   STORES = await fetch('/api/audits/stores').then(r => r.json()).catch(() => []);
   document.getElementById('title').textContent = FORM.title;
   // A draft only brings back questions that were never marked; a marked one
@@ -354,10 +361,11 @@ function draw(dir){
 
   if (at < 0){
     stage.className = 'stage scrollable';
-    stage.innerHTML = coachHtml(
-        `Hi, I'm Adam. I'll walk you through this one.`,
-        `${FORM.questions.length} questions, one at a time. Check your answer and I'll `
-        + `tell you straight away how you did and why. Take your time.`, 'hello')
+    stage.innerHTML = (IS_TEST
+        ? coachHtml(`Hi, I'm Adam. I'll walk you through this one.`,
+            `${FORM.questions.length} questions, one at a time. Check your answer and I'll `
+            + `tell you straight away how you did and why. Take your time.`, 'hello')
+        : `<div class="intro quiet">${FORM.questions.length} questions, one at a time.</div>`)
       + `<div class="intro">${esc(FORM.description)}</div>`;
     foot.style.display = 'flex';
     document.getElementById('back').style.display = 'none';
@@ -1044,13 +1052,13 @@ function showResults(data){
   stage.innerHTML = `
     <div class="sent">✔ Sent. Your answers and pictures are in.
       <span>Nothing else to do — you can close this page. What is below is yours to read.</span></div>
-    <div class="score">You got <b>${data.score} out of ${data.maxScore}</b></div>
-    ${coachHtml(signOff, 'Thanks for walking it. See you on the next one.',
-         share >= 0.9 ? 'cheer' : 'hello')}
+    ${IS_TEST ? `<div class="score">You got <b>${data.score} out of ${data.maxScore}</b></div>` : ''}
+    ${IS_TEST ? coachHtml(signOff, 'Thanks for walking it. See you on the next one.',
+         share >= 0.9 ? 'cheer' : 'hello') : ''}
     ${blocks}
     <div class="intro"><b>Fix what you found before the audit.</b> Your manager will see your photos.</div>`;
   stage.scrollTop = 0;
-  if (share >= 0.9) celebrate();
+  if (IS_TEST && share >= 0.9) celebrate();
 }
 
 start();
