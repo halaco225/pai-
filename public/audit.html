@@ -347,14 +347,20 @@ const adamSay = (lines, n) => lines[Math.abs(Number(n) || 0) % lines.length];
 // photo of a cheese pizza helps nobody. Nothing to set per audit — scoring
 // the questions is what makes it a test.
 let IS_TEST = false;
+// Which guide, and their name, because the bubble is signed.
+let COACH = 'none';
+const COACH_NAMES = { adam: 'Adam', krystina: 'Krystina' };
 
 // pose: 'hello' to open the walk, 'cheer' for a right answer, 'explain' for
 // everything else. Cheer is the only one that moves.
 function coachHtml(line, why, pose){
+  if (COACH === 'none') return '';
   const which = pose || 'explain';
+  const name = COACH_NAMES[COACH] || 'Adam';
   return `<div class="coach ${which === 'cheer' ? 'cheer' : ''}">
-    <img class="adam" src="/images/adam-${which}.webp" alt="Adam">
-    <div class="bubble"><span class="who">Adam</span>
+    <img class="adam" src="/images/${COACH}-${which}.webp" alt="${esc(name)}"
+         onerror="this.onerror=null;this.src='/images/adam-${which}.webp'">
+    <div class="bubble"><span class="who">${esc(name)}</span>
       <div class="line">${esc(line)}</div>
       ${[].concat(why || []).filter(Boolean)
          .map(part => `<div class="why">${esc(part)}</div>`).join('')}
@@ -400,6 +406,7 @@ async function start(){
   }
   FORM = await res.json();
   IS_TEST = FORM.kind ? FORM.kind === 'test' : FORM.questions.some(q => Number(q.points) > 0);
+  COACH = COACH_NAMES[FORM.coach] ? FORM.coach : (IS_TEST && !FORM.coach ? 'adam' : 'none');
   STORES = await fetch('/api/audits/stores').then(r => r.json()).catch(() => []);
   document.getElementById('title').textContent = FORM.title;
   // A draft only brings back questions that were never marked; a marked one
@@ -416,8 +423,10 @@ function draw(dir){
 
   if (at < 0){
     stage.className = 'stage scrollable';
-    stage.innerHTML = IS_TEST
-      ? coachHtml(`Hi, I'm Adam. I'll walk you through this one.`, [
+    const hello = COACH_NAMES[COACH]
+      ? `Hi, I'm ${COACH_NAMES[COACH]}. I'll walk you through this one.` : '';
+    stage.innerHTML = COACH !== 'none'
+      ? coachHtml(hello, [
           FORM.description,
           `${FORM.questions.length} questions, one at a time. Check your answer and I'll `
           + `tell you straight away how you did and why. Take your time.`,
@@ -1144,7 +1153,7 @@ async function check(q){
   // of the screen. Bring it up rather than leaving them to find it.
   const panel = document.querySelector('.verdict');
   if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  if (checked[q.n] && checked[q.n].correct) celebrate();
+  if (COACH !== 'none' && checked[q.n] && checked[q.n].correct) celebrate();
   return true;
 }
 
@@ -1334,12 +1343,12 @@ function showResults(data){
     <div class="sent">✔ Sent. Your answers and pictures are in.
       <span>Nothing else to do — you can close this page. What is below is yours to read.</span></div>
     ${IS_TEST ? `<div class="score">You got <b>${data.score} out of ${data.maxScore}</b></div>` : ''}
-    ${IS_TEST ? coachHtml(signOff, 'Thanks for walking it. See you on the next one.',
+    ${COACH !== 'none' ? coachHtml(signOff, 'Thanks for walking it. See you on the next one.',
          share >= 0.9 ? 'cheer' : 'hello') : ''}
     ${blocks}
     <div class="intro"><b>Fix what you found before the audit.</b> Your manager will see your photos.</div>`;
   stage.scrollTop = 0;
-  if (IS_TEST && share >= 0.9) celebrate();
+  if (COACH !== 'none' && share >= 0.9) celebrate();
 }
 
 start();

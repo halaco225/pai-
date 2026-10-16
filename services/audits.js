@@ -74,6 +74,8 @@ function publicForm(def) {
     title: def.title,
     description: def.description,
     kind: def.kind || (maxScore(def) > 0 ? 'test' : 'audit'),
+    // No one chosen: a test gets Adam, an audit gets nobody, as before.
+    coach: def.coach || ((def.kind || (maxScore(def) > 0 ? 'test' : 'audit')) === 'test' ? 'adam' : 'none'),
     totalPoints: maxScore(def),
     questions: def.questions.map(q => ({
       n: q.n,

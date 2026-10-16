@@ -43,6 +43,12 @@ async function initAuditTemplates() {
   // who could already see them.
   await p.query(`ALTER TABLE audit_templates ADD COLUMN IF NOT EXISTS created_by VARCHAR(100)`);
 
+  // Whether it is a test or an audit, and who walks them through it. Both
+  // were worked out from the questions before they could be chosen; rows
+  // from then have them null and still fall back to that.
+  await p.query(`ALTER TABLE audit_templates ADD COLUMN IF NOT EXISTS kind  VARCHAR(10)`);
+  await p.query(`ALTER TABLE audit_templates ADD COLUMN IF NOT EXISTS coach VARCHAR(20)`);
+
   await seedFromFiles();
 }
 
@@ -86,7 +92,9 @@ function rowToDef(row) {
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
     createdBy: row.created_by,
-    kind: row.questions && row.questions.some(q => Number(q.points) > 0) ? 'test' : 'audit',
+    kind: row.kind
+      || (row.questions && row.questions.some(q => Number(q.points) > 0) ? 'test' : 'audit'),
+    coach: row.coach || null,
   };
 }
 
@@ -258,6 +266,9 @@ function cleanTemplate(def) {
     // A test is marked and tells them how they did; an audit records what was
     // there. Older templates carry no kind, so having points still decides it.
     kind: def.kind === 'audit' ? 'audit' : def.kind === 'test' ? 'test' : undefined,
+    // Who walks them through it. Left out means Adam on a test and nobody on
+    // an audit, which is how it behaved before there was a choice.
+    coach: ['adam', 'krystina', 'none'].includes(def.coach) ? def.coach : undefined,
     questions: (def.questions || []).map((q, i) => {
       const out = {
         n: i + 1,                       // numbering always follows the order on screen
@@ -334,17 +345,21 @@ async function saveTemplate(def, username) {
 
   const clean = cleanTemplate(def);
   const { rows } = await p.query(`
-    INSERT INTO audit_templates (id, title, description, questions, version, updated_at, updated_by, created_by)
-    VALUES ($1, $2, $3, $4, 1, NOW(), $5, $5)
+    INSERT INTO audit_templates
+      (id, title, description, questions, version, updated_at, updated_by, created_by, kind, coach)
+    VALUES ($1, $2, $3, $4, 1, NOW(), $5, $5, $6, $7)
     ON CONFLICT (id) DO UPDATE SET
       title = EXCLUDED.title,
       description = EXCLUDED.description,
       questions = EXCLUDED.questions,
       version = audit_templates.version + 1,
       updated_at = NOW(),
-      updated_by = EXCLUDED.updated_by
+      updated_by = EXCLUDED.updated_by,
+      kind = EXCLUDED.kind,
+      coach = EXCLUDED.coach
     RETURNING *
-  `, [clean.id, clean.title, clean.description, JSON.stringify(clean.questions), String(username || '')]);
+  `, [clean.id, clean.title, clean.description, JSON.stringify(clean.questions),
+      String(username || ''), clean.kind || null, clean.coach || null]);
 
   return rowToDef(rows[0]);
 }

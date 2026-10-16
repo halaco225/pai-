@@ -133,6 +133,13 @@ tr.row:hover td{background:#242831;}
 .kind-pick:hover{border-color:var(--accent);background:#20242d;}
 .kind-pick b{display:block;font-size:16.5px;margin-bottom:4px;}
 .kind-pick span{display:block;color:var(--muted);font-size:14px;line-height:1.5;}
+.coach-pick{display:flex;gap:9px;flex-wrap:wrap;}
+.coach-opt{display:flex;align-items:center;gap:9px;padding:8px 13px 8px 9px;border-radius:12px;
+           border:1.5px solid var(--border);background:var(--surface);color:inherit;
+           cursor:pointer;font:inherit;font-size:14.5px;}
+.coach-opt img{width:34px;height:34px;border-radius:50%;object-fit:cover;object-position:50% 14%;background:#fff;}
+.coach-opt .none{width:34px;height:34px;border-radius:50%;border:1.5px dashed var(--border);}
+.coach-opt.on{border-color:var(--accent);background:#20242d;font-weight:600;}
 .pic-empty{border:1.5px dashed var(--border);border-radius:12px;padding:26px;text-align:center;
            color:var(--muted);display:flex;flex-direction:column;gap:11px;align-items:center;}
 .pic-wrap{position:relative;display:inline-block;max-width:100%;cursor:crosshair;line-height:0;}
@@ -264,6 +271,8 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
       <input type="text" id="edTitle" placeholder="Steritech Readiness Check">
       <label class="ed-label">What the shift leader reads first</label>
       <textarea id="edDesc" rows="3" placeholder="Walk your store while you complete this…"></textarea>
+      <label class="ed-label">Who walks them through it</label>
+      <div class="coach-pick" id="edCoach"></div>
       <label class="ed-label">Link name <span class="muted">— the end of the web address</span></label>
       <input type="text" id="edId" placeholder="steritech-readiness">
       <div class="muted" id="edLink" style="margin-top:7px;font-size:12.5px;"></div>
@@ -721,7 +730,8 @@ function newTemplate(){
 function startTemplate(kind){
   document.getElementById('kindAsk').className = '';
   SAVED_TOTAL = null;
-  EDITING = { id:'', title:'', description:'', version:0, kind, questions:[
+  EDITING = { id:'', title:'', description:'', version:0, kind,
+    coach: kind === 'test' ? 'adam' : 'none', questions:[
     { n:1, title:'Your first and last name', type:'text', points:0, required:true },
     { n:2, title:'Your store number', type:'text', points:0, required:true },
   ]};
@@ -741,12 +751,38 @@ async function editTemplate(id){
   openEditor(`Version ${EDITING.version}${EDITING.updatedBy ? ' · last edited by ' + EDITING.updatedBy : ''}`);
 }
 
+// Adam, Krystina, or nobody. A test opens with Adam and an audit with nobody,
+// which is how they behaved before there was a choice to make.
+const COACHES = [
+  ['adam', 'Adam'],
+  ['krystina', 'Krystina'],
+  ['none', 'No guide'],
+];
+
+function drawCoachPick(){
+  const picked = EDITING.coach || (isTest() ? 'adam' : 'none');
+  EDITING.coach = picked;
+  document.getElementById('edCoach').innerHTML = COACHES.map(([id, name]) => `
+    <button class="coach-opt ${picked === id ? 'on' : ''}" onclick="setCoach('${id}')">
+      ${id === 'none' ? '<span class="none"></span>'
+        : `<img src="/images/${id}-hello.webp" alt=""
+             onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'none'}))">`}
+      ${name}
+    </button>`).join('');
+}
+
+function setCoach(id){
+  EDITING.coach = id;
+  drawCoachPick();
+}
+
 function openEditor(status){
   document.getElementById('edTitle').value = EDITING.title || '';
   document.getElementById('edDesc').value = EDITING.description || '';
   document.getElementById('edId').value = EDITING.id || '';
   document.getElementById('edStatus').textContent = status;
   document.getElementById('edProblems').innerHTML = '';
+  drawCoachPick();
   for (const t of TABS) document.getElementById('pane-' + t).style.display = 'none';
   document.getElementById('pane-one').style.display = 'none';
   document.getElementById('pane-editor').style.display = 'block';
