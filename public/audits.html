@@ -241,7 +241,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
 
   <!-- TEMPLATES -->
   <div id="pane-templates" style="display:none">
-    <div class="filters">
+    <div class="filters" id="tplTools">
       <button class="btn primary" onclick="newTemplate()">New audit</button>
       <span class="muted" style="font-size:12.5px;">These are the walks you send out. Editing one never changes a score somebody already got.</span>
     </div>
@@ -638,12 +638,32 @@ let SAVED_TOTAL = null;
 const TYPE_NAMES = { single:'One answer', multi:'Pick all that apply', photo:'Picture', text:'Short text', longtext:'Long text', hotspot:'Tap the picture', order:'Put in order',
                      scale:'Slider' };
 
+// Only an RDO or VP may build or change an audit; the API refuses everyone
+// else, so the page must not offer it. Asked once: a role cannot change
+// without signing in again.
+let MAY_EDIT = null;
+async function mayEdit(){
+  if (MAY_EDIT === null){
+    const me = await fetch('/api/tracker/me').then(r => r.ok ? r.json() : {}).catch(() => ({}));
+    MAY_EDIT = me.role === 'rdo' || me.role === 'vp';
+  }
+  return MAY_EDIT;
+}
+
+// What to say when the server turns an edit down anyway.
+const refused = (res, body) => res.status === 403
+  ? 'Only an RDO or VP can build or change an audit. Ask yours to make this change.'
+  : (body && body.error) || 'That did not work.';
+
 async function loadTemplates(){
+  const edit = await mayEdit();
+  document.getElementById('tplTools').style.display = edit ? '' : 'none';
   const list = await fetch('/api/audits/templates').then(r => r.json());
   const el = document.getElementById('templateList');
   if (!list.length){
     el.className = 'empty';
-    el.textContent = 'No audits yet. Hit "New audit" to build one.';
+    el.textContent = edit ? 'No audits yet. Hit "New audit" to build one.'
+                          : 'No audits to send yet. Your RDO builds these.';
     return;
   }
   el.className = '';
@@ -656,10 +676,10 @@ async function loadTemplates(){
       <td class="muted">v${t.version}</td>
       <td><span class="tag ${t.active ? 'on' : 'off'}">${t.active ? 'Sending' : 'Paused'}</span></td>
       <td style="text-align:right;white-space:nowrap;">
-        <button class="btn" onclick="editTemplate('${esc(t.id)}')">Edit</button>
+        ${edit ? `<button class="btn" onclick="editTemplate('${esc(t.id)}')">Edit</button>` : ''}
         <button class="btn" onclick="copyAuditLink('${esc(t.id)}')">Copy link</button>
-        <button class="btn" onclick="toggleActive('${esc(t.id)}',${!t.active})">${t.active ? 'Pause' : 'Send'}</button>
-        <button class="btn" onclick="removeTemplate('${esc(t.id)}','${esc(t.title)}')">Delete</button>
+        ${edit ? `<button class="btn" onclick="toggleActive('${esc(t.id)}',${!t.active})">${t.active ? 'Pause' : 'Send'}</button>
+        <button class="btn" onclick="removeTemplate('${esc(t.id)}','${esc(t.title)}')">Delete</button>` : ''}
       </td></tr>`).join('') + '</tbody></table>';
 }
 
@@ -673,14 +693,14 @@ function copyAuditLink(id){
 async function toggleActive(id, active){
   const res = await fetch('/api/audits/templates/' + encodeURIComponent(id) + '/active', {
     method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ active }) });
-  if (!res.ok) return alert((await res.json()).error || 'That did not work.');
+  if (!res.ok) return alert(refused(res, await res.json().catch(() => null)));
   loadTemplates();
 }
 
 async function removeTemplate(id, title){
   if (!confirm(`Delete "${title}"?\n\nWalks people already did keep their scores and photos. The link stops working.`)) return;
   const res = await fetch('/api/audits/templates/' + encodeURIComponent(id), { method:'DELETE' });
-  if (!res.ok) return alert((await res.json()).error || 'That did not work.');
+  if (!res.ok) return alert(refused(res, await res.json().catch(() => null)));
   loadTemplates();
 }
 
@@ -701,7 +721,9 @@ function startTemplate(kind){
 const isTest = () => EDITING && EDITING.kind === 'test';
 
 async function editTemplate(id){
-  EDITING = await fetch('/api/audits/templates/' + encodeURIComponent(id)).then(r => r.json());
+  const res = await fetch('/api/audits/templates/' + encodeURIComponent(id));
+  if (!res.ok) return alert(refused(res, await res.json().catch(() => null)));
+  EDITING = await res.json();
   if (!EDITING.kind) {
     EDITING.kind = EDITING.questions.some(q => Number(q.points) > 0) ? 'test' : 'audit';
   }
@@ -1166,7 +1188,7 @@ Save anyway?`)) return;
   const box = document.getElementById('edProblems');
   if (!res.ok){
     box.innerHTML = `<div class="problems"><b>Not saved yet:</b><ul>` +
-      (data.problems || [data.error]).map(p => `<li>${esc(p)}</li>`).join('') + '</ul></div>';
+      (data.problems || [refused(res, data)]).map(p => `<li>${esc(p)}</li>`).join('') + '</ul></div>';
     box.scrollIntoView({behavior:'smooth', block:'center'});
     return;
   }
