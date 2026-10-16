@@ -565,7 +565,7 @@ async function loadStores(){
 // half-finished question can never go out to a store.
 let EDITING = null;
 
-const TYPE_NAMES = { single:'One answer', multi:'Pick all that apply', photo:'Picture', text:'Short text', longtext:'Long text', hotspot:'Tap the picture' };
+const TYPE_NAMES = { single:'One answer', multi:'Pick all that apply', photo:'Picture', text:'Short text', longtext:'Long text', hotspot:'Tap the picture', order:'Put in order' };
 
 async function loadTemplates(){
   const list = await fetch('/api/audits/templates').then(r => r.json());
@@ -696,6 +696,13 @@ function changeType(i, type){
     q.points = 0;
   }
   if (type === 'photo' && !q.maxPhotos) q.maxPhotos = 3;
+  if (type === 'order'){
+    q.steps = q.steps && q.steps.length ? q.steps : ['', ''];
+    if (q.explanation == null) q.explanation = '';
+    if (!q.points) q.points = 10;
+  } else {
+    delete q.steps;
+  }
   drawQuestions();
 }
 
@@ -726,6 +733,7 @@ function drawQuestions(){
 
   wrap.innerHTML = EDITING.questions.map((q, i) => {
     if (q.type === 'hotspot') return hotspotCard(q, i);
+    if (q.type === 'order') return orderCard(q, i);
     const graded = q.type === 'single' || q.type === 'multi';
     const kind = q.type === 'multi' ? 'checkbox' : 'radio';
 
@@ -781,6 +789,73 @@ function drawQuestions(){
 // Shown, not dismantled. Drawing the spots on a picture is not in the editor
 // yet, so this card carries them through untouched rather than offering an
 // edit that would quietly empty the question.
+// A put-in-order question, shown as what it is. Without this it fell through
+// to the ordinary choice card, which read "One answer", said "Not scored",
+// and showed none of the steps — so the question looked broken in the editor
+// while working perfectly on the phone.
+//
+// The steps are listed in the order they belong in, because that order is the
+// answer. The walker gets them shuffled and taps them into sequence; nobody
+// types anything.
+function orderCard(q, i){
+  const steps = q.steps || [];
+  return `<div class="qcard">
+    <div class="qhead">
+      <span class="qnum">QUESTION ${i + 1}</span>
+      <span class="tag on">Put in order</span>
+      <div class="qtools">
+        <button class="icon-btn" onclick="moveQuestion(${i},-1)" title="Move up">\u2191</button>
+        <button class="icon-btn" onclick="moveQuestion(${i},1)" title="Move down">\u2193</button>
+        <button class="icon-btn danger" onclick="deleteQuestion(${i})" title="Delete">\U0001F5D1</button>
+      </div>
+    </div>
+    <textarea rows="2" placeholder="What are you asking?"
+      oninput="EDITING.questions[${i}].title=this.value">${esc(q.title)}</textarea>
+
+    <label class="ed-label">The steps, in the right order
+      <span class="muted">— they reach the phone shuffled, and get tapped back into this order</span></label>
+    ${steps.map((text, si) => `
+      <div class="choice">
+        <span class="no" style="background:var(--surface);border:1px solid var(--border);color:var(--muted);">${si + 1}</span>
+        <input type="text" value="${esc(text)}" placeholder="Step ${si + 1}"
+          oninput="EDITING.questions[${i}].steps[${si}]=this.value">
+        <button class="icon-btn" onclick="moveStep(${i},${si},-1)" title="Move up">\u2191</button>
+        <button class="icon-btn" onclick="moveStep(${i},${si},1)" title="Move down">\u2193</button>
+        <button class="icon-btn danger" onclick="removeStep(${i},${si})" title="Remove this step">\u00d7</button>
+      </div>`).join('')}
+    <button class="btn" onclick="addStep(${i})" style="margin-top:4px;">Add a step</button>
+
+    <label class="ed-label">Why — shown after they submit</label>
+    <textarea rows="2" oninput="EDITING.questions[${i}].explanation=this.value">${esc(q.explanation || '')}</textarea>
+
+    <div class="qfoot">
+      <label>Points <input type="number" min="0" max="100" value="${q.points || 0}"
+        oninput="EDITING.questions[${i}].points=Number(this.value); updatePoints()"></label>
+      <label><input type="checkbox" ${q.required !== false ? 'checked' : ''}
+        onchange="EDITING.questions[${i}].required=this.checked"> Must be answered</label>
+      <span class="muted" style="font-size:12.5px;">All ${steps.length} in place to score.</span>
+    </div>
+  </div>`;
+}
+
+function moveStep(i, si, by){
+  const steps = EDITING.questions[i].steps;
+  const to = si + by;
+  if (to < 0 || to >= steps.length) return;
+  [steps[si], steps[to]] = [steps[to], steps[si]];
+  drawQuestions();
+}
+
+function removeStep(i, si){
+  EDITING.questions[i].steps.splice(si, 1);
+  drawQuestions();
+}
+
+function addStep(i){
+  (EDITING.questions[i].steps = EDITING.questions[i].steps || []).push('');
+  drawQuestions();
+}
+
 function hotspotCard(q, i){
   const spots = q.hotspots || [];
   return `<div class="qcard">
