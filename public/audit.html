@@ -223,7 +223,9 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;
 // Scored (so it gets marked and locked) is a different question from
 // answered-by-picking-a-choice (so it renders as a list of options).
 const isChoice = q => q.type === 'single' || q.type === 'multi';
-const isGraded = q => isChoice(q) || q.type === 'hotspot' || q.type === 'order';
+// Scored means it gets marked and locked. A question worth nothing is just
+// recorded — no Check, no verdict, straight on to the next one.
+const isGraded = q => (isChoice(q) || q.type === 'hotspot' || q.type === 'order') && q.points > 0;
 
 // Draft save/restore. Pictures cannot be saved, so only answers come back.
 function saveDraft(){ try{ localStorage.setItem(DRAFT_KEY, JSON.stringify(answers)); }catch(e){} }

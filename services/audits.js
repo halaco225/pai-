@@ -20,6 +20,22 @@ const SCORED = new Set(['single', 'multi', 'hotspot', 'order']); // answered and
 // the problem, not whether they tapped its centre.
 const TAP_TOLERANCE = 1.3;
 
+/**
+ * Is this question actually being marked?
+ *
+ * An audit is not always a quiz. A choice question worth nothing with no
+ * right answer -- "did the order include a dip?" -- is an observation: it is
+ * asked and kept, but there is nothing to get wrong.
+ */
+function isScored(q) {
+  if (!SCORED.has(q.type)) return false;
+  if (!(Number(q.points) > 0)) return false;
+  if (CHOICE.has(q.type)) return Array.isArray(q.correct) && q.correct.length > 0;
+  if (q.type === 'hotspot') return (q.hotspots || []).length > 0;
+  if (q.type === 'order') return (q.steps || []).length > 1;
+  return true;
+}
+
 function maxScore(def) {
   return def.questions.reduce((sum, q) => sum + (q.points || 0), 0);
 }
@@ -180,7 +196,7 @@ function grade(def, answers = {}) {
   const results = [];
 
   for (const q of def.questions) {
-    if (!SCORED.has(q.type)) continue;
+    if (!isScored(q)) continue;
 
     if (q.type === 'order') {
       const steps = q.steps || [];
@@ -262,7 +278,7 @@ function grade(def, answers = {}) {
  */
 function checkOne(def, n, given) {
   const q = def.questions.find(x => x.n === Number(n));
-  if (!q || !SCORED.has(q.type)) return null;
+  if (!q || !isScored(q)) return null;
 
   if (q.type === 'order') {
     const steps = q.steps || [];
@@ -307,4 +323,4 @@ function checkOne(def, n, given) {
   };
 }
 
-module.exports = { publicForm, grade, missingAnswers, maxScore, checkOne, matchTaps, shuffle };
+module.exports = { publicForm, grade, missingAnswers, maxScore, checkOne, matchTaps, shuffle, isScored };

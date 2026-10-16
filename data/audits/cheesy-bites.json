@@ -1,0 +1,67 @@
+{
+  "id": "cheesy-bites",
+  "title": "Cheesy Bites Pizza Audit",
+  "description": "Order a Cheesy Bites pizza before you get to the store and do this as a customer would. You will need your receipt and photos of the pizza. Nothing here is scored — it is a record of what the customer actually got.",
+  "questions": [
+    { "n": 1, "title": "Your first and last name", "type": "text", "points": 0, "required": true },
+    { "n": 2, "title": "Your store number", "type": "text", "points": 0, "required": true },
+    {
+      "n": 3,
+      "title": "Date and time of purchase — for example 16 Oct, 6:45pm",
+      "type": "text",
+      "points": 0,
+      "required": true
+    },
+    {
+      "n": 4,
+      "title": "PHOTO: The receipt from the store.",
+      "type": "photo",
+      "points": 0,
+      "maxPhotos": 3,
+      "required": true
+    },
+    {
+      "n": 5,
+      "title": "PHOTO: The Cheesy Bites pizza as it came — the whole thing, lid open.",
+      "type": "photo",
+      "points": 0,
+      "maxPhotos": 3,
+      "required": true
+    },
+    {
+      "n": 6,
+      "title": "PHOTO: Close up on the bites and the crust.",
+      "type": "photo",
+      "points": 0,
+      "maxPhotos": 3,
+      "required": true
+    },
+    {
+      "n": 7,
+      "title": "Rate the Cheesy Bites pizza out of 10.",
+      "type": "single",
+      "points": 0,
+      "choices": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+      "correct": [],
+      "explanation": "",
+      "required": true
+    },
+    {
+      "n": 8,
+      "title": "Did the order include a marinara dip?",
+      "type": "single",
+      "points": 0,
+      "choices": ["Yes", "No", "Not applicable"],
+      "correct": [],
+      "explanation": "",
+      "required": true
+    },
+    {
+      "n": 9,
+      "title": "If you rated it 7 or below, what was wrong with it? If you rated 8 or more, leave this blank.",
+      "type": "longtext",
+      "points": 0,
+      "required": false
+    }
+  ]
+}

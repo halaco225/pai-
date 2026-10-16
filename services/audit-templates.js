@@ -173,7 +173,11 @@ function validateTemplate(def) {
       if (choices.some(c => !String(c || '').trim())) problems.push(`${where}: one of the answers is blank.`);
 
       const correct = Array.isArray(q.correct) ? q.correct : [];
-      if (correct.length === 0) problems.push(`${where}: mark which answer is right.`);
+      // Only a question worth points needs a right answer. One worth nothing
+      // is recording what was seen, and there is nothing to mark.
+      if (points > 0 && correct.length === 0) {
+        problems.push(`${where}: mark which answer is right, or set it to 0 points.`);
+      }
       if (correct.some(n => !Number.isInteger(n) || n < 0 || n >= choices.length)) {
         problems.push(`${where}: the right answer points at an answer that is not there.`);
       }

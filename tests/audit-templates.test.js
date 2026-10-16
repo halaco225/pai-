@@ -42,7 +42,7 @@ describe('validateTemplate', () => {
     def.questions[1].correct = [];
     const problems = validateTemplate(def);
     expect(problems).toContain('Question 2: needs at least two answers to choose from.');
-    expect(problems).toContain('Question 2: mark which answer is right.');
+    expect(problems).toContain('Question 2: mark which answer is right, or set it to 0 points.');
   });
 
   // The dangerous one: an index past the end of the list would make the
@@ -116,5 +116,51 @@ describe('cleanTemplate', () => {
     expect(maxScore(def)).toBe(3);
     expect(grade(def, { 2: [0] }).score).toBe(3);
     expect(grade(def, { 2: [1] }).score).toBe(0);
+  });
+});
+
+// Not every audit is a quiz. "Did the order include a dip?" has no right
+// answer — it records what the customer got.
+describe('questions that are not scored', () => {
+  const { isScored, grade, maxScore } = require('../services/audits');
+
+  const observation = {
+    id: 'cheesy', title: 'Cheesy Bites', description: '',
+    questions: [
+      { n: 1, title: 'Your name', type: 'text', points: 0, required: true },
+      { n: 2, title: 'Did it include a dip?', type: 'single', points: 0,
+        choices: ['Yes', 'No', 'Not applicable'], correct: [], explanation: '', required: true },
+      { n: 3, title: 'Rate it out of 10', type: 'single', points: 0,
+        choices: ['1','2','3','4','5','6','7','8','9','10'], correct: [], explanation: '', required: true },
+    ],
+  };
+
+  test('a choice question worth nothing with no right answer is allowed', () => {
+    expect(validateTemplate(observation)).toEqual([]);
+  });
+
+  test('it is never marked', () => {
+    expect(isScored(observation.questions[1])).toBe(false);
+    const result = grade(observation, { 2: [1], 3: [3] });
+    expect(result.results).toEqual([]);
+    expect(result.score).toBe(0);
+    expect(maxScore(observation)).toBe(0);
+  });
+
+  // The guard that keeps a real quiz honest: points without a right answer
+  // would be a question nobody can pass.
+  test('but points without a right answer is still refused', () => {
+    const scored = JSON.parse(JSON.stringify(observation));
+    scored.questions[1].points = 5;
+    expect(validateTemplate(scored))
+      .toContain('Question 2: mark which answer is right, or set it to 0 points.');
+  });
+
+  test('and a scored question still has to be answerable', () => {
+    const scored = JSON.parse(JSON.stringify(observation));
+    scored.questions[1].points = 5;
+    scored.questions[1].correct = [0];
+    expect(validateTemplate(scored)).toEqual([]);
+    expect(isScored(scored.questions[1])).toBe(true);
   });
 });
