@@ -278,21 +278,33 @@
       "required": true
     },
     {
-      "n": 17,
-      "title": "After using the restroom, when must you wash your hands?",
-      "type": "single",
+      "title": "When must you wash your hands? Pick ALL that apply.",
+      "type": "multi",
       "points": 3,
       "choices": [
-        "Only when returning to work",
-        "Only if you touched the door",
-        "Before leaving the restroom AND again at the BOH hand sink",
-        "Only before leaving the restroom"
+        "When you switch positions or stations",
+        "After you touch your clothes, apron, hat, face or hair",
+        "Every time you change gloves, and before a new pair goes on",
+        "After the restroom — in the restroom, then again at the back hand sink",
+        "After you handle money, trash or dirty dishes",
+        "When you arrive at work, before you start",
+        "After raw food, before you touch anything ready to eat",
+        "Only when your hands look or feel dirty",
+        "Only at the start and the end of your shift",
+        "Hand sanitizer instead is fine when you are slammed"
       ],
       "correct": [
-        2
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
       ],
-      "explanation": "Twice. Once in the restroom before you leave, then again at the back-of-house hand sink — because you touched the restroom door on the way out.",
-      "required": true
+      "explanation": "All seven of the first ones. You wash when you arrive, when you switch positions, every time you change gloves, after you touch your clothes, hat, face or hair, after money, trash or dishes, after raw food before ready-to-eat, and twice for the restroom. The two people argue about: \"my hands look clean\" is not a measure, and sanitizer goes on after washing, never instead of it.",
+      "required": true,
+      "n": 17
     },
     {
       "n": 18,
