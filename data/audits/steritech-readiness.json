@@ -89,24 +89,24 @@
     },
     {
       "n": 8,
-      "title": "The rubber seal on the makeline cooler door is clean, but it is ripped in one corner. Will it pass?",
+      "title": "The gasket on the makeline cooler door is clean, but it is ripped in one corner. Will it pass?",
       "type": "single",
       "points": 1,
       "choices": [
         "Yes. It's clean.",
-        "Yes. Only the walk-in door seal is checked.",
-        "No. Door seals must be clean AND not ripped or torn.",
+        "Yes. Only the walk-in gasket is checked.",
+        "No. Gaskets must be clean AND not ripped or torn.",
         "No, but only if there is mold."
       ],
       "correct": [
         2
       ],
-      "explanation": "The rubber door seals on every cooler, freezer, proofer and warmer get checked. They must be clean (no mold or gunk) AND in good shape (not ripped, torn or flat). A ripped seal needs a work order right away.",
+      "explanation": "The door gaskets on every cooler, freezer, proofer and warmer get checked. They must be clean (no mold or gunk) AND in good shape (not ripped, torn or flat). A ripped gasket needs a work order right away.",
       "required": true
     },
     {
       "n": 9,
-      "title": "PHOTO: Open every cooler, freezer, proofer and warmer door. Take a picture of the WORST rubber door seal you find. Pull the fold back so we can see inside it.",
+      "title": "PHOTO: Open every cooler, freezer, proofer and warmer door. Take a picture of the WORST gasket you find. Pull the fold back so we can see inside it.",
       "type": "photo",
       "points": 0,
       "maxPhotos": 3,

@@ -181,6 +181,10 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
   <!-- RESPONSES -->
   <div id="pane-responses">
     <div class="filters">
+      <select id="fScope" title="Whose walks to show" style="display:none">
+        <option value="">My region</option>
+        <option value="all">Everyone, every region</option>
+      </select>
       <select id="fStore"><option value="">Every store</option></select>
       <select id="fCoach"><option value="">Every Area Coach</option></select>
       <input type="date" id="fFrom" title="From"><input type="date" id="fTo" title="To">
@@ -286,7 +290,7 @@ function exportAs(kind){
 
 function query(){
   const p = new URLSearchParams();
-  for (const [key, id] of [['store','fStore'],['coach','fCoach'],['from','fFrom'],['to','fTo']]){
+  for (const [key, id] of [['store','fStore'],['coach','fCoach'],['from','fFrom'],['to','fTo'],['scope','fScope']]){
     const v = document.getElementById(id).value;
     if (v) p.set(key, v);
   }
@@ -303,12 +307,14 @@ async function load(){
   const data = await fetch('/api/audits/responses?' + query()).then(r => r.json());
   RESPONSES = data.responses || [];
 
+  document.getElementById('fScope').style.display = data.maySeeAll ? '' : 'none';
+
   fill('fStore', data.stores, 'Every store');
   fill('fCoach', data.coaches, 'Every Area Coach');
 
   // A walk from a store that is not yours is not shown, but it is counted:
   // sharing a link and seeing nothing come back looks like a broken link.
-  const outside = data.outside
+  const outside = (data.everywhere ? 0 : data.outside)
     ? `<div class="stand" style="border:none;padding:0 0 12px;color:var(--muted);">
          <span class="dot" style="background:#f5a623;"></span>
          <div>${data.outside} walk${data.outside === 1 ? '' : 's'} came back from

@@ -208,8 +208,15 @@ router.post('/submit', upload.any(), async (req, res) => {
 router.use(requireAuth);
 
 async function scopedRows(req, res) {
-  const stores = visibleStores(req.session.user, await db.getStoreAssignments());
+  const user = req.session.user;
+  const stores = visibleStores(user, await db.getStoreAssignments());
   const auditId = req.query.auditId || DEFAULT_AUDIT;
+
+  // A test being run across the whole company is not a regional thing: the
+  // person who sent it out has to be able to read what came back. Open to
+  // RDOs and VPs on request; an Area Coach stays inside their own stores.
+  const maySeeAll = user.role === 'rdo' || user.role === 'vp';
+  const everywhere = maySeeAll && String(req.query.scope || '') === 'all';
 
   const c = serviceClient(res); if (!c) return null;
 
@@ -225,9 +232,9 @@ async function scopedRows(req, res) {
   if (error) { res.status(500).json({ error: error.message }); return null; }
 
   const all = data || [];
-  const rows = all.filter(r => stores.has(String(r.store_number)));
+  const rows = everywhere ? all : all.filter(r => stores.has(String(r.store_number)));
   const outside = all.length - rows.length;
-  return { rows, stores, outside };
+  return { rows, stores, outside, everywhere, maySeeAll };
 }
 
 function withStoreInfo(rows, assignments) {
@@ -310,6 +317,8 @@ router.get('/responses', async (req, res) => {
   res.json({
     responses: rows,
     outside: scoped.outside || 0,
+    maySeeAll: !!scoped.maySeeAll,
+    everywhere: !!scoped.everywhere,
     coaches: [...new Set(rows.map(r => r.area_coach).filter(Boolean))].sort(),
     stores: [...new Set(rows.map(r => r.store_number))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
   });
