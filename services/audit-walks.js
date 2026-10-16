@@ -123,6 +123,12 @@ function fits(q, answer) {
       && answer.every(t => t && typeof t === 'object' && !Array.isArray(t)
         && Number.isFinite(Number(t.x)) && Number.isFinite(Number(t.y)));
   }
+  // Put-it-where-it-goes: a slot per item, each holding a target or nothing.
+  if (q.type === 'assign') {
+    return Array.isArray(answer)
+      && answer.some(v => v != null)
+      && answer.every(v => v == null || Number.isInteger(Number(v)));
+  }
   if (q.type === 'single' || q.type === 'multi') {
     return Array.isArray(answer) && answer.length > 0 && answer.every(n => Number.isInteger(n));
   }

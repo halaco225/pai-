@@ -16,9 +16,10 @@ const { getPool } = require('./db');
 
 const SEED_DIR = path.join(__dirname, '..', 'data', 'audits');
 
-const TYPES = new Set(['text', 'longtext', 'single', 'multi', 'photo', 'hotspot', 'order', 'scale']);
+const TYPES = new Set(['text', 'longtext', 'single', 'multi', 'photo', 'hotspot', 'order', 'scale',
+                       'number', 'datetime', 'assign']);
 const CHOICE_TYPES = new Set(['single', 'multi']);
-const GRADED_TYPES = new Set(['single', 'multi', 'hotspot', 'order']);
+const GRADED_TYPES = new Set(['single', 'multi', 'hotspot', 'order', 'assign']);
 
 async function initAuditTemplates() {
   const p = getPool();
@@ -185,6 +186,37 @@ function validateTemplate(def) {
       }
     }
 
+    if (q.type === 'number') {
+      const lo = q.min === '' || q.min == null ? null : Number(q.min);
+      const hi = q.max === '' || q.max == null ? null : Number(q.max);
+      if (lo != null && hi != null && hi < lo) {
+        problems.push(`${where}: the highest number is below the lowest.`);
+      }
+    }
+
+    if (q.type === 'assign') {
+      const layout = q.layout || 'buckets';
+      const targets = Array.isArray(q.targets) ? q.targets : [];
+      const items = Array.isArray(q.items) ? q.items : [];
+      if (targets.length < 2) problems.push(`${where}: needs at least two places to put things.`);
+      if (items.length < 2) problems.push(`${where}: needs at least two things to put.`);
+      if (layout === 'picture') {
+        if (!String(q.image || '').trim()) problems.push(`${where}: needs a picture.`);
+        if (targets.some(t => !Number.isFinite(Number(t && t.x)) || !Number.isFinite(Number(t && t.y)))) {
+          problems.push(`${where}: one of the places is not on the picture.`);
+        }
+      }
+      if (targets.some(t => !String((t && t.label) || '').trim())) {
+        problems.push(`${where}: one of the places has no name.`);
+      }
+      if (items.some(it => !String((it && it.text) || '').trim())) {
+        problems.push(`${where}: one of the things to put has no wording.`);
+      }
+      if (items.some(it => !(Number(it && it.target) >= 0) || Number(it.target) >= targets.length)) {
+        problems.push(`${where}: say where each one belongs.`);
+      }
+    }
+
     if (CHOICE_TYPES.has(q.type)) {
       const choices = Array.isArray(q.choices) ? q.choices : [];
       if (choices.length < 2) problems.push(`${where}: needs at least two answers to choose from.`);
@@ -238,6 +270,25 @@ function cleanTemplate(def) {
       // an answer, so it reaches the phone with the rest of the wording.
       const help = String(q.help || '').trim();
       if (help) out.help = help;
+
+      if (q.type === 'number') {
+        if (q.min !== '' && q.min != null) out.min = Number(q.min);
+        if (q.max !== '' && q.max != null) out.max = Number(q.max);
+        out.unit = String(q.unit || '').trim();
+      }
+
+      if (q.type === 'assign') {
+        out.layout = ['buckets', 'match', 'picture'].includes(q.layout) ? q.layout : 'buckets';
+        if (out.layout === 'picture') out.image = String(q.image || '');
+        out.targets = (q.targets || []).map(t => ({
+          label: String((t && t.label) || ''),
+          ...(out.layout === 'picture' ? { x: Number(t.x), y: Number(t.y) } : {}),
+        }));
+        out.items = (q.items || []).map(it => ({
+          text: String((it && it.text) || ''), target: Number(it && it.target),
+        }));
+        out.explanation = String(q.explanation || '').trim();
+      }
 
       if (q.type === 'scale') {
         out.min = Number(q.min ?? 1);

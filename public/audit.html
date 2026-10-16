@@ -43,6 +43,43 @@
   .lookfor b{display:block;font-size:12px;letter-spacing:.4px;text-transform:uppercase;
            color:var(--blue);margin-bottom:3px;}
 
+  /* Number and date answers: the same box as a text answer, narrower. */
+  .numrow{display:flex;align-items:center;gap:10px;}
+  .numrow input{max-width:220px;}
+  .numrow .unit{color:var(--muted);font-size:15.5px;}
+
+  /* Put-it-where-it-goes. One board for sorting into buckets, matching two
+     lists and dropping labels on a picture. */
+  .tray{display:flex;flex-wrap:wrap;gap:8px;min-height:52px;padding:10px;margin-bottom:14px;
+        border:1.5px dashed var(--line);border-radius:12px;background:#fff;}
+  .tray:empty::after{content:'Everything is placed.';color:var(--muted);font-size:14.5px;}
+  .chip{display:inline-block;padding:10px 13px;border:1.5px solid var(--line);border-radius:10px;
+        background:#fff;font-size:15.5px;font-weight:500;line-height:1.3;cursor:grab;
+        touch-action:none;user-select:none;box-shadow:0 1px 2px rgba(16,24,40,.06);}
+  .chip.held{border-color:var(--blue);background:#eef3fe;box-shadow:0 6px 16px rgba(16,24,40,.18);}
+  .chip.right{border-color:var(--green);background:#eafaef;}
+  .chip.wrong{border-color:var(--red);background:#fdeced;}
+  .chip.ghost{position:fixed;z-index:50;pointer-events:none;opacity:.92;margin:0;}
+
+  .buckets{display:flex;gap:10px;align-items:stretch;}
+  .buckets.stack{flex-direction:column;}
+  .bucket{flex:1;min-width:0;border:1.5px solid var(--line);border-radius:12px;background:#fff;
+          padding:11px;display:flex;flex-direction:column;gap:8px;}
+  .bucket.over{border-color:var(--blue);background:#eef3fe;}
+  .bucket .name{font-weight:650;font-size:15px;}
+  .bucket .holds{display:flex;flex-wrap:wrap;gap:7px;min-height:44px;}
+
+  .pic-drop{position:relative;display:block;margin-bottom:14px;}
+  .pic-drop img{width:100%;border-radius:12px;border:1.5px solid var(--line);display:block;}
+  .zone{position:absolute;transform:translate(-50%,-50%);min-width:42px;min-height:42px;
+        border:2.5px dashed rgba(0,73,201,.85);border-radius:12px;background:rgba(255,255,255,.72);
+        display:flex;align-items:center;justify-content:center;padding:4px 7px;
+        font-size:13px;font-weight:600;color:var(--blue);text-align:center;}
+  .zone.over{border-style:solid;background:#eef3fe;}
+  .zone.filled{border-style:solid;background:#fff;color:var(--ink);}
+  .zone.right{border-color:var(--green);background:#eafaef;}
+  .zone.wrong{border-color:var(--red);background:#fdeced;}
+
   /* Slider */
   .slider{margin:4px 0 0;}
   .slider input[type=range]{width:100%;margin:0;accent-color:var(--blue);height:34px;}
@@ -289,7 +326,8 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;
 const isChoice = q => q.type === 'single' || q.type === 'multi';
 // Scored means it gets marked and locked. A question worth nothing is just
 // recorded — no Check, no verdict, straight on to the next one.
-const isGraded = q => (isChoice(q) || q.type === 'hotspot' || q.type === 'order') && q.points > 0;
+const isGraded = q => (isChoice(q) || q.type === 'hotspot' || q.type === 'order'
+                       || q.type === 'assign') && q.points > 0;
 
 // ── Adam ────────────────────────────────────────────────────────────────────
 // He says the same kind of thing every time, in different words, so twenty
@@ -442,6 +480,29 @@ function verdictHtml(q, v){
       ${coachVerdict(v, q.n)}</div>`;
   }
 
+  if (q.type === 'assign'){
+    const names = v.targets || [];
+    const rows = (v.items || []).map(it => {
+      const right = it.put === it.target;
+      return `<div class="finding ${right ? 'found' : 'missed'}">
+        <span class="no">${right ? '✔' : '✘'}</span>
+        <div><div class="what">${esc(it.text)}</div>
+          <div class="why">${right
+            ? esc(names[it.target] || '')
+            : (it.put == null ? 'Left out. It belongs in ' : 'You put it in ' +
+                esc(names[it.put] || '') + '. It belongs in ') + esc(names[it.target] || '')}</div>
+        </div></div>`;
+    }).join('');
+
+    return `<div class="verdict ${v.correct ? 'ok' : 'no'}">
+      <div class="head">${v.correct
+        ? '✔ All ' + v.of + ' in the right place'
+        : '✘ ' + v.right + ' of ' + v.of + ' in the right place'
+          + (v.earned > 0 ? ' — ' + v.earned + ' of ' + v.points : '')}</div>
+      ${coachVerdict(v, q.n)}</div>
+      <div class="findings">${rows}</div>`;
+  }
+
   if (q.type === 'hotspot'){
     const list = (v.hotspots || []).map((h, i) => {
       const got = (v.found || []).includes(i);
@@ -472,6 +533,60 @@ function verdictHtml(q, v){
 function body(q){
   const given = answers[q.n];
   const v = checked[q.n];
+
+  if (q.type === 'number'){
+    const unit = q.unit ? `<span class="unit">${esc(q.unit)}</span>` : '';
+    const lo = q.min == null ? '' : ` min="${q.min}"`;
+    const hi = q.max == null ? '' : ` max="${q.max}"`;
+    return `<div class="numrow"><input type="number" id="num" inputmode="decimal"${lo}${hi}
+      value="${given == null ? '' : esc(given)}" placeholder="Number">${unit}</div>`;
+  }
+
+  if (q.type === 'datetime'){
+    return `<input type="datetime-local" id="when" value="${esc(given || '')}">`;
+  }
+
+  if (q.type === 'assign'){
+    const items = q.items || [];
+    const targets = q.targets || [];
+    const placed = Array.isArray(answers[q.n]) ? answers[q.n] : [];
+    answers[q.n] = placed;
+
+    const chip = it => {
+      const mark = !v ? '' : (placed[it.i] === (v.items[it.i] || {}).target ? ' right' : ' wrong');
+      return `<span class="chip${mark}" data-i="${it.i}">${esc(it.text)}</span>`;
+    };
+    const inTray = items.filter(it => placed[it.i] == null);
+    const held = t => items.filter(it => placed[it.i] === t.i).map(chip).join('');
+
+    const tray = `<div class="tray" id="tray">${inTray.map(chip).join('')}</div>`;
+
+    if (q.layout === 'picture'){
+      return `<div class="pic-drop" id="board">
+          <img src="${esc(q.image)}" alt="">
+          ${targets.map(t => {
+            const mine = items.filter(it => placed[it.i] === t.i);
+            return `<span class="zone ${mine.length ? 'filled' : ''}" data-t="${t.i}"
+                      style="left:${t.x}%;top:${t.y}%;">${
+              mine.length ? esc(mine.map(x => x.text).join(', ')) : '&nbsp;'}</span>`;
+          }).join('')}
+        </div>
+        ${tray}
+        <div class="hint">Tap a label, then tap where it goes. Drag works too.</div>`;
+    }
+
+    // Buckets side by side; matching is the same board, stacked, so the two
+    // lists read across instead of down.
+    const stack = q.layout === 'match' || targets.length > 2;
+    return `${tray}
+      <div class="buckets ${stack ? 'stack' : ''}" id="board">
+        ${targets.map(t => `<div class="bucket" data-t="${t.i}">
+            <div class="name">${esc(t.label)}</div>
+            <div class="holds">${held(t)}</div>
+          </div>`).join('')}
+      </div>
+      <div class="hint">Tap one, then tap where it goes. Drag works too.</div>`;
+  }
 
   if (q.type === 'scale'){
     const lo = Number(q.min ?? 1), hi = Number(q.max ?? 10), step = Number(q.step || 1);
@@ -620,6 +735,122 @@ function wire(q){
         }
         say('');
       });
+    });
+    return;
+  }
+
+  if (q.type === 'number'){
+    const box = document.getElementById('num');
+    box.addEventListener('input', () => { answers[q.n] = box.value; saveDraft(); });
+    return;
+  }
+
+  if (q.type === 'datetime'){
+    const box = document.getElementById('when');
+    box.addEventListener('input', () => { answers[q.n] = box.value; saveDraft(); });
+    return;
+  }
+
+  if (q.type === 'assign'){
+    if (checked[q.n]) return;                   // marked: the board is a result now
+    const board = document.getElementById('board');
+    const tray  = document.getElementById('tray');
+    const stage = document.getElementById('stage');
+
+    let heldItem = null;      // the item being moved, by its place in the list
+    let ghost = null;         // what follows the finger
+    let moved = false;        // a drag, rather than a tap
+
+    const targetAt = (x, y) => {
+      const el = document.elementFromPoint(x, y);
+      return el && el.closest('[data-t]');
+    };
+    const clearOver = () => board.querySelectorAll('.over')
+      .forEach(el => el.classList.remove('over'));
+
+    function hold(i, el, e){
+      heldItem = i;
+      moved = false;
+      el.classList.add('held');
+      ghost = el.cloneNode(true);
+      ghost.classList.add('ghost');
+      ghost.style.width = el.getBoundingClientRect().width + 'px';
+      document.body.appendChild(ghost);
+      moveGhost(e.clientX, e.clientY);
+      ghost.style.display = 'none';             // only shown once it actually moves
+    }
+
+    function moveGhost(x, y){
+      if (!ghost) return;
+      ghost.style.left = (x - ghost.offsetWidth / 2) + 'px';
+      ghost.style.top  = (y - 22) + 'px';
+    }
+
+    function put(i, t){
+      const placed = answers[q.n];
+      placed[i] = t;                            // null puts it back in the tray
+      saveDraft();
+      say('');
+      draw();                                   // redraw the board in its new state
+    }
+
+    function letGo(){
+      if (ghost){ ghost.remove(); ghost = null; }
+      board.querySelectorAll('.chip.held, .tray .chip.held')
+        .forEach(el => el.classList.remove('held'));
+      clearOver();
+    }
+
+    stage.addEventListener('pointerdown', e => {
+      const chip = e.target.closest('.chip');
+      if (!chip) return;
+      e.preventDefault();
+      const i = Number(chip.dataset.i);
+      // Tapping the one already in hand puts it down again.
+      if (heldItem === i){ heldItem = null; letGo(); return; }
+      hold(i, chip, e);
+      try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+
+    stage.addEventListener('pointermove', e => {
+      if (heldItem == null || !ghost) return;
+      moved = true;
+      ghost.style.display = '';
+      moveGhost(e.clientX, e.clientY);
+      clearOver();
+      const over = targetAt(e.clientX, e.clientY);
+      if (over) over.classList.add('over');
+    });
+
+    function drop(e){
+      if (heldItem == null) return;
+      const where = targetAt(e.clientX, e.clientY);
+      const i = heldItem;
+      if (!moved){
+        // A tap: keep it in hand and wait for the place to put it, unless the
+        // tap was on a chip that is already somewhere, which sends it back.
+        const placed = answers[q.n];
+        if (placed[i] != null){ heldItem = null; letGo(); put(i, null); }
+        return;
+      }
+      letGo();
+      heldItem = null;
+      if (where) put(i, where.dataset.t === undefined ? null : Number(where.dataset.t));
+      else if (e.target.closest('#tray')) put(i, null);
+    }
+    stage.addEventListener('pointerup', drop);
+    stage.addEventListener('pointercancel', () => { heldItem = null; letGo(); });
+
+    // The second half of a tap: having picked something up, tap where it goes.
+    stage.addEventListener('click', e => {
+      if (heldItem == null) return;
+      const where = e.target.closest('[data-t]');
+      const backToTray = e.target.closest('#tray');
+      if (!where && !backToTray) return;
+      const i = heldItem;
+      heldItem = null;
+      letGo();
+      put(i, where ? Number(where.dataset.t) : null);
     });
     return;
   }
@@ -923,6 +1154,10 @@ function answered(q){
   if (q.required === false) return true;
   if (q.type === 'photo') return (photos[q.n] || []).length > 0;
   if (q.type === 'order') return (answers[q.n] || []).length === (q.steps || []).length;
+  if (q.type === 'assign'){
+    const placed = answers[q.n] || [];
+    return (q.items || []).every(it => placed[it.i] != null);
+  }
   const v = answers[q.n];
   return Array.isArray(v) ? v.length > 0 : String(v || '').trim() !== '';
 }

@@ -13,7 +13,7 @@
 // appears there, a shift leader can read the answers out of devtools.
 
 const CHOICE = new Set(['single', 'multi']);          // answered by picking
-const SCORED = new Set(['single', 'multi', 'hotspot', 'order']); // answered and worth points
+const SCORED = new Set(['single', 'multi', 'hotspot', 'order', 'assign']); // answered and worth points
 
 // How much wider than the drawn circle still counts as a hit. A thumb on a
 // phone is not a cursor, and the point of the question is whether they spotted
@@ -33,7 +33,34 @@ function isScored(q) {
   if (CHOICE.has(q.type)) return Array.isArray(q.correct) && q.correct.length > 0;
   if (q.type === 'hotspot') return (q.hotspots || []).length > 0;
   if (q.type === 'order') return (q.steps || []).length > 1;
+  if (q.type === 'assign') return (q.items || []).length > 0 && (q.targets || []).length > 1;
   return true;
+}
+
+/**
+ * Put-it-where-it-goes: sorting into buckets, matching two lists, and dropping
+ * labels onto a picture are the same question underneath. Each item belongs
+ * with one target; all that changes is how the targets are drawn.
+ *
+ *   buckets  targets are columns       — Raw / Ready to eat
+ *   match    targets are a second list — chemical to contact time
+ *   picture  targets are places on it  — drag the label onto the hand sink
+ *
+ * The answer is an array the length of the item list: answer[i] is the target
+ * that item i was put on, or null if it was left in the tray.
+ */
+function assignScore(q, given) {
+  const items = q.items || [];
+  const points = q.points || 0;
+  if (!items.length || !points) return { earned: 0, right: 0, of: items.length };
+  const placed = Array.isArray(given) ? given : [];
+  // Checked for null first: Number(null) is 0, which would score everything
+  // left in the tray as correctly placed in the first bucket.
+  const right = items.filter((it, i) =>
+    placed[i] != null && Number(placed[i]) === Number(it.target)).length;
+  // Paid per item, like a pick-all. No penalty for a wrong one: every item has
+  // to go somewhere, so there is no ticking-everything to guard against.
+  return { earned: Math.round((right / items.length) * points * 10) / 10, right, of: items.length };
 }
 
 function maxScore(def) {
@@ -59,6 +86,21 @@ function publicForm(def) {
       ...(q.type === 'scale' ? {
         min: Number(q.min ?? 1), max: Number(q.max ?? 10), step: Number(q.step || 1),
         minLabel: q.minLabel || '', maxLabel: q.maxLabel || '',
+      } : {}),
+      // Where each item belongs is the answer and stays here. The targets go
+      // out because they are the places to drop things on — except their
+      // names on a picture, which would label the answer.
+      ...(q.type === 'assign' ? {
+        layout: q.layout || 'buckets',
+        ...(q.layout === 'picture' ? { image: q.image } : {}),
+        targets: (q.targets || []).map((t, i) => q.layout === 'picture'
+          ? { i, x: Number(t.x), y: Number(t.y) }
+          : { i, label: String(t.label == null ? t : t.label) }),
+        // shuffle() carries each item's place in the authored list along as
+        // `was`, which is what an answer refers to — so the tray can be in any
+        // order without the answer moving with it.
+        items: shuffle((q.items || []).map(it => String(it.text)))
+          .map(x => ({ i: x.was, text: x.text })),
       } : {}),
       ...(q.choices ? { choices: q.choices } : {}),
       ...(q.maxPhotos ? { maxPhotos: q.maxPhotos } : {}),
@@ -174,6 +216,15 @@ function missingAnswers(def, answers = {}, photos = {}) {
       }
       continue;
     }
+    if (q.type === 'assign') {
+      const placed = Array.isArray(given) ? given : [];
+      const items = (q.items || []).length;
+      const done = (q.items || []).filter((_, i) => placed[i] != null).length;
+      if (done < items) {
+        missing.push({ n: q.n, message: `Question ${q.n} still has ${items - done} to place.` });
+      }
+      continue;
+    }
     if (q.type === 'hotspot') {
       if (asTaps(given).length === 0) {
         missing.push({ n: q.n, message: `Question ${q.n} needs you to tap what is wrong.` });
@@ -243,6 +294,24 @@ function grade(def, answers = {}) {
         n: q.n, title: q.title, type: q.type, points: q.points || 0,
         earned, correct, steps, given,
         rightOrder: steps.map((_, i) => i),
+        explanation: q.explanation,
+      });
+      continue;
+    }
+
+    if (q.type === 'assign') {
+      const placed = Array.isArray(answers[q.n]) ? answers[q.n] : [];
+      const m = assignScore(q, placed);
+      score += m.earned;
+      results.push({
+        n: q.n, title: q.title, type: q.type, points: q.points || 0,
+        earned: m.earned, correct: m.right === m.of,
+        right: m.right, of: m.of,
+        layout: q.layout || 'buckets',
+        items: (q.items || []).map((it, i) => ({
+          text: it.text, target: it.target, put: placed[i] == null ? null : Number(placed[i]),
+        })),
+        targets: (q.targets || []).map(t => (t && t.label != null ? t.label : String(t))),
         explanation: q.explanation,
       });
       continue;
@@ -321,6 +390,25 @@ function checkOne(def, n, given) {
     };
   }
 
+  if (q.type === 'assign') {
+    const placed = Array.isArray(given) ? given : [];
+    if (!placed.some(v => v != null)) return null;      // nothing placed yet
+    const m = assignScore(q, placed);
+    return {
+      n: q.n,
+      correct: m.right === m.of,
+      earned: m.earned, right: m.right, of: m.of,
+      layout: q.layout || 'buckets',
+      // Now it is marked, where each one belonged can be shown.
+      items: (q.items || []).map((it, i) => ({
+        text: it.text, target: it.target, put: placed[i] == null ? null : Number(placed[i]),
+      })),
+      targets: (q.targets || []).map(t => (t && t.label != null ? t.label : String(t))),
+      explanation: q.explanation,
+      points: q.points || 0,
+    };
+  }
+
   if (q.type === 'hotspot') {
     const taps = asTaps(given);
     if (taps.length === 0) return null;    // nothing tapped, nothing to reveal
@@ -354,4 +442,5 @@ function checkOne(def, n, given) {
 
 module.exports = {
   publicForm, grade, missingAnswers, maxScore, checkOne, matchTaps, shuffle, isScored, choiceScore,
+  assignScore,
 };

@@ -274,12 +274,21 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
       <div class="add-row">
         <button class="btn" onclick="addQuestion('single','yesno')">Yes / No</button>
         <button class="btn" onclick="addQuestion('single','truefalse')">True / False</button>
+        <button class="btn" onclick="addQuestion('single','passfail')">Pass / Fail</button>
+        <button class="btn" onclick="addQuestion('single','goodfairpoor')">Good / Fair / Poor</button>
+        <button class="btn" onclick="addQuestion('single','safeatrisk')">Safe / At risk</button>
+        <button class="btn" onclick="addQuestion('single','compliant')">Compliant / Not</button>
         <button class="btn" onclick="addQuestion('single')">One answer</button>
         <button class="btn" onclick="addQuestion('multi')">Pick all that apply</button>
+        <button class="btn" onclick="addQuestion('assign','buckets')">Sort into buckets</button>
+        <button class="btn" onclick="addQuestion('assign','match')">Match the pairs</button>
+        <button class="btn" onclick="addQuestion('assign','picture')">Drag labels onto a picture</button>
+        <button class="btn" onclick="addQuestion('order')">Put in order</button>
         <button class="btn" onclick="addQuestion('scale')">Slider</button>
+        <button class="btn" onclick="addQuestion('number')">Number</button>
+        <button class="btn" onclick="addQuestion('datetime')">Date &amp; time</button>
         <button class="btn" onclick="addQuestion('photo')">Picture</button>
         <button class="btn" onclick="addQuestion('hotspot')">Tap what is wrong in a picture</button>
-        <button class="btn" onclick="addQuestion('order')">Put in order</button>
         <button class="btn" onclick="addQuestion('text')">Short text</button>
         <button class="btn" onclick="addQuestion('longtext')">Long text</button>
       </div>
@@ -636,7 +645,8 @@ let EDITING = null;
 let SAVED_TOTAL = null;
 
 const TYPE_NAMES = { single:'One answer', multi:'Pick all that apply', photo:'Picture', text:'Short text', longtext:'Long text', hotspot:'Tap the picture', order:'Put in order',
-                     scale:'Slider' };
+                     scale:'Slider', number:'Number', datetime:'Date & time',
+                     assign:'Put it where it goes' };
 
 // Only an RDO or VP may build or change an audit; the API refuses everyone
 // else, so the page must not offer it. Asked once: a role cannot change
@@ -764,13 +774,31 @@ function readHeader(){
 // preset only fills the answers in for you; it is still an ordinary
 // one-answer question afterwards, and you can edit or add to the list.
 function addQuestion(type, preset){
-  const scored = isTest() && (type==='single' || type==='multi' || type==='hotspot' || type==='order');
+  const scored = isTest() && (type==='single' || type==='multi' || type==='hotspot'
+                              || type==='order' || type==='assign');
   const q = { title:'', type, points: scored ? 1 : 0, required:true };
   if (type === 'single' || type === 'multi'){ q.choices = ['',''];  q.correct = []; q.explanation = ''; }
-  if (preset === 'yesno')     q.choices = ['Yes', 'No'];
-  if (preset === 'truefalse') q.choices = ['True', 'False'];
+  // The ready-made answer lists. They are ordinary one-answer questions after
+  // this; the preset only saves the typing.
+  const SETS = {
+    yesno:        ['Yes', 'No', 'N/A'],
+    truefalse:    ['True', 'False'],
+    passfail:     ['Pass', 'Fail', 'N/A'],
+    goodfairpoor: ['Good', 'Fair', 'Poor', 'N/A'],
+    safeatrisk:   ['Safe', 'At risk', 'N/A'],
+    compliant:    ['Compliant', 'Non-compliant', 'N/A'],
+  };
+  if (SETS[preset]) q.choices = SETS[preset].slice();
   if (type === 'photo') q.maxPhotos = 3;
   if (type === 'scale'){ q.min = 1; q.max = 10; q.step = 1; q.minLabel = ''; q.maxLabel = ''; }
+  if (type === 'number'){ q.min = ''; q.max = ''; q.unit = ''; }
+  if (type === 'assign'){
+    q.layout = ['buckets', 'match', 'picture'].includes(preset) ? preset : 'buckets';
+    q.targets = q.layout === 'picture' ? [] : [{ label: '' }, { label: '' }];
+    q.items = [{ text: '', target: 0 }, { text: '', target: 1 }];
+    q.explanation = '';
+    if (q.layout === 'picture') q.image = '';
+  }
   if (type === 'hotspot'){ q.image = ''; q.hotspots = []; q.extraTaps = 0; q.explanation = ''; }
   if (type === 'order'){ q.steps = ['', '']; q.explanation = ''; }
   EDITING.questions.push(q);
@@ -817,8 +845,16 @@ function changeType(i, type){
     if (q.min == null) q.min = 1;
     if (q.max == null) q.max = 10;
     if (!q.step) q.step = 1;
-  } else {
+  } else if (type !== 'number') {
     delete q.min; delete q.max; delete q.step; delete q.minLabel; delete q.maxLabel;
+  }
+  if (type === 'assign'){
+    if (!q.layout) q.layout = 'buckets';
+    if (!q.targets) q.targets = [{ label: '' }, { label: '' }];
+    if (!q.items) q.items = [{ text: '', target: 0 }, { text: '', target: 1 }];
+    if (q.explanation == null) q.explanation = '';
+  } else {
+    delete q.layout; delete q.targets; delete q.items;
   }
   if (type === 'order'){
     q.steps = q.steps && q.steps.length ? q.steps : ['', ''];
@@ -875,6 +911,7 @@ function drawQuestions(){
   wrap.innerHTML = EDITING.questions.map((q, i) => {
     if (q.type === 'hotspot') return hotspotCard(q, i);
     if (q.type === 'order') return orderCard(q, i);
+    if (q.type === 'assign') return assignCard(q, i);
     const graded = q.type === 'single' || q.type === 'multi';
     const kind = q.type === 'multi' ? 'checkbox' : 'radio';
 
@@ -898,6 +935,18 @@ function drawQuestions(){
       <label class="ed-label">How many pictures can they add</label>
       <input type="number" min="1" max="10" value="${q.maxPhotos || 3}"
         oninput="EDITING.questions[${i}].maxPhotos=Number(this.value)">`;
+
+    const number = q.type !== 'number' ? '' : `
+      <label class="ed-label">Allowed range <span class="muted">— optional</span></label>
+      <div class="choice">
+        <input type="number" value="${q.min === '' || q.min == null ? '' : q.min}" placeholder="Lowest"
+          oninput="EDITING.questions[${i}].min=this.value">
+        <span class="muted">to</span>
+        <input type="number" value="${q.max === '' || q.max == null ? '' : q.max}" placeholder="Highest"
+          oninput="EDITING.questions[${i}].max=this.value">
+        <input type="text" value="${esc(q.unit || '')}" placeholder="Unit, e.g. °F"
+          oninput="EDITING.questions[${i}].unit=this.value">
+      </div>`;
 
     const scale = q.type !== 'scale' ? '' : `
       <label class="ed-label">The scale</label>
@@ -935,7 +984,7 @@ function drawQuestions(){
       <textarea rows="2" placeholder="What are you asking?"
         oninput="EDITING.questions[${i}].title=this.value; updatePoints()">${esc(q.title)}</textarea>
       ${helpField(q, i)}
-      ${choices}${photo}${scale}
+      ${choices}${photo}${scale}${number}
       <div class="qfoot">
         ${pointsField(q, i, graded)}
         <label><input type="checkbox" ${q.required !== false ? 'checked' : ''}
@@ -1026,6 +1075,175 @@ function addStep(i){
 //
 // Spots are placed by clicking the picture. Everything is a percentage of the
 // picture, so it lines up whatever size the phone draws it at.
+// Sorting into buckets, matching two lists and dropping labels on a picture
+// are one question with three ways of drawing the targets, so they are one
+// card with a layout switch at the top.
+const LAYOUTS = { buckets: 'Sort into buckets', match: 'Match the pairs', picture: 'Labels on a picture' };
+
+function assignCard(q, i){
+  const layout = q.layout || 'buckets';
+  const targets = q.targets || [];
+  const items = q.items || [];
+
+  const places = layout === 'picture'
+    ? (!q.image
+        ? `<div class="pic-empty">
+             <div>No picture yet.</div>
+             <button class="btn primary" onclick="pickAssignImage(${i})">Choose a picture</button>
+           </div>`
+        : `<div class="pic-wrap" id="apic${i}" onclick="placeTarget(event, ${i})"
+                title="Click where something should be dropped">
+             <img src="${esc(q.image)}" alt="">
+             ${targets.map((t, ti) => `<span class="spot" style="
+                 left:${t.x}%;top:${t.y}%;width:9%;height:9%;"><i>${ti + 1}</i></span>`).join('')}
+           </div>
+           <div class="muted" style="font-size:12.5px;margin-top:7px;">
+             Click the picture to add a place to drop something.
+             <button class="btn" style="margin-left:8px;" onclick="pickAssignImage(${i})">Replace the picture</button>
+           </div>`)
+    : '';
+
+  const targetRows = targets.map((t, ti) => `
+    <div class="choice">
+      <span class="no" style="background:var(--surface);border:1px solid var(--border);color:var(--muted);">${ti + 1}</span>
+      <input type="text" value="${esc(t.label || '')}"
+        placeholder="${layout === 'match' ? 'The thing it matches' : layout === 'picture' ? 'What is at this spot' : 'Bucket name'}"
+        oninput="EDITING.questions[${i}].targets[${ti}].label=this.value">
+      <button class="icon-btn danger" onclick="removeTarget(${i},${ti})" title="Remove">×</button>
+    </div>`).join('');
+
+  const itemRows = items.map((it, ii) => `
+    <div class="choice">
+      <input type="text" value="${esc(it.text || '')}" placeholder="Thing to place"
+        oninput="EDITING.questions[${i}].items[${ii}].text=this.value">
+      <span class="muted" style="font-size:12.5px;">goes in</span>
+      <select onchange="EDITING.questions[${i}].items[${ii}].target=Number(this.value)">
+        ${targets.map((t, ti) => `<option value="${ti}"${Number(it.target) === ti ? ' selected' : ''}>${
+          ti + 1}. ${esc(t.label || 'unnamed')}</option>`).join('')}
+      </select>
+      <button class="icon-btn danger" onclick="removeAssignItem(${i},${ii})" title="Remove">×</button>
+    </div>`).join('');
+
+  return `<div class="qcard">
+    <div class="qhead">
+      <span class="qnum">QUESTION ${i + 1}</span>
+      <select onchange="setLayout(${i}, this.value)">
+        ${Object.entries(LAYOUTS).map(([v, label]) =>
+          `<option value="${v}"${layout === v ? ' selected' : ''}>${label}</option>`).join('')}
+      </select>
+      <div class="qtools">
+        <button class="icon-btn" onclick="moveQuestion(${i},-1)" title="Move up">↑</button>
+        <button class="icon-btn" onclick="moveQuestion(${i},1)" title="Move down">↓</button>
+        <button class="icon-btn danger" onclick="deleteQuestion(${i})" title="Delete">\U0001F5D1</button>
+      </div>
+    </div>
+    <textarea rows="2" placeholder="What are you asking? e.g. Sort these into raw and ready to eat."
+      oninput="EDITING.questions[${i}].title=this.value">${esc(q.title)}</textarea>
+    ${helpField(q, i)}
+
+    ${layout === 'picture' ? `<label class="ed-label">The picture</label>${places}` : ''}
+
+    <label class="ed-label">${layout === 'match' ? 'The right-hand list'
+      : layout === 'picture' ? 'The places on the picture' : 'The buckets'}</label>
+    ${targetRows || '<div class="muted" style="font-size:13.5px;">None yet.</div>'}
+    ${layout === 'picture' ? ''
+      : `<button class="btn" onclick="addTarget(${i})" style="margin-top:4px;">Add another</button>`}
+
+    <label class="ed-label">What they have to place
+      <span class="muted">— they arrive shuffled</span></label>
+    ${itemRows}
+    <button class="btn" onclick="addAssignItem(${i})" style="margin-top:4px;">Add another</button>
+
+    <label class="ed-label">Why — shown after they submit</label>
+    <textarea rows="2" oninput="EDITING.questions[${i}].explanation=this.value">${esc(q.explanation || '')}</textarea>
+    <div class="qfoot">
+      ${pointsField(q, i, true)}
+      <label><input type="checkbox" ${q.required !== false ? 'checked' : ''}
+        onchange="EDITING.questions[${i}].required=this.checked"> Must be answered</label>
+      <span class="muted" style="font-size:12.5px;">Paid per item placed right.</span>
+    </div>
+  </div>`;
+}
+
+function setLayout(i, layout){
+  const q = EDITING.questions[i];
+  q.layout = layout;
+  if (layout === 'picture'){
+    if (q.image == null) q.image = '';
+    // Places on a picture are clicked onto it, so any typed buckets go.
+    q.targets = (q.targets || []).filter(t => Number.isFinite(Number(t.x)));
+  } else {
+    q.targets = (q.targets || []).map(t => ({ label: t.label || '' }));
+    if (q.targets.length < 2) q.targets = [{ label: '' }, { label: '' }];
+  }
+  clampTargets(q);
+  drawQuestions();
+}
+
+// Every item points at a bucket by number, so removing one has to move the
+// pointers rather than leave them pointing past the end of the list.
+function clampTargets(q){
+  const last = (q.targets || []).length - 1;
+  for (const it of (q.items || [])) {
+    if (!(Number(it.target) >= 0) || Number(it.target) > last) it.target = 0;
+  }
+}
+
+function addTarget(i){
+  (EDITING.questions[i].targets = EDITING.questions[i].targets || []).push({ label: '' });
+  drawQuestions();
+}
+
+function removeTarget(i, ti){
+  const q = EDITING.questions[i];
+  q.targets.splice(ti, 1);
+  for (const it of q.items || []) {
+    if (Number(it.target) === ti) it.target = 0;
+    else if (Number(it.target) > ti) it.target = Number(it.target) - 1;
+  }
+  clampTargets(q);
+  drawQuestions();
+}
+
+function addAssignItem(i){
+  (EDITING.questions[i].items = EDITING.questions[i].items || []).push({ text: '', target: 0 });
+  drawQuestions();
+}
+
+function removeAssignItem(i, ii){
+  EDITING.questions[i].items.splice(ii, 1);
+  drawQuestions();
+}
+
+function placeTarget(e, i){
+  if (e.target.closest('.spot')) return;
+  const box = document.getElementById('apic' + i).getBoundingClientRect();
+  const q = EDITING.questions[i];
+  (q.targets = q.targets || []).push({
+    label: '',
+    x: Math.round(((e.clientX - box.left) / box.width) * 1000) / 10,
+    y: Math.round(((e.clientY - box.top) / box.height) * 1000) / 10,
+  });
+  drawQuestions();
+}
+
+function pickAssignImage(i){
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    try {
+      EDITING.questions[i].image = await shrinkToDataUrl(file, 1400);
+      drawQuestions();
+    } catch (err) {
+      alert('That picture could not be read. Try a JPEG or PNG.');
+    }
+  };
+  input.click();
+}
+
 function hotspotCard(q, i){
   const spots = q.hotspots || [];
   const picture = !q.image
