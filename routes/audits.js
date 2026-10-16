@@ -27,7 +27,8 @@ const db   = require('../services/db');
 const templates = require('../services/audit-templates');
 const walks = require('../services/audit-walks');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { visibleStores } = require('../services/rc-scope');
+const { visibleStores, canSee } = require('../services/rc-scope');
+const { USER_ROSTER } = require('./auth');
 const insights = require('../services/audit-insights');
 const { publicForm, grade, missingAnswers, checkOne } = require('../services/audits');
 
@@ -265,21 +266,41 @@ function applyFilters(rows, query) {
 
 // ── Templates ───────────────────────────────────────────────────────────────
 //
-// Reading the list is open to anyone signed in; changing one is not. An audit
-// is what every store in the region gets asked, so it belongs to the RDO and
-// VP rather than to whoever opens the page.
+/**
+ * Who sees a template in the list.
+ *
+ * RDOs and VPs see everything: they are the ones who build these, and a test
+ * that half the company is taking is not a secret from the people who run it.
+ * Everyone else sees what they made themselves and what came from above them —
+ * their own RDO's and VP's — and nothing from across the company.
+ *
+ * A template saved before owners existed has nobody to compare against, so it
+ * stays visible rather than disappearing from under the people using it.
+ */
+function maySeeTemplate(user, t) {
+  if (user.role === 'rdo' || user.role === 'vp') return true;
+  if (!t.createdBy) return true;
+  if (t.createdBy === user.username) return true;
+  const maker = USER_ROSTER.find(u => u.username === t.createdBy);
+  return maker ? canSee(maker, user.name) : false;
+}
+
 router.get('/templates', async (req, res) => {
   const list = await templates.listTemplates();
-  res.json(list.map(t => ({
+  res.json(list.filter(t => maySeeTemplate(req.session.user, t)).map(t => ({
     id: t.id, title: t.title, description: t.description,
+    kind: t.kind,
     questions: t.questions.length,
     points: t.questions.reduce((s, q) => s + (q.points || 0), 0),
     version: t.version, active: t.active,
-    updatedAt: t.updatedAt, updatedBy: t.updatedBy,
+    updatedAt: t.updatedAt, updatedBy: t.updatedBy, createdBy: t.createdBy,
   })));
 });
 
-router.get('/templates/:id', async (req, res) => {
+// The whole definition, answer key and all. That is the editor's copy, so it
+// is held to the people who may edit — everyone else gets the form through
+// /form, which strips the answers out.
+router.get('/templates/:id', requireRole('rdo', 'vp'), async (req, res) => {
   const def = await templates.getTemplate(req.params.id);
   if (!def) return res.status(404).json({ error: 'Not found' });
   res.json(def);
