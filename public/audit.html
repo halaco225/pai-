@@ -36,6 +36,9 @@
 
   .q-num{font-size:12.5px;font-weight:700;color:var(--blue);letter-spacing:.5px;text-transform:uppercase;}
   .q-title{margin:9px 0 18px;font-weight:600;font-size:19px;line-height:1.4;}
+  /* Says where the point of no return is, before they reach it. */
+  .lockline{margin:14px 0 0;font-size:14px;color:var(--muted);display:flex;gap:7px;align-items:flex-start;}
+  .lockline b{color:var(--ink);font-weight:600;}
   .hint{font-size:14.5px;color:var(--muted);margin:-10px 0 16px;}
 
   label.opt{display:flex;gap:13px;align-items:flex-start;padding:15px;border:1.5px solid var(--line);
@@ -382,6 +385,8 @@ function draw(dir){
       <div class="q-num">Question ${at + 1}${q.points ? ' · ' + q.points + (q.points > 1 ? ' points' : ' point') : ''}</div>
       <div class="q-title">${esc(q.title)}</div>
       ${body(q)}
+      ${isGraded(q) && !verdict ? `<div class="lockline">✎️
+        <span>Change your answer as many times as you like. <b>Checking it locks it in.</b></span></div>` : ''}
       ${verdictHtml(q, verdict)}
     </div>`;
 
