@@ -454,6 +454,15 @@ async function summarise(req, res) {
   const graded = [];
   for (const row of rows) graded.push(await frozenGrade(row));
 
+  const byArea = {};
+  for (const r of rows) {
+    const who = (assignments[r.store_number] || {}).area_coach || 'Not assigned';
+    const a = byArea[who] = byArea[who] || { area_coach: who, responses: 0, totalScore: 0, stores: new Set() };
+    a.responses += 1;
+    a.totalScore += Number(r.score);
+    a.stores.add(String(r.store_number));
+  }
+
   const byStore = {};
   for (const r of rows) {
     const s = byStore[r.store_number] = byStore[r.store_number] || {
@@ -481,6 +490,12 @@ async function summarise(req, res) {
       coaches: read.coaches,
       stores: Object.values(byStore)
         .map(s => ({ ...s, averageScore: +(s.totalScore / s.responses).toFixed(1) }))
+        .sort((a, b) => a.averageScore - b.averageScore),
+      areas: Object.values(byArea)
+        .map(a => ({
+          area_coach: a.area_coach, responses: a.responses, stores: a.stores.size,
+          averageScore: +(a.totalScore / a.responses).toFixed(1),
+        }))
         .sort((a, b) => a.averageScore - b.averageScore),
     },
   };
@@ -537,6 +552,72 @@ router.get('/matrix', async (req, res) => {
       };
     }),
   });
+});
+
+/**
+ * Every test and audit on one screen, which is the question you actually
+ * arrive with: what is out there, who has done it, and where is it going
+ * wrong. Until this existed the whole tab reported on one hard-coded walk,
+ * so results from everything else were invisible.
+ *
+ * Coverage is counted in stores, not people: a walk belongs to a store, and
+ * "nine of my fourteen have done it" is the sentence worth reading.
+ */
+router.get('/overview', async (req, res) => {
+  const user = req.session.user;
+  const assignments = await db.getStoreAssignments();
+  const stores = visibleStores(user, assignments);
+  const maySeeAll = user.role === 'rdo' || user.role === 'vp';
+  const everywhere = maySeeAll && String(req.query.scope || '') === 'all';
+
+  const c = serviceClient(res); if (!c) return;
+
+  const list = (await templates.listTemplates()).filter(t => maySeeTemplate(user, t));
+  const { data, error } = await c
+    .from('audit_responses')
+    .select('id, audit_id, store_number, respondent_name, score, max_score, created_at')
+    .order('created_at', { ascending: false });
+  if (error) return res.status(502).json({ error: error.message });
+
+  const mine = (data || []).filter(r => everywhere || stores.has(String(r.store_number)));
+
+  const out = list.map(t => {
+    const rows = mine.filter(r => r.audit_id === t.id);
+    const scored = rows.filter(r => Number(r.max_score) > 0);
+    const share = scored.length
+      ? scored.reduce((sum, r) => sum + (Number(r.score) / Number(r.max_score)), 0) / scored.length
+      : null;
+    const done = new Set(rows.map(r => String(r.store_number)));
+
+    // Stores that owe one. Only meaningful inside a region: "everywhere"
+    // counts against every store in the company, which nobody is chasing.
+    const owed = everywhere ? [] : [...stores].filter(n => !done.has(n));
+
+    return {
+      id: t.id,
+      title: t.title,
+      kind: t.kind,
+      active: t.active,
+      coach: t.coach || null,
+      questions: t.questions.length,
+      points: t.questions.reduce((sum, q) => sum + (q.points || 0), 0),
+      walks: rows.length,
+      average: share == null ? null : Math.round(share * 1000) / 10,
+      lastAt: rows.length ? rows[0].created_at : null,
+      lastBy: rows.length ? rows[0].respondent_name : null,
+      storesDone: done.size,
+      storesInScope: everywhere ? null : stores.size,
+      owed: owed.slice(0, 200).map(n => ({
+        store_number: n,
+        store_name: (assignments[n] || {}).store_name || '',
+        area_coach: (assignments[n] || {}).area_coach || '',
+      })),
+    };
+  });
+
+  // Most recently used first; anything nobody has taken sinks to the bottom.
+  out.sort((a, b) => (b.lastAt ? Date.parse(b.lastAt) : 0) - (a.lastAt ? Date.parse(a.lastAt) : 0));
+  res.json({ audits: out, maySeeAll, everywhere });
 });
 
 router.get('/summary', async (req, res) => {

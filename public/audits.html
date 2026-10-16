@@ -133,6 +133,22 @@ tr.row:hover td{background:#242831;}
 .kind-pick:hover{border-color:var(--accent);background:#20242d;}
 .kind-pick b{display:block;font-size:16.5px;margin-bottom:4px;}
 .kind-pick span{display:block;color:var(--muted);font-size:14px;line-height:1.5;}
+.ov{display:grid;gap:12px;}
+.ov-row{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;
+        background:var(--card);border:1px solid var(--border);border-radius:14px;padding:15px 17px;
+        cursor:pointer;}
+.ov-row:hover{border-color:var(--accent);}
+.ov-name{font-size:16.5px;font-weight:650;display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+.ov-sub{color:var(--muted);font-size:13px;margin-top:5px;}
+.ov-nums{display:flex;gap:22px;align-items:center;text-align:right;}
+.ov-num{min-width:62px;}
+.ov-num b{display:block;font-size:20px;font-weight:650;line-height:1.15;}
+.ov-num span{display:block;font-size:11px;color:var(--muted);letter-spacing:.4px;text-transform:uppercase;}
+.ov-num.bad b{color:#ff6b70;} .ov-num.good b{color:#4ade80;}
+.tag.kind{font-size:11px;letter-spacing:.4px;text-transform:uppercase;}
+.cover{height:6px;border-radius:4px;background:var(--surface);overflow:hidden;margin-top:7px;max-width:260px;}
+.cover i{display:block;height:100%;background:var(--accent);}
+.owed{margin-top:9px;font-size:13px;color:var(--muted);line-height:1.6;}
 .coach-pick{display:flex;gap:9px;flex-wrap:wrap;}
 .coach-opt{display:flex;align-items:center;gap:9px;padding:8px 13px 8px 9px;border-radius:12px;
            border:1.5px solid var(--border);background:var(--surface);color:inherit;
@@ -201,16 +217,30 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
 </div>
 
 <div class="nav-tabs">
-  <div class="nav-tab active" id="tab-responses" onclick="showTab('responses')">Responses</div>
+  <div class="nav-tab active" id="tab-overview" onclick="showTab('overview')">Overview</div>
+  <div class="nav-tab" id="tab-responses" onclick="showTab('responses')">Responses</div>
   <div class="nav-tab" id="tab-summary" onclick="showTab('summary')">Summary</div>
   <div class="nav-tab" id="tab-stores" onclick="showTab('stores')">By store</div>
   <div class="nav-tab" id="tab-templates" onclick="showTab('templates')">Templates</div>
 </div>
 
 <div class="wrap">
-  <!-- RESPONSES -->
-  <div id="pane-responses">
+  <!-- OVERVIEW -->
+  <div id="pane-overview">
     <div class="filters">
+      <select id="oScope" title="Whose walks to count" style="display:none"
+              onchange="loadOverview()">
+        <option value="">My region</option>
+        <option value="all">Everyone, every region</option>
+      </select>
+    </div>
+    <div id="overview" class="empty">Loading…</div>
+  </div>
+
+  <!-- RESPONSES -->
+  <div id="pane-responses" style="display:none">
+    <div class="filters">
+      <select id="fAudit" title="Which test or audit" onchange="pickAudit(this.value)"></select>
       <select id="fScope" title="Whose walks to show" style="display:none">
         <option value="">My region</option>
         <option value="all">Everyone, every region</option>
@@ -234,6 +264,8 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
 
   <!-- SUMMARY -->
   <div id="pane-summary" style="display:none">
+    <div class="filters"><select id="sAudit" title="Which test or audit"
+      onchange="pickAudit(this.value)"></select></div>
     <div class="card"><div class="card-title">What stands out</div><div id="sumStand" class="empty">Loading…</div></div>
     <div class="card"><div class="card-title">Across every response</div><div id="sumHead" class="empty"></div></div>
     <div class="card"><div class="card-title">Questions the region keeps missing (worst first)</div><div id="sumQ"></div></div>
@@ -241,9 +273,14 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
     <div class="card"><div class="card-title">By Area Coach (lowest first)</div><div id="sumCoach"></div></div>
   </div>
 
-  <!-- BY STORE -->
+  <!-- BY STORE AND AREA -->
   <div id="pane-stores" style="display:none">
-    <div class="card"><div class="card-title">Average score by store (worst first)</div><div id="byStore" class="empty">Loading…</div></div>
+    <div class="filters"><select id="tAudit" title="Which test or audit"
+      onchange="pickAudit(this.value)"></select></div>
+    <div class="card"><div class="card-title">By Area Coach (lowest first)</div>
+      <div id="byArea" class="empty">Loading…</div></div>
+    <div class="card"><div class="card-title">Average score by store (worst first)</div>
+      <div id="byStore" class="empty">Loading…</div></div>
   </div>
 
   <!-- TEMPLATES -->
@@ -335,7 +372,7 @@ const when = iso => new Date(iso).toLocaleString(undefined, { month:'short', day
 
 let RESPONSES = [];
 
-const TABS = ['responses','summary','stores','templates'];
+const TABS = ['overview','responses','summary','stores','templates'];
 
 function showTab(tab){
   for (const t of TABS){
@@ -344,9 +381,84 @@ function showTab(tab){
   }
   document.getElementById('pane-one').style.display = 'none';
   document.getElementById('pane-editor').style.display = 'none';
+  if (tab === 'overview') loadOverview();
+  if (tab === 'responses') load();
   if (tab === 'summary') loadSummary();
   if (tab === 'stores') loadStores();
   if (tab === 'templates') loadTemplates();
+}
+
+// What is out there, who has done it, and where it is going wrong — the
+// question you actually arrive with.
+async function loadOverview(){
+  const scope = document.getElementById('oScope').value;
+  const data = await fetch('/api/audits/overview' + (scope ? '?scope=all' : '')).then(r => r.json());
+  document.getElementById('oScope').style.display = data.maySeeAll ? '' : 'none';
+
+  AUDIT_LIST = data.audits || [];
+  if (!AUDIT || !AUDIT_LIST.some(a => a.id === AUDIT)){
+    let kept = null;
+    try { kept = localStorage.getItem('audits-current'); } catch (e) {}
+    AUDIT = (kept && AUDIT_LIST.some(a => a.id === kept) ? kept
+             : (AUDIT_LIST[0] || {}).id) || '';
+  }
+  drawAuditPickers();
+
+  const box = document.getElementById('overview');
+  if (!AUDIT_LIST.length){
+    box.className = 'empty';
+    box.textContent = 'No tests or audits yet. Make one in Templates.';
+    return;
+  }
+
+  box.className = 'ov';
+  box.innerHTML = AUDIT_LIST.map(a => {
+    const pct = a.average;
+    const tone = pct == null ? '' : pct >= 90 ? 'good' : pct < 70 ? 'bad' : '';
+    const cover = a.storesInScope
+      ? Math.round((a.storesDone / a.storesInScope) * 100) : null;
+
+    const when = a.lastAt
+      ? new Date(a.lastAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      : '—';
+
+    // Who still owes one. Named rather than counted, because the point of
+    // the number is knowing who to ring.
+    const owed = (a.owed || []).length
+      ? `<div class="owed"><b>${a.owed.length} still to do:</b> ${
+          a.owed.slice(0, 8).map(o => esc(o.store_number + (o.store_name ? ' ' + o.store_name : ''))).join(', ')
+        }${a.owed.length > 8 ? ` and ${a.owed.length - 8} more` : ''}</div>`
+      : '';
+
+    return `<div class="ov-row" onclick="openAudit('${a.id}')">
+      <div>
+        <div class="ov-name">${esc(a.title)}
+          <span class="tag kind ${a.kind === 'test' ? 'on' : ''}">${a.kind === 'test' ? 'Test' : 'Audit'}</span>
+          ${a.active ? '' : '<span class="tag">Paused</span>'}
+        </div>
+        <div class="ov-sub">${a.questions} questions${a.points ? ' · ' + a.points + ' points' : ''}
+          ${a.lastBy ? ' · last in from ' + esc(a.lastBy) + ' on ' + when : ' · nobody has taken it yet'}</div>
+        ${cover == null ? '' : `<div class="cover"><i style="width:${cover}%"></i></div>`}
+        ${owed}
+      </div>
+      <div class="ov-nums">
+        <div class="ov-num"><b>${a.walks}</b><span>Walks</span></div>
+        ${a.kind === 'test'
+          ? `<div class="ov-num ${tone}"><b>${pct == null ? '—' : pct + '%'}</b><span>Average</span></div>`
+          : ''}
+        ${a.storesInScope != null
+          ? `<div class="ov-num"><b>${a.storesDone}/${a.storesInScope}</b><span>Stores</span></div>`
+          : `<div class="ov-num"><b>${a.storesDone}</b><span>Stores</span></div>`}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openAudit(id){
+  AUDIT = id;
+  try { localStorage.setItem('audits-current', id); } catch (e) {}
+  drawAuditPickers();
+  showTab('responses');
 }
 
 function exportAs(kind){
@@ -354,13 +466,39 @@ function exportAs(kind){
   window.location = '/api/audits/export.' + kind + (q ? '?' + q : '');
 }
 
+// Which test or audit the reporting tabs are reading. Before this existed
+// they all reported on one hard-coded walk, so everything else came back
+// invisible however many people had taken it.
+let AUDIT = '';
+let AUDIT_LIST = [];
+
 function query(){
   const p = new URLSearchParams();
+  if (AUDIT) p.set('auditId', AUDIT);
   for (const [key, id] of [['store','fStore'],['coach','fCoach'],['from','fFrom'],['to','fTo'],['scope','fScope']]){
     const v = document.getElementById(id).value;
     if (v) p.set(key, v);
   }
   return p.toString();
+}
+
+function drawAuditPickers(){
+  const options = AUDIT_LIST.map(a =>
+    `<option value="${a.id}"${a.id === AUDIT ? ' selected' : ''}>${esc(a.title)}</option>`).join('');
+  for (const id of ['fAudit', 'sAudit', 'tAudit']){
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = options;
+  }
+}
+
+function pickAudit(id){
+  AUDIT = id;
+  try { localStorage.setItem('audits-current', id); } catch (e) {}
+  drawAuditPickers();
+  const open = TABS.find(t => document.getElementById('pane-' + t).style.display === 'block');
+  if (open === 'summary') loadSummary();
+  else if (open === 'stores') loadStores();
+  else load();
 }
 
 function reset(){
@@ -632,6 +770,20 @@ function sparkline(days, maxScore){
 
 async function loadStores(){
   const s = await fetch('/api/audits/summary?' + query()).then(r => r.json());
+
+  const area = document.getElementById('byArea');
+  if (!(s.areas || []).length){ area.className = 'empty'; area.textContent = 'Nothing yet.'; }
+  else {
+    area.className = '';
+    area.innerHTML = `<table><thead><tr><th>Area Coach</th><th>Stores</th><th>Walks</th><th>Average</th></tr></thead><tbody>` +
+      s.areas.map(r => `<tr class="openable" onclick="drillCoach('${esc(r.area_coach)}')">
+        <td><span class="caret">▸</span>${esc(r.area_coach)}</td>
+        <td class="muted">${r.stores}</td><td>${r.responses}</td>
+        <td><span class="pill ${band(pct(r.averageScore, s.maxScore))}">${r.averageScore}/${s.maxScore}</span></td></tr>
+        <tr><td colspan="4" style="padding:0;border:none;"><div id="drill-coach-${esc(r.area_coach)}"></div></td></tr>`).join('') +
+      '</tbody></table>';
+  }
+
   const el = document.getElementById('byStore');
   if (!s.stores.length){ el.className = 'empty'; el.textContent = 'Nothing yet.'; return; }
   el.className = '';
@@ -1470,7 +1622,7 @@ document.getElementById('copyLink').addEventListener('click', e => {
   else prompt('Copy this link:', url);
 });
 
-load();
+loadOverview();
 </script>
 </body>
 </html>
