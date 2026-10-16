@@ -67,9 +67,16 @@
   .store-list .none{padding:14px 15px;color:var(--muted);font-size:15px;}
 
   /* Put-in-order question: tap the steps in the order they happen. */
-  .step{display:flex;align-items:center;gap:13px;padding:14px 15px;border:1.5px solid var(--line);
-        border-radius:12px;margin-bottom:10px;background:#fff;cursor:pointer;font-weight:500;}
-  .step:active{background:#eef2fb;}
+  .step{display:flex;align-items:center;gap:11px;padding:14px 13px;border:1.5px solid var(--line);
+        border-radius:12px;margin-bottom:10px;background:#fff;font-weight:500;}
+  /* The handle is the only part that drags, so the list still scrolls under
+     a finger that is not on a handle. */
+  .grip{flex:none;width:34px;align-self:stretch;display:flex;align-items:center;justify-content:center;
+        color:#9aa4b4;font-size:19px;line-height:1;cursor:grab;touch-action:none;}
+  .grip:active{cursor:grabbing;}
+  .step.lifted{border-color:var(--blue);background:#eef3fe;
+        box-shadow:0 8px 20px rgba(16,24,40,.18);}
+  .step.lifted .grip{color:var(--blue);}
   .step .pos{flex:none;width:30px;height:30px;border-radius:50%;border:2px solid var(--line);
         color:var(--muted);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;}
   .step.placed{border-color:var(--blue);background:#eef3fe;}
@@ -378,14 +385,20 @@ function body(q){
       }).join('');
     }
 
-    return steps.map(step => {
-      const at = placed.indexOf(step.was);
-      return `<div class="step ${at >= 0 ? 'placed' : ''}" data-was="${step.was}">
-        <span class="pos">${at >= 0 ? at + 1 : ''}</span>
-        <span>${esc(step.text)}</span></div>`;
-    }).join('') +
-    `<div class="orderctl"><div class="tapcount" id="ordercount">${placed.length} of ${steps.length} placed</div>
-     <div class="hint" style="margin:8px 0 0;">Tap them in the order they happen. Tap one again to take it back.</div></div>`;
+    // They arrange the whole list, so it always holds every step. The order
+    // it arrives in is the shuffled one, and that counts as their answer
+    // until they move something.
+    const arrangement = (placed.length === steps.length) ? placed : steps.map(x => x.was);
+    answers[q.n] = arrangement;
+
+    return `<div id="droplist">` + arrangement.map((was, i) => {
+      const step = steps.find(x => x.was === was);
+      return `<div class="step" data-was="${was}">
+        <span class="grip" aria-label="Drag to move">\u22ee\u22ee</span>
+        <span class="pos">${i + 1}</span>
+        <span>${esc(step ? step.text : '')}</span></div>`;
+    }).join('') + `</div>
+    <div class="orderctl"><div class="hint" style="margin:8px 0 0;">Drag the handles to put them in the order they happen, first at the top.</div></div>`;
   }
 
   if (q.type === 'hotspot'){
@@ -468,31 +481,67 @@ function wire(q){
   if (q.type === 'order'){
     if (checked[q.n]) return;                 // marked: it is a result now
     const steps = q.steps || [];
+    const list = document.getElementById('droplist');
+    let dragging = null;                      // the step being moved, by its own id
 
-    stage.querySelectorAll('.step').forEach(el => {
-      el.addEventListener('click', () => {
-        const was = Number(el.dataset.was);
-        const placed = Array.isArray(answers[q.n]) ? answers[q.n] : (answers[q.n] = []);
-        const at = placed.indexOf(was);
-        // Taking one back renumbers everything after it, which is what you
-        // want: the positions are the answer, not labels on the steps.
-        if (at >= 0) placed.splice(at, 1); else placed.push(was);
-        saveDraft();
-        say('');
-        redrawOrder();
-      });
-    });
+    function rows(){ return [...list.querySelectorAll('.step')]; }
 
     function redrawOrder(){
-      const placed = answers[q.n] || [];
-      stage.querySelectorAll('.step').forEach(el => {
-        const at = placed.indexOf(Number(el.dataset.was));
-        el.classList.toggle('placed', at >= 0);
-        el.querySelector('.pos').textContent = at >= 0 ? at + 1 : '';
-      });
-      const c = document.getElementById('ordercount');
-      if (c) c.textContent = `${placed.length} of ${steps.length} placed`;
+      const arrangement = answers[q.n] || [];
+      list.innerHTML = arrangement.map((was, i) => {
+        const step = steps.find(x => x.was === was);
+        return `<div class="step ${was === dragging ? 'lifted' : ''}" data-was="${was}">
+          <span class="grip" aria-label="Drag to move">\u22ee\u22ee</span>
+          <span class="pos">${i + 1}</span>
+          <span>${esc(step ? step.text : '')}</span></div>`;
+      }).join('');
     }
+
+    // Where in the list is this pointer? Above the first row means the top,
+    // below the last means the bottom; otherwise whichever row it is over.
+    function indexAt(y){
+      const r = rows();
+      if (!r.length) return 0;
+      if (y < r[0].getBoundingClientRect().top) return 0;
+      if (y > r[r.length - 1].getBoundingClientRect().bottom) return r.length - 1;
+      for (let i = 0; i < r.length; i++){
+        const box = r[i].getBoundingClientRect();
+        if (y >= box.top && y <= box.bottom) return i;
+      }
+      return r.length - 1;
+    }
+
+    list.addEventListener('pointerdown', e => {
+      // Only the handle drags. Anywhere else and the list scrolls as usual.
+      if (!e.target.closest('.grip')) return;
+      const row = e.target.closest('.step');
+      if (!row) return;
+      dragging = Number(row.dataset.was);
+      try { list.setPointerCapture(e.pointerId); } catch (err) {}
+      e.preventDefault();
+      redrawOrder();
+    });
+
+    list.addEventListener('pointermove', e => {
+      if (dragging === null) return;
+      e.preventDefault();
+      const arrangement = answers[q.n];
+      const from = arrangement.indexOf(dragging);
+      const to = indexAt(e.clientY);
+      if (to === from || to < 0) return;
+      arrangement.splice(to, 0, arrangement.splice(from, 1)[0]);
+      redrawOrder();
+    });
+
+    function drop(){
+      if (dragging === null) return;
+      dragging = null;
+      saveDraft();
+      say('');
+      redrawOrder();
+    }
+    list.addEventListener('pointerup', drop);
+    list.addEventListener('pointercancel', drop);
     return;
   }
 
