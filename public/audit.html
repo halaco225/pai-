@@ -293,64 +293,7 @@ function verdictHtml(q, v){
   if (v.offline) return `<div class="verdict no"><div class="head">Could not check that one</div>
     <div class="why">No signal. Your answer is saved — keep going.</div></div>`;
 
-  if (q.type === 'order'){
-    const placed = Array.isArray(given) ? given : [];
-    const v = checked[q.n];
-    const steps = q.steps || [];
 
-    if (v && !v.offline){
-      // Their order, top to bottom, each one told whether it belongs there.
-      return placed.map((was, i) => {
-        const right = was === i;
-        const step = steps.find(x => x.was === was);
-        return `<div class="step ${right ? 'right' : 'wrong'}">
-          <span class="pos">${i + 1}</span>
-          <span>${esc(step ? step.text : '')}</span>
-          ${right ? '' : `<span class="should">goes at ${was + 1}</span>`}
-        </div>`;
-      }).join('');
-    }
-
-    return steps.map(step => {
-      const at = placed.indexOf(step.was);
-      return `<div class="step ${at >= 0 ? 'placed' : ''}" data-was="${step.was}">
-        <span class="pos">${at >= 0 ? at + 1 : ''}</span>
-        <span>${esc(step.text)}</span></div>`;
-    }).join('') +
-    `<div class="orderctl"><div class="tapcount" id="ordercount">${placed.length} of ${steps.length} placed</div>
-     <div class="hint" style="margin:8px 0 0;">Tap them in the order they happen. Tap one again to take it back.</div></div>`;
-  }
-
-  if (q.type === 'order'){
-    if (checked[q.n]) return;                 // marked: it is a result now
-    const steps = q.steps || [];
-
-    stage.querySelectorAll('.step').forEach(el => {
-      el.addEventListener('click', () => {
-        const was = Number(el.dataset.was);
-        const placed = Array.isArray(answers[q.n]) ? answers[q.n] : (answers[q.n] = []);
-        const at = placed.indexOf(was);
-        // Taking one back renumbers everything after it, which is what you
-        // want: the positions are the answer, not labels on the steps.
-        if (at >= 0) placed.splice(at, 1); else placed.push(was);
-        saveDraft();
-        say('');
-        redrawOrder();
-      });
-    });
-
-    function redrawOrder(){
-      const placed = answers[q.n] || [];
-      stage.querySelectorAll('.step').forEach(el => {
-        const at = placed.indexOf(Number(el.dataset.was));
-        el.classList.toggle('placed', at >= 0);
-        el.querySelector('.pos').textContent = at >= 0 ? at + 1 : '';
-      });
-      const c = document.getElementById('ordercount');
-      if (c) c.textContent = `${placed.length} of ${steps.length} placed`;
-    }
-    return;
-  }
 
   if (q.type === 'order'){
     const steps = q.steps || [];
@@ -415,6 +358,34 @@ function body(q){
             ${v ? 'disabled' : ''}>
           <span>${esc(c)}</span>${tick}</label>`;
       }).join('');
+  }
+
+  if (q.type === 'order'){
+    const placed = Array.isArray(given) ? given : [];
+    const v = checked[q.n];
+    const steps = q.steps || [];
+
+    if (v && !v.offline){
+      // Their order, top to bottom, each one told whether it belongs there.
+      return placed.map((was, i) => {
+        const right = was === i;
+        const step = steps.find(x => x.was === was);
+        return `<div class="step ${right ? 'right' : 'wrong'}">
+          <span class="pos">${i + 1}</span>
+          <span>${esc(step ? step.text : '')}</span>
+          ${right ? '' : `<span class="should">goes at ${was + 1}</span>`}
+        </div>`;
+      }).join('');
+    }
+
+    return steps.map(step => {
+      const at = placed.indexOf(step.was);
+      return `<div class="step ${at >= 0 ? 'placed' : ''}" data-was="${step.was}">
+        <span class="pos">${at >= 0 ? at + 1 : ''}</span>
+        <span>${esc(step.text)}</span></div>`;
+    }).join('') +
+    `<div class="orderctl"><div class="tapcount" id="ordercount">${placed.length} of ${steps.length} placed</div>
+     <div class="hint" style="margin:8px 0 0;">Tap them in the order they happen. Tap one again to take it back.</div></div>`;
   }
 
   if (q.type === 'hotspot'){
@@ -491,6 +462,37 @@ function wire(q){
         say('');
       });
     });
+    return;
+  }
+
+  if (q.type === 'order'){
+    if (checked[q.n]) return;                 // marked: it is a result now
+    const steps = q.steps || [];
+
+    stage.querySelectorAll('.step').forEach(el => {
+      el.addEventListener('click', () => {
+        const was = Number(el.dataset.was);
+        const placed = Array.isArray(answers[q.n]) ? answers[q.n] : (answers[q.n] = []);
+        const at = placed.indexOf(was);
+        // Taking one back renumbers everything after it, which is what you
+        // want: the positions are the answer, not labels on the steps.
+        if (at >= 0) placed.splice(at, 1); else placed.push(was);
+        saveDraft();
+        say('');
+        redrawOrder();
+      });
+    });
+
+    function redrawOrder(){
+      const placed = answers[q.n] || [];
+      stage.querySelectorAll('.step').forEach(el => {
+        const at = placed.indexOf(Number(el.dataset.was));
+        el.classList.toggle('placed', at >= 0);
+        el.querySelector('.pos').textContent = at >= 0 ? at + 1 : '';
+      });
+      const c = document.getElementById('ordercount');
+      if (c) c.textContent = `${placed.length} of ${steps.length} placed`;
+    }
     return;
   }
 
