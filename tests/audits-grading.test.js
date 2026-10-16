@@ -12,12 +12,12 @@ const def = require('../data/audits/steritech-readiness.json');
 describe('the audit definition', () => {
   test('loads', () => {
     expect(def).toBeTruthy();
-    expect(def.questions).toHaveLength(20);
+    expect(def.questions).toHaveLength(21);
   });
 
   // Guards the total against a future edit to the seed.
-  test('is worth exactly 20 points', () => {
-    expect(maxScore(def)).toBe(20);
+  test('is worth exactly 23 points', () => {
+    expect(maxScore(def)).toBe(23);
   });
 });
 
@@ -67,16 +67,16 @@ describe('grade', () => {
     expect(grade(def, { 6: [2, 0, 1] }).score).toBe(1);    // order does not matter
   });
 
-  test('a perfect walk scores 20', () => {
+  test('a perfect walk scores 23', () => {
     const result = grade(def, perfectAnswers());
-    expect(result.score).toBe(20);
-    expect(result.maxScore).toBe(20);
+    expect(result.score).toBe(23);
+    expect(result.maxScore).toBe(23);
   });
 
   test('an empty submission scores 0 and still explains every scored question', () => {
     const result = grade(def, {});
     expect(result.score).toBe(0);
-    expect(result.results).toHaveLength(12);
+    expect(result.results).toHaveLength(13);
     for (const r of result.results) {
       expect(r.explanation).toBeTruthy();
       // A picture question answers with hotspots rather than choices.
@@ -86,7 +86,7 @@ describe('grade', () => {
   });
 
   test('ungraded questions never add points', () => {
-    expect(grade(def, { 1: 'Harold Lacoste', 20: 'Clean the hood' }).score).toBe(0);
+    expect(grade(def, { 1: 'Harold Lacoste', 21: 'Clean the hood' }).score).toBe(0);
   });
 });
 
@@ -109,7 +109,7 @@ describe('missingAnswers', () => {
   });
 
   test('every question is required', () => {
-    expect(missingAnswers(def, {}, {})).toHaveLength(20);
+    expect(missingAnswers(def, {}, {})).toHaveLength(21);
   });
 
   test('a photo question needs at least one picture', () => {
@@ -161,7 +161,7 @@ describe('checkOne', () => {
   test('reveals nothing for a question that is not scored', () => {
     expect(checkOne(def, 1, 'Harold')).toBeNull();   // name
     expect(checkOne(def, 4, [0])).toBeNull();        // photo
-    expect(checkOne(def, 20, 'fix the hood')).toBeNull();
+    expect(checkOne(def, 21, 'fix the hood')).toBeNull();
   });
 
   test('reveals nothing for a question that does not exist', () => {

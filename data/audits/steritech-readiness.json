@@ -233,15 +233,15 @@
           "why": "Food left uncovered collects whatever is in the air. Keep it covered whenever you are not using it."
         },
         {
-          "x": 59.0,
+          "x": 59,
           "y": 58.6,
-          "rx": 4.0,
+          "rx": 4,
           "ry": 6.6,
           "label": "Somebody's drink on the prep table",
           "why": "Your own drink never sits where food is made. Drinks stay in the break area, away from the store's food."
         },
         {
-          "x": 76.0,
+          "x": 76,
           "y": 59.4,
           "rx": 7.3,
           "ry": 6.2,
@@ -279,6 +279,23 @@
     },
     {
       "n": 17,
+      "title": "After using the restroom, when must you wash your hands?",
+      "type": "single",
+      "points": 3,
+      "choices": [
+        "Only when returning to work",
+        "Only if you touched the door",
+        "Before leaving the restroom AND again at the BOH hand sink",
+        "Only before leaving the restroom"
+      ],
+      "correct": [
+        2
+      ],
+      "explanation": "Twice. Once in the restroom before you leave, then again at the back-of-house hand sink — because you touched the restroom door on the way out.",
+      "required": true
+    },
+    {
+      "n": 18,
       "title": "Which of these would make a hand sink FAIL? Pick ALL that apply.",
       "type": "multi",
       "points": 3,
@@ -299,7 +316,7 @@
       "required": true
     },
     {
-      "n": 18,
+      "n": 19,
       "title": "PHOTO: Take a picture of each hand sink in the back. Show that nothing is blocking it, and show the soap, paper towels, hand sanitizer and the sign.",
       "type": "photo",
       "points": 0,
@@ -307,7 +324,7 @@
       "required": true
     },
     {
-      "n": 19,
+      "n": 20,
       "title": "Which of these would FAIL the audit? Pick ALL that apply.",
       "type": "multi",
       "points": 3,
@@ -327,7 +344,7 @@
       "required": true
     },
     {
-      "n": 20,
+      "n": 21,
       "title": "After this walk, list the top 3 things you are going to fix before the audit, who will do each one, and by when.",
       "type": "longtext",
       "points": 0,
