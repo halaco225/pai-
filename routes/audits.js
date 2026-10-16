@@ -209,17 +209,25 @@ router.use(requireAuth);
 
 async function scopedRows(req, res) {
   const stores = visibleStores(req.session.user, await db.getStoreAssignments());
-  if (stores.size === 0) return { rows: [], stores };
+  const auditId = req.query.auditId || DEFAULT_AUDIT;
 
   const c = serviceClient(res); if (!c) return null;
+
+  // Everything for this audit, then split by what this viewer may read. The
+  // count of the rest is reported without any detail: somebody who shares a
+  // link needs to know a walk came back even when it came from a store that
+  // is not theirs, or it looks like the link is broken.
   const { data, error } = await c.from('audit_responses')
     .select('*')
-    .eq('audit_id', req.query.auditId || DEFAULT_AUDIT)
-    .in('store_number', [...stores])
+    .eq('audit_id', auditId)
     .order('created_at', { ascending: false });
 
   if (error) { res.status(500).json({ error: error.message }); return null; }
-  return { rows: data || [], stores };
+
+  const all = data || [];
+  const rows = all.filter(r => stores.has(String(r.store_number)));
+  const outside = all.length - rows.length;
+  return { rows, stores, outside };
 }
 
 function withStoreInfo(rows, assignments) {
@@ -301,6 +309,7 @@ router.get('/responses', async (req, res) => {
 
   res.json({
     responses: rows,
+    outside: scoped.outside || 0,
     coaches: [...new Set(rows.map(r => r.area_coach).filter(Boolean))].sort(),
     stores: [...new Set(rows.map(r => r.store_number))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
   });

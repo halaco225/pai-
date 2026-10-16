@@ -129,6 +129,8 @@ input[type=text],textarea{width:100%;background:var(--surface);border:1px solid 
 textarea{resize:vertical;line-height:1.5;}
 input[type=number]{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 10px;
   border-radius:8px;font:inherit;font-size:13.5px;width:82px;}
+/* Rolling the wheel over a focused number input edits it. Scrolling a long
+   form should not quietly change the points on whatever is under the cursor. */
 input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
 
 .qcard{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:15px;margin-bottom:12px;box-shadow:var(--shadow);}
@@ -304,14 +306,26 @@ async function load(){
   fill('fStore', data.stores, 'Every store');
   fill('fCoach', data.coaches, 'Every Area Coach');
 
+  // A walk from a store that is not yours is not shown, but it is counted:
+  // sharing a link and seeing nothing come back looks like a broken link.
+  const outside = data.outside
+    ? `<div class="stand" style="border:none;padding:0 0 12px;color:var(--muted);">
+         <span class="dot" style="background:#f5a623;"></span>
+         <div>${data.outside} walk${data.outside === 1 ? '' : 's'} came back from
+         store${data.outside === 1 ? '' : 's'} outside your region, so ${data.outside === 1 ? 'it is' : 'they are'} not listed here.
+         Whoever covers that store sees ${data.outside === 1 ? 'it' : 'them'}.</div></div>`
+    : '';
+
   const list = document.getElementById('list');
   if (!RESPONSES.length){
-    list.className = 'empty';
-    list.textContent = 'No one has finished a walk yet. Copy the link above and text it to a shift leader.';
+    list.className = outside ? '' : 'empty';
+    list.innerHTML = outside + (outside
+      ? ''
+      : 'No one has finished a walk yet. Copy the link above and text it to a shift leader.');
     return;
   }
   list.className = '';
-  list.innerHTML = `<table><thead><tr>
+  list.innerHTML = outside + `<table><thead><tr>
       <th>When</th><th>Store</th><th>Who</th><th>Area Coach</th><th>Score</th></tr></thead><tbody>` +
     RESPONSES.map(r => {
       const p = pct(r.score, r.max_score);
@@ -564,6 +578,8 @@ async function loadStores(){
 // that object and redraws; nothing reaches the server until Save, so a
 // half-finished question can never go out to a store.
 let EDITING = null;
+// What the audit was worth when it was opened, so a save can notice a drop.
+let SAVED_TOTAL = null;
 
 const TYPE_NAMES = { single:'One answer', multi:'Pick all that apply', photo:'Picture', text:'Short text', longtext:'Long text', hotspot:'Tap the picture', order:'Put in order' };
 
@@ -614,6 +630,7 @@ async function removeTemplate(id, title){
 }
 
 function newTemplate(){
+  SAVED_TOTAL = null;
   EDITING = { id:'', title:'', description:'', version:0, questions:[
     { n:1, title:'Your first and last name', type:'text', points:0, required:true },
     { n:2, title:'Your store number', type:'text', points:0, required:true },
@@ -623,6 +640,7 @@ function newTemplate(){
 
 async function editTemplate(id){
   EDITING = await fetch('/api/audits/templates/' + encodeURIComponent(id)).then(r => r.json());
+  SAVED_TOTAL = EDITING.questions.reduce((s, q) => s + (Number(q.points) || 0), 0);
   openEditor(`Version ${EDITING.version}${EDITING.updatedBy ? ' · last edited by ' + EDITING.updatedBy : ''}`);
 }
 
@@ -901,6 +919,17 @@ function updatePoints(){
 
 async function saveTemplate(){
   readHeader();
+
+  // A big fall in the total is nearly always an accident -- a type changed
+  // and changed back, a points box nudged. Say the number out loud before
+  // writing it, because the version that replaces it is live immediately.
+  const total = EDITING.questions.reduce((s, q) => s + (Number(q.points) || 0), 0);
+  if (EDITING.version && SAVED_TOTAL != null && total < SAVED_TOTAL * 0.75){
+    if (!confirm(`This drops the total from ${SAVED_TOTAL} points to ${total}.
+
+Save anyway?`)) return;
+  }
+
   const res = await fetch('/api/audits/templates', {
     method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(EDITING) });
   const data = await res.json();
@@ -914,9 +943,17 @@ async function saveTemplate(){
   }
   box.innerHTML = '';
   EDITING = data;
+  SAVED_TOTAL = data.questions.reduce((s, q) => s + (Number(q.points) || 0), 0);
   document.getElementById('edStatus').textContent = `Saved · version ${data.version}`;
   drawQuestions();
 }
+
+// Stop the wheel editing number inputs: scrolling past a points box should
+// scroll, not retype it.
+document.addEventListener('wheel', e => {
+  const n = e.target;
+  if (n && n.type === 'number' && n === document.activeElement) n.blur();
+}, { passive: true });
 
 document.getElementById('edTitle').addEventListener('input', readHeader);
 document.getElementById('edId').addEventListener('input', readHeader);
