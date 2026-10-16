@@ -13,7 +13,7 @@
 // appears there, a shift leader can read the answers out of devtools.
 
 const CHOICE = new Set(['single', 'multi']);          // answered by picking
-const SCORED = new Set(['single', 'multi', 'hotspot']); // answered and worth points
+const SCORED = new Set(['single', 'multi', 'hotspot', 'order']); // answered and worth points
 
 // How much wider than the drawn circle still counts as a hit. A thumb on a
 // phone is not a cursor, and the point of the question is whether they spotted
@@ -41,6 +41,9 @@ function publicForm(def) {
       ...(q.maxPhotos ? { maxPhotos: q.maxPhotos } : {}),
       // A hotspot question gets the picture and how many problems are in it.
       // Where they are is the answer key and stays on the server.
+      // A put-in-order question ships the steps, never the order they go in.
+      // The order IS the answer, so the list is shuffled on the way out.
+      ...(q.type === 'order' ? { steps: shuffle(q.steps || []) } : {}),
       ...(q.type === 'hotspot' ? {
         image: q.image,
         toFind: (q.hotspots || []).length,
@@ -48,6 +51,25 @@ function publicForm(def) {
       } : {}),
     })),
   };
+}
+
+/**
+ * A stable shuffle of the steps, so the list is not the answer.
+ *
+ * Seeded off the question text rather than random, so the same walk shows the
+ * same order every time it is drawn — a list that reshuffles under them while
+ * they are working is unusable.
+ */
+function shuffle(steps) {
+  let seed = 0;
+  for (const c of steps.join('|')) seed = (seed * 31 + c.charCodeAt(0)) >>> 0;
+  const out = steps.map((text, was) => ({ text, was }));
+  for (let i = out.length - 1; i > 0; i--) {
+    seed = (seed * 1103515245 + 12345) >>> 0;
+    const j = seed % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
 function asIndexes(value) {
@@ -123,6 +145,12 @@ function missingAnswers(def, answers = {}, photos = {}) {
       continue;
     }
     const given = answers[q.n];
+    if (q.type === 'order') {
+      if (asIndexes(given).length < (q.steps || []).length) {
+        missing.push({ n: q.n, message: `Question ${q.n} needs every step put in order.` });
+      }
+      continue;
+    }
     if (q.type === 'hotspot') {
       if (asTaps(given).length === 0) {
         missing.push({ n: q.n, message: `Question ${q.n} needs you to tap what is wrong.` });
@@ -154,6 +182,29 @@ function grade(def, answers = {}) {
   for (const q of def.questions) {
     if (!SCORED.has(q.type)) continue;
 
+    if (q.type === 'order') {
+      const steps = q.steps || [];
+      const given = asIndexes(answers[q.n]);
+      // Right means every step, in the order it was authored in.
+      const correct = given.length === steps.length
+        && given.every((was, i) => was === i);
+      const earned = correct ? (q.points || 0) : 0;
+      score += earned;
+      results.push({
+        n: q.n, title: q.title, type: q.type, points: q.points || 0,
+        earned, correct, steps, given,
+        rightOrder: steps.map((_, i) => i),
+        explanation: q.explanation,
+      });
+      continue;
+    }
+
+    if (q.type === 'order') {
+      if (asIndexes(given).length < (q.steps || []).length) {
+        missing.push({ n: q.n, message: `Question ${q.n} needs every step put in order.` });
+      }
+      continue;
+    }
     if (q.type === 'hotspot') {
       const taps = asTaps(answers[q.n]);
       const m = matchTaps(q, taps);
@@ -213,6 +264,19 @@ function checkOne(def, n, given) {
   const q = def.questions.find(x => x.n === Number(n));
   if (!q || !SCORED.has(q.type)) return null;
 
+  if (q.type === 'order') {
+    const steps = q.steps || [];
+    const picked = asIndexes(given);
+    if (picked.length === 0) return null;
+    return {
+      n: q.n,
+      correct: picked.length === steps.length && picked.every((was, i) => was === i),
+      steps, given: picked, rightOrder: steps.map((_, i) => i),
+      explanation: q.explanation,
+      points: q.points || 0,
+    };
+  }
+
   if (q.type === 'hotspot') {
     const taps = asTaps(given);
     if (taps.length === 0) return null;    // nothing tapped, nothing to reveal
@@ -243,4 +307,4 @@ function checkOne(def, n, given) {
   };
 }
 
-module.exports = { publicForm, grade, missingAnswers, maxScore, checkOne, matchTaps };
+module.exports = { publicForm, grade, missingAnswers, maxScore, checkOne, matchTaps, shuffle };

@@ -16,9 +16,9 @@ const { getPool } = require('./db');
 
 const SEED_DIR = path.join(__dirname, '..', 'data', 'audits');
 
-const TYPES = new Set(['text', 'longtext', 'single', 'multi', 'photo', 'hotspot']);
+const TYPES = new Set(['text', 'longtext', 'single', 'multi', 'photo', 'hotspot', 'order']);
 const CHOICE_TYPES = new Set(['single', 'multi']);
-const GRADED_TYPES = new Set(['single', 'multi', 'hotspot']);
+const GRADED_TYPES = new Set(['single', 'multi', 'hotspot', 'order']);
 
 async function initAuditTemplates() {
   const p = getPool();
@@ -147,6 +147,13 @@ function validateTemplate(def) {
       problems.push(`${where}: points must be a whole number from 0 to 100.`);
     }
 
+    if (q.type === 'order') {
+      const steps = Array.isArray(q.steps) ? q.steps : [];
+      if (steps.length < 2) problems.push(`${where}: needs at least two steps to put in order.`);
+      if (steps.some(x => !String(x || '').trim())) problems.push(`${where}: one of the steps is blank.`);
+      return;
+    }
+
     if (q.type === 'hotspot') {
       if (!String(q.image || '').trim()) problems.push(`${where}: needs a picture.`);
       const spots = Array.isArray(q.hotspots) ? q.hotspots : [];
@@ -208,6 +215,12 @@ function cleanTemplate(def) {
         out.explanation = String(q.explanation || '').trim();
       }
       if (q.type === 'photo') out.maxPhotos = Number(q.maxPhotos || 3);
+      // The steps are stored in the order they belong in; that order is the
+      // answer, and the page shuffles a copy for the walker.
+      if (q.type === 'order') {
+        out.steps = (q.steps || []).map(x => String(x));
+        out.explanation = String(q.explanation || '').trim();
+      }
       // The editor cannot draw hotspots yet, so it carries them through
       // exactly as they are. Dropping them here would empty the question the
       // next time anything else on the form was saved.

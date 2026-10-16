@@ -66,6 +66,21 @@
   .store-list b{font-variant-numeric:tabular-nums;}
   .store-list .none{padding:14px 15px;color:var(--muted);font-size:15px;}
 
+  /* Put-in-order question: tap the steps in the order they happen. */
+  .step{display:flex;align-items:center;gap:13px;padding:14px 15px;border:1.5px solid var(--line);
+        border-radius:12px;margin-bottom:10px;background:#fff;cursor:pointer;font-weight:500;}
+  .step:active{background:#eef2fb;}
+  .step .pos{flex:none;width:30px;height:30px;border-radius:50%;border:2px solid var(--line);
+        color:var(--muted);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;}
+  .step.placed{border-color:var(--blue);background:#eef3fe;}
+  .step.placed .pos{background:var(--blue);border-color:var(--blue);color:#fff;}
+  .step.right{border-color:var(--green);background:#eafaef;}
+  .step.right .pos{background:var(--green);border-color:var(--green);color:#fff;}
+  .step.wrong{border-color:var(--red);background:#fdeced;}
+  .step.wrong .pos{background:var(--red);border-color:var(--red);color:#fff;}
+  .step .should{margin-left:auto;font-size:12.5px;color:var(--muted);text-align:right;}
+  .orderctl{margin-top:4px;}
+
   /* Tap-the-picture question. Everything is positioned in percentages of the
      picture, so it lines up at any screen size. */
   /* The frame clips; .pan holds the picture and the marks together, so a
@@ -201,7 +216,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;
 // Scored (so it gets marked and locked) is a different question from
 // answered-by-picking-a-choice (so it renders as a list of options).
 const isChoice = q => q.type === 'single' || q.type === 'multi';
-const isGraded = q => isChoice(q) || q.type === 'hotspot';
+const isGraded = q => isChoice(q) || q.type === 'hotspot' || q.type === 'order';
 
 // Draft save/restore. Pictures cannot be saved, so only answers come back.
 function saveDraft(){ try{ localStorage.setItem(DRAFT_KEY, JSON.stringify(answers)); }catch(e){} }
@@ -277,6 +292,74 @@ function verdictHtml(q, v){
   if (!v) return '';
   if (v.offline) return `<div class="verdict no"><div class="head">Could not check that one</div>
     <div class="why">No signal. Your answer is saved — keep going.</div></div>`;
+
+  if (q.type === 'order'){
+    const placed = Array.isArray(given) ? given : [];
+    const v = checked[q.n];
+    const steps = q.steps || [];
+
+    if (v && !v.offline){
+      // Their order, top to bottom, each one told whether it belongs there.
+      return placed.map((was, i) => {
+        const right = was === i;
+        const step = steps.find(x => x.was === was);
+        return `<div class="step ${right ? 'right' : 'wrong'}">
+          <span class="pos">${i + 1}</span>
+          <span>${esc(step ? step.text : '')}</span>
+          ${right ? '' : `<span class="should">goes at ${was + 1}</span>`}
+        </div>`;
+      }).join('');
+    }
+
+    return steps.map(step => {
+      const at = placed.indexOf(step.was);
+      return `<div class="step ${at >= 0 ? 'placed' : ''}" data-was="${step.was}">
+        <span class="pos">${at >= 0 ? at + 1 : ''}</span>
+        <span>${esc(step.text)}</span></div>`;
+    }).join('') +
+    `<div class="orderctl"><div class="tapcount" id="ordercount">${placed.length} of ${steps.length} placed</div>
+     <div class="hint" style="margin:8px 0 0;">Tap them in the order they happen. Tap one again to take it back.</div></div>`;
+  }
+
+  if (q.type === 'order'){
+    if (checked[q.n]) return;                 // marked: it is a result now
+    const steps = q.steps || [];
+
+    stage.querySelectorAll('.step').forEach(el => {
+      el.addEventListener('click', () => {
+        const was = Number(el.dataset.was);
+        const placed = Array.isArray(answers[q.n]) ? answers[q.n] : (answers[q.n] = []);
+        const at = placed.indexOf(was);
+        // Taking one back renumbers everything after it, which is what you
+        // want: the positions are the answer, not labels on the steps.
+        if (at >= 0) placed.splice(at, 1); else placed.push(was);
+        saveDraft();
+        say('');
+        redrawOrder();
+      });
+    });
+
+    function redrawOrder(){
+      const placed = answers[q.n] || [];
+      stage.querySelectorAll('.step').forEach(el => {
+        const at = placed.indexOf(Number(el.dataset.was));
+        el.classList.toggle('placed', at >= 0);
+        el.querySelector('.pos').textContent = at >= 0 ? at + 1 : '';
+      });
+      const c = document.getElementById('ordercount');
+      if (c) c.textContent = `${placed.length} of ${steps.length} placed`;
+    }
+    return;
+  }
+
+  if (q.type === 'order'){
+    const steps = q.steps || [];
+    const inPlace = (v.given || []).filter((was, i) => was === i).length;
+    return `<div class="verdict ${v.correct ? 'ok' : 'no'}">
+      <div class="head">${v.correct ? '\u2714 That is the order' : '\u2718 ' + inPlace + ' of ' + steps.length + ' in the right place'}</div>
+      ${v.correct ? '' : '<div class="answer">The right order is numbered above.</div>'}
+      <div class="why">${esc(v.explanation)}</div></div>`;
+  }
 
   if (q.type === 'hotspot'){
     const list = (v.hotspots || []).map((h, i) => {
@@ -630,6 +713,7 @@ function answered(q){
   if (!q) return true;
   if (q.required === false) return true;
   if (q.type === 'photo') return (photos[q.n] || []).length > 0;
+  if (q.type === 'order') return (answers[q.n] || []).length === (q.steps || []).length;
   const v = answers[q.n];
   return Array.isArray(v) ? v.length > 0 : String(v || '').trim() !== '';
 }
