@@ -68,15 +68,28 @@
 
   /* Tap-the-picture question. Everything is positioned in percentages of the
      picture, so it lines up at any screen size. */
+  /* The frame clips; .pan holds the picture and the marks together, so a
+     mark stays on the thing it was put on at any zoom. touch-action none
+     because the pinch and drag are handled here, not by the page. */
   .shot{position:relative;border-radius:13px;overflow:hidden;border:1.5px solid var(--line);
-        background:#0b0d10;line-height:0;touch-action:manipulation;}
-  .shot img{width:100%;display:block;}
+        background:#0b0d10;line-height:0;touch-action:none;user-select:none;}
+  .pan{transform-origin:0 0;}
+  .shot img{width:100%;display:block;pointer-events:none;}
   .layer{position:absolute;inset:0;}
-  .tap{position:absolute;width:32px;height:32px;margin:-16px 0 0 -16px;border-radius:50%;
+  /* Counter-scaled so a mark is the same size on screen however far in you
+     are; without it a mark at 3x covers a third of the picture. */
+  .tap{position:absolute;width:32px;height:32px;border-radius:50%;
+       transform:translate(-50%,-50%) scale(var(--inv,1));
        border:3px solid var(--blue);background:rgba(0,73,201,.22);cursor:pointer;}
   .tap b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
          color:var(--blue);font-size:13px;font-weight:700;line-height:1;}
   .spot{position:absolute;border:3px solid;border-radius:50%;pointer-events:none;}
+  .zoomctl{display:flex;align-items:center;gap:8px;margin-top:11px;}
+  .zoomctl button{width:46px;height:40px;font:inherit;font-size:19px;font-weight:700;
+       border:1.5px solid var(--line);background:#fff;color:var(--blue);border-radius:11px;cursor:pointer;}
+  .zoomctl button:disabled{color:var(--muted);background:#f4f6fa;}
+  .zoomctl .lvl{font-size:14.5px;color:var(--muted);font-weight:600;min-width:42px;text-align:center;}
+  .zoomctl .reset{width:auto;padding:0 14px;font-size:15px;}
   .spot.found{border-color:var(--green);background:rgba(28,177,69,.14);}
   .spot.missed{border-color:var(--red);background:rgba(217,24,35,.14);}
   .spot i{position:absolute;top:-11px;left:-11px;width:24px;height:24px;border-radius:50%;
@@ -337,12 +350,21 @@ function body(q){
     const count = v
       ? ''
       : `<div class="tapcount" id="tapcount">${taps.length} of ${q.maxTaps} taps used · ${q.toFind} problems to find</div>
-         <div class="hint" style="margin:8px 0 0;">Tap a mark again to take it back.</div>`;
+         <div class="hint" style="margin:8px 0 0;">Pinch or use + to zoom in, drag to move around. Tap a mark again to take it back.</div>`;
+
+    const zoom = v ? '' : `<div class="zoomctl">
+        <button type="button" data-zoom="out" aria-label="Zoom out">&minus;</button>
+        <span class="lvl" id="zoomlvl">1.0&times;</span>
+        <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+        <button type="button" class="reset" data-zoom="reset">Fit</button>
+      </div>`;
 
     return `<div class="shot" id="shot">
-        <img src="${esc(q.image)}" alt="A kitchen to look over">
-        <div class="layer" id="layer">${layer}</div>
-      </div>${count}`;
+        <div class="pan" id="pan">
+          <img src="${esc(q.image)}" id="shotimg" alt="A kitchen to look over">
+          <div class="layer" id="layer">${layer}</div>
+        </div>
+      </div>${zoom}${count}`;
   }
 
   if (q.type === 'photo'){
@@ -392,6 +414,104 @@ function wire(q){
   if (q.type === 'hotspot'){
     if (checked[q.n]) return;                 // marked: the picture is a result now
     const shot = document.getElementById('shot');
+    const pan  = document.getElementById('pan');
+    const pic  = document.getElementById('shotimg');
+
+    // Zoom state. The picture is scaled about the top-left of .pan and then
+    // shifted; clamp() keeps it covering the frame so you cannot drag it off
+    // into empty space.
+    const MAX = 5;
+    let z = 1, ox = 0, oy = 0;
+
+    function clamp(){
+      const frame = shot.getBoundingClientRect();
+      const w = frame.width * z, h = (pic.offsetHeight || frame.height) * z;
+      ox = z <= 1 ? 0 : Math.min(0, Math.max(frame.width - w, ox));
+      oy = z <= 1 ? 0 : Math.min(0, Math.max(frame.height - h, oy));
+    }
+
+    function apply(){
+      clamp();
+      pan.style.transform = `translate(${ox}px, ${oy}px) scale(${z})`;
+      pan.style.setProperty('--inv', 1 / z);
+      const lvl = document.getElementById('zoomlvl');
+      if (lvl) lvl.textContent = z.toFixed(1) + '\u00d7';
+      shot.querySelectorAll('.zoomctl button').forEach(b => {
+        if (b.dataset.zoom === 'in')  b.disabled = z >= MAX - 0.001;
+        if (b.dataset.zoom === 'out') b.disabled = z <= 1.001;
+      });
+    }
+
+    // Zoom about a point on screen, so what is under the fingers stays there.
+    function zoomTo(next, cx, cy){
+      const frame = shot.getBoundingClientRect();
+      const px = cx - frame.left, py = cy - frame.top;
+      const was = z;
+      z = Math.min(MAX, Math.max(1, next));
+      ox = px - (px - ox) * (z / was);
+      oy = py - (py - oy) * (z / was);
+      apply();
+    }
+
+    shot.closest('.slide').querySelectorAll('.zoomctl button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const frame = shot.getBoundingClientRect();
+        const cx = frame.left + frame.width / 2, cy = frame.top + frame.height / 2;
+        if (btn.dataset.zoom === 'in')  zoomTo(z * 1.6, cx, cy);
+        if (btn.dataset.zoom === 'out') zoomTo(z / 1.6, cx, cy);
+        if (btn.dataset.zoom === 'reset'){ z = 1; ox = 0; oy = 0; apply(); }
+      });
+    });
+
+    // One pointer drags (once zoomed in) or taps; two pinch.
+    const live = new Map();
+    let start = null, pinch = null, moved = 0;
+
+    shot.addEventListener('pointerdown', e => {
+      try { shot.setPointerCapture(e.pointerId); } catch (err) {}   // not every pointer can be captured
+      live.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      moved = 0;
+      if (live.size === 1) start = { x: e.clientX, y: e.clientY, ox, oy, t: Date.now() };
+      if (live.size === 2){
+        const [a, b] = [...live.values()];
+        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z };
+      }
+    });
+
+    shot.addEventListener('pointermove', e => {
+      if (!live.has(e.pointerId)) return;
+      live.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (live.size === 2 && pinch){
+        const [a, b] = [...live.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        moved = 99;                             // a pinch is never a tap
+        if (pinch.d > 0) zoomTo(pinch.z * (d / pinch.d), (a.x + b.x) / 2, (a.y + b.y) / 2);
+        return;
+      }
+
+      if (live.size === 1 && start){
+        const dx = e.clientX - start.x, dy = e.clientY - start.y;
+        moved = Math.max(moved, Math.hypot(dx, dy));
+        if (z > 1){ ox = start.ox + dx; oy = start.oy + dy; apply(); }
+      }
+    });
+
+    function release(e){
+      live.delete(e.pointerId);
+      if (live.size < 2) pinch = null;
+      if (live.size === 0) start = null;
+    }
+    shot.addEventListener('pointercancel', release);
+
+    shot.addEventListener('pointerup', e => {
+      const wasOne = live.size === 1;
+      const quiet = moved < 10;
+      release(e);
+      if (!wasOne || !quiet) return;            // a drag or a pinch, not a tap
+
+      mark(e);
+    });
 
     const redraw = () => {
       const taps = answers[q.n] || [];
@@ -402,25 +522,27 @@ function wire(q){
         `${taps.length} of ${q.maxTaps} taps used · ${q.toFind} problems to find`;
     };
 
-    shot.addEventListener('click', e => {
+    function mark(e){
       // Before the picture has loaded the box has no height, so a tap would
       // be recorded in the wrong place entirely.
-      const pic = shot.querySelector('img');
       if (!pic || !pic.complete || !pic.naturalWidth){
         say('Give the picture a second to load.');
         return;
       }
-      const taking = e.target.closest('.tap');
+      const taking = document.elementFromPoint(e.clientX, e.clientY);
+      const onMark = taking && taking.closest ? taking.closest('.tap') : null;
       const taps = Array.isArray(answers[q.n]) ? answers[q.n] : (answers[q.n] = []);
 
-      if (taking){                            // tapping a mark takes it back
-        taps.splice(Number(taking.dataset.i), 1);
+      if (onMark){                            // tapping a mark takes it back
+        taps.splice(Number(onMark.dataset.i), 1);
       } else {
         if (taps.length >= q.maxTaps){
           say(`That is all ${q.maxTaps} taps. Take one back if you want to move it.`);
           return;
         }
-        const box = shot.getBoundingClientRect();
+        // Measured against the picture's own box, which already carries the
+        // zoom and the pan, so the percentage is right at any magnification.
+        const box = pic.getBoundingClientRect();
         taps.push({
           x: +(((e.clientX - box.left) / box.width) * 100).toFixed(2),
           y: +(((e.clientY - box.top) / box.height) * 100).toFixed(2),
@@ -429,7 +551,9 @@ function wire(q){
       saveDraft();
       say('');
       redraw();
-    });
+    }
+
+    if (pic.complete) apply(); else pic.addEventListener('load', apply, { once: true });
     return;
   }
 
