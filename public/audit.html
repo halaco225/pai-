@@ -1269,7 +1269,10 @@ function drawThumbs(q){
 }
 
 // ── Sending ─────────────────────────────────────────────────────────────────
+let SENDING = false;
+
 async function submit(){
+  if (SENDING) return;                 // a double tap is one submission
   const missing = FORM.questions.map((q, i) => answered(q) ? null : i).filter(i => i !== null);
   if (missing.length){
     at = missing[0];
@@ -1288,6 +1291,7 @@ async function submit(){
     for (const p of list){ body.append('photo_' + n, p.file, 'photo.jpg'); count++; }
   }
 
+  SENDING = true;
   next.disabled = true;
   next.textContent = `Sending ${count} pictures…`;
   say('');
@@ -1302,14 +1306,20 @@ async function submit(){
         const first = FORM.questions.findIndex(q => q.n === data.missing[0].n);
         if (first >= 0){ at = first; draw(); }
       }
+      SENDING = false;
       say(data.error || 'That did not send. Try again.');
       return;
     }
     clearDraft();
     showResults(data);
   }catch(err){
+    // It may well have arrived and only the reply got lost, which is what
+    // happened before the walk id was made unique. Pressing the button again
+    // is safe now: the same walk cannot go in twice.
+    SENDING = false;
     next.disabled = false; next.textContent = 'Send my answers';
-    say('That did not send. Your answers are still here — check your signal and hit the button again.');
+    say('That did not go through — or it did and the reply got lost. '
+      + 'Hit the button again; it cannot be sent in twice.');
   }
 }
 

@@ -183,7 +183,13 @@ router.post('/submit', upload.any(), async (req, res) => {
 
   const graded = grade(def, answers);
 
+  // One row per walk. A submission that saved but whose reply never got back
+  // to the phone looks like a failure, so people press the button again —
+  // and a double tap sends two at once. Either way the walk only lands once.
+  const walkId = walks.isUuid(req.body.walkId) ? req.body.walkId : null;
+
   const { data, error } = await c.from('audit_responses').insert({
+    walk_id: walkId,
     audit_id: def.id,
     respondent_name: name,
     store_number: store,
@@ -198,6 +204,22 @@ router.post('/submit', upload.any(), async (req, res) => {
   }).select('id').single();
 
   if (error) {
+    // 23505 is the unique index on walk_id: this walk is already in. Hand
+    // back what was saved the first time rather than a second row or a
+    // scary red message about something that actually worked.
+    if (error.code === '23505' && walkId) {
+      const { data: already } = await c.from('audit_responses')
+        .select('id, graded, score, max_score').eq('walk_id', walkId).single();
+      if (already) {
+        const frozen = already.graded && Array.isArray(already.graded.results) ? already.graded : graded;
+        return res.json({
+          id: already.id,
+          score: already.score, maxScore: already.max_score,
+          results: frozen.results,
+          alreadyIn: true,
+        });
+      }
+    }
     return res.status(502).json({ error: 'That did not save. Your answers are still here — hit submit again.' });
   }
 

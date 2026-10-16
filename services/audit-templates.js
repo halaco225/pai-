@@ -313,7 +313,12 @@ function cleanTemplate(def) {
         out.correct = [...new Set((q.correct || []).map(Number))].sort((a, b) => a - b);
         out.explanation = String(q.explanation || '').trim();
       }
-      if (q.type === 'photo') out.maxPhotos = Number(q.maxPhotos || 3);
+      if (q.type === 'photo') {
+        out.maxPhotos = Number(q.maxPhotos || 3);
+        // Let them draw on what they photographed — circle the thing they
+        // mean, rather than describing where it is in a text box.
+        if (q.annotate) out.annotate = true;
+      }
       // The steps are stored in the order they belong in; that order is the
       // answer, and the page shuffles a copy for the walker.
       if (q.type === 'order') {
@@ -325,6 +330,9 @@ function cleanTemplate(def) {
       // next time anything else on the form was saved.
       if (q.type === 'hotspot') {
         out.image = String(q.image || '');
+        // Spot-what-changed: the same question with a "before" shown beside
+        // it. What is wrong is still marked on the "now" picture only.
+        if (q.beforeImage) out.beforeImage = String(q.beforeImage);
         out.extraTaps = Number(q.extraTaps || 0);
         out.explanation = String(q.explanation || '').trim();
         out.hotspots = (q.hotspots || []).map(h => ({

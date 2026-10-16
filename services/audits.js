@@ -111,8 +111,10 @@ function publicForm(def) {
       // A put-in-order question ships the steps, never the order they go in.
       // The order IS the answer, so the list is shuffled on the way out.
       ...(q.type === 'order' ? { steps: shuffle(q.steps || []) } : {}),
+      ...(q.annotate ? { annotate: true } : {}),
       ...(q.type === 'hotspot' ? {
         image: q.image,
+        ...(q.beforeImage ? { beforeImage: q.beforeImage } : {}),
         toFind: (q.hotspots || []).length,
         maxTaps: (q.hotspots || []).length + (q.extraTaps || 0),
       } : {}),
