@@ -374,7 +374,49 @@ const adamSay = (lines, n) => lines[Math.abs(Number(n) || 0) % lines.length];
 let IS_TEST = false;
 // Which guide, and their name, because the bubble is signed.
 let COACH = 'none';
-const COACH_NAMES = { adam: 'Adam', krystina: 'Krystina' };
+const COACH_NAMES = { adam: 'Adam', krystina: 'Krystina', pepper: 'Pepper' };
+
+// A guide can have more than one drawing of a pose, and then it plays: the
+// frames are swapped on a timer, which is all a GIF ever was. A pose with no
+// entry here is a single drawing and simply sits there.
+const COACH_FRAMES = {
+  pepper: { hello: 2, cheer: 2, clap: 2 },
+};
+const FRAME_MS = 420;
+let framePlayer = null;
+
+const COACH_POSES = {
+  adam: ['hello', 'cheer', 'explain'],
+  krystina: ['hello', 'cheer', 'explain'],
+  pepper: ['hello', 'cheer', 'explain', 'thumbsup', 'clap'],
+};
+const hasPose = pose => (COACH_POSES[COACH] || []).includes(pose);
+
+function framesFor(coach, pose){
+  return (COACH_FRAMES[coach] || {})[pose] || 1;
+}
+
+// One timer for the page. It walks whatever guide images are on screen, so
+// nothing has to be torn down when the question changes.
+function playFrames(){
+  if (framePlayer) return;
+  framePlayer = setInterval(() => {
+    for (const img of document.querySelectorAll('.adam[data-frames]')){
+      const count = Number(img.dataset.frames);
+      if (!(count > 1)) continue;
+      const next = ((Number(img.dataset.frame) || 1) % count) + 1;
+      img.dataset.frame = next;
+      img.src = `/images/${img.dataset.coach}-${img.dataset.pose}-${next}.webp`;
+    }
+  }, FRAME_MS);
+}
+
+// The second frame has to be in the browser before it is shown, or the first
+// loop blinks.
+function preloadFrames(coach, pose){
+  const count = framesFor(coach, pose);
+  for (let i = 2; i <= count; i++) new Image().src = `/images/${coach}-${pose}-${i}.webp`;
+}
 
 // pose: 'hello' to open the walk, 'cheer' for a right answer, 'explain' for
 // everything else. Cheer is the only one that moves.
@@ -382,9 +424,14 @@ function coachHtml(line, why, pose){
   if (COACH === 'none') return '';
   const which = pose || 'explain';
   const name = COACH_NAMES[COACH] || 'Adam';
+  const count = framesFor(COACH, which);
+  // A guide with frames numbers its files; one without keeps the plain name.
+  const src = count > 1 ? `/images/${COACH}-${which}-1.webp` : `/images/${COACH}-${which}.webp`;
+  if (count > 1){ preloadFrames(COACH, which); playFrames(); }
   return `<div class="coach ${which === 'cheer' ? 'cheer' : ''}">
-    <img class="adam" src="/images/${COACH}-${which}.webp" alt="${esc(name)}"
-         onerror="this.onerror=null;this.src='/images/adam-${which}.webp'">
+    <img class="adam" src="${src}" alt="${esc(name)}"
+         data-coach="${COACH}" data-pose="${which}" data-frames="${count}" data-frame="1"
+         onerror="this.onerror=null;this.removeAttribute('data-frames');this.src='/images/adam-${which}.webp'">
     <div class="bubble"><span class="who">${esc(name)}</span>
       <div class="line">${esc(line)}</div>
       ${[].concat(why || []).filter(Boolean)
@@ -397,7 +444,8 @@ function coachVerdict(v, n){
   const line = v.correct ? adamSay(ADAM_YES, n)
              : v.earned > 0 ? adamSay(ADAM_PART, n)
              : adamSay(ADAM_NO, n);
-  return coachHtml(line, v.explanation, v.correct ? 'cheer' : 'explain');
+  const pose = v.correct ? 'cheer' : v.earned > 0 ? 'thumbsup' : 'explain';
+  return coachHtml(line, v.explanation, hasPose(pose) ? pose : (v.correct ? 'cheer' : 'explain'));
 }
 
 function celebrate(){
@@ -1631,7 +1679,7 @@ function showResults(data){
       <span>Nothing else to do — you can close this page. What is below is yours to read.</span></div>
     ${IS_TEST ? `<div class="score">You got <b>${data.score} out of ${data.maxScore}</b></div>` : ''}
     ${COACH !== 'none' ? coachHtml(signOff, 'Thanks for walking it. See you on the next one.',
-         share >= 0.9 ? 'cheer' : 'hello') : ''}
+         hasPose('clap') ? 'clap' : (share >= 0.9 ? 'cheer' : 'hello')) : ''}
     ${blocks}
     <div class="intro"><b>Fix what you found before the audit.</b> Your manager will see your photos.</div>
     ${missedFrom(data).length ? `<div class="again"><button class="btn-big" id="goAgain">

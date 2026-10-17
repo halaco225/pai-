@@ -1028,6 +1028,7 @@ async function editTemplate(id){
 const COACHES = [
   ['adam', 'Adam'],
   ['krystina', 'Krystina'],
+  ['pepper', 'Pepper'],
   ['none', 'No guide'],
 ];
 
@@ -1037,7 +1038,7 @@ function drawCoachPick(){
   document.getElementById('edCoach').innerHTML = COACHES.map(([id, name]) => `
     <button class="coach-opt ${picked === id ? 'on' : ''}" onclick="setCoach('${id}')">
       ${id === 'none' ? '<span class="none"></span>'
-        : `<img src="/images/${id}-hello.webp" alt=""
+        : `<img src="/images/${id}-hello${id === 'pepper' ? '-1' : ''}.webp" alt=""
              onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'none'}))">`}
       ${name}
     </button>`).join('');
