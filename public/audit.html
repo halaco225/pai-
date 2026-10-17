@@ -43,6 +43,31 @@
   .lookfor b{display:block;font-size:12px;letter-spacing:.4px;text-transform:uppercase;
            color:var(--blue);margin-bottom:3px;}
 
+  /* Spot what changed: the before picture above the one they tap. */
+  .before{margin:0 0 13px;}
+  .before img{width:100%;border-radius:12px;border:1.5px solid var(--line);display:block;}
+  .pic-label{font-size:12.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+             color:var(--muted);margin:0 0 6px;}
+
+  /* Drawing on a photo they just took. */
+  .draw-over{position:fixed;inset:0;z-index:70;background:#0d1016;display:flex;
+             flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:12px;}
+  .draw-over canvas{max-width:100%;max-height:calc(100% - 84px);border-radius:10px;
+             background:#fff;touch-action:none;}
+  .draw-bar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;justify-content:center;}
+  .draw-bar button{padding:12px 17px;border-radius:11px;border:none;font:inherit;font-weight:600;
+             background:#2a2f3a;color:#fff;}
+  .draw-bar button.go{background:var(--blue);}
+  .draw-bar .pen{width:34px;height:34px;border-radius:50%;border:2.5px solid #fff;padding:0;}
+  .draw-bar .pen.on{outline:3px solid #fff;outline-offset:2px;}
+  .thumb .pen-btn{position:absolute;left:4px;bottom:4px;width:26px;height:26px;border-radius:50%;
+             border:none;background:rgba(16,24,40,.72);color:#fff;font-size:13px;line-height:26px;padding:0;}
+
+  /* Going back over the ones they missed. */
+  .again{margin-top:18px;}
+  .again .btn-big{display:block;width:100%;padding:16px;border:none;border-radius:13px;
+             background:var(--blue);color:#fff;font:inherit;font-size:17px;font-weight:650;}
+
   /* Number and date answers: the same box as a text answer, narrower. */
   .numrow{display:flex;align-items:center;gap:10px;}
   .numrow input{max-width:220px;}
@@ -696,7 +721,13 @@ function body(q){
         <button type="button" class="reset" data-zoom="reset">Fit</button>
       </div>`;
 
-    return `<div class="shot" id="shot">
+    const before = q.beforeImage
+      ? `<div class="before"><div class="pic-label">Before</div>
+           <img src="${esc(q.beforeImage)}" alt="Before"></div>
+         <div class="pic-label">Now — tap what changed</div>`
+      : '';
+
+    return before + `<div class="shot" id="shot">
         <div class="pan" id="pan">
           <img src="${esc(q.image)}" id="shotimg" alt="A kitchen to look over">
           <div class="layer" id="layer">${layer}</div>
@@ -1196,13 +1227,13 @@ function say(message){
   box.style.display = message ? 'block' : 'none';
 }
 
-document.getElementById('next').addEventListener('click', () => go(1));
+document.getElementById('next').addEventListener('click', () => RETRY ? retryNext() : go(1));
 document.getElementById('back').addEventListener('click', () => go(-1));
 
 // A keyboard works too, for anyone filling this in on a laptop.
 document.addEventListener('keydown', e => {
   if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName) && e.key !== 'Enter') return;
-  if (e.key === 'ArrowRight' || e.key === 'Enter') go(1);
+  if (e.key === 'ArrowRight' || e.key === 'Enter') return RETRY ? retryNext() : go(1);
   if (e.key === 'ArrowLeft') go(-1);
 });
 
@@ -1242,7 +1273,10 @@ async function addPhotos(q, input){
 
   for (const file of [...input.files]){
     if (photos[q.n].length >= max) break;
-    const small = await shrink(file);
+    let small = await shrink(file);
+    // On an annotation question the drawing is the answer, so it opens
+    // straight away rather than waiting to be found.
+    if (q.annotate) small = await drawOn(small);
     photos[q.n].push({ file: small, url: URL.createObjectURL(small) });
   }
   input.value = '';
@@ -1250,15 +1284,121 @@ async function addPhotos(q, input){
   say('');
 }
 
+// Draw on a photo and get the photo back with the drawing baked in, so
+// what gets uploaded is one picture and nothing downstream has to know.
+function drawOn(blob){
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const over = document.createElement('div');
+      over.className = 'draw-over';
+      const COLOURS = ['#e11d2a', '#ffd400', '#1cb145', '#111827'];
+      over.innerHTML = `<canvas></canvas>
+        <div class="draw-bar">
+          ${COLOURS.map((c, i) => `<button class="pen ${i === 0 ? 'on' : ''}"
+             data-c="${c}" style="background:${c}" aria-label="Pen colour"></button>`).join('')}
+          <button data-act="undo">Undo</button>
+          <button data-act="clear">Clear</button>
+          <button class="go" data-act="done">Done</button>
+        </div>`;
+      document.body.appendChild(over);
+
+      const canvas = over.querySelector('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      // Thick enough to see on a phone, measured against the picture rather
+      // than the screen, so it looks the same whatever size it is drawn at.
+      const WIDTH = Math.max(4, Math.round(img.width / 160));
+      let colour = COLOURS[0];
+      const strokes = [];
+      let drawing = null;
+
+      function repaint(){
+        ctx.drawImage(img, 0, 0);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        for (const st of strokes){
+          ctx.strokeStyle = st.c;
+          ctx.lineWidth = WIDTH;
+          ctx.beginPath();
+          st.pts.forEach((pt, i) => i ? ctx.lineTo(pt.x, pt.y) : ctx.moveTo(pt.x, pt.y));
+          ctx.stroke();
+        }
+      }
+      repaint();
+
+      const at = e => {
+        const box = canvas.getBoundingClientRect();
+        return {
+          x: ((e.clientX - box.left) / box.width) * canvas.width,
+          y: ((e.clientY - box.top) / box.height) * canvas.height,
+        };
+      };
+
+      canvas.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        drawing = { c: colour, pts: [at(e)] };
+        strokes.push(drawing);
+        try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+      });
+      canvas.addEventListener('pointermove', e => {
+        if (!drawing) return;
+        drawing.pts.push(at(e));
+        repaint();
+      });
+      const stop = () => { drawing = null; };
+      canvas.addEventListener('pointerup', stop);
+      canvas.addEventListener('pointercancel', stop);
+
+      over.querySelector('.draw-bar').addEventListener('click', e => {
+        const pen = e.target.closest('.pen');
+        if (pen){
+          colour = pen.dataset.c;
+          over.querySelectorAll('.pen').forEach(b => b.classList.toggle('on', b === pen));
+          return;
+        }
+        const act = (e.target.closest('[data-act]') || {}).dataset;
+        if (!act) return;
+        if (act.act === 'undo'){ strokes.pop(); repaint(); return; }
+        if (act.act === 'clear'){ strokes.length = 0; repaint(); return; }
+        if (act.act === 'done'){
+          canvas.toBlob(out => {
+            over.remove();
+            URL.revokeObjectURL(url);
+            resolve(out || blob);
+          }, 'image/jpeg', 0.82);
+        }
+      });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(blob); };
+    img.src = url;
+  });
+}
+
 function drawThumbs(q){
   const list = photos[q.n] || [];
   const max = q.maxPhotos || 3;
   document.getElementById('thumbs').innerHTML = list.map((p, i) =>
     `<div class="thumb"><img src="${p.url}" alt="">
-       <button type="button" data-i="${i}" aria-label="Remove this picture">×</button></div>`).join('');
+       <button type="button" data-i="${i}" aria-label="Remove this picture">×</button>
+       <button type="button" class="pen-btn" data-i="${i}" aria-label="Draw on this picture">✎</button>
+     </div>`).join('');
 
-  document.querySelectorAll('.thumb button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.thumb button:not(.pen-btn)').forEach(b => b.addEventListener('click', () => {
     photos[q.n].splice(Number(b.dataset.i), 1);
+    drawThumbs(q);
+  }));
+
+  // Any picture can be drawn on afterwards, not only on an annotation
+  // question: circling the thing you mean beats describing where it is.
+  document.querySelectorAll('.thumb .pen-btn').forEach(b => b.addEventListener('click', async () => {
+    const i = Number(b.dataset.i);
+    const shot = photos[q.n][i];
+    const drawn = await drawOn(shot.file);
+    URL.revokeObjectURL(shot.url);
+    photos[q.n][i] = { file: drawn, url: URL.createObjectURL(drawn) };
     drawThumbs(q);
   }));
 
@@ -1323,6 +1463,139 @@ async function submit(){
   }
 }
 
+// ── Going back over the ones they missed ────────────────────────────────────
+//
+// Answering a second time is where the learning is; reading the explanation
+// again is not. So this is a real second go at the questions they got wrong,
+// not a recap.
+//
+// It changes no score. The walk is submitted and frozen, and they have just
+// been shown the answers, so a mark now would mean nothing. It is practice,
+// and it says so.
+//
+// Marking happens here on the phone rather than at the server, because the
+// answer key is already here — it arrived with the results a moment ago.
+let RETRY = null;             // { list: [result], at, right }
+
+function missedFrom(data){
+  return (data.results || []).filter(r => !r.correct);
+}
+
+function startRetry(data){
+  RETRY = { list: missedFrom(data), at: 0, right: 0, data };
+  for (const r of RETRY.list){
+    delete answers[r.n];
+    delete checked[r.n];
+  }
+  drawRetry();
+}
+
+function retryQuestion(){
+  const r = RETRY.list[RETRY.at];
+  return FORM.questions.find(q => q.n === r.n);
+}
+
+// Marked against the key that came back with the results.
+function markRetry(q, r){
+  const given = answers[q.n];
+  if (q.type === 'order'){
+    const steps = q.steps || [];
+    const picked = Array.isArray(given) ? given : [];
+    return picked.length === steps.length && picked.every((was, i) => was === (r.rightOrder || [])[i]);
+  }
+  if (q.type === 'assign'){
+    const placed = Array.isArray(given) ? given : [];
+    return (r.items || []).every((it, i) => placed[i] != null && Number(placed[i]) === Number(it.target));
+  }
+  if (q.type === 'hotspot'){
+    // Same rule as the server: every problem found, within a thumb's width.
+    const taps = Array.isArray(given) ? given : [];
+    const spots = r.hotspots || [];
+    const used = new Set();
+    for (const h of spots){
+      const hit = taps.findIndex((t, i) => !used.has(i)
+        && Math.pow((t.x - h.x) / ((h.rx || 5) * 1.3), 2)
+         + Math.pow((t.y - h.y) / ((h.ry || 5) * 1.3), 2) <= 1);
+      if (hit < 0) return false;
+      used.add(hit);
+    }
+    return true;
+  }
+  const picked = Array.isArray(given) ? given : [];
+  const want = r.correctChoices || [];
+  return picked.length === want.length && want.every(i => picked.includes(i));
+}
+
+function drawRetry(dir){
+  const stage = document.getElementById('stage');
+  const foot = document.getElementById('foot');
+  const r = RETRY.list[RETRY.at];
+  const q = retryQuestion();
+  say('');
+
+  stage.className = 'stage';
+  const done = RETRY.shown;
+  stage.innerHTML = `<div class="slide ${dir === 'back' ? 'back' : ''}">
+      <div class="q-num">Second go · ${RETRY.at + 1} of ${RETRY.list.length}</div>
+      <div class="q-title">${esc(q.title)}</div>
+      ${q.help ? `<div class="lookfor"><b>What to look for</b>${esc(q.help)}</div>` : ''}
+      ${body(q)}
+      ${done ? verdictHtml(q, checked[q.n]) : ''}
+    </div>`;
+  if (!done) wire(q);
+
+  foot.style.display = 'flex';
+  document.getElementById('back').style.display = 'none';
+  document.getElementById('next').textContent = done
+    ? (RETRY.at === RETRY.list.length - 1 ? 'Finish' : 'Next')
+    : 'Check my answer';
+  setProgress((RETRY.at + (done ? 1 : 0)) / RETRY.list.length,
+    `Second go · ${RETRY.at + 1} of ${RETRY.list.length}`);
+  stage.scrollTop = 0;
+}
+
+function retryNext(){
+  const r = RETRY.list[RETRY.at];
+  const q = retryQuestion();
+
+  if (!RETRY.shown){
+    if (!answered(q)){ say('Have a go at this one first.'); return; }
+    const right = markRetry(q, r);
+    if (right) RETRY.right += 1;
+    // The verdict is built from the key that came back with the results, so
+    // it reads exactly like the first time round.
+    checked[q.n] = { ...r, correct: right, earned: right ? r.points : 0 };
+    RETRY.shown = true;
+    drawRetry();
+    if (right) celebrate();
+    return;
+  }
+
+  RETRY.shown = false;
+  if (RETRY.at === RETRY.list.length - 1) return finishRetry();
+  RETRY.at += 1;
+  drawRetry();
+}
+
+function finishRetry(){
+  const got = RETRY.right;
+  const of = RETRY.list.length;
+  const data = RETRY.data;
+  RETRY = null;
+  const stage = document.getElementById('stage');
+  document.getElementById('foot').style.display = 'none';
+  setProgress(1, 'Finished');
+  stage.className = 'stage scrollable';
+  stage.innerHTML = `<div class="sent">✔ That is the lot.
+      <span>Your score was sent earlier and has not changed — this round was practice.</span></div>
+    ${coachHtml(got === of ? 'Second time around you got every one of them.'
+      : got ? `You got ${got} of the ${of} you had missed. That is the bit that sticks.`
+            : 'These are the ones to go over with your manager.',
+      'Close the page whenever you are ready.', got === of ? 'cheer' : 'hello')}`;
+  if (got === of && of > 0) celebrate();
+  stage.scrollTop = 0;
+}
+
 function showResults(data){
   const names = (q, list) => (list || []).map(i => q.choices[i]).join(' · ');
   const blocks = data.results.map(r => {
@@ -1356,7 +1629,12 @@ function showResults(data){
     ${COACH !== 'none' ? coachHtml(signOff, 'Thanks for walking it. See you on the next one.',
          share >= 0.9 ? 'cheer' : 'hello') : ''}
     ${blocks}
-    <div class="intro"><b>Fix what you found before the audit.</b> Your manager will see your photos.</div>`;
+    <div class="intro"><b>Fix what you found before the audit.</b> Your manager will see your photos.</div>
+    ${missedFrom(data).length ? `<div class="again"><button class="btn-big" id="goAgain">
+        Go again on the ${missedFrom(data).length} I missed</button></div>` : ''}`;
+
+  const again = document.getElementById('goAgain');
+  if (again) again.addEventListener('click', () => startRetry(data));
   stage.scrollTop = 0;
   if (COACH !== 'none' && share >= 0.9) celebrate();
 }

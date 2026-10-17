@@ -334,7 +334,9 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
         <button class="btn" onclick="addQuestion('number')">Number</button>
         <button class="btn" onclick="addQuestion('datetime')">Date &amp; time</button>
         <button class="btn" onclick="addQuestion('photo')">Picture</button>
+        <button class="btn" onclick="addQuestion('photo','annotate')">Picture they draw on</button>
         <button class="btn" onclick="addQuestion('hotspot')">Tap what is wrong in a picture</button>
+        <button class="btn" onclick="addQuestion('hotspot','changed')">Spot what changed</button>
         <button class="btn" onclick="addQuestion('text')">Short text</button>
         <button class="btn" onclick="addQuestion('longtext')">Long text</button>
       </div>
@@ -977,7 +979,11 @@ function addQuestion(type, preset){
     compliant:    ['Compliant', 'Non-compliant', 'N/A'],
   };
   if (SETS[preset]) q.choices = SETS[preset].slice();
-  if (type === 'photo') q.maxPhotos = 3;
+  if (type === 'photo'){
+    q.maxPhotos = 3;
+    if (preset === 'annotate') q.annotate = true;
+  }
+  if (preset === 'changed') q.beforeImage = '';
   if (type === 'scale'){ q.min = 1; q.max = 10; q.step = 1; q.minLabel = ''; q.maxLabel = ''; }
   if (type === 'number'){ q.min = ''; q.max = ''; q.unit = ''; }
   if (type === 'assign'){
@@ -1122,7 +1128,14 @@ function drawQuestions(){
     const photo = q.type !== 'photo' ? '' : `
       <label class="ed-label">How many pictures can they add</label>
       <input type="number" min="1" max="10" value="${q.maxPhotos || 3}"
-        oninput="EDITING.questions[${i}].maxPhotos=Number(this.value)">`;
+        oninput="EDITING.questions[${i}].maxPhotos=Number(this.value)">
+      <label class="ed-label">Drawing</label>
+      <label style="display:flex;gap:9px;align-items:flex-start;font-size:14.5px;">
+        <input type="checkbox" ${q.annotate ? 'checked' : ''} style="margin-top:3px;"
+          onchange="EDITING.questions[${i}].annotate=this.checked || undefined">
+        <span>Open the pen as soon as they take it, so they circle what they mean.
+          <span class="muted">They can draw on any picture either way.</span></span>
+      </label>`;
 
     const number = q.type !== 'number' ? '' : `
       <label class="ed-label">Allowed range <span class="muted">— optional</span></label>
@@ -1415,21 +1428,12 @@ function placeTarget(e, i){
   drawQuestions();
 }
 
+function pickBeforeImage(i){
+  pickImageInto(url => { EDITING.questions[i].beforeImage = url; });
+}
+
 function pickAssignImage(i){
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  input.onchange = async () => {
-    const file = input.files && input.files[0];
-    if (!file) return;
-    try {
-      EDITING.questions[i].image = await shrinkToDataUrl(file, 1400);
-      drawQuestions();
-    } catch (err) {
-      alert('That picture could not be read. Try a JPEG or PNG.');
-    }
-  };
-  input.click();
+  pickImageInto(url => { EDITING.questions[i].image = url; });
 }
 
 function hotspotCard(q, i){
@@ -1478,7 +1482,18 @@ function hotspotCard(q, i){
       oninput="EDITING.questions[${i}].title=this.value">${esc(q.title)}</textarea>
     ${helpField(q, i)}
 
-    <label class="ed-label">The picture</label>
+    <label class="ed-label">A "before" picture <span class="muted">— optional; turns this into spot-what-changed</span></label>
+    ${q.beforeImage
+      ? `<div style="display:flex;gap:10px;align-items:flex-start;">
+           <img src="${esc(q.beforeImage)}" alt="" style="width:170px;border-radius:9px;border:1px solid var(--border);">
+           <div style="display:flex;flex-direction:column;gap:7px;">
+             <button class="btn" onclick="pickBeforeImage(${i})">Replace</button>
+             <button class="btn" onclick="EDITING.questions[${i}].beforeImage=''; drawQuestions()">Remove</button>
+           </div>
+         </div>`
+      : `<button class="btn" onclick="pickBeforeImage(${i})">Add a before picture</button>`}
+
+    <label class="ed-label">The picture they tap on</label>
     ${picture}
 
     <label class="ed-label">What is wrong in it
@@ -1530,6 +1545,12 @@ function removeSpot(i, si){
 // Shrunk here rather than uploaded whole: a phone photo is several megabytes
 // and none of that detail survives being looked at on a phone anyway.
 function pickHotspotImage(i){
+  pickImageInto(url => { EDITING.questions[i].image = url; });
+}
+
+// Choose a picture, shrink it, hand back the data URL. A phone photo is
+// several megabytes and none of that survives being looked at on a phone.
+function pickImageInto(keep){
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';
@@ -1537,7 +1558,7 @@ function pickHotspotImage(i){
     const file = input.files && input.files[0];
     if (!file) return;
     try {
-      EDITING.questions[i].image = await shrinkToDataUrl(file, 1400);
+      keep(await shrinkToDataUrl(file, 1400));
       drawQuestions();
     } catch (err) {
       alert('That picture could not be read. Try a JPEG or PNG.');
