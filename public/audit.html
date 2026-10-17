@@ -1546,7 +1546,11 @@ function drawRetry(dir){
 
   foot.style.display = 'flex';
   document.getElementById('back').style.display = 'none';
-  document.getElementById('next').textContent = done
+  const next = document.getElementById('next');
+  // Submitting left the button held down on purpose. The second go borrows
+  // the same button, so it has to let go of it.
+  next.disabled = false;
+  next.textContent = done
     ? (RETRY.at === RETRY.list.length - 1 ? 'Finish' : 'Next')
     : 'Check my answer';
   setProgress((RETRY.at + (done ? 1 : 0)) / RETRY.list.length,
