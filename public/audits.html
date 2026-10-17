@@ -133,6 +133,16 @@ tr.row:hover td{background:#242831;}
 .kind-pick:hover{border-color:var(--accent);background:#20242d;}
 .kind-pick b{display:block;font-size:16.5px;margin-bottom:4px;}
 .kind-pick span{display:block;color:var(--muted);font-size:14px;line-height:1.5;}
+.ins-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;}
+.ins-grid b{display:block;font-size:23px;font-weight:650;line-height:1.2;}
+.ins-grid span{display:block;font-size:11.5px;color:var(--muted);letter-spacing:.3px;
+               text-transform:uppercase;margin-top:3px;}
+.ins-col{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;margin-top:20px;}
+.ins-line{display:flex;gap:10px;align-items:flex-start;margin-bottom:9px;font-size:14.5px;line-height:1.45;}
+.ins-line .no{flex:none;width:22px;height:22px;border-radius:50%;background:var(--surface);
+              border:1px solid var(--border);color:var(--muted);font-size:12px;font-weight:700;
+              display:flex;align-items:center;justify-content:center;margin-top:2px;}
+.ins-line .no.good{color:#4ade80;border-color:#2f6b43;}
 .ov{display:grid;gap:12px;}
 .ov-row{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;
         background:var(--card);border:1px solid var(--border);border-radius:14px;padding:15px 17px;
@@ -227,12 +237,17 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
 <div class="wrap">
   <!-- OVERVIEW -->
   <div id="pane-overview">
-    <div class="filters">
-      <select id="oScope" title="Whose walks to count" style="display:none"
-              onchange="loadOverview()">
-        <option value="">My region</option>
-        <option value="all">Everyone, every region</option>
+    <div class="filters" id="filterBar">
+      <select id="fScope" title="Whose walks to show" style="display:none">
+        <option value="">Everyone, every region</option>
+        <option value="mine">My region only</option>
       </select>
+      <select id="fRegion"><option value="">Every region</option></select>
+      <select id="fCoach"><option value="">Every Area Coach</option></select>
+      <select id="fStore"><option value="">Every store</option></select>
+      <input type="date" id="fFrom" title="From"><input type="date" id="fTo" title="To">
+      <button class="btn" onclick="applyFilters()">Apply</button>
+      <button class="btn" onclick="reset()">Clear</button>
     </div>
     <div id="overview" class="empty">Loading…</div>
   </div>
@@ -241,15 +256,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
   <div id="pane-responses" style="display:none">
     <div class="filters">
       <select id="fAudit" title="Which test or audit" onchange="pickAudit(this.value)"></select>
-      <select id="fScope" title="Whose walks to show" style="display:none">
-        <option value="">My region</option>
-        <option value="all">Everyone, every region</option>
-      </select>
-      <select id="fStore"><option value="">Every store</option></select>
-      <select id="fCoach"><option value="">Every Area Coach</option></select>
-      <input type="date" id="fFrom" title="From"><input type="date" id="fTo" title="To">
-      <button class="btn" onclick="load()">Apply</button>
-      <button class="btn" onclick="reset()">Clear</button>
+      <span id="filterSlot"></span>
       <button class="btn" onclick="exportAs('csv')">Export CSV</button>
       <button class="btn primary" onclick="exportAs('xlsx')">Export Excel</button>
     </div>
@@ -265,18 +272,20 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
   <!-- SUMMARY -->
   <div id="pane-summary" style="display:none">
     <div class="filters"><select id="sAudit" title="Which test or audit"
-      onchange="pickAudit(this.value)"></select></div>
+      onchange="pickAudit(this.value)"></select><span id="filterSlotSummary"></span></div>
     <div class="card"><div class="card-title">What stands out</div><div id="sumStand" class="empty">Loading…</div></div>
+    <div class="card"><div class="card-title">How it is going</div><div id="sumFacts" class="empty"></div></div>
     <div class="card"><div class="card-title">Across every response</div><div id="sumHead" class="empty"></div></div>
     <div class="card"><div class="card-title">Questions the region keeps missing (worst first)</div><div id="sumQ"></div></div>
     <div class="card"><div class="card-title">Same store, same mistake, more than once</div><div id="sumRepeat"></div></div>
     <div class="card"><div class="card-title">By Area Coach (lowest first)</div><div id="sumCoach"></div></div>
+    <div class="card"><div class="card-title">By region (lowest first)</div><div id="sumRegion"></div></div>
   </div>
 
   <!-- BY STORE AND AREA -->
   <div id="pane-stores" style="display:none">
     <div class="filters"><select id="tAudit" title="Which test or audit"
-      onchange="pickAudit(this.value)"></select></div>
+      onchange="pickAudit(this.value)"></select><span id="filterSlotStores"></span></div>
     <div class="card"><div class="card-title">By Area Coach (lowest first)</div>
       <div id="byArea" class="empty">Loading…</div></div>
     <div class="card"><div class="card-title">Average score by store (worst first)</div>
@@ -383,6 +392,7 @@ function showTab(tab){
   }
   document.getElementById('pane-one').style.display = 'none';
   document.getElementById('pane-editor').style.display = 'none';
+  moveFilters(tab);
   if (tab === 'overview') loadOverview();
   if (tab === 'responses') load();
   if (tab === 'summary') loadSummary();
@@ -393,9 +403,11 @@ function showTab(tab){
 // What is out there, who has done it, and where it is going wrong — the
 // question you actually arrive with.
 async function loadOverview(){
-  const scope = document.getElementById('oScope').value;
-  const data = await fetch('/api/audits/overview' + (scope ? '?scope=all' : '')).then(r => r.json());
-  document.getElementById('oScope').style.display = data.maySeeAll ? '' : 'none';
+  const data = await fetch('/api/audits/overview?' + query()).then(r => r.json());
+  document.getElementById('fScope').style.display = data.maySeeAll ? '' : 'none';
+  fill('fRegion', data.regions, 'Every region');
+  fill('fCoach', data.coaches, 'Every Area Coach');
+  fill('fStore', (data.stores || []).map(x => x.store_number), 'Every store');
 
   AUDIT_LIST = data.audits || [];
   if (!AUDIT || !AUDIT_LIST.some(a => a.id === AUDIT)){
@@ -432,7 +444,7 @@ async function loadOverview(){
         }${a.owed.length > 8 ? ` and ${a.owed.length - 8} more` : ''}</div>`
       : '';
 
-    return `<div class="ov-row" onclick="openAudit('${a.id}')">
+    return `<div class="ov-row" onclick="openInsights('${a.id}')">
       <div>
         <div class="ov-name">${esc(a.title)}
           <span class="tag kind ${a.kind === 'test' ? 'on' : ''}">${a.kind === 'test' ? 'Test' : 'Audit'}</span>
@@ -452,8 +464,61 @@ async function loadOverview(){
           ? `<div class="ov-num"><b>${a.storesDone}/${a.storesInScope}</b><span>Stores</span></div>`
           : `<div class="ov-num"><b>${a.storesDone}</b><span>Stores</span></div>`}
       </div>
-    </div>`;
+    </div>
+    <div id="ins-${a.id}"></div>`;
   }).join('');
+}
+
+// Clicking a row opens what is worth knowing about it, in place. Reading the
+// whole response list is a different job, and it is one button away.
+async function openInsights(id){
+  const box = document.getElementById('ins-' + id);
+  if (!box) return;
+  if (box.innerHTML){ box.innerHTML = ''; return; }        // clicking again closes it
+
+  AUDIT = id;
+  try { localStorage.setItem('audits-current', id); } catch (e) {}
+  drawAuditPickers();
+
+  box.innerHTML = '<div class="card empty">Reading…</div>';
+  const s = await fetch('/api/audits/summary?' + query()).then(r => r.json());
+
+  const worst = (s.questions || []).filter(q => q.wrong > 0).slice(0, 3);
+  const mins = s.minutes || {};
+
+  box.innerHTML = `<div class="card" style="margin-top:-4px;">
+    <div class="ins-grid">
+      <div><b>${mins.average == null ? '—' : mins.average + ' min'}</b>
+        <span>Average to complete${mins.from ? ` · from ${mins.from} walk${mins.from === 1 ? '' : 's'}` : ''}</span></div>
+      <div><b>${mins.fastest == null ? '—' : mins.fastest + ' min'}</b><span>Quickest</span></div>
+      <div><b>${s.responses || 0}</b><span>Walks in this view</span></div>
+      <div><b>${s.averageScore == null ? '—' : s.averageScore + '/' + s.maxScore}</b><span>Average score</span></div>
+    </div>
+
+    <div class="ins-col">
+      <div>
+        <div class="card-title" style="margin-bottom:8px;">Most missed questions</div>
+        ${worst.length ? worst.map((q, i) => `<div class="ins-line">
+            <span class="no">${i + 1}</span>
+            <div><div>${esc(q.title)}</div>
+              <div class="muted">${q.wrong} of ${q.asked} got it wrong</div></div>
+          </div>`).join('') : '<div class="muted">Nothing missed yet.</div>'}
+      </div>
+      <div>
+        <div class="card-title" style="margin-bottom:8px;">Got 100% first time</div>
+        ${(s.perfect || []).length ? s.perfect.map(x => `<div class="ins-line">
+            <span class="no good">✔</span>
+            <div><div>${esc(x.name)}</div>
+              <div class="muted">${esc(x.store_number)}${x.store_name ? ' ' + esc(x.store_name) : ''}</div></div>
+          </div>`).join('') : '<div class="muted">Nobody yet.</div>'}
+      </div>
+    </div>
+
+    <div style="margin-top:14px;display:flex;gap:9px;flex-wrap:wrap;">
+      <button class="btn primary" onclick="event.stopPropagation(); openAudit('${id}')">Read every walk</button>
+      <button class="btn" onclick="event.stopPropagation(); AUDIT='${id}'; drawAuditPickers(); showTab('summary')">Full summary</button>
+    </div>
+  </div>`;
 }
 
 function openAudit(id){
@@ -477,11 +542,38 @@ let AUDIT_LIST = [];
 function query(){
   const p = new URLSearchParams();
   if (AUDIT) p.set('auditId', AUDIT);
-  for (const [key, id] of [['store','fStore'],['coach','fCoach'],['from','fFrom'],['to','fTo'],['scope','fScope']]){
-    const v = document.getElementById(id).value;
-    if (v) p.set(key, v);
+  for (const [key, id] of [['store','fStore'],['coach','fCoach'],['region','fRegion'],
+                           ['from','fFrom'],['to','fTo'],['scope','fScope']]){
+    const el = document.getElementById(id);
+    if (el && el.value) p.set(key, el.value);
   }
   return p.toString();
+}
+
+// One filter bar, moved to whichever tab is open, so a filter set on the
+// overview is still set when you look at the summary. Two copies of these
+// controls would mean two answers to the same question.
+function moveFilters(tab){
+  const bar = document.getElementById('filterBar');
+  const slot = tab === 'responses' ? document.getElementById('filterSlot')
+             : tab === 'summary' ? document.getElementById('filterSlotSummary')
+             : tab === 'stores' ? document.getElementById('filterSlotStores')
+             : null;
+  if (tab === 'overview'){
+    document.getElementById('pane-overview').prepend(bar);
+    bar.style.display = '';
+  } else if (slot){
+    slot.appendChild(bar);
+    bar.style.display = 'contents';
+  }
+}
+
+function applyFilters(){
+  const open = TABS.find(t => document.getElementById('pane-' + t).style.display === 'block');
+  if (open === 'summary') loadSummary();
+  else if (open === 'stores') loadStores();
+  else if (open === 'responses') load();
+  else loadOverview();
 }
 
 function drawAuditPickers(){
@@ -504,8 +596,11 @@ function pickAudit(id){
 }
 
 function reset(){
-  ['fStore','fCoach','fFrom','fTo'].forEach(id => document.getElementById(id).value = '');
-  load();
+  ['fStore','fCoach','fRegion','fFrom','fTo','fScope'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  applyFilters();
 }
 
 async function load(){
@@ -698,6 +793,29 @@ const cssId = s => String(s).replace(/[^a-z0-9]/gi, '-');
 
 async function loadSummary(){
   const s = await fetch('/api/audits/summary?' + query()).then(r => r.json());
+
+  const mins = s.minutes || {};
+  const facts = document.getElementById('sumFacts');
+  facts.className = '';
+  facts.innerHTML = `<div class="ins-grid">
+      <div><b>${s.responses || 0}</b><span>Walks</span></div>
+      <div><b>${s.averageScore == null ? '—' : s.averageScore + '/' + s.maxScore}</b><span>Average score</span></div>
+      <div><b>${mins.average == null ? '—' : mins.average + ' min'}</b>
+        <span>Average to complete${mins.from ? ` · from ${mins.from}` : ''}</span></div>
+      <div><b>${(s.perfect || []).length}</b><span>Perfect first time</span></div>
+    </div>
+    ${(s.perfect || []).length ? `<div class="muted" style="margin-top:11px;font-size:13.5px;">
+      <b style="color:var(--text);">100% first time:</b> ${
+        s.perfect.map(x => esc(x.name) + ' (' + esc(x.store_number) + ')').join(', ')}</div>` : ''}`;
+
+  const reg = document.getElementById('sumRegion');
+  reg.innerHTML = (s.regions || []).length
+    ? `<table><thead><tr><th>Region</th><th>Stores</th><th>Walks</th><th>Average</th></tr></thead><tbody>` +
+      s.regions.map(r => `<tr><td>${esc(r.region_coach)}</td><td class="muted">${r.stores}</td>
+        <td>${r.responses}</td>
+        <td><span class="pill ${band(pct(r.averageScore, s.maxScore))}">${r.averageScore}/${s.maxScore}</span></td></tr>`).join('') +
+      '</tbody></table>'
+    : '<div class="empty">Nothing yet.</div>';
 
   // What stands out, in sentences. This is the part worth reading first.
   const stand = document.getElementById('sumStand');

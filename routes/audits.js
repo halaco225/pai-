@@ -236,10 +236,13 @@ async function scopedRows(req, res) {
   const auditId = req.query.auditId || DEFAULT_AUDIT;
 
   // A test being run across the whole company is not a regional thing: the
-  // person who sent it out has to be able to read what came back. Open to
-  // RDOs and VPs on request; an Area Coach stays inside their own stores.
+  // person who sent it out has to be able to read what came back, and open
+  // it, whoever's store it came from. So an RDO or a VP sees everything by
+  // default and narrows down with the filter — the other way round meant a
+  // walk you could count on the overview was a 404 when you clicked it.
+  // An Area Coach stays inside their own stores either way.
   const maySeeAll = user.role === 'rdo' || user.role === 'vp';
-  const everywhere = maySeeAll && String(req.query.scope || '') === 'all';
+  const everywhere = maySeeAll && String(req.query.scope || '') !== 'mine';
 
   const c = serviceClient(res); if (!c) return null;
 
@@ -270,6 +273,7 @@ function withStoreInfo(rows, assignments) {
       store_number: r.store_number,
       store_name: s.store_name || '',
       area_coach: s.area_coach || '',
+      region_coach: s.region_coach || '',
       score: r.score,
       max_score: r.max_score,
     };
@@ -277,8 +281,9 @@ function withStoreInfo(rows, assignments) {
 }
 
 function applyFilters(rows, query) {
-  const { store, coach, from, to } = query;
+  const { store, coach, region, from, to } = query;
   let out = rows;
+  if (region) out = out.filter(r => r.region_coach === region);
   if (store) out = out.filter(r => r.store_number === String(store));
   if (coach) out = out.filter(r => r.area_coach === coach);
   if (from)  out = out.filter(r => r.created_at >= from);
@@ -454,6 +459,55 @@ async function summarise(req, res) {
   const graded = [];
   for (const row of rows) graded.push(await frozenGrade(row));
 
+  // How long a walk takes. The page writes its first answer down as soon as
+  // one is given, so the gap between that row and the submitted one is the
+  // time it took. Only walks since the id was recorded on the response can
+  // be measured, so the count it is based on is reported with it.
+  const started = await walks.startedAt(rows.map(r => r.walk_id).filter(Boolean));
+  const spans = [];
+  for (const r of rows) {
+    const began = r.walk_id && started[r.walk_id];
+    if (!began) continue;
+    const mins = (Date.parse(r.created_at) - Date.parse(began)) / 60000;
+    // A walk left open overnight and finished the next day is not a
+    // completion time, it is a forgotten tab.
+    if (mins > 0 && mins < 240) spans.push(mins);
+  }
+  const minutes = spans.length
+    ? { average: Math.round((spans.reduce((a, b) => a + b, 0) / spans.length) * 10) / 10,
+        fastest: Math.round(Math.min(...spans) * 10) / 10,
+        from: spans.length }
+    : { average: null, fastest: null, from: 0 };
+
+  // Got everything right, first time they ever took it. Their first walk is
+  // the one that counts: a perfect score on the third go is a different
+  // thing, and the point of this list is who already knew it.
+  const firstEach = new Map();
+  for (const r of [...rows].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))) {
+    const who = String(r.respondent_name || '').trim();
+    if (!who || firstEach.has(who.toLowerCase())) continue;
+    firstEach.set(who.toLowerCase(), r);
+  }
+  const perfect = [...firstEach.values()]
+    .filter(r => Number(r.max_score) > 0 && Number(r.score) === Number(r.max_score))
+    .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))
+    .slice(0, 5)
+    .map(r => ({
+      name: r.respondent_name,
+      store_number: r.store_number,
+      store_name: (assignments[r.store_number] || {}).store_name || '',
+      at: r.created_at,
+    }));
+
+  const byRegion = {};
+  for (const r of rows) {
+    const who = (assignments[r.store_number] || {}).region_coach || 'Not assigned';
+    const g = byRegion[who] = byRegion[who] || { region_coach: who, responses: 0, totalScore: 0, stores: new Set() };
+    g.responses += 1;
+    g.totalScore += Number(r.score);
+    g.stores.add(String(r.store_number));
+  }
+
   const byArea = {};
   for (const r of rows) {
     const who = (assignments[r.store_number] || {}).area_coach || 'Not assigned';
@@ -490,6 +544,14 @@ async function summarise(req, res) {
       coaches: read.coaches,
       stores: Object.values(byStore)
         .map(s => ({ ...s, averageScore: +(s.totalScore / s.responses).toFixed(1) }))
+        .sort((a, b) => a.averageScore - b.averageScore),
+      minutes,
+      perfect,
+      regions: Object.values(byRegion)
+        .map(g => ({
+          region_coach: g.region_coach, responses: g.responses, stores: g.stores.size,
+          averageScore: +(g.totalScore / g.responses).toFixed(1),
+        }))
         .sort((a, b) => a.averageScore - b.averageScore),
       areas: Object.values(byArea)
         .map(a => ({
@@ -568,7 +630,7 @@ router.get('/overview', async (req, res) => {
   const assignments = await db.getStoreAssignments();
   const stores = visibleStores(user, assignments);
   const maySeeAll = user.role === 'rdo' || user.role === 'vp';
-  const everywhere = maySeeAll && String(req.query.scope || '') === 'all';
+  const everywhere = maySeeAll && String(req.query.scope || '') !== 'mine';
 
   const c = serviceClient(res); if (!c) return;
 
@@ -579,7 +641,11 @@ router.get('/overview', async (req, res) => {
     .order('created_at', { ascending: false });
   if (error) return res.status(502).json({ error: error.message });
 
-  const mine = (data || []).filter(r => everywhere || stores.has(String(r.store_number)));
+  const inScope = (data || []).filter(r => everywhere || stores.has(String(r.store_number)));
+  // Same filters as everywhere else, so what the overview counts is what the
+  // tabs underneath it will show.
+  const keep = new Set(applyFilters(withStoreInfo(inScope, assignments), req.query).map(r => r.id));
+  const mine = inScope.filter(r => keep.has(r.id));
 
   const out = list.map(t => {
     const rows = mine.filter(r => r.audit_id === t.id);
@@ -617,7 +683,18 @@ router.get('/overview', async (req, res) => {
 
   // Most recently used first; anything nobody has taken sinks to the bottom.
   out.sort((a, b) => (b.lastAt ? Date.parse(b.lastAt) : 0) - (a.lastAt ? Date.parse(a.lastAt) : 0));
-  res.json({ audits: out, maySeeAll, everywhere });
+
+  const seen = withStoreInfo(inScope, assignments);
+  const uniq = (list, key) => [...new Set(list.map(x => x[key]).filter(Boolean))].sort();
+
+  res.json({
+    audits: out, maySeeAll, everywhere,
+    regions: uniq(seen, 'region_coach'),
+    coaches: uniq(seen, 'area_coach'),
+    stores: [...new Map(seen.map(r => [r.store_number,
+      { store_number: r.store_number, store_name: r.store_name }])).values()]
+      .sort((a, b) => String(a.store_number).localeCompare(String(b.store_number))),
+  });
 });
 
 router.get('/summary', async (req, res) => {

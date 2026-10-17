@@ -135,10 +135,31 @@ function fits(q, answer) {
   return true;
 }
 
+/**
+ * When each of these walks was started, by walk id.
+ *
+ * The first answer given writes the row, so its created_at is the moment
+ * they began. Pairing that with the submitted row is what makes "it takes
+ * about nine minutes" a thing anyone can say.
+ */
+async function startedAt(walkIds = []) {
+  const ids = [...new Set(walkIds.filter(isUuid))];
+  if (!ids.length) return {};
+  const p = getPool();
+  if (!p) return {};
+  const { rows } = await p.query(
+    'SELECT walk_id, created_at FROM audit_walks WHERE walk_id = ANY($1::uuid[])', [ids]);
+  const out = {};
+  for (const r of rows) out[r.walk_id] = r.created_at;
+  return out;
+}
+
 async function deleteWalk(walkId) {
   const p = getPool();
   if (!p || !isUuid(walkId)) return;
   await p.query('DELETE FROM audit_walks WHERE walk_id = $1', [walkId]);
 }
 
-module.exports = { initAuditWalks, recordAnswer, getAnswers, sealed, deleteWalk, isUuid, fits };
+module.exports = {
+  initAuditWalks, recordAnswer, getAnswers, sealed, deleteWalk, isUuid, fits, startedAt,
+};
