@@ -379,9 +379,33 @@ const COACH_NAMES = { adam: 'Adam', krystina: 'Krystina', pepper: 'Pepper' };
 // A guide can have more than one drawing of a pose, and then it plays: the
 // frames are swapped on a timer, which is all a GIF ever was. A pose with no
 // entry here is a single drawing and simply sits there.
+// Frames per pose. A guide with looks counts them per look, because the two
+// sets of her were not drawn to the same depth: hair down has two waves,
+// hair up has one.
 const COACH_FRAMES = {
-  pepper: { cheer: 2, clap: 2 },
+  pepper: { down: { hello: 2, cheer: 2, clap: 2 }, up: { cheer: 2, clap: 2 } },
 };
+
+// Some guides have more than one look. The walk picks one and keeps it, so
+// she does not change her hair between questions — but a different walk gets
+// a different one, which is why there are two sets of her.
+const COACH_LOOKS = { pepper: ['down', 'up'] };
+let LOOK = '';
+
+function pickLook(coach){
+  const looks = COACH_LOOKS[coach];
+  if (!looks || !looks.length) return '';
+  let n = 0;
+  for (const ch of String(WALK_ID)) n = (n * 31 + ch.charCodeAt(0)) >>> 0;
+  return looks[n % looks.length];
+}
+
+// Where a guide's drawings live: the look is part of the name when there is
+// one, so Adam and Krystina keep the plain /images/adam-cheer.webp.
+function coachFile(coach, pose, frame){
+  const stem = `/images/${coach}${LOOK ? '-' + LOOK : ''}-${pose}`;
+  return frame ? `${stem}-${frame}.webp` : `${stem}.webp`;
+}
 const FRAME_MS = 420;
 let framePlayer = null;
 
@@ -393,7 +417,9 @@ const COACH_POSES = {
 const hasPose = pose => (COACH_POSES[COACH] || []).includes(pose);
 
 function framesFor(coach, pose){
-  return (COACH_FRAMES[coach] || {})[pose] || 1;
+  const set = COACH_FRAMES[coach] || {};
+  const byLook = LOOK && set[LOOK] ? set[LOOK] : set;
+  return byLook[pose] || 1;
 }
 
 // One timer for the page. It walks whatever guide images are on screen, so
@@ -406,7 +432,7 @@ function playFrames(){
       if (!(count > 1)) continue;
       const next = ((Number(img.dataset.frame) || 1) % count) + 1;
       img.dataset.frame = next;
-      img.src = `/images/${img.dataset.coach}-${img.dataset.pose}-${next}.webp`;
+      img.src = coachFile(img.dataset.coach, img.dataset.pose, next);
     }
   }, FRAME_MS);
 }
@@ -415,7 +441,7 @@ function playFrames(){
 // loop blinks.
 function preloadFrames(coach, pose){
   const count = framesFor(coach, pose);
-  for (let i = 2; i <= count; i++) new Image().src = `/images/${coach}-${pose}-${i}.webp`;
+  for (let i = 2; i <= count; i++) new Image().src = coachFile(coach, pose, i);
 }
 
 // pose: 'hello' to open the walk, 'cheer' for a right answer, 'explain' for
@@ -426,7 +452,7 @@ function coachHtml(line, why, pose){
   const name = COACH_NAMES[COACH] || 'Adam';
   const count = framesFor(COACH, which);
   // A guide with frames numbers its files; one without keeps the plain name.
-  const src = count > 1 ? `/images/${COACH}-${which}-1.webp` : `/images/${COACH}-${which}.webp`;
+  const src = coachFile(COACH, which, count > 1 ? 1 : 0);
   if (count > 1){ preloadFrames(COACH, which); playFrames(); }
   return `<div class="coach ${which === 'cheer' ? 'cheer' : ''}">
     <img class="adam" src="${src}" alt="${esc(name)}"
@@ -480,6 +506,7 @@ async function start(){
   FORM = await res.json();
   IS_TEST = FORM.kind ? FORM.kind === 'test' : FORM.questions.some(q => Number(q.points) > 0);
   COACH = COACH_NAMES[FORM.coach] ? FORM.coach : (IS_TEST && !FORM.coach ? 'adam' : 'none');
+  LOOK = pickLook(COACH);
   STORES = await fetch('/api/audits/stores').then(r => r.json()).catch(() => []);
   document.getElementById('title').textContent = FORM.title;
   // A draft only brings back questions that were never marked; a marked one
