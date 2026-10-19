@@ -21,7 +21,7 @@
       "n": 3,
       "title": "Hand washing is the MOST effective way to prevent the spread of what?",
       "type": "single",
-      "points": 10,
+      "points": 1,
       "choices": [
         "Foodborne illness and communicable disease",
         "Customer complaints",
@@ -38,7 +38,7 @@
       "n": 4,
       "title": "How long must hands be lathered with soap during proper hand washing?",
       "type": "single",
-      "points": 10,
+      "points": 1,
       "choices": [
         "At least 20 seconds",
         "Until hands feel clean",
@@ -55,7 +55,7 @@
       "n": 5,
       "title": "Singing the \"Happy Birthday\" song twice equals the required hand-washing time.",
       "type": "single",
-      "points": 8,
+      "points": 1,
       "choices": [
         "True",
         "False"
@@ -70,7 +70,7 @@
       "n": 6,
       "title": "Which sink is the ONLY approved place to wash your hands?",
       "type": "single",
-      "points": 10,
+      "points": 1,
       "choices": [
         "Mop sink",
         "3-compartment sink",
@@ -87,7 +87,7 @@
       "n": 7,
       "title": "Washing your hands at a prep sink is acceptable if the hand sink is busy.",
       "type": "single",
-      "points": 8,
+      "points": 1,
       "choices": [
         "False",
         "True"
@@ -102,7 +102,7 @@
       "n": 8,
       "title": "You are allowed to wash your hands while wearing disposable gloves.",
       "type": "single",
-      "points": 8,
+      "points": 1,
       "choices": [
         "False",
         "True"
@@ -117,7 +117,7 @@
       "n": 9,
       "title": "How many times are you required to wash and sanitize your hands to complete and box an order by yourself that has both wings and pizza?",
       "type": "single",
-      "points": 8,
+      "points": 1,
       "choices": [
         "1",
         "2",
@@ -134,7 +134,7 @@
     {
       "title": "Watch this short video. Which steps did Pepper MISS? Click all that apply.",
       "type": "multi",
-      "points": 10,
+      "points": 1,
       "video": "/audits/pepper-handwash.mp4",
       "help": "Watch it twice before you answer. Check it against the order you know, step by step.",
       "choices": [
@@ -159,7 +159,7 @@
       "n": 11,
       "title": "After using the restroom, when must you wash your hands?",
       "type": "single",
-      "points": 10,
+      "points": 1,
       "choices": [
         "Only when returning to work",
         "Only if you touched the door",
@@ -176,7 +176,7 @@
       "n": 12,
       "title": "Touching your apron, hat, shirt, face, hair, glasses, or cell phone requires hand washing before returning to work.",
       "type": "single",
-      "points": 8,
+      "points": 1,
       "choices": [
         "True",
         "False"
@@ -191,7 +191,7 @@
       "n": 13,
       "title": "When must a delivery driver wash and sanitize their hands after returning from a delivery?",
       "type": "single",
-      "points": 8,
+      "points": 1,
       "choices": [
         "Only if their hands look dirty",
         "After touching the delivery bag",
@@ -208,7 +208,7 @@
       "n": 14,
       "title": "Hand sanitizer can replace hand washing if hands look clean.",
       "type": "single",
-      "points": 8,
+      "points": 1,
       "choices": [
         "False",
         "True"
@@ -223,7 +223,7 @@
       "n": 15,
       "title": "When should hand sanitizer be applied?",
       "type": "single",
-      "points": 8,
+      "points": 1,
       "choices": [
         "Only when gloves are worn",
         "Before washing hands",
@@ -240,7 +240,7 @@
       "n": 16,
       "title": "What should you use to turn off the faucet after washing your hands?",
       "type": "single",
-      "points": 8,
+      "points": 1,
       "choices": [
         "Gloves",
         "Apron or uniform",
@@ -257,7 +257,7 @@
       "n": 17,
       "title": "When must hands be washed related to gloves?",
       "type": "single",
-      "points": 10,
+      "points": 1,
       "choices": [
         "Only if gloves tear",
         "Only after removing gloves",
@@ -274,7 +274,7 @@
       "n": 18,
       "title": "Put these in the correct order for proper hand washing.",
       "type": "order",
-      "points": 20,
+      "points": 5,
       "steps": [
         "Wet Hands",
         "Apply Soap",
