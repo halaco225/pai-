@@ -16,6 +16,11 @@ const { getPool } = require('./db');
 
 const SEED_DIR = path.join(__dirname, '..', 'data', 'audits');
 
+// Who can be a guide. The editor offers these and this list is what a save
+// is allowed to keep — adding one in the browser and forgetting it here is
+// why picking Pepper looked like it saved and came back as Adam.
+const COACHES = ['adam', 'krystina', 'pepper', 'none'];
+
 const TYPES = new Set(['text', 'longtext', 'single', 'multi', 'photo', 'hotspot', 'order', 'scale',
                        'number', 'datetime', 'assign']);
 const CHOICE_TYPES = new Set(['single', 'multi']);
@@ -268,7 +273,7 @@ function cleanTemplate(def) {
     kind: def.kind === 'audit' ? 'audit' : def.kind === 'test' ? 'test' : undefined,
     // Who walks them through it. Left out means Adam on a test and nobody on
     // an audit, which is how it behaved before there was a choice.
-    coach: ['adam', 'krystina', 'none'].includes(def.coach) ? def.coach : undefined,
+    coach: COACHES.includes(def.coach) ? def.coach : undefined,
     questions: (def.questions || []).map((q, i) => {
       const out = {
         n: i + 1,                       // numbering always follows the order on screen
