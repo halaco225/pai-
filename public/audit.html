@@ -239,7 +239,13 @@
      comes from what he says and how he moves. */
   .coach{display:flex;gap:10px;align-items:flex-start;margin:0 0 18px;}
   .verdict .coach{margin:13px 0 0;}
-  .adam{flex:none;height:150px;width:auto;display:block;transform-origin:50% 100%;
+  /* A fixed box, not width:auto. The frames of a pose are not all the same
+     shape — arms up is half as wide again as arms down — so an image sized
+     to its own content resized the row every time it swapped, and the whole
+     page shuffled along with it. She is drawn inside the box instead, which
+     leaves the layout alone while she moves. */
+  .adam{flex:none;width:124px;height:150px;display:block;object-fit:contain;
+        object-position:50% 100%;transform-origin:50% 100%;
         filter:drop-shadow(0 3px 5px rgba(16,24,40,.16));
         animation:adamIn .34s cubic-bezier(.2,1.5,.5,1) both;}
   .coach.cheer .adam{animation:adamIn .34s cubic-bezier(.2,1.5,.5,1) both,
@@ -271,9 +277,8 @@
      explanation into a column about four words wide. */
   @media (max-width:430px){
     .coach{gap:7px;}
-    /* The cheering pose is much wider than the others; without a cap on
-       the width it squeezed the explanation to three words a line. */
-    .adam{height:112px;max-width:104px;object-fit:contain;object-position:50% 0;}
+    /* Narrower on a phone, so the explanation keeps its line length. */
+    .adam{width:96px;height:112px;}
     .bubble{padding:11px 12px;}
   }
 
