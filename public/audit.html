@@ -1238,10 +1238,23 @@ function drawStores(typed){
 async function check(q){
   if (checked[q.n]) return true;
   try{
-    const res = await fetch('/api/audits/check', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ auditId: FORM.id, walkId: WALK_ID, n: q.n, answer: answers[q.n] }),
-    });
+    // Marked once, and the server keeps the first answer, so a second go at
+    // a dropped request costs nothing and saves a question being written off
+    // as "no signal" when the phone just blinked.
+    let res;
+    for (let attempt = 1; attempt <= 3; attempt++){
+      try {
+        res = await fetch('/api/audits/check', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ auditId: FORM.id, walkId: WALK_ID, n: q.n, answer: answers[q.n] }),
+        });
+        if (res.status < 500 || attempt === 3) break;
+      } catch (err) {
+        if (attempt === 3) throw err;
+      }
+      say('Checking…');
+      await new Promise(r => setTimeout(r, attempt * 900));
+    }
     if (!res.ok){
       // The server turned it down — say why, and leave the question open so
       // they can put it right. This is not the same as having no signal.
@@ -1486,6 +1499,43 @@ function drawThumbs(q){
 // ── Sending ─────────────────────────────────────────────────────────────────
 let SENDING = false;
 
+// The walk goes in once, however many times this is called: the server keys
+// it on the walk id. That is what makes retrying safe, and retrying is what
+// stops a dropped reply looking like a failure to the person holding the
+// phone. A deploy, a lift door, a dead spot behind the walk-in — all the
+// same thing to a phone mid-request, and all of them recover on their own.
+const TRIES = 4;
+const WAIT_MS = [1200, 3000, 6000];
+// Long enough for a handful of photos on a bad connection, short enough that
+// a request which is never coming back does not hold the walk hostage.
+const GIVE_UP_MS = 90000;
+
+async function sendWalk(body, next, count){
+  let last;
+  for (let attempt = 1; attempt <= TRIES; attempt++){
+    const stop = new AbortController();
+    const timer = setTimeout(() => stop.abort(), GIVE_UP_MS);
+    try {
+      const res = await fetch('/api/audits/submit',
+        { method: 'POST', body, signal: stop.signal });
+      clearTimeout(timer);
+      // A 5xx is the server having a moment — worth another go. A 4xx is an
+      // answer about this submission and will say the same thing next time.
+      if (res.status >= 500 && attempt < TRIES){ last = new Error('server ' + res.status); }
+      else return res;
+    } catch (err) {
+      clearTimeout(timer);
+      last = err;
+    }
+    if (attempt < TRIES){
+      next.textContent = `Still sending… (${attempt + 1} of ${TRIES})`;
+      say('');
+      await new Promise(r => setTimeout(r, WAIT_MS[attempt - 1] || 6000));
+    }
+  }
+  throw last || new Error('could not send');
+}
+
 async function submit(){
   if (SENDING) return;                 // a double tap is one submission
   const missing = FORM.questions.map((q, i) => answered(q) ? null : i).filter(i => i !== null);
@@ -1512,7 +1562,7 @@ async function submit(){
   say('');
 
   try{
-    const res = await fetch('/api/audits/submit', { method:'POST', body });
+    const res = await sendWalk(body, next, count);
     const data = await res.json();
     if (!res.ok){
       // Everything they typed and every picture is still here.
@@ -1533,8 +1583,9 @@ async function submit(){
     // is safe now: the same walk cannot go in twice.
     SENDING = false;
     next.disabled = false; next.textContent = 'Send my answers';
-    say('That did not go through — or it did and the reply got lost. '
-      + 'Hit the button again; it cannot be sent in twice.');
+    say('Tried ' + TRIES + ' times and could not get through. Your answers are '
+      + 'still here — move somewhere with signal and hit the button again. '
+      + 'It cannot be sent in twice, so pressing it is always safe.');
   }
 }
 
