@@ -84,8 +84,14 @@
 
   /* Put-it-where-it-goes. One board for sorting into buckets, matching two
      lists and dropping labels on a picture. */
-  .tray{display:flex;flex-wrap:wrap;gap:8px;min-height:52px;padding:10px;margin-bottom:14px;
-        border:1.5px dashed var(--line);border-radius:12px;background:#fff;}
+  /* The tray stays put at the top while the buckets scroll under it, so the
+     thing you picked up is always on screen next to where it has to go. On
+     a phone the two of them do not fit together any other way. */
+  .tray{position:sticky;top:-20px;z-index:5;
+        display:flex;flex-wrap:wrap;gap:8px;min-height:52px;padding:10px;margin-bottom:14px;
+        max-height:38vh;overflow-y:auto;
+        border:1.5px dashed var(--line);border-radius:12px;background:#fff;
+        box-shadow:0 6px 10px -8px rgba(16,24,40,.35);}
   .tray:empty::after{content:'Everything is placed.';color:var(--muted);font-size:14.5px;}
   .chip{display:inline-block;padding:10px 13px;border:1.5px solid var(--line);border-radius:10px;
         background:#fff;font-size:15.5px;font-weight:500;line-height:1.3;cursor:grab;
@@ -97,6 +103,9 @@
 
   .buckets{display:flex;gap:10px;align-items:stretch;}
   .buckets.stack{flex-direction:column;}
+  /* Side by side, two buckets on a phone are 160px wide and every chip wraps
+     to three lines. One under the other, each one gets the full width. */
+  @media (max-width:560px){ .buckets{flex-direction:column;} }
   .bucket{flex:1;min-width:0;border:1.5px solid var(--line);border-radius:12px;background:#fff;
           padding:11px;display:flex;flex-direction:column;gap:8px;}
   .bucket.over{border-color:var(--blue);background:#eef3fe;}
