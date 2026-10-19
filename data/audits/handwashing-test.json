@@ -3,8 +3,20 @@
   "title": "Hand Washing & Food Safety — Required Test",
   "description": "Finishing this test is required to keep working at Ayvaz Pizza. Answer each question, then check it. You will see straight away whether you got it right and why.",
   "questions": [
-    { "n": 1, "title": "Your first and last name", "type": "text", "points": 0, "required": true },
-    { "n": 2, "title": "Your store number", "type": "text", "points": 0, "required": true },
+    {
+      "n": 1,
+      "title": "Your first and last name",
+      "type": "text",
+      "points": 0,
+      "required": true
+    },
+    {
+      "n": 2,
+      "title": "Your store number",
+      "type": "text",
+      "points": 0,
+      "required": true
+    },
     {
       "n": 3,
       "title": "Hand washing is the MOST effective way to prevent the spread of what?",
@@ -16,7 +28,9 @@
         "Cross-contamination of uniforms",
         "Allergens only"
       ],
-      "correct": [0],
+      "correct": [
+        0
+      ],
       "explanation": "Washing your hands is the single best thing you do all shift. It stops the germs that make customers sick, and it stops the ones that go around the team.",
       "required": true
     },
@@ -25,8 +39,15 @@
       "title": "How long must hands be lathered with soap during proper hand washing?",
       "type": "single",
       "points": 10,
-      "choices": ["At least 20 seconds", "Until hands feel clean", "10 seconds", "15 seconds"],
-      "correct": [0],
+      "choices": [
+        "At least 20 seconds",
+        "Until hands feel clean",
+        "10 seconds",
+        "15 seconds"
+      ],
+      "correct": [
+        0
+      ],
       "explanation": "At least 20 seconds of scrubbing, every time. \"Until they feel clean\" is not a measure — hands feel clean long before they are.",
       "required": true
     },
@@ -35,8 +56,13 @@
       "title": "Singing the \"Happy Birthday\" song twice equals the required hand-washing time.",
       "type": "single",
       "points": 8,
-      "choices": ["True", "False"],
-      "correct": [0],
+      "choices": [
+        "True",
+        "False"
+      ],
+      "correct": [
+        0
+      ],
       "explanation": "Twice through is about 20 seconds. It is a way to count without a clock on the wall.",
       "required": true
     },
@@ -45,8 +71,15 @@
       "title": "Which sink is the ONLY approved place to wash your hands?",
       "type": "single",
       "points": 10,
-      "choices": ["Mop sink", "3-compartment sink", "Designated hand washing sink", "Food prep sink"],
-      "correct": [2],
+      "choices": [
+        "Mop sink",
+        "3-compartment sink",
+        "Designated hand washing sink",
+        "Food prep sink"
+      ],
+      "correct": [
+        2
+      ],
       "explanation": "The hand sink, and nothing else. The prep sink is for food, the 3-compartment sink is for dishes, and the mop sink is the dirtiest thing in the building.",
       "required": true
     },
@@ -55,8 +88,13 @@
       "title": "Washing your hands at a prep sink is acceptable if the hand sink is busy.",
       "type": "single",
       "points": 8,
-      "choices": ["False", "True"],
-      "correct": [0],
+      "choices": [
+        "False",
+        "True"
+      ],
+      "correct": [
+        0
+      ],
       "explanation": "Never. Washing your hands in the prep sink puts what was on your hands where the food goes. Wait for the hand sink.",
       "required": true
     },
@@ -65,8 +103,13 @@
       "title": "You are allowed to wash your hands while wearing disposable gloves.",
       "type": "single",
       "points": 8,
-      "choices": ["False", "True"],
-      "correct": [0],
+      "choices": [
+        "False",
+        "True"
+      ],
+      "correct": [
+        0
+      ],
       "explanation": "Gloves do not get washed. They come off and go in the bin, then you wash your hands, then you put a new pair on.",
       "required": true
     },
@@ -75,25 +118,42 @@
       "title": "How many times are you required to wash and sanitize your hands to complete and box an order by yourself that has both wings and pizza?",
       "type": "single",
       "points": 8,
-      "choices": ["1", "2", "3", "4", "5"],
-      "correct": [3],
+      "choices": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "correct": [
+        3
+      ],
       "explanation": "Four. Every time you move between raw and ready-to-eat, or change gloves, that is another wash — doing the whole order yourself means doing it four times.",
       "required": true
     },
     {
-      "n": 10,
-      "title": "What must you do BEFORE washing your hands if you are wearing disposable gloves?",
-      "type": "single",
+      "title": "Watch this short video. Which steps did Pepper MISS? Click all that apply.",
+      "type": "multi",
       "points": 10,
+      "video": "/audits/pepper-handwash.mp4",
+      "help": "Watch it twice before you answer. Check it against the order you know, step by step.",
       "choices": [
-        "Rinse gloves with water",
-        "Dry gloves with paper towel",
-        "Sanitize the gloves",
-        "Remove and dispose of the gloves"
+        "She did not lather for a full 20 seconds",
+        "She did not turn off the tap with a paper towel",
+        "She did not apply hand sanitizer",
+        "She did not wet her hands before the soap",
+        "She did not use soap at all",
+        "She did not rinse the soap off",
+        "She did not dry her hands"
       ],
-      "correct": [3],
-      "explanation": "Take them off and throw them away. Rinsing, drying or sanitizing a glove does not clean it, and the glove is never going back on.",
-      "required": true
+      "correct": [
+        0,
+        1,
+        2
+      ],
+      "explanation": "Three things. She rushed the lather — it has to be a full 20 seconds, every time. She turned the tap off with her bare hand, which puts straight back what she just washed off; that is what the paper towel is for. And she never applied sanitizer, which goes on after drying. The washing she did do was fine — wet, soap, rinse, dry.",
+      "required": true,
+      "n": 10
     },
     {
       "n": 11,
@@ -106,7 +166,9 @@
         "Before leaving the restroom AND again at the BOH hand sink",
         "Only before leaving the restroom"
       ],
-      "correct": [2],
+      "correct": [
+        2
+      ],
       "explanation": "Twice. Once in the restroom before you leave, then again at the back-of-house hand sink — because you touched the restroom door on the way out.",
       "required": true
     },
@@ -115,8 +177,13 @@
       "title": "Touching your apron, hat, shirt, face, hair, glasses, or cell phone requires hand washing before returning to work.",
       "type": "single",
       "points": 8,
-      "choices": ["True", "False"],
-      "correct": [0],
+      "choices": [
+        "True",
+        "False"
+      ],
+      "correct": [
+        0
+      ],
       "explanation": "All of them. Your phone is the one people forget, and it is the dirtiest thing you touch all day.",
       "required": true
     },
@@ -131,7 +198,9 @@
         "Immediately upon returning, before handling or cutting food",
         "Only at the end of their shift"
       ],
-      "correct": [2],
+      "correct": [
+        2
+      ],
       "explanation": "The moment they are back, before they touch any food. They have handled car doors, money and somebody's front door since they last washed.",
       "required": true
     },
@@ -140,8 +209,13 @@
       "title": "Hand sanitizer can replace hand washing if hands look clean.",
       "type": "single",
       "points": 8,
-      "choices": ["False", "True"],
-      "correct": [0],
+      "choices": [
+        "False",
+        "True"
+      ],
+      "correct": [
+        0
+      ],
       "explanation": "Sanitizer never replaces washing. It goes on after washing and drying, not instead of it, and hands that look clean are not clean.",
       "required": true
     },
@@ -156,7 +230,9 @@
         "Instead of washing hands",
         "After washing and drying hands"
       ],
-      "correct": [3],
+      "correct": [
+        3
+      ],
       "explanation": "Last. Wash, dry, then sanitize. On wet hands it is watered down and does nothing.",
       "required": true
     },
@@ -165,8 +241,15 @@
       "title": "What should you use to turn off the faucet after washing your hands?",
       "type": "single",
       "points": 8,
-      "choices": ["Gloves", "Apron or uniform", "Disposable paper towel", "Bare hands"],
-      "correct": [2],
+      "choices": [
+        "Gloves",
+        "Apron or uniform",
+        "Disposable paper towel",
+        "Bare hands"
+      ],
+      "correct": [
+        2
+      ],
       "explanation": "A paper towel. You turned that faucet on with dirty hands, so turning it off with clean ones puts everything straight back.",
       "required": true
     },
@@ -181,7 +264,9 @@
         "Before putting on gloves AND every time gloves are changed",
         "Only before putting on gloves"
       ],
-      "correct": [2],
+      "correct": [
+        2
+      ],
       "explanation": "Before the gloves go on, and again every single time you change them. A clean glove over a dirty hand is still a dirty hand.",
       "required": true
     },
