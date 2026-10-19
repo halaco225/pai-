@@ -708,6 +708,7 @@ async function exportRows(req, res) {
   if (!result) return null;
 
   const { rows, assignments, graded } = result;
+  const stats = result.summary.questions || [];
 
   // Columns follow the union of every question seen, so a response taken
   // before a question was added still lines up under the right heading.
@@ -740,7 +741,7 @@ async function exportRows(req, res) {
     ];
   });
 
-  return { header, body, questions };
+  return { header, body, questions, stats };
 }
 
 router.get('/export.csv', async (req, res) => {
@@ -786,13 +787,37 @@ router.get('/export.xlsx', async (req, res) => {
 
   // The full question wording goes on its own sheet; as column headings it
   // would make every column too wide to scan.
+  // The full question wording, and underneath each one what people actually
+  // answered -- the same breakdown the summary tab shows, one row per choice
+  // so it can be filtered and pivoted rather than only read.
   const key = book.addWorksheet('Questions');
-  key.addRow(['Column', 'Question']);
+  key.addRow(['Column', 'Question', 'Points', '% correct', 'Right', 'Walks',
+    'Answer', 'Times chosen', 'Correct answer']);
   key.getRow(1).font = { bold: true };
-  for (const q of data.questions) key.addRow([`Q${q.n}`, q.title]);
+
+  const statOf = new Map(data.stats.map(s => [s.n, s]));
+  for (const q of data.questions) {
+    const s = statOf.get(q.n);
+    const head = [`Q${q.n}`, q.title, s ? s.points : '', s ? s.percent / 100 : '',
+      s ? s.right : '', s ? s.total : ''];
+    const choices = (s && s.choices) || [];
+    if (!choices.length) { key.addRow(head); continue; }
+    choices.forEach((c, i) => {
+      // Only the first row of a question repeats the wording; the rest hang
+      // under it, which is how you read it and how a pivot groups it.
+      const row = key.addRow([...(i ? [`Q${q.n}`, '', '', '', '', ''] : head),
+        c.label, c.count, c.correct ? 'Yes' : '']);
+      if (c.correct) row.getCell(9).font = { color: { argb: 'FF1CB145' }, bold: true };
+    });
+  }
+
   key.getColumn(1).width = 10;
-  key.getColumn(2).width = 110;
+  key.getColumn(2).width = 70;
   key.getColumn(2).alignment = { wrapText: true };
+  key.getColumn(4).numFmt = '0%';
+  for (const c of [3, 4, 5, 6, 8, 9]) key.getColumn(c).width = 11;
+  key.getColumn(7).width = 55;
+  key.getColumn(7).alignment = { wrapText: true };
 
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="audits-${new Date().toISOString().slice(0, 10)}.xlsx"`);

@@ -34,10 +34,25 @@ function byQuestion(graded) {
           wrongPicks: new Map(),     // a choice chosen that is not correct
           missedRight: new Map(),    // a correct choice left out
           missedSpots: new Map(),    // for a picture question
+          labels: [],                // every choice on offer, as authored
+          key: new Set(),            // which of those are correct
+          picks: new Map(),          // index -> how many times it was chosen
         };
         map.set(r.n, q);
       }
       q.total += 1;
+
+      // Every pick, right or wrong. The wrong ones alone say a question is
+      // being missed; the whole spread says which wrong answer people
+      // believe, and how far ahead of the rest it is.
+      if (r.choices) {
+        if (!q.labels.length) {
+          q.labels = r.choices;
+          for (const i of (r.correctChoices || [])) q.key.add(i);
+        }
+        for (const i of (r.given || [])) q.picks.set(i, (q.picks.get(i) || 0) + 1);
+      }
+
       if (r.correct) { q.right += 1; continue; }
 
       if (r.type === 'hotspot') {
@@ -73,6 +88,9 @@ function byQuestion(graded) {
     n: q.n, title: q.title, type: q.type, points: q.points,
     right: q.right, total: q.total,
     percent: q.total ? Math.round((q.right / q.total) * 100) : 0,
+    choices: q.labels.map((label, i) => ({
+      label, count: q.picks.get(i) || 0, correct: q.key.has(i),
+    })),
     commonWrong: top(q.wrongPicks),
     commonMissed: top(q.missedRight),
     commonMissedSpot: top(q.missedSpots),

@@ -37,6 +37,22 @@ describe('byQuestion', () => {
     expect(q.commonWrong).toEqual({ label: 'Floor was mopped', count: 2 });
   });
 
+  // The summary tab prints this list under every question, so a choice
+  // nobody picked still has to come back — at zero, in its authored order.
+  test('counts every choice, including the ones nobody picked', () => {
+    const { graded } = set([
+      walk('039155', '2026-10-01', 17, [q3([0], false)]),
+      walk('039156', '2026-10-01', 18, [q3([0], false)]),
+      walk('039157', '2026-10-01', 20, [q3([2], true)]),
+    ]);
+    expect(byQuestion(graded)[0].choices).toEqual([
+      { label: 'Floor was mopped',           count: 2, correct: false },
+      { label: 'Vents do not count',         count: 0, correct: false },
+      { label: 'All surfaces must be clean', count: 1, correct: true },
+      { label: 'Only if bugs',               count: 0, correct: false },
+    ]);
+  });
+
   test('a question everyone gets right has nothing to teach', () => {
     const { graded } = set([walk('039155', '2026-10-01', 20, [q3([2], true)])]);
     const q = byQuestion(graded)[0];

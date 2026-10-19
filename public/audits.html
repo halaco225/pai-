@@ -68,6 +68,30 @@ tr.row:hover td{background:#242831;}
 .q-row:last-child{border-bottom:none;}
 .q-text{font-size:13px;line-height:1.45;}
 
+/* ONE QUESTION, WHOLE — the shape of the thing people actually ask about.
+   A row with a percentage on it says a question is being missed. This says
+   what everybody answered, so you can see the wrong answer they believe.
+   Namespaced sq- throughout: the template editor further down this file
+   already owns .qcard, .qhead and .choice, and its rules come later. */
+.sq{border:1px solid var(--border);border-radius:10px;padding:15px 17px;margin-bottom:12px;background:var(--card);}
+.sq:hover{border-color:var(--border-hi);}
+.sq .sq-head{display:flex;gap:12px;align-items:baseline;justify-content:space-between;}
+.sq .sq-title{font-size:14px;line-height:1.45;font-weight:600;}
+.sq .sq-pts{color:var(--muted);font-weight:400;font-size:13px;white-space:nowrap;}
+.sq .sq-pct{font-size:12.5px;color:var(--accent);margin-top:7px;}
+.sq .sq-pct.bad{color:#ff8b8f;}
+.sq-body{display:grid;grid-template-columns:1fr 128px;gap:18px;align-items:center;margin-top:13px;}
+@media(max-width:620px){.sq-body{grid-template-columns:1fr;}}
+.sq-choice{display:grid;grid-template-columns:11px 1fr 56px 16px;gap:10px;align-items:center;padding:6px 0;font-size:13px;line-height:1.4;}
+.sq-choice .sq-dot{width:11px;height:11px;border-radius:50%;background:var(--brand);}
+.sq-choice.right .sq-dot{background:var(--green);}
+.sq-choice .sq-count{font-variant-numeric:tabular-nums;font-weight:600;text-align:right;}
+.sq-choice .sq-tick{color:#6ddb86;font-weight:700;}
+.sq-choice.zero{opacity:.55;}
+.sq-donut{display:block;margin:0 auto;}
+.sq-donut text{fill:var(--text);font-size:13px;font-weight:700;text-anchor:middle;}
+.sq-donut .track{stroke:#2f343f;}
+
 .result{border-left:3px solid var(--green);background:var(--surface);border-radius:8px;padding:12px;margin-bottom:10px;}
 .result.wrong{border-left-color:var(--brand);}
 .mark{font-weight:700;font-size:12.5px;}
@@ -272,7 +296,9 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
   <!-- SUMMARY -->
   <div id="pane-summary" style="display:none">
     <div class="filters"><select id="sAudit" title="Which test or audit"
-      onchange="pickAudit(this.value)"></select><span id="filterSlotSummary"></span></div>
+      onchange="pickAudit(this.value)"></select><span id="filterSlotSummary"></span>
+      <button class="btn" onclick="exportAs('csv')">Export CSV</button>
+      <button class="btn primary" onclick="exportAs('xlsx')">Export Excel</button></div>
     <div class="card"><div class="card-title">What stands out</div><div id="sumStand" class="empty">Loading…</div></div>
     <div class="card"><div class="card-title">How it is going</div><div id="sumFacts" class="empty"></div></div>
     <div class="card"><div class="card-title">Across every response</div><div id="sumHead" class="empty"></div></div>
@@ -515,8 +541,8 @@ async function openInsights(id){
     </div>
 
     <div style="margin-top:14px;display:flex;gap:9px;flex-wrap:wrap;">
-      <button class="btn primary" onclick="event.stopPropagation(); openAudit('${id}')">Read every walk</button>
-      <button class="btn" onclick="event.stopPropagation(); AUDIT='${id}'; drawAuditPickers(); showTab('summary')">Full summary</button>
+      <button class="btn primary" onclick="event.stopPropagation(); AUDIT='${id}'; drawAuditPickers(); showTab('summary')">Question-by-question summary</button>
+      <button class="btn" onclick="event.stopPropagation(); openAudit('${id}')">Read every walk</button>
     </div>
   </div>`;
 }
@@ -839,12 +865,7 @@ async function loadSummary(){
   // Per question: how often it is right, and what people say instead.
   document.getElementById('sumQ').innerHTML = (s.questions || []).length
     ? s.questions.map(q => `
-        <div class="q-row openable" onclick="drillQuestion(${q.n})">
-          <div class="q-text"><span class="caret">▸</span>${esc(q.title)}${whyWrong(q)}</div>
-          <div class="bar ${band(q.percent)}"><span style="width:${q.percent}%"></span></div>
-          <div style="text-align:right;font-weight:700;font-size:13px;">${q.percent}%
-            <div class="muted" style="font-weight:400;font-size:11px;">${q.right}/${q.total}</div></div>
-        </div>
+        ${questionCard(q)}
         <div id="drill-q-${q.n}"></div>`).join('')
     : '<div class="empty">Nothing to summarize yet.</div>';
 
@@ -863,6 +884,51 @@ async function loadSummary(){
         <tr><td colspan="4" style="padding:0;border:none;"><div id="drill-coach-${cssId(c.coach)}"></div></td></tr>`).join('') +
       '</tbody></table>'
     : '<div class="empty">Nothing yet.</div>';
+}
+
+// One question, whole: the wording, how many got it right, and what everyone
+// else put instead. The counts are the point — "93% correct" tells you to go
+// and teach something, and the 20 who picked the same wrong answer tell you
+// what to teach. Still opens the walks behind it, same as the old row did.
+function questionCard(q){
+  const pts = q.points ? ` <span class="sq-pts">(${q.points} point${q.points === 1 ? '' : 's'})</span>` : '';
+  const picked = (q.choices || []).some(c => c.count);
+
+  const body = picked
+    ? (q.choices || []).map(c => `<div class="sq-choice ${c.correct ? 'right' : ''} ${c.count ? '' : 'zero'}">
+          <span class="sq-dot"></span>
+          <span>${esc(c.label)}</span>
+          <span class="sq-count">${c.count}</span>
+          <span class="sq-tick">${c.correct ? '✓' : ''}</span>
+        </div>`).join('')
+    // Ordering, drag-and-drop and picture questions have no choice list to
+    // count, so they keep the one line that did say something about them.
+    : (whyWrong(q) || '<div class="muted" style="font-size:13px;">No answer breakdown for this kind of question.</div>');
+
+  return `<div class="sq openable" onclick="drillQuestion(${q.n})">
+    <div class="sq-head"><div class="sq-title">${q.n}. ${esc(q.title)}${pts}</div>
+      <span class="caret">▸</span></div>
+    <div class="sq-pct ${q.percent < 70 ? 'bad' : ''}">${q.percent}% of ${q.total} walk${q.total === 1 ? '' : 's'} answered this correctly.</div>
+    <div class="sq-body"><div>${body}</div>${donut(q.percent)}</div>
+  </div>`;
+}
+
+// The percentage as a ring. One number, two states — right and not — so it
+// reads at a glance without a legend; the figure under it carries the value
+// for anyone who cannot separate the two colours.
+function donut(percent){
+  const r = 44, c = 2 * Math.PI * r;
+  const on = Math.max(0, Math.min(100, percent)) / 100 * c;
+  return `<svg class="sq-donut" width="112" height="124" viewBox="0 0 112 124" role="img"
+      aria-label="${percent} percent answered correctly">
+    <g transform="translate(56,56) rotate(-90)">
+      <circle class="track" r="${r}" fill="none" stroke-width="13"></circle>
+      <circle r="${r}" fill="none" stroke-width="13" stroke-linecap="butt"
+        stroke="${percent < 70 ? 'var(--brand)' : 'var(--green)'}"
+        stroke-dasharray="${on.toFixed(1)} ${(c - on).toFixed(1)}"></circle>
+    </g>
+    <text x="56" y="120">${percent}%</text>
+  </svg>`;
 }
 
 // The wrong answer people actually give is more use than the percentage.
