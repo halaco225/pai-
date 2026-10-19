@@ -36,6 +36,15 @@
 
   .q-num{font-size:12.5px;font-weight:700;color:var(--blue);letter-spacing:.5px;text-transform:uppercase;}
   .q-title{margin:9px 0 18px;font-weight:600;font-size:19px;line-height:1.4;}
+  /* A clip to watch before answering. It loops, because the whole point of
+     one of these questions is watching it twice. */
+  .clip{margin:0 0 16px;}
+  .clip video{width:100%;border-radius:12px;border:1.5px solid var(--line);
+              background:#000;display:block;}
+  .clip .again{display:block;width:100%;margin-top:8px;padding:11px;border-radius:10px;
+              border:1.5px solid var(--line);background:#fff;font:inherit;font-weight:600;
+              color:var(--blue);}
+
   /* What to look for, from whoever wrote the question. Sits under the
      wording, before the answers, because that is when it is useful. */
   .lookfor{margin:-8px 0 17px;padding:12px 14px;border-radius:11px;background:#eef3fe;
@@ -551,6 +560,7 @@ function draw(dir){
       <div class="q-num">Question ${at + 1}${q.points ? ' · ' + q.points + (q.points > 1 ? ' points' : ' point') : ''}</div>
       <div class="q-title">${esc(q.title)}</div>
       ${q.help ? `<div class="lookfor"><b>What to look for</b>${esc(q.help)}</div>` : ''}
+      ${clipHtml(q)}
       ${body(q)}
       ${isGraded(q) && !verdict ? `<div class="lockline">✎️
         <span>Change your answer as many times as you like. <b>Checking it locks it in.</b></span></div>` : ''}
@@ -640,6 +650,18 @@ function verdictHtml(q, v){
     <div class="head">${v.correct ? '✔ Right' : '✘ Not quite' + part}</div>
     ${v.correct ? '' : `<div class="answer">Right answer: ${esc(right)}</div>`}
     ${coachVerdict(v, q.n)}</div>`;
+}
+
+// Watch it as many times as they like: the answer is in the detail, and
+// making somebody guess from one viewing tests their memory, not their
+// knowledge. Not autoplayed — a video that starts talking in a kitchen is
+// its own problem.
+function clipHtml(q){
+  if (!q.video) return '';
+  return `<div class="clip">
+    <video id="clip" src="${esc(q.video)}" controls playsinline preload="metadata"></video>
+    <button type="button" class="again" id="clipAgain">Watch it again</button>
+  </div>`;
 }
 
 function body(q){
@@ -836,6 +858,14 @@ function body(q){
 function looksLikeStore(q){ return /store/i.test(q.title) && /number/i.test(q.title); }
 
 function wire(q){
+  const again = document.getElementById('clipAgain');
+  if (again) again.addEventListener('click', () => {
+    const v = document.getElementById('clip');
+    if (!v) return;
+    v.currentTime = 0;
+    v.play();
+  });
+
   const stage = document.getElementById('stage');
 
   if (isChoice(q)){

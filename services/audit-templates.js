@@ -282,6 +282,12 @@ function cleanTemplate(def) {
       const help = String(q.help || '').trim();
       if (help) out.help = help;
 
+      // A clip to watch before answering. Any question type can have one:
+      // "what did she miss" is an ordinary pick-all with a video above it,
+      // which is why this is a field rather than a type of its own.
+      const video = String(q.video || '').trim();
+      if (video) out.video = video;
+
       if (q.type === 'number') {
         if (q.min !== '' && q.min != null) out.min = Number(q.min);
         if (q.max !== '' && q.max != null) out.max = Number(q.max);

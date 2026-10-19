@@ -85,6 +85,7 @@ function publicForm(def) {
       required: q.required !== false,
       // What to look for is wording, not an answer, so it goes with the form.
       ...(q.help ? { help: q.help } : {}),
+      ...(q.video ? { video: q.video } : {}),
       ...(q.type === 'scale' ? {
         min: Number(q.min ?? 1), max: Number(q.max ?? 10), step: Number(q.step || 1),
         minLabel: q.minLabel || '', maxLabel: q.maxLabel || '',

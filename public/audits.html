@@ -1268,6 +1268,17 @@ function removeChoice(i, c){
 
 // What to look for: the note the walker sees with the question, before they
 // answer. Every type can carry one, which is why it lives in one place.
+// A clip above the question. It is a path to a file served by the app
+// (/audits/something.mp4) rather than an upload, because a video pasted into
+// the template as data would be sent to every phone on every walk.
+function videoField(q, i){
+  return `<label class="ed-label">Video <span class="muted">— optional; played above the question</span></label>
+    <input type="text" value="${esc(q.video || '')}" placeholder="/audits/pepper-handwash.mp4"
+      oninput="EDITING.questions[${i}].video=this.value">
+    ${q.video ? `<video src="${esc(q.video)}" controls preload="metadata"
+      style="width:260px;margin-top:8px;border-radius:9px;border:1px solid var(--border);background:#000;"></video>` : ''}`;
+}
+
 function helpField(q, i){
   return `<label class="ed-label">What to look for
       <span class="muted">— shown with the question, before they answer</span></label>
@@ -1370,6 +1381,7 @@ function drawQuestions(){
       <textarea rows="2" placeholder="What are you asking?"
         oninput="EDITING.questions[${i}].title=this.value; updatePoints()">${esc(q.title)}</textarea>
       ${helpField(q, i)}
+    ${videoField(q, i)}
       ${choices}${photo}${scale}${number}
       <div class="qfoot">
         ${pointsField(q, i, graded)}
@@ -1408,6 +1420,7 @@ function orderCard(q, i){
     <textarea rows="2" placeholder="What are you asking?"
       oninput="EDITING.questions[${i}].title=this.value">${esc(q.title)}</textarea>
     ${helpField(q, i)}
+    ${videoField(q, i)}
 
     <label class="ed-label">The steps, in the right order
       <span class="muted">— they reach the phone shuffled, and get tapped back into this order</span></label>
@@ -1526,6 +1539,7 @@ function assignCard(q, i){
     <textarea rows="2" placeholder="What are you asking? e.g. Sort these into raw and ready to eat."
       oninput="EDITING.questions[${i}].title=this.value">${esc(q.title)}</textarea>
     ${helpField(q, i)}
+    ${videoField(q, i)}
 
     ${layout === 'picture' ? `<label class="ed-label">The picture</label>${places}` : ''}
 
@@ -1666,6 +1680,7 @@ function hotspotCard(q, i){
     <textarea rows="2" placeholder="What are you asking? e.g. Tap everything that is wrong in this picture."
       oninput="EDITING.questions[${i}].title=this.value">${esc(q.title)}</textarea>
     ${helpField(q, i)}
+    ${videoField(q, i)}
 
     <label class="ed-label">A "before" picture <span class="muted">— optional; turns this into spot-what-changed</span></label>
     ${q.beforeImage
