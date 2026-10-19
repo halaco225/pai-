@@ -58,9 +58,10 @@ function assignScore(q, given) {
   // left in the tray as correctly placed in the first bucket.
   const right = items.filter((it, i) =>
     placed[i] != null && Number(placed[i]) === Number(it.target)).length;
-  // Paid per item, like a pick-all. No penalty for a wrong one: every item has
-  // to go somewhere, so there is no ticking-everything to guard against.
-  return { earned: Math.round((right / items.length) * points * 10) / 10, right, of: items.length };
+  // All or nothing, like every other scored question here: one item in the
+  // wrong place and the whole thing is wrong. The count of what they did get
+  // is still reported, because that is what the explanation is built from.
+  return { earned: right === items.length ? points : 0, right, of: items.length };
 }
 
 function maxScore(def) {
@@ -256,24 +257,17 @@ function missingAnswers(def, answers = {}, photos = {}) {
 }
 
 /**
- * What a pick-all question earns. Each right box ticked is worth its share of
- * the points; each wrong one cancels its share of the wrong boxes, so ticking
- * everything still earns nothing. Never below zero.
+ * What a pick-all question earns: all of it, or none of it.
  *
- * "Right" stays exact — a near miss is still a miss in the report — but the
- * walk no longer scores zero for getting six of seven.
+ * Harold's call, and the right one for a required test — a hand wash with
+ * one step missing is not 80% of a hand wash. Miss one box or tick one extra
+ * and the question is wrong.
  */
 function choiceScore(q, given) {
   const right = q.correct || [];
   const points = q.points || 0;
   if (!right.length || !points) return 0;
-
-  const wrongPool = (q.choices || []).length - right.length;
-  const hit = given.filter(i => right.includes(i)).length;
-  const miss = given.filter(i => !right.includes(i)).length;
-
-  const share = hit / right.length - (wrongPool ? miss / wrongPool : 0);
-  return Math.max(0, Math.round(share * points * 10) / 10);
+  return sameSet(given, right) ? points : 0;
 }
 
 /**
@@ -364,8 +358,7 @@ function grade(def, answers = {}) {
     });
   }
 
-  // Part marks make fractions; one decimal, and no float dust in the total.
-  return { score: Math.round(score * 10) / 10, maxScore: maxScore(def), results };
+  return { score, maxScore: maxScore(def), results };
 }
 
 /**

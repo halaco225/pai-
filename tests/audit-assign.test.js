@@ -73,15 +73,16 @@ describe('scoring', () => {
     expect(grade(def, { 3: [0, 1, 0, 1] }).score).toBe(8);
   });
 
-  test('it pays per item', () => {
-    expect(assignScore(sort, [0, 1, 0, 0]).earned).toBe(6);   // three of four
+  test('one in the wrong place is the whole question wrong', () => {
+    expect(assignScore(sort, [0, 1, 0, 0]).earned).toBe(0);   // three of four earns nothing
     expect(assignScore(sort, [1, 0, 1, 0]).earned).toBe(0);   // every one swapped
   });
 
-  test('an item left in the tray is simply wrong, not an error', () => {
+  test('what they did get right is still counted, for the explanation', () => {
     const m = assignScore(sort, [0, 1, null, null]);
     expect(m.right).toBe(2);
-    expect(m.earned).toBe(4);
+    expect(m.of).toBe(4);
+    expect(m.earned).toBe(0);
   });
 
   test('right means every item, not most of them', () => {

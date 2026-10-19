@@ -373,8 +373,11 @@ const isGraded = q => (isChoice(q) || q.type === 'hotspot' || q.type === 'order'
 // when the screen redraws.
 const ADAM_YES  = ['Nailed it.', 'That is the one.', 'Dead right.', 'Spot on.',
                    'You know your stuff.', 'Textbook.'];
-const ADAM_PART = ['Close — part marks for that one.', 'Nearly. You missed one.',
-                   'Most of it. Have a read.'];
+// Kept for the put-it-where-it-goes and picture questions, where "you found
+// three of five" is worth saying even though the question itself is wrong.
+const ADAM_PART = ['So close. One short is still a miss.',
+                   'Nearly — but it has to be all of them.',
+                   'Most of it, which is not the same as it.'];
 const ADAM_NO   = ['Not quite. Here is why.', 'Miss — and this one is worth knowing.',
                    'Not this time. Read this bit.', 'Nope. This is the one people get caught on.'];
 const adamSay = (lines, n) => lines[Math.abs(Number(n) || 0) % lines.length];
@@ -479,10 +482,13 @@ function coachHtml(line, why, pose){
 
 // What Adam says about a marked question, and the explanation under it.
 function coachVerdict(v, n){
+  // "Nearly" now means they got most of it and still scored nothing, which is
+  // the thing worth saying out loud on an all-or-nothing question.
+  const nearly = !v.correct && v.right > 0 && v.of > v.right;
   const line = v.correct ? adamSay(ADAM_YES, n)
-             : v.earned > 0 ? adamSay(ADAM_PART, n)
+             : nearly ? adamSay(ADAM_PART, n)
              : adamSay(ADAM_NO, n);
-  const pose = v.correct ? 'cheer' : v.earned > 0 ? 'thumbsup' : 'explain';
+  const pose = v.correct ? 'cheer' : nearly ? 'thumbsup' : 'explain';
   return coachHtml(line, v.explanation, hasPose(pose) ? pose : (v.correct ? 'cheer' : 'explain'));
 }
 
@@ -619,8 +625,7 @@ function verdictHtml(q, v){
     return `<div class="verdict ${v.correct ? 'ok' : 'no'}">
       <div class="head">${v.correct
         ? '✔ All ' + v.of + ' in the right place'
-        : '✘ ' + v.right + ' of ' + v.of + ' in the right place'
-          + (v.earned > 0 ? ' — ' + v.earned + ' of ' + v.points : '')}</div>
+        : '✘ ' + v.right + ' of ' + v.of + ' in the right place'}</div>
       ${coachVerdict(v, q.n)}</div>
       <div class="findings">${rows}</div>`;
   }
@@ -644,10 +649,8 @@ function verdictHtml(q, v){
   }
 
   const right = (v.correctChoices || []).map(i => q.choices[i]).join(' · ');
-  // Part marks on a pick-all: say what they got, or "Not quite" reads as zero.
-  const part = (!v.correct && v.earned > 0) ? ` — ${v.earned} of ${v.points}` : '';
   return `<div class="verdict ${v.correct ? 'ok' : 'no'}">
-    <div class="head">${v.correct ? '✔ Right' : '✘ Not quite' + part}</div>
+    <div class="head">${v.correct ? '✔ Right' : '✘ Not quite'}</div>
     ${v.correct ? '' : `<div class="answer">Right answer: ${esc(right)}</div>`}
     ${coachVerdict(v, q.n)}</div>`;
 }
@@ -1793,8 +1796,8 @@ function showResults(data){
     return `<div class="r ${r.correct ? '' : 'wrong'}">
       <div class="q-num">Question ${r.n}</div>
       <div class="q-title" style="font-size:17px;margin:7px 0 11px;">${esc(q.title)}</div>
-      <div><span class="mark ${r.correct ? 'ok' : 'no'}">${r.correct ? '✔ You got it right'
-        : '✘ Not quite' + (r.earned > 0 ? ` — ${r.earned} of ${r.points}` : '')}</span></div>
+      <div><span class="mark ${r.correct ? 'ok' : 'no'}">${
+        r.correct ? '✔ You got it right' : '✘ Not quite'}</span></div>
       <div class="quiet" style="margin-top:8px">You said: ${esc(names(q, r.given) || 'nothing')}</div>
       <div style="margin-top:4px"><b>Right answer:</b> ${esc(names(q, r.correctChoices))}</div>
       <div class="why">${esc(r.explanation)}</div>
