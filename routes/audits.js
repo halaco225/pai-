@@ -119,8 +119,12 @@ router.post('/check', async (req, res) => {
 // Photos arrive as files named photo_<question number>. Everything else comes
 // as one JSON field so the shapes survive multipart intact.
 router.post('/submit', upload.any(), async (req, res) => {
+  // Deliberately not checking `active`. Pausing a walk stops new ones being
+  // started — /form is what refuses — but somebody who was already part way
+  // through it when it was paused has done the work, and throwing it away at
+  // the last step is how you teach people not to bother next time.
   const def = await templates.getTemplate(req.body.auditId || DEFAULT_AUDIT);
-  if (!def || !def.active) return res.status(404).json({ error: 'That walk does not exist.' });
+  if (!def) return res.status(404).json({ error: 'That walk does not exist.' });
 
   let answers;
   try {

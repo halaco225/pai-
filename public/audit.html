@@ -280,6 +280,9 @@
   button.back{padding:17px 18px;font:inherit;font-weight:600;color:var(--blue);background:#fff;
               border:1.5px solid var(--line);border-radius:13px;cursor:pointer;}
   .msg{color:var(--red);font-weight:600;font-size:14.5px;padding:0 16px 10px;background:#fff;}
+  /* Waiting for signal is not an error and should not look like one. */
+  .msg.calm{color:var(--ink);font-weight:500;}
+  .msg.calm b{color:var(--blue);}
 
   /* Intro and results scroll normally. */
   .scrollable{overflow-y:auto;padding:20px 16px 30px;}
@@ -1309,10 +1312,34 @@ function go(by){
   draw(by < 0 ? 'back' : 'next');
 }
 
-function say(message){
+function say(message, calm){
   const box = document.getElementById('msg');
   box.textContent = message || '';
+  box.className = 'msg' + (calm ? ' calm' : '');
   box.style.display = message ? 'block' : 'none';
+}
+
+// Waiting to send, because four tries could not get through. The walk is not
+// lost and nobody has to do anything: the moment the phone has signal again,
+// or the page is looked at again, it goes by itself. The only way to lose it
+// from here is to close the page, which is why that is the one thing the
+// message asks of them.
+let WAITING_TO_SEND = false;
+
+function waitForSignal(){
+  if (WAITING_TO_SEND) return;
+  WAITING_TO_SEND = true;
+  const again = () => {
+    if (!WAITING_TO_SEND) return;
+    if (navigator.onLine === false) return;
+    WAITING_TO_SEND = false;
+    submit();
+  };
+  window.addEventListener('online', again);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) again(); });
+  // And a slow heartbeat, because a phone that never fires `online` is a
+  // real phone, not a hypothetical one.
+  setInterval(again, 20000);
 }
 
 document.getElementById('next').addEventListener('click', () => RETRY ? retryNext() : go(1));
@@ -1538,6 +1565,7 @@ async function sendWalk(body, next, count){
 
 async function submit(){
   if (SENDING) return;                 // a double tap is one submission
+  WAITING_TO_SEND = false;
   const missing = FORM.questions.map((q, i) => answered(q) ? null : i).filter(i => i !== null);
   if (missing.length){
     at = missing[0];
@@ -1583,9 +1611,11 @@ async function submit(){
     // is safe now: the same walk cannot go in twice.
     SENDING = false;
     next.disabled = false; next.textContent = 'Send my answers';
-    say('Tried ' + TRIES + ' times and could not get through. Your answers are '
-      + 'still here — move somewhere with signal and hit the button again. '
-      + 'It cannot be sent in twice, so pressing it is always safe.');
+    say('No signal right now. Everything you did is saved on this phone and '
+      + 'will send on its own as soon as you are back in range — just leave '
+      + 'this page open. You can also press the button yourself; it cannot '
+      + 'go in twice.', true);
+    waitForSignal();
   }
 }
 
