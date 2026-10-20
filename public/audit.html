@@ -504,6 +504,25 @@ function preloadFrames(coach, pose){
 
 // pose: 'hello' to open the walk, 'cheer' for a right answer, 'explain' for
 // everything else. Cheer is the only one that moves.
+// A picture that will not load gets one more go — a dropped request or a
+// 404 cached from before that guide's drawings shipped is the usual reason,
+// and both clear on a retry. If it still will not come, the guide carries on
+// without a picture.
+//
+// It used to fall back to Adam's drawing, which was worse than no picture at
+// all: the bubble said Pepper and the face was his, on whichever machine had
+// the bad cache. Nobody can debug that from the shop floor.
+function guideImageFailed(img){
+  if (!img.dataset.retried){
+    img.dataset.retried = '1';
+    img.src = img.src.split('?')[0] + '?v=' + Date.now();
+    return;
+  }
+  img.onerror = null;
+  img.removeAttribute('data-frames');
+  img.style.display = 'none';
+}
+
 function coachHtml(line, why, pose){
   if (COACH === 'none') return '';
   const which = pose || 'explain';
@@ -515,7 +534,7 @@ function coachHtml(line, why, pose){
   return `<div class="coach ${which === 'cheer' ? 'cheer' : ''}">
     <img class="adam" src="${src}" alt="${esc(name)}"
          data-coach="${COACH}" data-pose="${which}" data-frames="${count}" data-frame="1"
-         onerror="this.onerror=null;this.removeAttribute('data-frames');this.src='/images/adam-${which}.webp'">
+         onerror="guideImageFailed(this)">
     <div class="bubble"><span class="who">${esc(name)}</span>
       <div class="line">${esc(line)}</div>
       ${[].concat(why || []).filter(Boolean)

@@ -38,7 +38,15 @@ app.use(session({
 }));
 
 // Static files
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders(res, filePath) {
+    // The walk page is the whole app, so a browser holding yesterday's copy
+    // runs yesterday's code against today's server — which is how one
+    // computer showed a different guide from another on the same link.
+    // Always revalidate the pages; the pictures can be kept.
+    if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+  },
+}));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
