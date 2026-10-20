@@ -232,7 +232,7 @@ select option{background:#fff;color:#111;}
 
   <!-- Weekly region topics banner -->
   <div class="region-banner">
-    <h3>📌 Talk to Everyone This Week</h3>
+    <h3 id="regionBannerTitle">📌 Talk to Everyone This Week</h3>
     <div id="regionTopicList"></div>
     <div class="add-row">
       <input type="text" id="newTopicInput" placeholder="Add a region-wide topic..." onkeydown="if(event.key==='Enter')addRegionTopic()">
@@ -266,7 +266,7 @@ select option{background:#fff;color:#111;}
   </div>
 
   <!-- Matrix Follow-Ups Section -->
-  <div style="margin-top:24px;max-width:100%;overflow:hidden;">
+  <div id="matrixFollowUpSection" style="margin-top:24px;max-width:100%;overflow:hidden;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
       <span style="font-weight:700;font-size:14px;">Region Follow-Ups</span>
       <div style="flex:1;height:1px;background:var(--border);"></div>
@@ -286,7 +286,7 @@ select option{background:#fff;color:#111;}
 <!-- ===== 1:1 VIEW TAB ===== -->
 <div id="view-one-on-one" class="hidden one-on-one">
   <div class="ac-selector-bar">
-    <label>Area Coach:</label>
+    <label id="acSelectLabel">Area Coach:</label>
     <select id="acSelect" onchange="loadAC(this.value)">
       <option value="">— Select Area Coach —</option>
     </select>
@@ -395,9 +395,9 @@ select option{background:#fff;color:#111;}
   <div style="display:flex;align-items:flex-start;gap:16px;">
     <!-- Left sidebar: person picker -->
     <div style="width:160px;flex-shrink:0;">
-      <div style="font-weight:700;font-size:17px;letter-spacing:-.2px;margin-bottom:12px;">Follow-Ups</div>
+      <div id="fu-sidebar-title" style="font-weight:700;font-size:17px;letter-spacing:-.2px;margin-bottom:12px;">Follow-Ups</div>
       <div style="display:flex;flex-direction:column;gap:6px;" id="fu-person-list"></div>
-      <button class="btn btn-accent btn-sm" style="margin-top:12px;width:100%;" onclick="openAddFollowUpModal()">+ Add</button>
+      <button id="fu-add-btn" class="btn btn-accent btn-sm" style="margin-top:12px;width:100%;" onclick="openAddFollowUpModal()">+ Add</button>
       <button class="btn btn-ghost btn-sm" style="margin-top:6px;width:100%;" onclick="loadFollowUps()">🔄 Refresh</button>
     </div>
     <!-- Kanban board -->
@@ -881,7 +881,7 @@ select option{background:#fff;color:#111;}
 <div class="modal-overlay" id="addFollowUpModal">
   <div class="modal" style="max-width:480px;">
     <div class="modal-header">
-      <div class="modal-header-text"><h3>Add Follow-Up</h3></div>
+      <div class="modal-header-text"><h3 id="fuModalTitle">Add Follow-Up</h3></div>
       <button class="btn btn-ghost btn-xs" onclick="closeAddFollowUpModal()">✕</button>
     </div>
     <div class="modal-body">
@@ -889,7 +889,7 @@ select option{background:#fff;color:#111;}
         <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">Item *</label>
         <textarea id="fuText" rows="3" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:inherit;background:var(--surface);color:var(--text);resize:vertical;" placeholder="What needs to be followed up on?"></textarea>
       </div>
-      <div style="display:flex;gap:10px;margin-bottom:10px;">
+      <div id="fuAssignedWrap" style="display:flex;gap:10px;margin-bottom:10px;">
         <div style="flex:1;">
           <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;">Assigned To</label>
           <input type="text" id="fuAssignedTo" list="fu-people-list" style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;background:var(--surface);color:var(--text);" placeholder="Matt Hester, Harold...">
@@ -904,11 +904,11 @@ select option{background:#fff;color:#111;}
         <div style="font-size:12px;font-weight:700;margin-bottom:6px;">What should happen?</div>
         <label style="display:flex;gap:7px;align-items:flex-start;font-size:13px;margin-bottom:6px;cursor:pointer;">
           <input type="radio" name="fuMode" value="daily" checked onchange="fuModeChanged()" style="margin-top:3px;">
-          <span><b>Add to their daily to-dos</b> <span style="font-size:11.5px;color:var(--muted);">— in their 8am text every morning until "done"</span></span>
+          <span id="fuDailyLabel"><b>Add to their daily to-dos</b> <span style="font-size:11.5px;color:var(--muted);">— in their 8am text every morning until "done"</span></span>
         </label>
         <label style="display:flex;gap:7px;align-items:flex-start;font-size:13px;margin-bottom:6px;cursor:pointer;">
           <input type="radio" name="fuMode" value="reminder" onchange="fuModeChanged()" style="margin-top:3px;">
-          <span><b>Reminder text</b> <span style="font-size:11.5px;color:var(--muted);">— now or at a time you pick, then daily at that time until "done"</span></span>
+          <span id="fuReminderLabel"><b>Reminder text</b> <span style="font-size:11.5px;color:var(--muted);">— now or at a time you pick, then daily at that time until "done"</span></span>
         </label>
         <div id="fuDailyWrap" style="display:flex;gap:8px;align-items:center;margin-top:6px;">
           <span style="font-size:12px;color:var(--muted);">Starting</span>
@@ -1176,6 +1176,8 @@ const CHIP_CSS = {standard:"chip-standard",flex:"chip-flex",aop:"chip-aop",temp:
 // =============================================================
 let currentUser = "";
 let currentAC = "";
+// A DM (Area Coach) tracks stores, not a team. Set once from the session.
+let IS_DM = false;
 let modalContext = null; // {acName, topicId}
 let editContext = null;  // {acName, topicId, noteIndex}
 let pendingImages = []; // URLs of images staged for the current note
@@ -1190,7 +1192,28 @@ const API = '/api/tracker';
 // In-memory cache so sync functions still work
 let _cache = {};
 
-function defaultData(){ return {regionTopics:[],notes:{},aop:{},aopPeriod:"",topics:JSON.parse(JSON.stringify(DEFAULT_TOPICS))}; }
+// A DM starts with the standard columns only. Flex and Temporary stay empty
+// for them to fill with whatever they are working on.
+function defaultTopics(){
+  const all=JSON.parse(JSON.stringify(DEFAULT_TOPICS));
+  return IS_DM ? all.filter(t=>t.category==="standard") : all;
+}
+function defaultData(){ return {regionTopics:[],notes:{},aop:{},aopPeriod:"",topics:defaultTopics()}; }
+
+// A DM's matrix rows are their own stores. Same row shape as an AC row, so the
+// matrix, the 1:1 view and the flags all work with no second implementation.
+function dmOrgEntry(name){
+  const bare=name.replace(/\s*\(.*\)\s*$/,'').trim(); // roster has "Imran Awan (Kiosks-Express)"
+  for(const rc of Object.values(ORG)){
+    const ac=rc.acs.find(a=>a.name===name) || rc.acs.find(a=>a.name===bare);
+    if(!ac) continue;
+    return { region:"Area "+ac.area, acs:(ac.stores||[]).map(s=>({
+      name:s.num+" · "+s.name, sub:"", area:ac.area,
+      phone:ac.phone, email:ac.email, stores:[s]
+    })) };
+  }
+  return { region:"", acs:[] };
+}
 
 async function loadData(user){
   if(!user) return defaultData();
@@ -1218,7 +1241,7 @@ async function saveData(d){
 function gd(){ return _cache[currentUser] || defaultData(); }
 function sd(d){ saveData(d); } // fire-and-forget
 
-function getTopics(d){ if(!d.topics||d.topics.length===0) d.topics=JSON.parse(JSON.stringify(DEFAULT_TOPICS)); return d.topics; }
+function getTopics(d){ if(!d.topics||d.topics.length===0) d.topics=defaultTopics(); return d.topics; }
 
 function getOrderedTopics(d){
   const topics=getTopics(d).filter(t=>!t.archived);
@@ -1329,6 +1352,9 @@ function showTab(tab){
   // Maintenance and the Resume tracker live on the RC Tracker site now. Asking
   // for one here must be a no-op, not a blank page with every view hidden.
   if (!TABS.includes(tab)) return;
+  // The inbox and the Message Center are hidden for a DM; keep them unreachable
+  // rather than leaving a blank view behind the tab bar.
+  if (IS_DM && (tab === 'inbox' || tab === 'messages')) return;
   TABS.forEach(t=>{
     document.getElementById("view-"+t).classList.toggle("hidden",t!==tab);
     document.getElementById("tab-"+t).classList.toggle("active",t===tab);
@@ -1336,7 +1362,8 @@ function showTab(tab){
   if(tab==="aop") renderAOPTable();
   if(tab==="one-on-one") renderACSelector();
   if(tab==="inbox") loadEmailFollowups();
-  if(tab==="followups") loadFollowUps();
+  // A DM has only themselves in scope, so skip the person picker entirely.
+  if(tab==="followups"){ if(IS_DM) fuSelectedPerson=currentUser; loadFollowUps(); }
   if(tab==="region"){ renderMatrixFollowUps(); populateMxFuPerson(); }
   if(tab==="messages") loadMessageCenter();
 }
@@ -1419,7 +1446,7 @@ function deleteRT(i){ const d=gd(); d.regionTopics.splice(i,1); saveData(d); ren
 function renderMatrix(){
   const table=document.getElementById("matrixTable");
   table.innerHTML="";
-  if(!currentUser||!ORG[currentUser]){ table.innerHTML='<tr><td colspan="20" class="empty">Select your name at the top right.</td></tr>'; return; }
+  if(!currentUser||!ORG[currentUser]){ table.innerHTML=`<tr><td colspan="20" class="empty">No ${IS_DM?'stores':'team'} on file for ${escH(currentUser||'you')} yet.</td></tr>`; return; }
 
   const d=gd();
   const topics=getOrderedTopics(d);
@@ -1429,14 +1456,19 @@ function renderMatrix(){
   const grouped={};
   CAT_ORDER.forEach(c=>{ grouped[c]=topics.filter(t=>t.category===c); });
 
+  // Which category bands to draw. A DM always keeps Flex and Temporary, empty
+  // or not, so there is somewhere to add to. Everyone else hides empty bands.
+  // One list for all three row loops — mismatched lists misalign the table.
+  const cats = IS_DM ? ["standard","flex","temp"]
+                     : CAT_ORDER.filter(c=>grouped[c].length||c==="standard");
+
   // Row 1: category headers (spanning columns)
   const catRow=document.createElement("tr");
   const acTh=document.createElement("th"); acTh.className="ac-col"; acTh.rowSpan=2;
-  acTh.innerHTML='<span style="font-size:11px;color:var(--muted);font-weight:700;">AREA COACH</span>';
+  acTh.innerHTML=`<span style="font-size:11px;color:var(--muted);font-weight:700;">${IS_DM?'STORE':'AREA COACH'}</span>`;
   catRow.appendChild(acTh);
-  CAT_ORDER.forEach(cat=>{
+  cats.forEach(cat=>{
     const cols=grouped[cat];
-    if(cols.length===0&&cat!=="standard") return;
     const th=document.createElement("th");
     th.colSpan=cols.length+1; // +1 for add button
     th.style.cssText='padding:0;border:1px solid #30363d;';
@@ -1447,7 +1479,7 @@ function renderMatrix(){
 
   // Row 2: individual topic headers
   const topicRow=document.createElement("tr");
-  CAT_ORDER.forEach(cat=>{
+  cats.forEach(cat=>{
     const cols=grouped[cat];
     cols.forEach(topic=>{
       const th=document.createElement("th"); th.className="topic-th";
@@ -1477,10 +1509,11 @@ function renderMatrix(){
     const tr=document.createElement("tr");
     const nameTd=document.createElement("td"); nameTd.className="ac-col";
     const stuckN=mxStuckItems.filter(f=>f.assigned_to===ac.name).length;
-    nameTd.innerHTML=`<div>${escH(ac.name)}${stuckN?` <span onclick="document.getElementById('mxStuckPanel').scrollIntoView({behavior:'smooth',block:'center'})" title="${stuckN} stuck follow-up${stuckN>1?'s':''} — see the red box above" style="cursor:pointer;font-size:10px;font-weight:700;color:#fff;background:#f85149;border-radius:8px;padding:0 6px;">🚩 ${stuckN}</span>`:''}</div><div style="font-size:10px;color:var(--muted);">Area ${ac.area}</div>`;
+    const sub = ('sub' in ac) ? ac.sub : 'Area '+ac.area;
+    nameTd.innerHTML=`<div>${escH(ac.name)}${stuckN?` <span onclick="document.getElementById('mxStuckPanel').scrollIntoView({behavior:'smooth',block:'center'})" title="${stuckN} stuck follow-up${stuckN>1?'s':''} — see the red box above" style="cursor:pointer;font-size:10px;font-weight:700;color:#fff;background:#f85149;border-radius:8px;padding:0 6px;">🚩 ${stuckN}</span>`:''}</div>${sub?`<div style="font-size:10px;color:var(--muted);">${escH(sub)}</div>`:''}`;
     tr.appendChild(nameTd);
 
-    CAT_ORDER.forEach(cat=>{
+    cats.forEach(cat=>{
       const cols=grouped[cat];
       cols.forEach(topic=>{
         const notes=getNotesForCell(d,ac.name,topic.id);
@@ -1966,11 +1999,17 @@ async function loadACFollowUps(acName) {
 
 function renderACSelector(){
   const sel=document.getElementById("acSelect");
-  sel.innerHTML='<option value="">— Select Area Coach —</option>';
+  const what = IS_DM ? 'Store' : 'Area Coach';
+  sel.innerHTML=`<option value="">— Select ${what} —</option>`;
+  const lbl=document.getElementById("acSelectLabel");
+  if(lbl) lbl.textContent=what+":";
+  const empty=document.getElementById("acEmptyState");
+  if(empty) empty.textContent=`Select a ${what.toLowerCase()} above to open their 1:1 workspace.`;
   if(!currentUser||!ORG[currentUser]) return;
   ORG[currentUser].acs.forEach(ac=>{
     const o=document.createElement("option"); o.value=ac.name;
-    o.textContent=ac.name+" (Area "+ac.area+")"; sel.appendChild(o);
+    const sub=('sub' in ac) ? ac.sub : 'Area '+ac.area;
+    o.textContent=ac.name+(sub?" ("+sub+")":""); sel.appendChild(o);
   });
   if(currentAC) sel.value=currentAC;
 }
@@ -1987,7 +2026,7 @@ async function loadAC(acName){
   if(!ac) return;
 
   document.getElementById("acDetailName").textContent=ac.name;
-  document.getElementById("acDetailSub").textContent="Area "+ac.area+(ac.phone?" · "+ac.phone:"");
+  document.getElementById("acDetailSub").textContent=(('sub' in ac)?ac.sub:"Area "+ac.area)+(ac.phone?" · "+ac.phone:"");
   document.getElementById("acStoreChips").innerHTML=ac.stores.map(s=>`<span class="store-chip">${s.num} · ${s.name}</span>`).join("");
 
   await loadACFollowUps(acName);
@@ -2406,9 +2445,13 @@ function populateMxFuPerson(){
   const sel=document.getElementById('mxFuPerson');
   if(!sel||!currentUser||!ORG[currentUser]) return;
   sel.innerHTML='<option value="">— Select Person —</option>';
-  ORG[currentUser].acs.forEach(ac=>{
+  // A DM's rows are stores, not people. Follow-ups still belong to a person, so
+  // the only assignee they have is themselves.
+  const people = IS_DM ? [{name:currentUser}] : ORG[currentUser].acs;
+  people.forEach(ac=>{
     const o=document.createElement('option'); o.value=ac.name; o.textContent=ac.name; sel.appendChild(o);
   });
+  if(IS_DM){ sel.value=currentUser; return; }
   const maint=document.createElement('option'); maint.value='__maintenance__'; maint.textContent='Maintenance'; sel.appendChild(maint);
   const everyone=document.createElement('option'); everyone.value='__everyone__'; everyone.textContent='Everyone'; sel.appendChild(everyone);
 }
@@ -2472,7 +2515,8 @@ function renderMxStuckPanel(){
 async function renderMatrixFollowUps(){
   const list=document.getElementById('matrixFollowUpList');
   if(!list||!currentUser||!ORG[currentUser]) return;
-  const myACs=ORG[currentUser].acs.map(a=>a.name);
+  // A DM's rows are stores; the only person whose items belong here is them.
+  const myACs=IS_DM?[currentUser]:ORG[currentUser].acs.map(a=>a.name);
   try{
     const r=await fetch(`${API}/follow-ups?status=open`, {credentials:'same-origin'});
     const all=await r.json();
@@ -2923,13 +2967,27 @@ document.addEventListener("DOMContentLoaded", async ()=>{
 
   currentUser = me.name;
   window.PAI_ME = me;
+  IS_DM = me.role === 'area_coach';
+
+  // A DM's board is their own stores and their own follow-ups. The email inbox
+  // and the Message Center are region tools — they have nothing to show here.
+  if (IS_DM) {
+    ORG[currentUser] = dmOrgEntry(currentUser);
+    ['inbox','messages'].forEach(t => {
+      const el = document.getElementById('tab-' + t);
+      if (el) el.style.display = 'none';
+    });
+    applyDmFollowUpsCopy();
+  }
 
   const who = document.getElementById('whoami');
-  if (who) who.textContent = me.name + ' · ' + me.role + ' · ' + me.scope.length + ' people in scope';
+  if (who) who.textContent = IS_DM
+    ? me.name + ' · ' + (ORG[currentUser].region || 'DM') + ' · ' + ORG[currentUser].acs.length + ' stores'
+    : me.name + ' · ' + me.role + ' · ' + me.scope.length + ' people in scope';
 
   _cache[currentUser] = await loadData(currentUser);
   renderAll();
-  checkInboxCount();
+  if (!IS_DM) checkInboxCount();
 });
 
 // =============================================================
@@ -2980,6 +3038,43 @@ async function loadFollowUps() {
   } catch(e) { console.error('loadFollowUps error:', e); }
 }
 
+// The Follow-Ups tab is a DM's own list — the one they get texted at 8am. Same
+// board and the same Add dialog as everyone else; only the words change, so it
+// reads as "mine" instead of "someone else's".
+function applyDmFollowUpsCopy() {
+  const set = (id, prop, val) => { const el = document.getElementById(id); if (el) el[prop] = val; };
+
+  // On the matrix tab: the banner is every store, not every coach, and the
+  // Region Follow-Ups block goes — the Follow-Ups tab is their list.
+  set('regionBannerTitle', 'textContent', '📌 Talk About at Every Store This Week');
+  const nti = document.getElementById('newTopicInput');
+  if (nti) nti.placeholder = 'Add something for all your stores...';
+  const mxSection = document.getElementById('matrixFollowUpSection');
+  if (mxSection) mxSection.style.display = 'none';
+
+  set('fu-sidebar-title', 'textContent', 'My Follow-Ups');
+  set('fu-add-btn', 'textContent', '+ Add or remind me');
+  const list = document.getElementById('fu-person-list');
+  if (list) list.style.display = 'none';
+  set('fu-selected-name', 'innerHTML',
+    '📱 <b>Your 8am text.</b> Everything in <b>Open</b> and <b>In Progress</b> with today\'s date or earlier ' +
+    'goes out in your morning text, every morning, until you reply "done". Drag a card to Done to drop it.');
+  const nameEl = document.getElementById('fu-selected-name');
+  if (nameEl) nameEl.style.cssText =
+    'font-size:12.5px;font-weight:400;color:var(--text);margin-bottom:12px;padding:10px 12px;' +
+    'border:1px solid var(--border);border-radius:6px;background:var(--surface);line-height:1.5;';
+
+  set('fuModalTitle', 'textContent', 'Add to my follow-ups');
+  const assigned = document.getElementById('fuAssignedWrap');
+  if (assigned) assigned.style.display = 'none';
+  set('fuDailyLabel', 'innerHTML',
+    '<b>Add to my daily follow-ups</b> <span style="font-size:11.5px;color:var(--muted);">' +
+    '— rides along in my 8am text every morning until I reply "done"</span>');
+  set('fuReminderLabel', 'innerHTML',
+    '<b>Remind me by text</b> <span style="font-size:11.5px;color:var(--muted);">' +
+    '— one text to me now or at a time I pick, then daily at that time until I reply "done"</span>');
+}
+
 function fuSelectPerson(name) {
   fuSelectedPerson = name;
   fuExpandedId = null;
@@ -3008,9 +3103,13 @@ function renderFollowUps(items) {
   const empty = document.getElementById('followUpEmpty');
   if (!list) return;
 
-  const person = fuSelectedPerson || '';
-  const nameEl = document.getElementById('fu-selected-name');
-  if (nameEl) nameEl.textContent = person || 'Select a person →';
+  // A DM has only themselves in scope — no picking, and the banner above the
+  // board stays the "this is your 8am text" explainer applyDmFollowUpsCopy set.
+  const person = IS_DM ? currentUser : (fuSelectedPerson || '');
+  if (!IS_DM) {
+    const nameEl = document.getElementById('fu-selected-name');
+    if (nameEl) nameEl.textContent = person || 'Select a person →';
+  }
   if (!person) { list.innerHTML=''; empty.style.display='block'; return; }
 
   const filtered = items.filter(f => f.assigned_to === person);
@@ -3888,7 +3987,11 @@ async function submitAddFollowUp() {
   _fuSubmitting = true;
   const btn = document.getElementById('fuSubmitBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
-  const assigned_to = document.getElementById('fuAssignedTo').value.trim() || null;
+  // A DM adds to their own list — the Assigned To field is hidden for them, so
+  // without this the item would land unassigned and never reach a text.
+  const assigned_to = IS_DM
+    ? currentUser
+    : (document.getElementById('fuAssignedTo').value.trim() || null);
   // Daily to-do: a start day (blank = today). Reminder text: a send time (blank = now,
   // which the server sets on their own clock), then daily at that time.
   const sendAt = document.getElementById('fuSendAt').value;
@@ -3896,12 +3999,32 @@ async function submitAddFollowUp() {
     ? { due_date: document.getElementById('fuDueDate').value || msgLocalDay(0) }
     : sendAt ? { due_date: sendAt.slice(0, 10), due_time: sendAt.slice(11, 16) } : { remind_now: true };
   try {
-    const r = await fetch(`${API}/follow-ups`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ text, assigned_to, ...when, source: 'manual', rc_name: currentUser || null, attachments: [..._fuModalImages] })
-    });
+    // A DM goes through the same endpoint the Message Center uses, because that
+    // is the one that actually sends the text. /follow-ups only writes a row:
+    // picking "remind me" there would add a to-do and never text anybody.
+    const r = IS_DM
+      ? await fetch(`${API}/messages/send`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            to: [currentUser], body: text, media: [..._fuModalImages],
+            track: true,
+            notify: fuMode() === 'reminder',           // daily to-do: no text now
+            send_at: sendAt ? new Date(sendAt).toISOString() : null,
+            due_date: fuMode() === 'daily' ? when.due_date : null,
+          })
+        })
+      : await fetch(`${API}/follow-ups`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ text, assigned_to, ...when, source: 'manual', rc_name: currentUser || null, attachments: [..._fuModalImages] })
+        });
     if (!r.ok) { alert('Failed to add follow-up'); return; }
+    if (IS_DM) {
+      const data = await r.json().catch(() => null);
+      const bad = (data && data.results || []).filter(x => !['sent','scheduled','added'].includes(x.status));
+      if (bad.length) alert('Added, but not texted: ' + bad.map(b => b.status).join(', '));
+    }
     closeAddFollowUpModal();
     await loadFollowUps();
   } finally {

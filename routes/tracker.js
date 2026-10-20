@@ -276,11 +276,18 @@ async function proxy(req, res, pathAndQuery, init = {}) {
   }
 }
 
+// `to` is one name here and a list of names there. Checking the raw value meant
+// a list never matched a name and every multi-recipient send was refused, so
+// check each recipient instead. Still deny-by-default: one name out of scope
+// refuses the whole send rather than quietly dropping that recipient.
+function outOfScope(user, body) {
+  const names = [body.person, ...(Array.isArray(body.to) ? body.to : [body.to])].filter(Boolean);
+  return names.find(n => !canSee(user, n)) || null;
+}
+
 router.post('/messages/send', async (req, res) => {
-  const to = req.body.person || req.body.to;
-  if (to && !canSee(req.session.user, to)) {
-    return res.status(403).json({ error: `${to} is not in your scope` });
-  }
+  const bad = outOfScope(req.session.user, req.body || {});
+  if (bad) return res.status(403).json({ error: `${bad} is not in your scope` });
   // Attribute the send to the signed-in user rather than an anonymous page.
   proxy(req, res, '/api/messages/send', {
     method: 'POST', body: { ...req.body, sent_by: req.session.user.name },
@@ -288,10 +295,8 @@ router.post('/messages/send', async (req, res) => {
 });
 
 router.post('/schedule-sms', async (req, res) => {
-  const to = req.body.person || req.body.to;
-  if (to && !canSee(req.session.user, to)) {
-    return res.status(403).json({ error: `${to} is not in your scope` });
-  }
+  const bad = outOfScope(req.session.user, req.body || {});
+  if (bad) return res.status(403).json({ error: `${bad} is not in your scope` });
   proxy(req, res, '/api/schedule-sms', {
     method: 'POST', body: { ...req.body, sent_by: req.session.user.name },
   });
@@ -331,3 +336,4 @@ router.post('/upload-image', express.raw({ type: '*/*', limit: '12mb' }), async 
 });
 
 module.exports = router;
+module.exports.outOfScope = outOfScope;   // exported for tests/dm-tracker.test.js
