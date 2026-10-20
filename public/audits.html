@@ -661,7 +661,7 @@ async function load(){
   list.innerHTML = outside + `<table><thead><tr>
       <th>When</th><th>Store</th><th>Who</th><th>Area Coach</th><th>Score</th></tr></thead><tbody>` +
     RESPONSES.map(r => {
-      const p = pct(r.score, r.max_score);
+      const p = pct(r.score, r.maxScore);
       return `<tr class="row" onclick="openOne('${r.id}')">
         <td class="muted">${esc(when(r.created_at))}</td>
         <td>${esc(r.store_number)}${r.store_name ? ' <span class="muted">' + esc(r.store_name) + '</span>' : ''}</td>
@@ -740,7 +740,7 @@ async function openOne(id){
           <div class="muted" style="margin-top:4px;">${esc(r.name)} · ${esc(when(r.created_at))}${r.area_coach ? ' · AC ' + esc(r.area_coach) : ''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:12px;">
-          <span class="pill ${band(p)}" style="font-size:15px;padding:6px 14px;">${r.score} / ${r.max_score}</span>
+          <span class="pill ${band(p)}" style="font-size:15px;padding:6px 14px;">${r.score} / ${r.maxScore}</span>
           <button class="btn" onclick="removeResponse('${r.id}','${esc(r.name)}')">Delete</button>
         </div>
       </div>
