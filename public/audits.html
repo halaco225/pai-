@@ -691,14 +691,34 @@ async function openOne(id){
   }
   const p = pct(r.score, r.max_score);
 
-  const names = (choices, list) => (list || []).map(i => choices[i]).join(' · ');
+  const names = (choices, list) => (list || []).map(i => (choices || [])[i]).join(' · ');
+
+  // A walk has more than multiple choice in it now. Each kind of question
+  // says what it captured in its own terms, rather than every one of them
+  // being read as a list of picked choices — which is what threw and left
+  // the click doing nothing at all.
+  const said = q => {
+    if (q.type === 'assign') return (q.items || [])
+      .map(it => `${it.text} → ${it.put == null ? 'left out' : (q.targets || [])[it.put]}`).join(' · ');
+    if (q.type === 'order') return (q.given || []).map(w => (q.steps || [])[w]).join(' → ');
+    if (q.type === 'hotspot') return `found ${(q.found || []).length} of ${(q.hotspots || []).length}`;
+    return names(q.choices, q.given);
+  };
+  const answer = q => {
+    if (q.type === 'assign') return (q.items || [])
+      .map(it => `${it.text} → ${(q.targets || [])[it.target]}`).join(' · ');
+    if (q.type === 'order') return (q.steps || []).join(' → ');
+    if (q.type === 'hotspot') return (q.hotspots || []).map(h => h.label).join(' · ');
+    return names(q.choices, q.correctChoices);
+  };
+
   const results = r.results.map(q => `
     <div class="result ${q.correct ? '' : 'wrong'}">
       <div class="muted" style="font-size:11.5px;font-weight:700;letter-spacing:.4px;">QUESTION ${q.n} · ${q.points} ${q.points > 1 ? 'points' : 'point'}</div>
       <div style="margin:5px 0 8px;font-size:13.5px;">${esc(q.title)}</div>
       <div><span class="mark ${q.correct ? 'ok' : 'no'}">${q.correct ? '✔ Right' : '✘ Wrong'}</span></div>
-      <div class="muted" style="margin-top:6px;font-size:12.5px;">They said: ${esc(names(q.choices, q.given) || 'nothing')}</div>
-      ${q.correct ? '' : `<div style="margin-top:4px;font-size:12.5px;"><b>Right answer:</b> ${esc(names(q.choices, q.correctChoices))}</div>`}
+      <div class="muted" style="margin-top:6px;font-size:12.5px;">They said: ${esc(said(q) || 'nothing')}</div>
+      ${q.correct ? '' : `<div style="margin-top:4px;font-size:12.5px;"><b>Right answer:</b> ${esc(answer(q))}</div>`}
       <div class="why">${esc(q.explanation)}</div>
     </div>`).join('');
 
@@ -708,7 +728,7 @@ async function openOne(id){
     <div style="margin-bottom:16px;">
       <div class="muted" style="font-size:12.5px;line-height:1.45;margin-bottom:6px;">Question ${q.n}</div>
       ${q.paths.length ? `<div class="thumbs">${q.paths.map(path =>
-        `<img src="/api/audits/photo?id=${encodeURIComponent(w.id)}&path=${encodeURIComponent(path)}" alt="" loading="lazy" onclick="zoom(this.src)">`).join('')}</div>`
+        `<img src="/api/audits/photo?id=${encodeURIComponent(id)}&path=${encodeURIComponent(path)}" alt="" loading="lazy" onclick="zoom(this.src)">`).join('')}</div>`
         : '<div class="muted">No pictures.</div>'}
     </div>`).join('');
 
