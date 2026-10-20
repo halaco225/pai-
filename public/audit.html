@@ -760,7 +760,7 @@ function body(q){
 
     return `<div class="places" id="board">
         <div class="places-head">${done} of ${items.length} placed${
-          done < items.length ? ' · tap one below, then tap where it goes' : ''}</div>
+          done < items.length ? ' · tap a line, then tap where it goes' : ''}</div>
         <div class="places-row">
           ${targets.map(t => `<button type="button" class="place" data-t="${t.i}">
               ${esc(t.label)}</button>`).join('')}
