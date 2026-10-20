@@ -107,10 +107,14 @@
           padding:6px 0 10px;margin-bottom:4px;}
   .places-head{font-size:13.5px;color:var(--muted);margin-bottom:8px;}
   .places-row{display:flex;gap:8px;flex-wrap:wrap;}
-  .place{flex:1 1 140px;min-height:52px;padding:11px 13px;border-radius:12px;
-         border:1.5px solid var(--line);background:#fff;font:inherit;font-size:15px;
-         font-weight:600;color:var(--ink);text-align:center;line-height:1.3;}
-  .place.over,.place.ready{border-color:var(--blue);background:#eef3fe;color:var(--blue);}
+  /* These are the answers you are sorting into, so they look like it all the
+     time rather than lighting up on cue. Only the one under the finger
+     changes, because a highlight that is on everything says nothing. */
+  .place{flex:1 1 140px;min-height:54px;padding:11px 13px;border-radius:12px;
+         border:2px solid var(--blue);background:#fff;font:inherit;font-size:15px;
+         font-weight:650;color:var(--blue);text-align:center;line-height:1.3;}
+  .place.over{background:var(--blue);color:#fff;
+              box-shadow:0 6px 16px rgba(0,73,201,.3);}
 
   .rows{display:flex;flex-direction:column;gap:8px;}
   .row{display:flex;align-items:center;justify-content:space-between;gap:10px;
@@ -1000,13 +1004,9 @@ function wire(q){
       draw();                                   // redraw the board in its new state
     }
 
-    const showWhereItCanGo = on =>
-      board.querySelectorAll('.place').forEach(b => b.classList.toggle('ready', on));
-
     function letGo(){
       if (ghost){ ghost.remove(); ghost = null; }
       document.querySelectorAll('.chip.held').forEach(el => el.classList.remove('held'));
-      showWhereItCanGo(false);
       clearOver();
     }
 
@@ -1018,7 +1018,6 @@ function wire(q){
       // Tapping the one already in hand puts it down again.
       if (heldItem === i){ heldItem = null; letGo(); return; }
       hold(i, chip, e);
-      showWhereItCanGo(true);
       try { stage.setPointerCapture(e.pointerId); } catch (err) {}
     });
 
