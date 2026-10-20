@@ -101,6 +101,31 @@
   .chip.wrong{border-color:var(--red);background:#fdeced;}
   .chip.ghost{position:fixed;z-index:50;pointer-events:none;opacity:.92;margin:0;}
 
+  /* Where things go, pinned so it is always reachable, and what has to be
+     placed as a list of full-width rows under it. */
+  .places{position:sticky;top:-20px;z-index:5;background:var(--bg);
+          padding:6px 0 10px;margin-bottom:4px;}
+  .places-head{font-size:13.5px;color:var(--muted);margin-bottom:8px;}
+  .places-row{display:flex;gap:8px;flex-wrap:wrap;}
+  .place{flex:1 1 140px;min-height:52px;padding:11px 13px;border-radius:12px;
+         border:1.5px solid var(--line);background:#fff;font:inherit;font-size:15px;
+         font-weight:600;color:var(--ink);text-align:center;line-height:1.3;}
+  .place.over,.place.ready{border-color:var(--blue);background:#eef3fe;color:var(--blue);}
+
+  .rows{display:flex;flex-direction:column;gap:8px;}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+       padding:13px 14px;border:1.5px solid var(--line);border-radius:12px;background:#fff;
+       font-size:15.5px;line-height:1.4;cursor:pointer;touch-action:none;user-select:none;}
+  .row .what{flex:1;min-width:0;}
+  .row .went{flex:none;font-size:12.5px;font-weight:700;color:var(--blue);
+             background:#eef3fe;border-radius:7px;padding:5px 9px;max-width:42%;
+             overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .row.done{background:#fbfcfe;}
+  .row.held{border-color:var(--blue);background:#eef3fe;
+            box-shadow:0 6px 16px rgba(16,24,40,.14);}
+  .row.right{border-color:var(--green);background:#eafaef;}
+  .row.wrong{border-color:var(--red);background:#fdeced;}
+
   .buckets{display:flex;gap:10px;align-items:stretch;}
   .buckets.stack{flex-direction:column;}
   /* Side by side, two buckets on a phone are 160px wide and every chip wraps
@@ -726,17 +751,33 @@ function body(q){
         <div class="hint">Tap a label, then tap where it goes. Drag works too.</div>`;
     }
 
-    // Buckets side by side; matching is the same board, stacked, so the two
-    // lists read across instead of down.
-    const stack = q.layout === 'match' || targets.length > 2;
-    return `${tray}
-      <div class="buckets ${stack ? 'stack' : ''}" id="board">
-        ${targets.map(t => `<div class="bucket" data-t="${t.i}">
-            <div class="name">${esc(t.label)}</div>
-            <div class="holds">${held(t)}</div>
-          </div>`).join('')}
+    // The things to place are sentences, not words, so they get a row each
+    // and the places to put them sit pinned at the top. A tray of wrapping
+    // chips with the buckets below worked for "Raw / Ready to eat" and fell
+    // apart the moment somebody wrote a real sentence: the item you picked
+    // up scrolled out of sight before you reached where it goes.
+    const done = items.filter(it => placed[it.i] != null).length;
+
+    return `<div class="places" id="board">
+        <div class="places-head">${done} of ${items.length} placed${
+          done < items.length ? ' · tap one below, then tap where it goes' : ''}</div>
+        <div class="places-row">
+          ${targets.map(t => `<button type="button" class="place" data-t="${t.i}">
+              ${esc(t.label)}</button>`).join('')}
+        </div>
       </div>
-      <div class="hint">Tap one, then tap where it goes. Drag works too.</div>`;
+      <div class="rows" id="tray">
+        ${items.map(it => {
+          const at = placed[it.i];
+          const mark = !v ? '' : (at === (v.items[it.i] || {}).target ? ' right' : ' wrong');
+          const target = at == null ? null : targets.find(t => t.i === at);
+          return `<div class="row chip${mark} ${at == null ? '' : 'done'}" data-i="${it.i}">
+            <div class="what">${esc(it.text)}</div>
+            ${target ? `<div class="went">${esc(target.label)}</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="hint">Tap one again to take it back.</div>`;
   }
 
   if (q.type === 'scale'){
@@ -959,10 +1000,13 @@ function wire(q){
       draw();                                   // redraw the board in its new state
     }
 
+    const showWhereItCanGo = on =>
+      board.querySelectorAll('.place').forEach(b => b.classList.toggle('ready', on));
+
     function letGo(){
       if (ghost){ ghost.remove(); ghost = null; }
-      board.querySelectorAll('.chip.held, .tray .chip.held')
-        .forEach(el => el.classList.remove('held'));
+      document.querySelectorAll('.chip.held').forEach(el => el.classList.remove('held'));
+      showWhereItCanGo(false);
       clearOver();
     }
 
@@ -974,6 +1018,7 @@ function wire(q){
       // Tapping the one already in hand puts it down again.
       if (heldItem === i){ heldItem = null; letGo(); return; }
       hold(i, chip, e);
+      showWhereItCanGo(true);
       try { stage.setPointerCapture(e.pointerId); } catch (err) {}
     });
 
@@ -1010,7 +1055,9 @@ function wire(q){
     stage.addEventListener('click', e => {
       if (heldItem == null) return;
       const where = e.target.closest('[data-t]');
-      const backToTray = e.target.closest('#tray');
+      // A row is a thing to pick up, not somewhere to drop: tapping one while
+      // holding another should swap which is held, not throw it back.
+      const backToTray = !e.target.closest('.row, .chip') && e.target.closest('#tray');
       if (!where && !backToTray) return;
       const i = heldItem;
       heldItem = null;
