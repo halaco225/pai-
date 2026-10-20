@@ -234,6 +234,35 @@ router.post('/submit', upload.any(), async (req, res) => {
 // ───────────────────────────── everything below needs a login ───────────────
 router.use(requireAuth);
 
+/**
+ * One walk, by its id, if this viewer may read it.
+ *
+ * Opening a walk has nothing to do with which audit the filters happen to be
+ * showing, but it used to go through scopedRows — which fetches one audit,
+ * defaulting to the Steritech one. So clicking a row on any other test went
+ * looking for it among the wrong audit's walks and came back "Not found".
+ *
+ * Asking for the row itself removes the whole class of bug: the filters stay
+ * a filter, and permission is still checked, just against the row in hand.
+ */
+async function walkForViewer(req, res, id) {
+  const user = req.session.user;
+  const c = serviceClient(res); if (!c) return null;
+
+  const { data, error } = await c.from('audit_responses').select('*').eq('id', id).maybeSingle();
+  if (error) { res.status(500).json({ error: error.message }); return null; }
+  if (!data) { res.status(404).json({ error: 'Not found' }); return null; }
+
+  const maySeeAll = user.role === 'rdo' || user.role === 'vp';
+  const stores = visibleStores(user, await db.getStoreAssignments());
+  // Out of scope and not there look the same from outside, on purpose.
+  if (!maySeeAll && !stores.has(String(data.store_number))) {
+    res.status(404).json({ error: 'Not found' });
+    return null;
+  }
+  return data;
+}
+
 async function scopedRows(req, res) {
   const user = req.session.user;
   const stores = visibleStores(user, await db.getStoreAssignments());
@@ -378,10 +407,7 @@ router.get('/responses', async (req, res) => {
 
 // ── One response, with the score it got on the day ──────────────────────────
 router.get('/responses/:id', async (req, res) => {
-  const scoped = await scopedRows(req, res); if (!scoped) return;
-  const row = scoped.rows.find(r => r.id === req.params.id);
-  // Out of scope and not there look the same from outside, on purpose.
-  if (!row) return res.status(404).json({ error: 'Not found' });
+  const row = await walkForViewer(req, res, req.params.id); if (!row) return;
 
   const assignments = await db.getStoreAssignments();
   const store = assignments[row.store_number] || {};
@@ -413,9 +439,7 @@ router.get('/responses/:id', async (req, res) => {
 // rubbish in the averages. Scoped the same as reading one, so nobody can
 // delete a walk they could not have opened, and the pictures go with it.
 router.delete('/responses/:id', requireRole('rdo', 'vp'), async (req, res) => {
-  const scoped = await scopedRows(req, res); if (!scoped) return;
-  const row = scoped.rows.find(r => r.id === req.params.id);
-  if (!row) return res.status(404).json({ error: 'Not found' });
+  const row = await walkForViewer(req, res, req.params.id); if (!row) return;
 
   const c = serviceClient(res); if (!c) return;
 
@@ -436,11 +460,11 @@ router.delete('/responses/:id', requireRole('rdo', 'vp'), async (req, res) => {
 // ── A photo, through a short-lived signed URL ───────────────────────────────
 router.get('/photo', async (req, res) => {
   const path = String(req.query.path || '');
-  const scoped = await scopedRows(req, res); if (!scoped) return;
+  // The walk it belongs to is named, and checked, so a picture from any audit
+  // opens for whoever may read that walk — and nobody else.
+  const row = await walkForViewer(req, res, String(req.query.id || '')); if (!row) return;
 
-  // Only paths that appear on a response this viewer can already see.
-  const allowed = scoped.rows.some(r =>
-    Object.values(r.photos || {}).some(list => (list || []).includes(path)));
+  const allowed = Object.values(row.photos || {}).some(list => (list || []).includes(path));
   if (!allowed) return res.status(404).json({ error: 'Not found' });
 
   const c = serviceClient(res); if (!c) return;

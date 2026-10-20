@@ -681,7 +681,14 @@ function fill(id, values, allLabel){
 }
 
 async function openOne(id){
-  const r = await fetch('/api/audits/responses/' + encodeURIComponent(id)).then(x => x.json());
+  const res = await fetch('/api/audits/responses/' + encodeURIComponent(id));
+  const r = await res.json().catch(() => ({}));
+  // Say so. A click that silently does nothing is worse than an error: you
+  // cannot tell a broken link from a slow one.
+  if (!res.ok || !r.results){
+    alert(r.error || 'That walk would not open. Try again.');
+    return;
+  }
   const p = pct(r.score, r.max_score);
 
   const names = (choices, list) => (list || []).map(i => choices[i]).join(' · ');
@@ -701,7 +708,7 @@ async function openOne(id){
     <div style="margin-bottom:16px;">
       <div class="muted" style="font-size:12.5px;line-height:1.45;margin-bottom:6px;">Question ${q.n}</div>
       ${q.paths.length ? `<div class="thumbs">${q.paths.map(path =>
-        `<img src="/api/audits/photo?path=${encodeURIComponent(path)}" alt="" loading="lazy" onclick="zoom(this.src)">`).join('')}</div>`
+        `<img src="/api/audits/photo?id=${encodeURIComponent(w.id)}&path=${encodeURIComponent(path)}" alt="" loading="lazy" onclick="zoom(this.src)">`).join('')}</div>`
         : '<div class="muted">No pictures.</div>'}
     </div>`).join('');
 
