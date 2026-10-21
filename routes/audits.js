@@ -780,42 +780,168 @@ const draftUpload = multer({
     destination: (req, file, cb) => cb(null, DRAFT_UPLOAD_DIR),
     filename: (req, file, cb) => cb(null, `draft_${Date.now()}_${file.originalname}`),
   }),
-  limits: { fileSize: 25 * 1024 * 1024, files: 6 },
+  // An area's Steritech round is eight or nine stores, so six was the wrong
+  // number for the thing people actually want to upload.
+  limits: { fileSize: 25 * 1024 * 1024, files: 12 },
 });
 
-router.post('/templates/draft', requireRole('rdo', 'vp'),
-  draftUpload.array('files', 6), async (req, res) => {
+// Reading a dozen PDFs takes real time, and the asking pass exists so the
+// second pass can use the same text without the browser sending it again.
+// Held in memory, keyed to the user who uploaded it, and dropped after half an
+// hour or when the next plan pushes it out.
+//
+// shortcut: in-process, so a plan does not survive a restart and would not be
+// found by a second instance. P.AI runs as one process (server.js says so at
+// startup); move this to the database if it is ever scaled out.
+const PLANS = new Map();
+const PLAN_TTL_MS = 30 * 60 * 1000;
+const PLAN_MAX = 40;
+
+function putPlan(username, payload) {
+  const id = crypto.randomBytes(16).toString('hex');
+  PLANS.set(id, { ...payload, username, at: Date.now() });
+  // Oldest out first, and expired ones out whenever we touch the map, so a
+  // quiet week does not leave a dozen regions' audit text sitting in memory.
+  for (const [key, held] of PLANS) {
+    if (Date.now() - held.at > PLAN_TTL_MS) PLANS.delete(key);
+  }
+  while (PLANS.size > PLAN_MAX) PLANS.delete(PLANS.keys().next().value);
+  return id;
+}
+
+function takePlan(id, username) {
+  const held = PLANS.get(String(id || ''));
+  if (!held) return null;
+  if (Date.now() - held.at > PLAN_TTL_MS) { PLANS.delete(id); return null; }
+  // The uploaded text is one person's; another signed-in user holding the id
+  // must not be able to read it back.
+  if (held.username !== username) return null;
+  return held;
+}
+
+// The answers come back through a multipart form, so everything is a string.
+// Types are checked against the list the drafting prompt offers rather than
+// passed through: a type the editor cannot render is a question nobody can
+// answer, and the validator would only catch it after the model had spent a
+// minute writing twenty of them.
+const ANSWERABLE_TYPES = new Set(['text', 'longtext', 'single', 'multi', 'number',
+                                  'scale', 'datetime', 'photo', 'order']);
+const MAX_DRAFT_QUESTIONS = 40;
+
+function readAnswers(body) {
+  const list = v => {
+    if (Array.isArray(v)) return v;
+    const s = String(v || '').trim();
+    if (!s) return [];
+    if (s.startsWith('[')) { try { return JSON.parse(s); } catch { return []; } }
+    return s.split(',').map(x => x.trim()).filter(Boolean);
+  };
+
+  const count = Number(body?.count);
+  return {
+    count: Number.isInteger(count) && count > 0 && count <= MAX_DRAFT_QUESTIONS ? count : null,
+    types: list(body?.types).map(String).filter(t => ANSWERABLE_TYPES.has(t)),
+    focus: list(body?.focus).map(s => String(s).slice(0, 160)).slice(0, 12),
+    notes: String(body?.notes || '').trim().slice(0, 1000) || null,
+  };
+}
+
+// Reads the uploaded files to text and deletes them. A file that cannot be
+// read is reported by name rather than failing the batch — eight good PDFs
+// and one scanned image should still produce a plan.
+async function readReferenceFiles(files) {
+  const skipped = [];
+  const read = [];
+  const chunks = [];
+  for (const f of files) {
+    try {
+      const text = await claude.extractTextFromFile(f);
+      if (text && text.trim()) {
+        chunks.push(`--- ${f.originalname} ---\n${text}`);
+        read.push(f.originalname);
+      } else {
+        skipped.push(f.originalname);
+      }
+    } catch (e) {
+      console.error('draft extract', f.originalname, e.message);
+      skipped.push(f.originalname);
+    } finally {
+      fs.unlink(f.path, () => {});
+    }
+  }
+  return { referenceText: chunks.join('\n\n') || null, read, skipped };
+}
+
+// ── Create, pass one: read the files and ask before building ────────────────
+router.post('/templates/draft/plan', requireRole('rdo', 'vp'),
+  draftUpload.array('files', 12), async (req, res) => {
   const ask = String(req.body?.ask || '').trim();
   const kind = req.body?.kind === 'test' ? 'test' : 'audit';
   const files = req.files || [];
 
-  if (!ask && !files.length) {
+  if (!files.length) {
+    return res.status(400).json({ error: 'Attach the audits you want it to read.' });
+  }
+
+  try {
+    const { referenceText, read, skipped } = await readReferenceFiles(files);
+    if (!referenceText) {
+      return res.status(400).json({
+        error: `Could not read any text from ${skipped.join(', ')}. Scanned images and photos will not work — P.AI needs the text.`,
+      });
+    }
+
+    const plan = await agent.planTemplate({ ask, kind, referenceText });
+    const planId = putPlan(req.session.user.username, { referenceText, ask, kind });
+
+    res.json({ planId, kind, read, skipped, found: plan.found, themes: plan.themes });
+  } catch (e) {
+    console.error('audits/templates/draft/plan:', e);
+    for (const f of files) fs.unlink(f.path, () => {});
+    res.status(500).json({ error: e.message || 'P.AI could not read those files.' });
+  }
+});
+
+// ── Create, pass two: build it ──────────────────────────────────────────────
+//
+// Two ways in. With a planId it uses the text pass one already read and the
+// answers given to its questions. Without one it is the original single-shot
+// path: a description, optionally with files, and no questions asked — still
+// the right flow for "a short opening checklist" with nothing to attach.
+router.post('/templates/draft', requireRole('rdo', 'vp'),
+  draftUpload.array('files', 12), async (req, res) => {
+  const ask = String(req.body?.ask || '').trim();
+  const files = req.files || [];
+  const planId = String(req.body?.planId || '').trim();
+
+  const plan = planId ? takePlan(planId, req.session.user.username) : null;
+  if (planId && !plan) {
+    for (const f of files) fs.unlink(f.path, () => {});
+    return res.status(410).json({
+      error: 'That reading has expired. Upload the files again.',
+    });
+  }
+
+  const kind = plan ? plan.kind : (req.body?.kind === 'test' ? 'test' : 'audit');
+
+  if (!plan && !ask && !files.length) {
     return res.status(400).json({ error: 'Say what you want it to cover, or attach something to build it from.' });
   }
 
   try {
-    // Reference files are read for their text only. A file that cannot be
-    // read is reported by name instead of failing the whole draft — the
-    // description alone is usually enough to get a usable first pass.
-    const skipped = [];
-    const chunks = [];
-    for (const f of files) {
-      try {
-        const text = await claude.extractTextFromFile(f);
-        if (text && text.trim()) chunks.push(`--- ${f.originalname} ---\n${text}`);
-        else skipped.push(f.originalname);
-      } catch (e) {
-        console.error('draft extract', f.originalname, e.message);
-        skipped.push(f.originalname);
-      } finally {
-        fs.unlink(f.path, () => {});
-      }
+    let referenceText = plan ? plan.referenceText : null;
+    let skipped = [];
+    if (!plan) {
+      const got = await readReferenceFiles(files);
+      referenceText = got.referenceText;
+      skipped = got.skipped;
     }
 
     const def = await agent.draftTemplate({
-      ask: ask || 'Build it from the attached material.',
+      ask: ask || (plan && plan.ask) || 'Build it from the attached material.',
       kind,
-      referenceText: chunks.join('\n\n') || null,
+      referenceText,
+      answers: plan ? readAnswers(req.body) : null,
     });
 
     // The model is not asked for an id — the editor slugs one from the title

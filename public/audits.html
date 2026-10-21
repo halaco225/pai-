@@ -55,6 +55,17 @@ a{color:inherit;}
 .ask-eg button:hover{color:var(--text);border-style:solid;}
 .file-list{font-size:12.5px;color:var(--muted);margin-top:8px;}
 
+/* The answers to P.AI's questions. Tick boxes rather than a free-text reply:
+   the point of asking was to get decisions it can act on. */
+.cr-checks{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
+.cr-check{display:flex;align-items:flex-start;gap:8px;background:var(--surface);
+          border:1px solid var(--border);border-radius:9px;padding:9px 12px;
+          cursor:pointer;max-width:340px;transition:border-color .15s;}
+.cr-check:hover{border-color:var(--border-hi);}
+.cr-check input{margin-top:2px;flex:0 0 auto;}
+.cr-check b{display:block;font-size:13px;font-weight:600;color:var(--text);}
+.cr-check span{display:block;font-size:12px;color:var(--muted);margin-top:2px;line-height:1.45;}
+
 .wrap{max-width:1100px;margin:0 auto;padding:20px 18px 60px;}
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:14px;box-shadow:var(--shadow);}
 .card-title{font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-bottom:12px;}
@@ -389,15 +400,54 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
 
       <label class="ed-label" style="margin-top:14px;">Is it scored?</label>
       <div class="filters">
-        <label style="font-size:13px;"><input type="radio" name="crKind" value="audit" checked> An audit — records what was there, nothing is scored</label>
+        <label style="font-size:13px;"><input type="radio" name="crKind" value="audit" onchange="resetCreate()" checked> An audit — records what was there, nothing is scored</label>
       </div>
       <div class="filters" style="margin-top:-8px;">
-        <label style="font-size:13px;"><input type="radio" name="crKind" value="test"> A test — answers are marked and scored, Adam walks them through it</label>
+        <label style="font-size:13px;"><input type="radio" name="crKind" value="test" onchange="resetCreate()"> A test — answers are marked and scored, Adam walks them through it</label>
       </div>
 
       <div class="filters" style="margin-top:14px;">
-        <button class="btn primary" id="crBtn" onclick="runDraft()">Draft it</button>
+        <button class="btn primary" id="crReadBtn" onclick="runPlan()">Read my files first</button>
+        <button class="btn" id="crBtn" onclick="runDraft()">Skip ahead and draft it</button>
         <span class="muted" id="crStatus" style="font-size:12.5px;"></span>
+      </div>
+      <div class="muted" style="font-size:12.5px;">
+        Reading first lets P.AI tell you what it found and ask how long the walk should be and what kinds of question to use. Skipping straight to a draft is quicker when you already know what you want.
+      </div>
+    </div>
+
+    <!-- Step two: what it found, and the few things it needs decided. Only
+         ever on screen after a successful read. -->
+    <div class="card" id="crStep2" style="display:none">
+      <div class="card-title">What P.AI found</div>
+      <div id="crFound" class="ask-answer" style="margin-bottom:6px;"></div>
+      <div class="muted" id="crFiles2" style="font-size:12.5px;margin-bottom:16px;"></div>
+
+      <label class="ed-label">What should it cover? <span class="muted">— worst first, from your files</span></label>
+      <div id="crThemes" class="cr-checks"></div>
+
+      <label class="ed-label" style="margin-top:16px;">How many questions?</label>
+      <div class="filters">
+        <select id="crCount">
+          <option value="10">10 — a quick walk</option>
+          <option value="15" selected>15 — the usual length</option>
+          <option value="20">20 — thorough</option>
+          <option value="25">25 — a full audit</option>
+        </select>
+        <span class="muted" style="font-size:12.5px;">Plus the two that ask their name and store number.</span>
+      </div>
+
+      <label class="ed-label" style="margin-top:16px;">What kinds of question?</label>
+      <div id="crTypes" class="cr-checks"></div>
+
+      <label class="ed-label" style="margin-top:16px;">Anything else it should know? <span class="muted">— optional</span></label>
+      <textarea id="crNotes" rows="2" style="width:100%;box-sizing:border-box;"
+        placeholder="Make them answerable while walking. Do not ask anything that needs the office computer."></textarea>
+
+      <div class="filters" style="margin-top:16px;">
+        <button class="btn primary" id="crBuildBtn" onclick="runDraft()">Build it</button>
+        <button class="btn" onclick="resetCreate()">Start over</button>
+        <span class="muted" id="crStatus2" style="font-size:12.5px;"></span>
       </div>
       <div class="muted" style="font-size:12.5px;">
         The draft opens in the normal editor. Nothing is saved and nothing goes out to a store until you press Save.
@@ -1180,26 +1230,53 @@ function showPicked(){
   const files = [...document.getElementById('crFiles').files];
   const list = document.getElementById('crFileList');
   list.textContent = files.length
-    ? files.map(f => f.name).join(' · ')
-    : 'Steritech standards, a brand checklist, last year\'s audit — P.AI will use their actual wording and numbers.';
+    ? `${files.length} file(s): ` + files.map(f => f.name).join(' · ')
+    : 'Steritech standards, a brand checklist, last year\'s audit — P.AI will use their actual wording and numbers. Up to 12.';
+  // A reading belongs to the files it read. Change them and the questions on
+  // screen are about documents that are no longer attached.
+  resetCreate();
 }
 
-async function runDraft(){
+// The question types worth offering. Picture and drag-the-label questions are
+// left out: they need an uploaded image with coordinates on it, which no
+// amount of reading a PDF can supply.
+const DRAFT_TYPES = [
+  ['single',   'One answer from a list', 'Yes / No, Pass / Fail, Good / Fair / Poor'],
+  ['multi',    'Pick all that apply',    'Several things wrong at once'],
+  ['photo',    'Take a picture',         'Proof of what was actually there'],
+  ['number',   'A number',               'Temperatures, counts, readings'],
+  ['text',     'Short written answer',   'A name, a batch code, a reading'],
+  ['longtext', 'A written explanation',  'What they found and what they did'],
+  ['scale',    'A slider',               'How clean, how busy — never scored'],
+  ['order',    'Put steps in order',     'A procedure done in sequence'],
+];
+
+// Set by a successful read; cleared whenever the inputs change, because the
+// plan is tied to the text of the files that produced it.
+let PLAN = null;
+
+function resetCreate(){
+  PLAN = null;
+  document.getElementById('crStep2').style.display = 'none';
+  document.getElementById('crStatus').textContent = '';
+  document.getElementById('crStatus2').textContent = '';
+}
+
+// ── Pass one: read the files, then show what it wants decided ───────────────
+async function runPlan(){
   const ask = document.getElementById('crAsk').value.trim();
   const files = [...document.getElementById('crFiles').files];
   const kind = document.querySelector('input[name="crKind"]:checked').value;
 
-  if (!ask && !files.length){
-    return alert('Say what you want it to cover, or attach something to build it from.');
+  if (!files.length){
+    return alert('Attach the audits you want it to read. With nothing to read there is nothing to ask you about — use "Skip ahead and draft it" instead.');
   }
 
-  const btn = document.getElementById('crBtn');
+  const btn = document.getElementById('crReadBtn');
   const status = document.getElementById('crStatus');
   btn.disabled = true;
-  btn.textContent = 'Drafting…';
-  status.textContent = files.length
-    ? 'Reading your files and writing the questions. This takes up to a minute.'
-    : 'Writing the questions. This takes up to a minute.';
+  btn.textContent = 'Reading…';
+  status.textContent = `Reading ${files.length} file(s). This takes up to a minute.`;
 
   const form = new FormData();
   form.append('ask', ask);
@@ -1207,10 +1284,105 @@ async function runDraft(){
   for (const f of files) form.append('files', f);
 
   try {
+    const res = await fetch('/api/audits/templates/draft/plan', { method: 'POST', body: form });
+    const data = await res.json().catch(() => null);
+    if (!res.ok){
+      status.textContent = '';
+      return alert((data && data.error) || 'P.AI could not read those (HTTP ' + res.status + ').');
+    }
+
+    PLAN = data;
+    drawPlan(data);
+    status.textContent = '';
+    document.getElementById('crStep2').scrollIntoView({ behavior:'smooth', block:'start' });
+  } catch (e) {
+    status.textContent = '';
+    alert('Could not reach P.AI: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Read my files first';
+  }
+}
+
+function drawPlan(data){
+  document.getElementById('crFound').textContent = data.found || 'P.AI read the files but had little to say about them.';
+
+  const bits = [];
+  if (data.read && data.read.length) bits.push('Read ' + data.read.join(', '));
+  if (data.skipped && data.skipped.length) bits.push('Could not read ' + data.skipped.join(', '));
+  document.getElementById('crFiles2').textContent = bits.join(' · ');
+
+  // Everything ticked to begin with: the themes came out of their own files,
+  // so the common case is "yes, all of that", and untickling two is less work
+  // than ticking six.
+  const themes = data.themes || [];
+  document.getElementById('crThemes').innerHTML = themes.length
+    ? themes.map((t, i) => `
+        <label class="cr-check">
+          <input type="checkbox" class="cr-theme" value="${esc(t.label)}" checked>
+          <span><b>${esc(t.label)}</b>${t.why ? `<span>${esc(t.why)}</span>` : ''}</span>
+        </label>`).join('')
+    : '<div class="muted" style="font-size:12.5px;">P.AI did not pull out any themes, so it will work from the files as a whole.</div>';
+
+  document.getElementById('crTypes').innerHTML = DRAFT_TYPES.map(([v, label, hint]) => `
+    <label class="cr-check">
+      <input type="checkbox" class="cr-type" value="${v}"${['single','photo','number'].includes(v) ? ' checked' : ''}>
+      <span><b>${esc(label)}</b><span>${esc(hint)}</span></span>
+    </label>`).join('');
+
+  document.getElementById('crStep2').style.display = 'block';
+}
+
+// ── Pass two (and the one-shot path) ────────────────────────────────────────
+async function runDraft(){
+  const ask = document.getElementById('crAsk').value.trim();
+  const files = [...document.getElementById('crFiles').files];
+  const kind = document.querySelector('input[name="crKind"]:checked').value;
+
+  if (!PLAN && !ask && !files.length){
+    return alert('Say what you want it to cover, or attach something to build it from.');
+  }
+
+  const btn = document.getElementById(PLAN ? 'crBuildBtn' : 'crBtn');
+  const status = document.getElementById(PLAN ? 'crStatus2' : 'crStatus');
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Drafting…';
+  status.textContent = (!PLAN && files.length)
+    ? 'Reading your files and writing the questions. This takes up to a minute.'
+    : 'Writing the questions. This takes up to a minute.';
+
+  const form = new FormData();
+  form.append('ask', ask);
+  form.append('kind', kind);
+
+  if (PLAN){
+    // The server still holds the text it read, so the files do not go up a
+    // second time — only the answers.
+    form.append('planId', PLAN.planId);
+    form.append('count', document.getElementById('crCount').value);
+    form.append('notes', document.getElementById('crNotes').value.trim());
+    const picked = sel => [...document.querySelectorAll(sel)].filter(b => b.checked).map(b => b.value);
+    const types = picked('.cr-type');
+    if (!types.length){
+      btn.disabled = false; btn.textContent = label; status.textContent = '';
+      return alert('Pick at least one kind of question.');
+    }
+    form.append('types', JSON.stringify(types));
+    form.append('focus', JSON.stringify(picked('.cr-theme')));
+  } else {
+    for (const f of files) form.append('files', f);
+  }
+
+  try {
     const res = await fetch('/api/audits/templates/draft', { method: 'POST', body: form });
     const data = await res.json().catch(() => null);
     if (!res.ok){
       status.textContent = '';
+      // The reading is held for half an hour. Past that the files have to go
+      // up again, so put them back at step one rather than leaving a Build
+      // button that will never work.
+      if (res.status === 410) resetCreate();
       return alert((data && data.error) || 'P.AI could not draft that (HTTP ' + res.status + ').');
     }
 
@@ -1235,13 +1407,15 @@ async function runDraft(){
         data.problems.map(p => `<li>${esc(p)}</li>`).join('') + '</ul></div>';
     }
 
-    status.textContent = '';
+    // The draft is open in the editor now; coming back to Create should be a
+    // clean sheet rather than last job's answers.
+    resetCreate();
   } catch (e) {
     status.textContent = '';
     alert('Could not reach P.AI: ' + e.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Draft it';
+    btn.textContent = label;
   }
 }
 

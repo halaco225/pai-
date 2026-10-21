@@ -205,7 +205,77 @@ photo       — they take a picture. Optional "maxPhotos".
 order       — put steps in the right order. "steps": ["…"] (two or more)
 `.trim();
 
-async function draftTemplate({ ask, kind, referenceText }) {
+// ── Pass one: read the files, then ask before building ──────────────────────
+//
+// Drafting straight from "review these and build a test" means guessing the
+// length, the question types and what matters — and a 20-question test built
+// on the wrong guess is worse than no test, because someone has to read all
+// of it to find that out.
+//
+// So this pass only reads. It comes back with what it found and the themes
+// worth testing, which the Create tab turns into a short form. The themes are
+// the part that has to come from the files; the length and the types are
+// asked the same way every time, so they are fixed in the UI rather than
+// spent on a model.
+
+const MAX_THEMES = 8;
+
+async function planTemplate({ ask, kind, referenceText }) {
+  const system = `You read a franchisee's completed store audits and work out
+what a new ${kind === 'test' ? 'test' : 'audit'} built from them should cover.
+You return JSON only — no prose, no code fence.
+
+Shape:
+{
+  "found": "two sentences on what these documents are and what they show",
+  "themes": [
+    { "id": "walk-in-temps",
+      "label": "Walk-in cooler temperatures",
+      "why": "failed in 6 of the 9 audits, usually 3-5 degrees over" }
+  ]
+}
+
+Rules:
+- "themes" are the things worth asking about, worst or most common first.
+  Between 3 and ${MAX_THEMES} of them.
+- "why" cites what is actually in the documents — how often it failed, which
+  stores, the wording the standard uses. One line. If the documents do not
+  support a count, describe what they do show instead of inventing one.
+- "id" is lowercase letters, numbers and dashes.
+- "label" is what an Area Coach would call it, not the document's jargon.
+- If the documents are not audits, or you cannot tell what they are, say so
+  plainly in "found" and return the themes you can justify, even if none.
+- Output the JSON object and nothing else.`;
+
+  const raw = await chat({
+    model: DRAFT_MODEL,
+    maxTokens: 8000,
+    effort: 'medium',
+    system,
+    messages: [{
+      role: 'user',
+      content: `What they asked for: ${ask || 'Build something useful from these documents.'}
+
+The documents:
+
+${String(referenceText || '').slice(0, 120_000)}`,
+    }],
+  });
+
+  const plan = parseJsonObject(raw, 'P.AI could not read those files. Try describing what you want instead.');
+  plan.found = String(plan.found || '').trim();
+  plan.themes = (Array.isArray(plan.themes) ? plan.themes : [])
+    .filter(t => t && String(t.label || '').trim())
+    .slice(0, MAX_THEMES)
+    .map((t, i) => ({
+      id: String(t.id || `theme-${i + 1}`).toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 60),
+      label: String(t.label).trim().slice(0, 120),
+      why: String(t.why || '').trim().slice(0, 300),
+    }));
+  return plan;
+}
+
+async function draftTemplate({ ask, kind, referenceText, answers }) {
   const scoring = kind === 'test'
     ? `This is a TEST: answers have right answers and it is scored. Give each
 real question "points" (usually 1, up to 5 for something critical) and write a
@@ -250,6 +320,23 @@ Rules:
 - Output the JSON object and nothing else.`;
 
   const parts = [`What they asked for: ${ask}`];
+
+  // Answers from the asking pass. They are decisions, not suggestions: the
+  // whole point of asking was to stop the model guessing the length and the
+  // shape, so they are stated as requirements and put before the material.
+  if (answers) {
+    const want = [];
+    if (answers.count) want.push(`Write exactly ${answers.count} real questions, after the two about name and store number.`);
+    if (answers.types && answers.types.length) {
+      want.push(`Use only these question types: ${answers.types.join(', ')}. Vary them across the set rather than using one throughout.`);
+    }
+    if (answers.focus && answers.focus.length) {
+      want.push(`Cover these, and weight the set towards them:\n${answers.focus.map(f => `  - ${f}`).join('\n')}`);
+    }
+    if (answers.notes) want.push(`Also: ${answers.notes}`);
+    if (want.length) parts.push(`What they decided when asked:\n${want.join('\n')}`);
+  }
+
   if (referenceText) {
     parts.push(`Material to build it from — use its actual standards, numbers
 and wording wherever it has them:
@@ -301,7 +388,9 @@ function expandPreset(q) {
 // The model is told to return bare JSON, and usually does. A fenced block or
 // a leading sentence is the common miss, so recover from both rather than
 // making the user ask again.
-function parseDraft(raw) {
+// Both passes ask for a bare JSON object and both occasionally get a fenced
+// block or a sentence in front of it, so the recovery lives in one place.
+function parseJsonObject(raw, failure) {
   let text = String(raw || '').trim();
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fence) text = fence[1].trim();
@@ -309,13 +398,21 @@ function parseDraft(raw) {
     const open = text.indexOf('{');
     const close = text.lastIndexOf('}');
     if (open > 0 || close < text.length - 1) {
-      if (open === -1 || close <= open) throw new Error('The draft came back unreadable. Try describing it again.');
+      if (open === -1 || close <= open) throw new Error(failure);
       text = text.slice(open, close + 1);
     }
   }
-  let def;
-  try { def = JSON.parse(text); }
-  catch { throw new Error('The draft came back unreadable. Try describing it again.'); }
+  try {
+    const out = JSON.parse(text);
+    if (!out || typeof out !== 'object' || Array.isArray(out)) throw new Error(failure);
+    return out;
+  } catch (e) {
+    throw new Error(e.message === failure ? failure : failure);
+  }
+}
+
+function parseDraft(raw) {
+  const def = parseJsonObject(raw, 'The draft came back unreadable. Try describing it again.');
   if (!def || !Array.isArray(def.questions) || !def.questions.length) {
     throw new Error('The draft came back with no questions. Try describing it again.');
   }
@@ -329,4 +426,5 @@ function parseDraft(raw) {
   return def;
 }
 
-module.exports = { chat, navigate, answerAboutAudits, draftTemplate, parseDraft, MODEL, DRAFT_MODEL };
+module.exports = { chat, navigate, answerAboutAudits, planTemplate, draftTemplate,
+                   parseDraft, parseJsonObject, MODEL, DRAFT_MODEL, MAX_THEMES };
