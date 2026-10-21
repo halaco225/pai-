@@ -1676,4 +1676,4 @@ Do not restate every number — the full table follows yours. Plain text only, n
   return [header, ledeSection, scorecardSection, attackSection, smgSection].filter(Boolean).join('\n\n');
 }
 
-module.exports = { analyzePL, analyzePLForAC, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail, generateDailyIntelEmail, analyzeAdditionalContent, generateMorningBrief };
+module.exports = { analyzePL, analyzePLForAC, analyzeRecap, analyzeDaily, analyzeTrends, generateRecapEmail, generateDailyIntelEmail, analyzeAdditionalContent, generateMorningBrief, extractTextFromFile };

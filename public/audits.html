@@ -36,6 +36,25 @@ a{color:inherit;}
 .nav-tab:hover{color:var(--text);background:#2f343f;border-color:var(--border-hi);}
 .nav-tab.active{color:#fff;background:var(--brand);font-weight:600;}
 
+/* Reporting's four views. Flatter than the top tabs so the page still reads
+   as one level of "where am I" and one level of "which cut". */
+.sub-tabs{display:flex;gap:18px;background:#0d0f13;border-bottom:1px solid var(--border);
+          padding:0 20px;position:sticky;top:107px;z-index:198;}
+.sub-tab{padding:10px 2px;color:var(--muted);cursor:pointer;font-size:13px;font-weight:500;
+         border-bottom:2px solid transparent;user-select:none;transition:all .15s;}
+.sub-tab:hover{color:var(--text);}
+.sub-tab.active{color:var(--text);border-bottom-color:var(--brand);font-weight:600;}
+
+/* Ask P.AI and Create: a prompt box, a send button, and an answer. */
+.ask-row{display:flex;gap:9px;align-items:flex-start;}
+.ask-row textarea{flex:1;min-height:62px;resize:vertical;}
+.ask-answer{white-space:pre-wrap;line-height:1.65;font-size:14px;color:var(--text);}
+.ask-eg{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px;}
+.ask-eg button{background:transparent;border:1px dashed var(--border-hi);color:var(--muted);
+               padding:5px 11px;border-radius:14px;font-size:12px;cursor:pointer;font-family:inherit;}
+.ask-eg button:hover{color:var(--text);border-style:solid;}
+.file-list{font-size:12.5px;color:var(--muted);margin-top:8px;}
+
 .wrap{max-width:1100px;margin:0 auto;padding:20px 18px 60px;}
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:14px;box-shadow:var(--shadow);}
 .card-title{font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-bottom:12px;}
@@ -252,10 +271,19 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
 
 <div class="nav-tabs">
   <div class="nav-tab active" id="tab-overview" onclick="showTab('overview')">Overview</div>
-  <div class="nav-tab" id="tab-responses" onclick="showTab('responses')">Responses</div>
-  <div class="nav-tab" id="tab-summary" onclick="showTab('summary')">Summary</div>
-  <div class="nav-tab" id="tab-stores" onclick="showTab('stores')">By store</div>
+  <div class="nav-tab" id="tab-reporting" onclick="showTab('responses')">Reporting</div>
+  <div class="nav-tab" id="tab-create" onclick="showTab('create')">Create</div>
   <div class="nav-tab" id="tab-templates" onclick="showTab('templates')">Templates</div>
+</div>
+
+<!-- Only on screen while Reporting is open. The four views share one filter
+     bar, so which of them you are looking at is a smaller question than
+     which tab you are on. -->
+<div class="sub-tabs" id="subTabs" style="display:none">
+  <div class="sub-tab" id="sub-responses" onclick="showTab('responses')">Responses</div>
+  <div class="sub-tab" id="sub-summary" onclick="showTab('summary')">Summary</div>
+  <div class="sub-tab" id="sub-stores" onclick="showTab('stores')">By store</div>
+  <div class="sub-tab" id="sub-ask" onclick="showTab('ask')">Ask P.AI</div>
 </div>
 
 <div class="wrap">
@@ -316,6 +344,65 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
       <div id="byArea" class="empty">Loading…</div></div>
     <div class="card"><div class="card-title">Average score by store (worst first)</div>
       <div id="byStore" class="empty">Loading…</div></div>
+  </div>
+
+  <!-- ASK P.AI — reads whatever the filters above are showing -->
+  <div id="pane-ask" style="display:none">
+    <div class="filters"><select id="aAudit" title="Which test or audit"
+      onchange="pickAudit(this.value)"></select><span id="filterSlotAsk"></span></div>
+    <div class="card">
+      <div class="card-title">What do you want to know?</div>
+      <div class="ask-row">
+        <textarea id="askBox" rows="2" placeholder="Which store keeps failing the walk-in cooler question?"
+          onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))runAsk()"></textarea>
+        <button class="btn primary" id="askBtn" onclick="runAsk()">Ask</button>
+      </div>
+      <div class="ask-eg">
+        <button onclick="askThis('What are the three biggest problems in this data?')">Biggest problems</button>
+        <button onclick="askThis('Which Area Coach needs the most help and why?')">Who needs help</button>
+        <button onclick="askThis('Which questions does the region keep getting wrong?')">Repeat misses</button>
+        <button onclick="askThis('Which stores have got worse over time?')">Getting worse</button>
+        <button onclick="askThis('What is going well that I should recognise?')">What is going well</button>
+      </div>
+      <div class="muted" style="font-size:12.5px;margin-top:10px;">
+        It only reads the responses the filters above are showing, so narrow them first if you want a straight answer about one store or one coach.
+      </div>
+    </div>
+    <div class="card" id="askCard" style="display:none">
+      <div class="card-title" id="askQ">Answer</div>
+      <div class="ask-answer" id="askA"></div>
+    </div>
+  </div>
+
+  <!-- CREATE — describe it, P.AI drafts it, you edit it -->
+  <div id="pane-create" style="display:none">
+    <div class="card">
+      <div class="card-title">Tell P.AI what you need</div>
+      <textarea id="crAsk" rows="5" style="width:100%;box-sizing:border-box;"
+        placeholder="A monthly food safety walk covering walk-in and reach-in temps, date labelling, handwashing supplies, sanitiser buckets and the three-compartment sink. Shift leaders should have to photograph the temp log."></textarea>
+
+      <label class="ed-label" style="margin-top:14px;">Files to build it from <span class="muted">— optional</span></label>
+      <input type="file" id="crFiles" multiple
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md"
+        onchange="showPicked()">
+      <div class="file-list" id="crFileList">Steritech standards, a brand checklist, last year's audit — P.AI will use their actual wording and numbers.</div>
+
+      <label class="ed-label" style="margin-top:14px;">Is it scored?</label>
+      <div class="filters">
+        <label style="font-size:13px;"><input type="radio" name="crKind" value="audit" checked> An audit — records what was there, nothing is scored</label>
+      </div>
+      <div class="filters" style="margin-top:-8px;">
+        <label style="font-size:13px;"><input type="radio" name="crKind" value="test"> A test — answers are marked and scored, Adam walks them through it</label>
+      </div>
+
+      <div class="filters" style="margin-top:14px;">
+        <button class="btn primary" id="crBtn" onclick="runDraft()">Draft it</button>
+        <span class="muted" id="crStatus" style="font-size:12.5px;"></span>
+      </div>
+      <div class="muted" style="font-size:12.5px;">
+        The draft opens in the normal editor. Nothing is saved and nothing goes out to a store until you press Save.
+      </div>
+    </div>
   </div>
 
   <!-- TEMPLATES -->
@@ -409,12 +496,28 @@ const when = iso => new Date(iso).toLocaleString(undefined, { month:'short', day
 
 let RESPONSES = [];
 
-const TABS = ['overview','responses','summary','stores','templates'];
+const TABS = ['overview','responses','summary','stores','ask','create','templates'];
+
+// Responses, Summary, By store and Ask P.AI are four cuts of one question, so
+// they live behind one top tab. showTab still takes the pane name, which is
+// what every caller in this file already passes — the grouping only decides
+// which chip lights up and whether the sub-bar is on screen.
+const GROUP = { overview:'overview', templates:'templates', create:'create',
+                responses:'reporting', summary:'reporting',
+                stores:'reporting', ask:'reporting' };
+const SUBS = ['responses','summary','stores','ask'];
 
 function showTab(tab){
   for (const t of TABS){
     document.getElementById('pane-' + t).style.display = t === tab ? 'block' : 'none';
-    document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+  }
+  const group = GROUP[tab];
+  for (const g of ['overview','reporting','create','templates']){
+    document.getElementById('tab-' + g).classList.toggle('active', g === group);
+  }
+  document.getElementById('subTabs').style.display = group === 'reporting' ? 'flex' : 'none';
+  for (const s of SUBS){
+    document.getElementById('sub-' + s).classList.toggle('active', s === tab);
   }
   document.getElementById('pane-one').style.display = 'none';
   document.getElementById('pane-editor').style.display = 'none';
@@ -584,6 +687,7 @@ function moveFilters(tab){
   const slot = tab === 'responses' ? document.getElementById('filterSlot')
              : tab === 'summary' ? document.getElementById('filterSlotSummary')
              : tab === 'stores' ? document.getElementById('filterSlotStores')
+             : tab === 'ask' ? document.getElementById('filterSlotAsk')
              : null;
   if (tab === 'overview'){
     document.getElementById('pane-overview').prepend(bar);
@@ -599,13 +703,16 @@ function applyFilters(){
   if (open === 'summary') loadSummary();
   else if (open === 'stores') loadStores();
   else if (open === 'responses') load();
-  else loadOverview();
+  // Ask P.AI has nothing to redraw — the next question picks up the new
+  // filters, and silently rewriting the last answer would be a lie.
+  else if (open === 'ask') markAskStale();
+  else if (open !== 'create') loadOverview();
 }
 
 function drawAuditPickers(){
   const options = AUDIT_LIST.map(a =>
     `<option value="${a.id}"${a.id === AUDIT ? ' selected' : ''}>${esc(a.title)}</option>`).join('');
-  for (const id of ['fAudit', 'sAudit', 'tAudit']){
+  for (const id of ['fAudit', 'sAudit', 'tAudit', 'aAudit']){
     const el = document.getElementById(id);
     if (el) el.innerHTML = options;
   }
@@ -618,7 +725,8 @@ function pickAudit(id){
   const open = TABS.find(t => document.getElementById('pane-' + t).style.display === 'block');
   if (open === 'summary') loadSummary();
   else if (open === 'stores') loadStores();
-  else load();
+  else if (open === 'ask') markAskStale();
+  else if (open !== 'create') load();
 }
 
 function reset(){
@@ -750,7 +858,7 @@ async function openOne(id){
     <div class="card"><div class="card-title">What they found</div>${photos}</div>
     <div class="card"><div class="card-title">Every graded question</div>${results}</div>`;
 
-  for (const t of ['responses','summary','stores']) document.getElementById('pane-' + t).style.display = 'none';
+  for (const t of ['responses','summary','stores','ask']) document.getElementById('pane-' + t).style.display = 'none';
   document.getElementById('pane-one').style.display = 'block';
   window.scrollTo(0, 0);
 }
@@ -1009,6 +1117,134 @@ async function loadStores(){
     '</tbody></table>';
 }
 
+// ── Ask P.AI ────────────────────────────────────────────────────────────────
+//
+// The question goes up with query() on it, which is the same filter string
+// every other Reporting view sends. The server builds its answer from the
+// bundle those filters produce, so the numbers it quotes are the numbers on
+// the other three tabs.
+
+function askThis(q){
+  document.getElementById('askBox').value = q;
+  runAsk();
+}
+
+function markAskStale(){
+  const card = document.getElementById('askCard');
+  if (card.style.display === 'none') return;
+  document.getElementById('askQ').textContent = 'Answer — filters have changed since this was asked';
+}
+
+async function runAsk(){
+  const box = document.getElementById('askBox');
+  const question = box.value.trim();
+  if (!question) return box.focus();
+
+  const btn = document.getElementById('askBtn');
+  const card = document.getElementById('askCard');
+  const head = document.getElementById('askQ');
+  const body = document.getElementById('askA');
+
+  btn.disabled = true;
+  btn.textContent = 'Reading…';
+  card.style.display = 'block';
+  head.textContent = question;
+  body.textContent = 'Reading the responses…';
+
+  try {
+    const res = await fetch('/api/audits/ask?' + query(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+    });
+    const data = await res.json().catch(() => null);
+    body.textContent = res.ok
+      ? (data.answer || 'No answer came back.')
+      : ((data && data.error) || 'Could not read the responses (HTTP ' + res.status + ').');
+  } catch (e) {
+    body.textContent = 'Could not reach P.AI: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Ask';
+  }
+}
+
+// ── Create ──────────────────────────────────────────────────────────────────
+//
+// The draft is never saved here. It is loaded into EDITING and the normal
+// editor opens on it, so every question is reviewable and fixable with the
+// controls that already exist, and Save is still the only thing that puts an
+// audit in front of a store.
+
+function showPicked(){
+  const files = [...document.getElementById('crFiles').files];
+  const list = document.getElementById('crFileList');
+  list.textContent = files.length
+    ? files.map(f => f.name).join(' · ')
+    : 'Steritech standards, a brand checklist, last year\'s audit — P.AI will use their actual wording and numbers.';
+}
+
+async function runDraft(){
+  const ask = document.getElementById('crAsk').value.trim();
+  const files = [...document.getElementById('crFiles').files];
+  const kind = document.querySelector('input[name="crKind"]:checked').value;
+
+  if (!ask && !files.length){
+    return alert('Say what you want it to cover, or attach something to build it from.');
+  }
+
+  const btn = document.getElementById('crBtn');
+  const status = document.getElementById('crStatus');
+  btn.disabled = true;
+  btn.textContent = 'Drafting…';
+  status.textContent = files.length
+    ? 'Reading your files and writing the questions. This takes up to a minute.'
+    : 'Writing the questions. This takes up to a minute.';
+
+  const form = new FormData();
+  form.append('ask', ask);
+  form.append('kind', kind);
+  for (const f of files) form.append('files', f);
+
+  try {
+    const res = await fetch('/api/audits/templates/draft', { method: 'POST', body: form });
+    const data = await res.json().catch(() => null);
+    if (!res.ok){
+      status.textContent = '';
+      return alert((data && data.error) || 'P.AI could not draft that (HTTP ' + res.status + ').');
+    }
+
+    SAVED_TOTAL = null;
+    EDITING = data.template;
+    // Renumber rather than trust it: the editor indexes questions by n, and
+    // one gap would put the wrong question in the wrong row.
+    EDITING.questions.forEach((q, i) => { q.n = i + 1; });
+
+    const notes = [];
+    if (data.skipped && data.skipped.length){
+      notes.push('could not read ' + data.skipped.join(', '));
+    }
+    if (data.problems && data.problems.length){
+      notes.push(data.problems.length + ' thing(s) to fix');
+    }
+    openEditor('P.AI draft — not saved yet' + (notes.length ? ' · ' + notes.join(' · ') : ''));
+    // Set after openEditor, which clears this box.
+    if (data.problems && data.problems.length){
+      document.getElementById('edProblems').innerHTML =
+        `<div class="problems"><b>P.AI drafted this, but these need you:</b><ul>` +
+        data.problems.map(p => `<li>${esc(p)}</li>`).join('') + '</ul></div>';
+    }
+
+    status.textContent = '';
+  } catch (e) {
+    status.textContent = '';
+    alert('Could not reach P.AI: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Draft it';
+  }
+}
+
 // ── Templates ───────────────────────────────────────────────────────────────
 //
 // EDITING holds the audit being edited. Everything the editor does changes
@@ -1150,6 +1386,7 @@ function openEditor(status){
   document.getElementById('edProblems').innerHTML = '';
   drawCoachPick();
   for (const t of TABS) document.getElementById('pane-' + t).style.display = 'none';
+  document.getElementById('subTabs').style.display = 'none';
   document.getElementById('pane-one').style.display = 'none';
   document.getElementById('pane-editor').style.display = 'block';
   drawQuestions();
@@ -1871,6 +2108,13 @@ document.getElementById('copyLink').addEventListener('click', e => {
 });
 
 loadOverview();
+
+// Create drafts an audit, which the API allows only an RDO or VP to do. An
+// Area Coach gets no tab rather than a 403 at the end of a minute's wait.
+mayEdit().then(edit => {
+  document.getElementById('tab-create').style.display = edit ? '' : 'none';
+});
 </script>
+<script src="/js/pai-agent.js" defer></script>
 </body>
 </html>

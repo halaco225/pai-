@@ -1,0 +1,264 @@
+// The in-app assistant: the thing that answers "where do I find…" and "what
+// does this say", all day, in short bursts.
+//
+// It runs on the cheap model on purpose. services/claude.js does the heavy,
+// infrequent work — a P&L review, a 13-slide recap — where output quality is
+// the whole product and a few cents a run does not matter. This file is the
+// opposite shape: hundreds of two-sentence answers, where the Sonnet bill
+// would be the only thing anyone noticed. Same API key, same account, one
+// model name apart.
+//
+// PAI_AGENT_MODEL overrides the model without a deploy, which is also how you
+// A/B a better one when it ships.
+
+const Anthropic = require('@anthropic-ai/sdk');
+
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+const MODEL = process.env.PAI_AGENT_MODEL || 'claude-haiku-5-5';
+
+// Template drafting is the exception: it has to emit valid JSON against a
+// 20-type question schema, and a malformed draft wastes the user's time
+// instead of a fraction of a cent. It gets the model the rest of P.AI uses.
+const DRAFT_MODEL = process.env.PAI_DRAFT_MODEL || 'claude-sonnet-4-6';
+
+async function chat({ system, messages, maxTokens = 1024, model = MODEL }) {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('P.AI has no Claude key configured. Tell Harold.');
+  }
+  const res = await client.messages.create({
+    model, max_tokens: maxTokens, system, messages,
+  });
+  return res.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+}
+
+// ── The navigator ───────────────────────────────────────────────────────────
+//
+// What P.AI is, in the order someone would look for it. Keeping this as prose
+// rather than a tool schema is deliberate: the questions are "where is X" and
+// "can P.AI do Y", which a map answers directly. No tool call, no round trip,
+// no model that has to be good at tool use.
+
+const SITE_MAP = `
+P.AI is the AI command centre for Ayvaz Pizza LLC — a Pizza Hut franchisee.
+Users are VPs, RDOs (Regional Directors of Operations) and Area Coaches.
+
+Pages and what each one is for:
+
+/dashboard — Home. Tiles for every module, plus the Master Alignment File
+  upload (the document that tells every AI module the region's goals and
+  standards).
+
+/intel — Daily Intel. Yesterday's numbers across the region.
+  Tabs: Dashboard (KPI tiles — sales, DBS, speed of service, labour),
+  Morning Brief (the 8:30am text, on screen: urgent / watch / wins),
+  Flags (stores that broke a threshold), Guest Comments (SMG verbatims).
+  Data arrives by automated pull at 5am; files can also be uploaded by hand.
+
+/velocity — Speed of Service. IST and OTF by store, area and region, with
+  day-of-week patterns and AI coaching notes. Auto-updated daily.
+
+/tracker — Follow-ups, one-on-ones, the region matrix, and two-way texting
+  with store leaders. Scoped: Area Coaches see their stores, RDOs their
+  region, VPs their territory.
+
+/audits — Auditor. Readiness walks and tests sent to shift leaders by text.
+  Tabs: Overview (what is out there and who has done it),
+  Reporting (Responses, Summary, By store, and Ask P.AI — the AI that reads
+    the results for you),
+  Create (describe an audit and the AI drafts it, attach files to work from),
+  Templates (the walks you send out; edit or make one by hand).
+
+/pl-analyzer — P&L Analyzer. Upload a period-end P&L and get a financial
+  review with actions, exportable as a branded PowerPoint.
+
+/weekly-recap — Weekly Recap Deck. Upload the six weekly report files and
+  P.AI builds the 13-slide region recap.
+
+Things worth knowing:
+- Only RDOs and VPs can edit audit templates or create audits.
+- Daily Intel's Trends, Accountability and Weekly Digest tabs are
+  temporarily off the menu while they are rebuilt. Do not send anyone there.
+- Everything a user sees is already filtered to the stores they own.
+`.trim();
+
+const NAVIGATOR_SYSTEM = `You are P.AI's in-app guide. You help people find
+their way around P.AI and understand what it can do for them.
+
+${SITE_MAP}
+
+How to answer:
+- Two or three sentences. These are busy operators, not readers.
+- Plain words. No markdown, no bullet lists, no headings.
+- If a page is the answer, name it the way the menu does ("Daily Intel", not
+  "/intel") and then put the route on its own last line as: GO: /intel
+  Use GO at most once, and only for a route in the map above.
+- If P.AI cannot do what they are asking, say so in one sentence and say what
+  is closest. Never invent a page, a tab or a button.
+- You do not have their numbers in front of you. For "what was my DBS
+  yesterday", point them at the page that shows it rather than guessing.`;
+
+async function navigate({ question, page, user }) {
+  const who = user
+    ? `The person asking is ${user.name || 'a user'}, role ${user.role || 'unknown'}.`
+    : '';
+  const where = page ? `They are on ${page} right now.` : '';
+  return chat({
+    system: NAVIGATOR_SYSTEM,
+    maxTokens: 400,
+    messages: [{ role: 'user', content: [who, where, question].filter(Boolean).join(' ') }],
+  });
+}
+
+// ── Reporting helper: answers questions about audit results ─────────────────
+//
+// Fed the summary bundle services/audit-insights.js already computes for the
+// Reporting tab, for whatever filters are set. No new data layer, and the
+// numbers it quotes are the same numbers on screen.
+
+async function answerAboutAudits({ question, summary, scopeNote }) {
+  const system = `You read readiness-walk results for a Pizza Hut franchisee
+and answer questions about them.
+
+You are given a JSON summary of the walks currently on screen. It holds the
+average score, counts, per-question right/wrong tallies, repeat misses by
+store, and breakdowns by Area Coach and region.
+
+How to answer:
+- Answer the question asked, with the actual numbers from the JSON.
+- Four sentences at most unless they asked for a list; then up to six lines.
+- Plain words, no markdown. Name stores and coaches as the data names them.
+- If the JSON does not contain the answer, say which filter or tab would get
+  it. Never estimate a number that is not there.
+- Say "not enough responses yet" rather than drawing a conclusion from one or
+  two walks.`;
+
+  return chat({
+    maxTokens: 700,
+    system,
+    messages: [{
+      role: 'user',
+      content: `${scopeNote ? scopeNote + '\n\n' : ''}Summary of the walks on screen:
+\`\`\`json
+${JSON.stringify(summary).slice(0, 60_000)}
+\`\`\`
+
+Question: ${question}`,
+    }],
+  });
+}
+
+// ── Template drafting: a described audit becomes an editable draft ──────────
+
+// Only the types the editor can actually render and the validator accepts.
+// Picture-based types are left out on purpose: they need an uploaded image
+// with coordinates on it, which no amount of prose can supply.
+const DRAFTABLE_TYPES = `
+text        — short typed answer
+longtext    — paragraph answer
+single      — one answer from choices. Set "choices": ["…"].
+              A "variant" of yesno / truefalse / passfail / goodfairpoor /
+              safeatrisk / compliant fills the choices for you — prefer a
+              variant over writing them out.
+multi       — pick all that apply. "choices": ["…"]
+number      — a number. Optional "min", "max", "unit".
+scale       — a slider. Needs "min", "max", "step", and
+              "minLabel"/"maxLabel". Never scored.
+datetime    — a date and time
+photo       — they take a picture. Optional "maxPhotos".
+order       — put steps in the right order. "steps": ["…"] (two or more)
+`.trim();
+
+async function draftTemplate({ ask, kind, referenceText }) {
+  const scoring = kind === 'test'
+    ? `This is a TEST: answers have right answers and it is scored. Give each
+real question "points" (usually 1, up to 5 for something critical) and write a
+one-line "explanation" of why that is the answer.
+
+"correct" is ALWAYS an array of zero-based indexes into "choices", even when
+there is one right answer: "correct": [0], not "correct": 0. A "single"
+question may have exactly one entry; a "multi" may have more.
+
+Only choice questions can be scored. Give "points": 0 to text, longtext,
+number, photo, datetime and scale questions, and no "correct" — there is
+nothing to mark them against.`
+    : `This is an AUDIT: it records what was actually there and is NOT scored.
+Every question must have "points": 0. Do not set "correct" or "explanation".`;
+
+  const system = `You draft readiness-walk question sets for a Pizza Hut
+franchisee's store walks. You return JSON only — no prose, no code fence.
+
+Shape:
+{
+  "title": "…",
+  "description": "what the shift leader reads before they start",
+  "questions": [ { "n": 1, "title": "the question", "type": "…", "points": 0 } ]
+}
+
+Question types you may use:
+${DRAFTABLE_TYPES}
+
+${scoring}
+
+Rules:
+- Questions 1 and 2 are always, exactly:
+  {"n":1,"title":"Your first and last name","type":"text","points":0,"required":true}
+  {"n":2,"title":"Your store number","type":"text","points":0,"required":true}
+  Then the real questions from n=3.
+- "n" counts up from 1 with no gaps.
+- 8 to 20 questions unless they asked for a different size.
+- Word each question so a shift leader standing in the store can answer it
+  without interpreting it. Ask about one thing at a time.
+- Set "required": true on anything that must not be skipped.
+- Never use a type that is not in the list above.
+- Output the JSON object and nothing else.`;
+
+  const parts = [`What they asked for: ${ask}`];
+  if (referenceText) {
+    parts.push(`Material to build it from — use its actual standards, numbers
+and wording wherever it has them:
+
+${referenceText.slice(0, 120_000)}`);
+  }
+
+  const raw = await chat({
+    model: DRAFT_MODEL,
+    maxTokens: 8000,
+    system,
+    messages: [{ role: 'user', content: parts.join('\n\n') }],
+  });
+
+  return parseDraft(raw);
+}
+
+// The model is told to return bare JSON, and usually does. A fenced block or
+// a leading sentence is the common miss, so recover from both rather than
+// making the user ask again.
+function parseDraft(raw) {
+  let text = String(raw || '').trim();
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) text = fence[1].trim();
+  else {
+    const open = text.indexOf('{');
+    const close = text.lastIndexOf('}');
+    if (open > 0 || close < text.length - 1) {
+      if (open === -1 || close <= open) throw new Error('The draft came back unreadable. Try describing it again.');
+      text = text.slice(open, close + 1);
+    }
+  }
+  let def;
+  try { def = JSON.parse(text); }
+  catch { throw new Error('The draft came back unreadable. Try describing it again.'); }
+  if (!def || !Array.isArray(def.questions) || !def.questions.length) {
+    throw new Error('The draft came back with no questions. Try describing it again.');
+  }
+  // "correct": 0 instead of [0] is the slip a model makes most often here, and
+  // the validator reads a bare number as "nothing marked" — which would put a
+  // red error on every scored question of an otherwise good draft.
+  for (const q of def.questions) {
+    if (Number.isInteger(q.correct)) q.correct = [q.correct];
+  }
+  return def;
+}
+
+module.exports = { chat, navigate, answerAboutAudits, draftTemplate, parseDraft, MODEL, DRAFT_MODEL };
