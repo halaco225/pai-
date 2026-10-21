@@ -22,14 +22,37 @@ const MODEL = process.env.PAI_AGENT_MODEL || 'claude-haiku-5-5';
 // instead of a fraction of a cent. It gets the model the rest of P.AI uses.
 const DRAFT_MODEL = process.env.PAI_DRAFT_MODEL || 'claude-sonnet-4-6';
 
-async function chat({ system, messages, maxTokens = 1024, model = MODEL }) {
+// Haiku 5.5 thinks by default, and thinking tokens come out of max_tokens. Ask
+// for too few and the whole budget goes on thinking: the reply comes back 200
+// OK, stop_reason "max_tokens", content [thinking] and not one text block. That
+// is what "No answer came back." was -- 700 tokens was enough for a hand-made
+// test summary and nowhere near enough for 26k tokens of real region data.
+//
+// So the budgets below are generous rather than tight, and effort is what
+// actually holds the cost down. Nothing here is free to shrink.
+async function chat({ system, messages, maxTokens = 4000, model = MODEL, effort = 'low' }) {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error('P.AI has no Claude key configured. Tell Harold.');
   }
+
   const res = await client.messages.create({
     model, max_tokens: maxTokens, system, messages,
+    output_config: { effort },
   });
-  return res.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+
+  const text = res.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+  if (text) return text;
+
+  // Never hand back an empty string. The page would show it as "no answer",
+  // which reads like the data was missing rather than the budget being short,
+  // and that cost an evening to track down once already.
+  const kinds = [...new Set(res.content.map(b => b.type))].join(', ') || 'nothing';
+  console.error(`pai-agent: no text from ${model} — stop_reason=${res.stop_reason}, ` +
+    `blocks=[${kinds}], max_tokens=${maxTokens}, output=${res.usage?.output_tokens}`);
+  if (res.stop_reason === 'max_tokens') {
+    throw new Error('That needed more room to answer than P.AI allows. Narrow the filters and ask again.');
+  }
+  throw new Error('P.AI did not answer that one. Try asking it a different way.');
 }
 
 // ── The navigator ───────────────────────────────────────────────────────────
@@ -105,7 +128,8 @@ async function navigate({ question, page, user }) {
   const where = page ? `They are on ${page} right now.` : '';
   return chat({
     system: NAVIGATOR_SYSTEM,
-    maxTokens: 400,
+    maxTokens: 4000,          // the answer is three sentences; the rest is thinking room
+    effort: 'low',            // it is a lookup in a map that is in the prompt
     messages: [{ role: 'user', content: [who, where, question].filter(Boolean).join(' ') }],
   });
 }
@@ -134,7 +158,14 @@ How to answer:
   two walks.`;
 
   return chat({
-    maxTokens: 700,
+    // Reading 25k tokens of region data is real work, and the answer is still
+    // only a few sentences — almost all of this budget is thinking, which is
+    // the point: these are analysis questions, not lookups.
+    //
+    // PAI_ASK_EFFORT raises or lowers how hard it thinks without a deploy:
+    // low, medium, high, xhigh, max. Higher costs more and takes longer.
+    maxTokens: 16000,
+    effort: process.env.PAI_ASK_EFFORT || 'medium',
     system,
     messages: [{
       role: 'user',
@@ -228,7 +259,10 @@ ${referenceText.slice(0, 120_000)}`);
 
   const raw = await chat({
     model: DRAFT_MODEL,
-    maxTokens: 8000,
+    maxTokens: 16000,
+    // A few drafts a month, each one a schema a region then walks on. This is
+    // the call worth paying for; the navigator is the one worth pinching.
+    effort: 'high',
     system,
     messages: [{ role: 'user', content: parts.join('\n\n') }],
   });
