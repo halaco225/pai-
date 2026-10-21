@@ -195,26 +195,6 @@
       </div>
 
       <div class="dash-grid">
-        <!-- P&L Module -->
-        <a href="/pl-analyzer" class="module-card">
-          <div class="module-icon">📊</div>
-          <div>
-            <h3>P&L Analyzer</h3>
-            <p>Upload a period-end P&L file and get an AI-powered financial review with actionable insights. Export as a branded PowerPoint.</p>
-          </div>
-          <div class="module-cta">Open Module →</div>
-        </a>
-
-        <!-- Weekly Recap Module -->
-        <a href="/weekly-recap" class="module-card">
-          <div class="module-icon">📋</div>
-          <div>
-            <h3>Weekly Recap Deck</h3>
-            <p>Upload 6 weekly report files and P.AI builds your 13-slide region recap PowerPoint — ready to present.</p>
-          </div>
-          <div class="module-cta">Open Module →</div>
-        </a>
-
         <!-- Daily Intel Module -->
         <a href="/intel" class="module-card">
           <div class="module-icon">⚡</div>
@@ -254,6 +234,26 @@
           </div>
           <div class="module-cta">Open Module →</div>
         </a>
+
+        <!-- P&L Module -->
+        <a href="/pl-analyzer" class="module-card">
+          <div class="module-icon">📊</div>
+          <div>
+            <h3>P&L Analyzer</h3>
+            <p>Upload a period-end P&L file and get an AI-powered financial review with actionable insights. Export as a branded PowerPoint.</p>
+          </div>
+          <div class="module-cta">Open Module →</div>
+        </a>
+
+        <!-- Weekly Recap Module -->
+        <a href="/weekly-recap" class="module-card">
+          <div class="module-icon">📋</div>
+          <div>
+            <h3>Weekly Recap Deck</h3>
+            <p>Upload 6 weekly report files and P.AI builds your 13-slide region recap PowerPoint — ready to present.</p>
+          </div>
+          <div class="module-cta">Open Module →</div>
+        </a>
       </div>
 
       <!-- Master Alignment File Management -->
@@ -280,8 +280,35 @@
 </div>
 
 <script>
+  // This file was truncated mid-statement in the repo, which made the whole
+  // block a syntax error: the sidebar read "Loading..." forever, the welcome
+  // line stayed a dash, Sign out did nothing, and a signed-out visitor was
+  // never redirected. Completed from the ids the page actually has.
+  const ROLES = { rdo: 'RDO / Region Coach', area_coach: 'Area Coach', vp: 'VP Operations' };
+
   async function init() {
     const res = await fetch('/api/auth/me');
     if (!res.ok) { window.location.href = '/'; return; }
     const data = await res.json();
+    if (!data.authenticated) { window.location.href = '/'; return; }
+
+    const u = data.user || {};
+    const name = u.name || u.email || 'Unknown';
+    document.getElementById('userName').textContent = name;
+    document.getElementById('userRole').textContent = ROLES[u.role] || u.role || '';
+    document.getElementById('userInitial').textContent =
+      name.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
+    document.getElementById('welcomeName').textContent = name.split(/\s+/)[0];
+  }
+
+  async function logout() {
+    try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {}
+    window.location.href = '/';
+  }
+
+  init();
+</script>
+<script src="/js/pai-agent.js" defer></script>
+</body>
+</html>
     if (!data.authenticated) { window.location.href = '/'; return

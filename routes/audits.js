@@ -18,6 +18,7 @@
 const express = require('express');
 const multer  = require('multer');
 const crypto  = require('crypto');
+const fs      = require('fs');
 const ExcelJS = require('exceljs');
 
 const router = express.Router();
@@ -30,6 +31,8 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { visibleStores, canSee } = require('../services/rc-scope');
 const { USER_ROSTER } = require('./auth');
 const insights = require('../services/audit-insights');
+const agent = require('../services/pai-agent');
+const claude = require('../services/claude');
 const { publicForm, grade, missingAnswers, checkOne } = require('../services/audits');
 
 const DEFAULT_AUDIT = 'steritech-readiness';
@@ -728,6 +731,111 @@ router.get('/overview', async (req, res) => {
 router.get('/summary', async (req, res) => {
   const result = await summarise(req, res);
   if (result) res.json(result.summary);
+});
+
+// ── Ask P.AI: the same summary, answered in words ───────────────────────────
+//
+// Deliberately built on summarise() rather than its own query. The AI is
+// handed exactly the bundle the Reporting tab is drawing, for exactly the
+// filters that are set, so it can never quote a number that is not on screen
+// — and it can never see a store the viewer is not scoped to, because
+// scopedRows() has already done that filtering.
+router.post('/ask', async (req, res) => {
+  const question = String(req.body?.question || '').trim();
+  if (!question) return res.status(400).json({ error: 'Ask something first.' });
+  if (question.length > 1000) {
+    return res.status(400).json({ error: 'That is too long. Ask it in a sentence or two.' });
+  }
+
+  const result = await summarise(req, res);
+  if (!result) return;                       // summarise already answered
+
+  if (!result.rows.length) {
+    return res.json({ answer: 'There are no responses in this filter yet, so there is nothing to read. Widen the dates or pick a different audit.' });
+  }
+
+  try {
+    const answer = await agent.answerAboutAudits({
+      question,
+      summary: result.summary,
+      scopeNote: `These are the ${result.rows.length} walk(s) currently filtered on screen.`,
+    });
+    res.json({ answer });
+  } catch (e) {
+    console.error('audits/ask:', e);
+    res.status(500).json({ error: e.message || 'P.AI could not read that right now.' });
+  }
+});
+
+// ── Create: a described audit comes back as an unsaved draft ────────────────
+//
+// Nothing is written. The draft is validated with the same validateTemplate()
+// the Save button uses and handed to the browser, which drops it into the
+// normal editor — so a draft the AI got slightly wrong is fixed the same way
+// any hand-built audit is, and nothing reaches a store until someone saves it.
+const DRAFT_UPLOAD_DIR = '/tmp/uploads';
+fs.mkdirSync(DRAFT_UPLOAD_DIR, { recursive: true });
+const draftUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, DRAFT_UPLOAD_DIR),
+    filename: (req, file, cb) => cb(null, `draft_${Date.now()}_${file.originalname}`),
+  }),
+  limits: { fileSize: 25 * 1024 * 1024, files: 6 },
+});
+
+router.post('/templates/draft', requireRole('rdo', 'vp'),
+  draftUpload.array('files', 6), async (req, res) => {
+  const ask = String(req.body?.ask || '').trim();
+  const kind = req.body?.kind === 'test' ? 'test' : 'audit';
+  const files = req.files || [];
+
+  if (!ask && !files.length) {
+    return res.status(400).json({ error: 'Say what you want it to cover, or attach something to build it from.' });
+  }
+
+  try {
+    // Reference files are read for their text only. A file that cannot be
+    // read is reported by name instead of failing the whole draft — the
+    // description alone is usually enough to get a usable first pass.
+    const skipped = [];
+    const chunks = [];
+    for (const f of files) {
+      try {
+        const text = await claude.extractTextFromFile(f);
+        if (text && text.trim()) chunks.push(`--- ${f.originalname} ---\n${text}`);
+        else skipped.push(f.originalname);
+      } catch (e) {
+        console.error('draft extract', f.originalname, e.message);
+        skipped.push(f.originalname);
+      } finally {
+        fs.unlink(f.path, () => {});
+      }
+    }
+
+    const def = await agent.draftTemplate({
+      ask: ask || 'Build it from the attached material.',
+      kind,
+      referenceText: chunks.join('\n\n') || null,
+    });
+
+    // The model is not asked for an id — the editor slugs one from the title
+    // on first save, and an id it invented could collide with a live audit.
+    def.id = '';
+    def.version = 0;
+    def.kind = kind;
+    def.coach = kind === 'test' ? 'adam' : 'none';
+
+    // Validated with a placeholder id, because a blank id is the one problem
+    // that is correct at this stage and would otherwise be the only thing
+    // reported back.
+    const problems = templates.validateTemplate({ ...def, id: 'draft' });
+
+    res.json({ template: def, problems, skipped });
+  } catch (e) {
+    console.error('audits/templates/draft:', e);
+    for (const f of files) fs.unlink(f.path, () => {});
+    res.status(500).json({ error: e.message || 'P.AI could not draft that. Try describing it again.' });
+  }
 });
 
 // ── Exports: one row per response ───────────────────────────────────────────

@@ -59,6 +59,7 @@ app.use('/api/intel', require('./routes/intel'));
 app.use('/api/brief', require('./routes/brief'));
 app.use('/api/tracker', require('./routes/tracker'));
 app.use('/api/audits', require('./routes/audits'));
+app.use('/api/agent', require('./routes/agent'));
 
 // Serve login page as default
 app.get('/', (req, res) => {
