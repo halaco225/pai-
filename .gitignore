@@ -9,3 +9,9 @@ uploads/
 # Staff phone numbers — Render Secret File, never in git (see rc-tracker/.gitignore)
 data/people.json
 people.json
+
+# Output from local Claude Code tooling. Regenerated on demand and specific to
+# one machine, so it is noise in every git status and worse in a diff.
+.impeccable/
+.superpowers/
+graphify-out/
