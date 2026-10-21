@@ -156,10 +156,15 @@ Question: ${question}`,
 const DRAFTABLE_TYPES = `
 text        — short typed answer
 longtext    — paragraph answer
-single      — one answer from choices. Set "choices": ["…"].
-              A "variant" of yesno / truefalse / passfail / goodfairpoor /
-              safeatrisk / compliant fills the choices for you — prefer a
-              variant over writing them out.
+single      — one answer from choices. Always write "choices" out in full;
+              there is no shorthand for them. Where one of the house lists
+              fits, use it exactly, "N/A" included:
+                Yes / No / N/A
+                True / False
+                Pass / Fail / N/A
+                Good / Fair / Poor / N/A
+                Safe / At risk / N/A
+                Compliant / Non-compliant / N/A
 multi       — pick all that apply. "choices": ["…"]
 number      — a number. Optional "min", "max", "unit".
 scale       — a slider. Needs "min", "max", "step", and
@@ -231,6 +236,34 @@ ${referenceText.slice(0, 120_000)}`);
   return parseDraft(raw);
 }
 
+// The editor's ready-made answer lists, copied from addQuestion() in
+// public/audits.html. They are only a saving of typing there -- a question is
+// an ordinary one-answer question once the list is in it -- so nothing is
+// stored to say which list was used.
+//
+// A model shown those six lists tends to reach for the shorthand anyway and
+// name the list instead of writing it out, which leaves a choice question with
+// no choices: five of seventeen on the first real draft. Writing the list in
+// for it costs four lines and turns that into a draft that opens clean.
+const PRESET_CHOICES = {
+  yesno:        ['Yes', 'No', 'N/A'],
+  truefalse:    ['True', 'False'],
+  passfail:     ['Pass', 'Fail', 'N/A'],
+  goodfairpoor: ['Good', 'Fair', 'Poor', 'N/A'],
+  safeatrisk:   ['Safe', 'At risk', 'N/A'],
+  compliant:    ['Compliant', 'Non-compliant', 'N/A'],
+};
+
+function expandPreset(q) {
+  if (!q || (q.type !== 'single' && q.type !== 'multi')) return;
+  if (Array.isArray(q.choices) && q.choices.length >= 2) return;
+  const named = String(q.variant || q.preset || q.choiceSet || '')
+    .toLowerCase().replace(/[^a-z]/g, '');
+  const list = PRESET_CHOICES[named];
+  if (list) q.choices = list.slice();
+  delete q.variant; delete q.preset; delete q.choiceSet;
+}
+
 // The model is told to return bare JSON, and usually does. A fenced block or
 // a leading sentence is the common miss, so recover from both rather than
 // making the user ask again.
@@ -257,6 +290,7 @@ function parseDraft(raw) {
   // red error on every scored question of an otherwise good draft.
   for (const q of def.questions) {
     if (Number.isInteger(q.correct)) q.correct = [q.correct];
+    expandPreset(q);
   }
   return def;
 }

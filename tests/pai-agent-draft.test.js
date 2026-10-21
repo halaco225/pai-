@@ -79,6 +79,52 @@ describe('parseDraft', () => {
     expect(def.questions[0].correct).toEqual([0]);
   });
 
+  // A real draft named the house answer lists instead of writing them out and
+  // left five of seventeen choice questions with no choices at all. The lists
+  // are only a typing saver in the editor, so nothing records which was meant.
+  test('fills in choices when the model names a house list', () => {
+    const def = parseDraft(JSON.stringify({
+      title: 'Shorthand', questions: [
+        { n: 1, title: 'Is the cooler at temp?', type: 'single', variant: 'yesno', points: 0 },
+        { n: 2, title: 'Rate the lobby', type: 'single', variant: 'goodfairpoor', points: 0 },
+        { n: 3, title: 'Sink stocked?', type: 'single', preset: 'passfail', points: 0 },
+      ],
+    }));
+    expect(def.questions[0].choices).toEqual(['Yes', 'No', 'N/A']);
+    expect(def.questions[1].choices).toEqual(['Good', 'Fair', 'Poor', 'N/A']);
+    expect(def.questions[2].choices).toEqual(['Pass', 'Fail', 'N/A']);
+    // The shorthand key is never stored on a real question.
+    expect(def.questions.every(q => !('variant' in q) && !('preset' in q))).toBe(true);
+  });
+
+  test('a named list keeps the correct index pointing at the same answer', () => {
+    const def = parseDraft(JSON.stringify({
+      title: 'Scored shorthand', questions: [
+        { n: 1, title: 'At or below 41F?', type: 'single', variant: 'yesno', correct: 0, points: 2 },
+      ],
+    }));
+    expect(def.questions[0].choices[def.questions[0].correct[0]]).toBe('Yes');
+  });
+
+  test('does not overwrite choices the model did write out', () => {
+    const def = parseDraft(JSON.stringify({
+      title: 'Explicit', questions: [
+        { n: 1, title: 'Which shift?', type: 'single', variant: 'yesno',
+          choices: ['Open', 'Mid', 'Close'], points: 0 },
+      ],
+    }));
+    expect(def.questions[0].choices).toEqual(['Open', 'Mid', 'Close']);
+  });
+
+  test('leaves a list it does not recognise for the validator to catch', () => {
+    const def = parseDraft(JSON.stringify({
+      title: 'Unknown', questions: [
+        { n: 1, title: 'Pick one', type: 'single', variant: 'hotorcold', points: 0 },
+      ],
+    }));
+    expect(def.questions[0].choices).toBeUndefined();
+  });
+
   test('leaves an array of indexes alone', () => {
     const def = parseDraft(JSON.stringify({
       title: 'Scored', questions: [
