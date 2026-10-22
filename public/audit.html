@@ -1703,15 +1703,26 @@ async function submit(){
 
   try{
     const res = await sendWalk(body, next, count);
-    const data = await res.json();
-    if (!res.ok){
+    // When the app is restarting, the proxy in front of it answers with its
+    // own page instead of ours. That is not a reply to this walk, and reading
+    // it as one threw — which is how a server problem came out on the phone
+    // as "no signal", with the person hunting for a better connection.
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data){
       // Everything they typed and every picture is still here.
       next.disabled = false; next.textContent = 'Send my answers';
+      SENDING = false;
+      if (!data){
+        say(`The server could not take it just now (${res.status}). Everything `
+          + 'you did is saved on this phone and it keeps trying on its own — '
+          + 'just leave this page open. It cannot go in twice.', true);
+        waitForSignal();
+        return;
+      }
       if ((data.missing || []).length){
         const first = FORM.questions.findIndex(q => q.n === data.missing[0].n);
         if (first >= 0){ at = first; draw(); }
       }
-      SENDING = false;
       say(data.error || 'That did not send. Try again.');
       return;
     }

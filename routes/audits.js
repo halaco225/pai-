@@ -46,6 +46,12 @@ const upload = multer({
   limits: { fileSize: 12 * 1024 * 1024, files: 20 },
 });
 
+// Express 4 does not notice a rejected promise: a handler that throws leaves
+// the phone holding an open request until it gives up, with nothing in the
+// log. The walk endpoints are taken on a phone in a kitchen, so a failure has
+// to come back as an answer it can show, and be written down here.
+const safe = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
 function serviceClient(res) {
   const c = rcDb.getServiceClient();
   if (!c) res.status(503).json({ error: 'Audits are not set up yet. Tell Harold.' });
@@ -67,20 +73,20 @@ async function frozenGrade(row) {
 }
 
 // ── Public: the question set, with no answer key ────────────────────────────
-router.get('/form', async (req, res) => {
+router.get('/form', safe(async (req, res) => {
   const def = await templates.getTemplate(req.query.id || DEFAULT_AUDIT);
   if (!def || !def.active) return res.status(404).json({ error: 'That walk does not exist.' });
   res.json(publicForm(def));
-});
+}));
 
 // ── Public: the store dropdown ──────────────────────────────────────────────
-router.get('/stores', async (req, res) => {
+router.get('/stores', safe(async (req, res) => {
   const assignments = await db.getStoreAssignments();
   const stores = Object.values(assignments)
     .map(s => ({ num: String(s.store_id), name: s.store_name || '' }))
     .sort((a, b) => a.num.localeCompare(b.num, undefined, { numeric: true }));
   res.json(stores);
-});
+}));
 
 // ── Public: mark one question, as soon as it is answered ────────────────────
 //
@@ -91,7 +97,7 @@ router.get('/stores', async (req, res) => {
 // The answer is written down before it is marked, and the first one written
 // is the one that counts — so reading the verdict and going back to change
 // the pick achieves nothing. submit() grades what was written down.
-router.post('/check', async (req, res) => {
+router.post('/check', safe(async (req, res) => {
   const def = await templates.getTemplate(req.body.auditId || DEFAULT_AUDIT);
   if (!def || !def.active) return res.status(404).json({ error: 'That walk does not exist.' });
 
@@ -115,13 +121,13 @@ router.post('/check', async (req, res) => {
     return res.status(400).json({ error: 'Answer this one before checking it.' });
   }
   res.json(result);
-});
+}));
 
 // ── Public: submit a walk ───────────────────────────────────────────────────
 //
 // Photos arrive as files named photo_<question number>. Everything else comes
 // as one JSON field so the shapes survive multipart intact.
-router.post('/submit', upload.any(), async (req, res) => {
+router.post('/submit', upload.any(), safe(async (req, res) => {
   // Deliberately not checking `active`. Pausing a walk stops new ones being
   // started — /form is what refuses — but somebody who was already part way
   // through it when it was paused has done the work, and throwing it away at
@@ -232,7 +238,7 @@ router.post('/submit', upload.any(), async (req, res) => {
 
   // Only now does the answer key go out, for the results screen.
   res.json({ id: data.id, score: graded.score, maxScore: graded.maxScore, results: graded.results });
-});
+}));
 
 // ───────────────────────────── everything below needs a login ───────────────
 router.use(requireAuth);
