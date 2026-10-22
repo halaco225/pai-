@@ -1727,7 +1727,19 @@ async function submit(){
       return;
     }
     clearDraft();
-    showResults(data);
+    // Drawing the results is not part of sending them. It is in, whatever
+    // happens below, and saying anything else sends people hunting for a
+    // connection they already have.
+    try {
+      showResults(data);
+    } catch (err) {
+      console.error('results screen failed:', err);
+      SENDING = false;
+      next.disabled = false; next.textContent = 'Send my answers';
+      say('Your answers are in. We could not draw the results here, but '
+        + 'nothing is missing and there is nothing else to do — you can close '
+        + 'this page.', true);
+    }
   }catch(err){
     // It may well have arrived and only the reply got lost, which is what
     // happened before the walk id was made unique. Pressing the button again
@@ -1880,7 +1892,24 @@ function finishRetry(){
 }
 
 function showResults(data){
-  const names = (q, list) => (list || []).map(i => q.choices[i]).join(' · ');
+  const names = (q, list) => (list || []).map(i => (q.choices || [])[i]).filter(Boolean).join(' · ');
+  // An order question and an assign question have no choices to name: what
+  // was given is a sequence, or a thing put somewhere. Reading those as
+  // choices threw right here, and the catch around the send reported it as
+  // no signal — with the walk already saved and the person told to find a
+  // better connection for a results screen that had already crashed.
+  const said = (q, r) => {
+    if (r.type === 'order') return (r.given || []).map(i => (r.steps || [])[i]).filter(Boolean).join(' → ');
+    if (r.type === 'assign') return (r.items || [])
+      .map(it => `${it.text} → ${(r.targets || [])[it.put] || 'left in the tray'}`).join(' · ');
+    return names(q, r.given);
+  };
+  const rightAnswer = (q, r) => {
+    if (r.type === 'order') return (r.rightOrder || []).map(i => (r.steps || [])[i]).filter(Boolean).join(' → ');
+    if (r.type === 'assign') return (r.items || [])
+      .map(it => `${it.text} → ${(r.targets || [])[it.target] || ''}`).join(' · ');
+    return names(q, r.correctChoices);
+  };
   const blocks = data.results.map(r => {
     const q = FORM.questions.find(x => x.n === r.n) || { choices: [], title: r.title };
     return `<div class="r ${r.correct ? '' : 'wrong'}">
@@ -1888,8 +1917,8 @@ function showResults(data){
       <div class="q-title" style="font-size:17px;margin:7px 0 11px;">${esc(q.title)}</div>
       <div><span class="mark ${r.correct ? 'ok' : 'no'}">${
         r.correct ? '✔ You got it right' : '✘ Not quite'}</span></div>
-      <div class="quiet" style="margin-top:8px">You said: ${esc(names(q, r.given) || 'nothing')}</div>
-      <div style="margin-top:4px"><b>Right answer:</b> ${esc(names(q, r.correctChoices))}</div>
+      <div class="quiet" style="margin-top:8px">You said: ${esc(said(q, r) || 'nothing')}</div>
+      <div style="margin-top:4px"><b>Right answer:</b> ${esc(rightAnswer(q, r))}</div>
       <div class="why">${esc(r.explanation)}</div>
     </div>`;
   }).join('');
