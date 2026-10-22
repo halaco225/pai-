@@ -113,8 +113,12 @@ app.get('/tracker', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'tracker.html'));
 });
 
-// Health check
-app.get('/health', (req, res) => res.json({ status: 'ok', version: '1.0.0' }));
+// Health check. The uptime is there to answer one question from outside:
+// did this come back up a minute ago? A walk that could not be sent and a
+// server that had just restarted look the same from a phone in a kitchen.
+app.get('/health', (req, res) => res.json({
+  status: 'ok', version: '1.0.0', uptimeSec: Math.round(process.uptime()),
+}));
 
 // 404 handler
 app.use((req, res) => {
@@ -125,6 +129,14 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ error: 'Internal server error', message: err.message });
+});
+
+// Node kills the process over a promise nobody caught, and Express 4 catches
+// none of them for you: one route that threw took the whole service down,
+// which is everyone else's walk as well, not just that one request. Staying
+// up with a stack in the log beats taking the shift with us.
+process.on('unhandledRejection', (err) => {
+  console.error('unhandled rejection:', err && err.stack || err);
 });
 
 app.listen(PORT, async () => {
