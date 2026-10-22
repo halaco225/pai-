@@ -381,8 +381,12 @@ const WALK_KEY  = 'audit-walk-' + AUDIT_ID;
 // end. Coming back to a question after seeing the verdict changes nothing.
 const WALK_ID = (() => {
   try {
+    // Only carry on a walk that is still half-finished. Opening the link
+    // again with nothing saved is somebody taking the test a second time,
+    // and handing them the id of a walk the server already has would hand
+    // them back their old score instead of a fresh test.
     const kept = localStorage.getItem(WALK_KEY);
-    if (kept) return kept;
+    if (kept && localStorage.getItem(DRAFT_KEY)) return kept;
   } catch (e) {}
   const made = (crypto.randomUUID ? crypto.randomUUID()
     : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
