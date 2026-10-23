@@ -346,6 +346,18 @@ function cleanTemplate(def) {
         if (q.beforeImage) out.beforeImage = String(q.beforeImage);
         out.extraTaps = Number(q.extraTaps || 0);
         out.explanation = String(q.explanation || '').trim();
+        // Things they can go and read before they answer: temp the pepperoni,
+        // check the gauge. The reading is not the answer, it is what the
+        // answer is worked out from — so it goes out with the form, unlike
+        // the hotspots, which are the answer key.
+        if (Array.isArray(q.probes) && q.probes.length) {
+          out.probes = q.probes
+            .filter(p => p && String(p.label || '').trim())
+            .map(p => ({
+              label: String(p.label).trim().slice(0, 80),
+              value: String(p.value == null ? '' : p.value).trim().slice(0, 40),
+            }));
+        }
         out.hotspots = (q.hotspots || []).map(h => ({
           x: Number(h.x), y: Number(h.y),
           rx: Number(h.rx || 5), ry: Number(h.ry || 5),

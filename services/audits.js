@@ -119,6 +119,10 @@ function publicForm(def) {
         ...(q.beforeImage ? { beforeImage: q.beforeImage } : {}),
         toFind: (q.hotspots || []).length,
         maxTaps: (q.hotspots || []).length + (q.extraTaps || 0),
+        // Readings they take before answering. Safe to send: knowing the
+        // pepperoni is at 47 is the information, not the answer — they still
+        // have to know 47 is over and find that pan.
+        ...(Array.isArray(q.probes) && q.probes.length ? { probes: q.probes } : {}),
       } : {}),
     })),
   };
