@@ -1,7 +1,7 @@
 {
   "id": "temperature-controls",
   "title": "Temperature Controls — Shift Leader Walk",
-  "description": "This one teaches as much as it tests. You will calibrate your thermometer, temp real product on your make table, and work through what to do when something is out of temperature. Every standard here comes from the FSCC Guide. Take it standing in the kitchen with a thermometer and a cup of ice.",
+  "description": "Take this standing in the kitchen with your thermometer and a cup of ice. You will calibrate, temp real product on your make table, and work through what to do when something is out of temperature. Do everything the way you normally do it.",
   "kind": "test",
   "coach": "adam",
   "questions": [
@@ -21,73 +21,15 @@
     },
     {
       "n": 3,
-      "title": "Calibrate your thermometer now, then photograph it sitting in the ice bath.",
+      "title": "Calibrate your thermometer now, the way you normally do it. Photograph it while you are doing it.",
       "type": "photo",
       "maxPhotos": 2,
       "points": 0,
       "required": true,
-      "help": "Read this before you do it, because most people get it the wrong way round.\n\nFill a cup right to the top with ice. Then add water until it just fills the gaps. Stir it and let it sit about a minute.\n\nWhat you are doing is getting THE WATER to 32°F. Ice packed tight with water around it sits at 32°F on its own — that is the whole trick.\n\nThen you put the thermometer in and CHECK whether it reads 32°F. You are checking the thermometer against water you already know is 32°F.\n\nYou are NOT trying to make the thermometer say 32. That is the part people get wrong. Standing the stem in a cup of dry ice cubes with no water, waiting for the number to drop, and calling it calibrated does not work — there is no water holding a known temperature, so you have nothing to check it against.\n\nFSCC 2.01: calibrate every thermometer each morning before food prep, and it has to be accurate to within 2°F."
+      "help": "Do it exactly how you usually would. Your Area Coach looks at these."
     },
     {
       "n": 4,
-      "title": "Which of these cups is the right ice bath for calibrating? Tap it.",
-      "type": "hotspot",
-      "image": "/audits/ice-bath-cups.png",
-      "hotspots": [
-        { "x": 83, "y": 51, "rx": 11, "ry": 26, "label": "Packed full of ice, water filled in around it", "why": "Ice packed to the rim with water around it is what holds the water at 32°F. That is the only one you can check a thermometer against." }
-      ],
-      "extraTaps": 0,
-      "points": 3,
-      "required": true,
-      "explanation": "The cup packed full of ice with water added. The more ice, the longer the water holds steady at 32°F. The cups with only a little ice are mostly water sitting at room temperature — the reading will drift, and anything you check against it is wrong."
-    },
-    {
-      "n": 5,
-      "title": "A team member stands the thermometer stem in a cup of ice cubes with no water, waits for the number to stop moving, and says it is calibrated. What is wrong with that?",
-      "type": "single",
-      "choices": [
-        "Nothing — that is how you calibrate a thermometer",
-        "There is no water, so nothing is holding a known 32°F to check the thermometer against",
-        "They should have used hot water instead",
-        "They should have left it in for a full ten minutes"
-      ],
-      "correct": [1],
-      "points": 4,
-      "required": true,
-      "explanation": "Dry ice cubes have air gaps and no steady temperature. It is the ice AND water together that sit at 32°F. Without the water there is nothing to check the thermometer against, so the reading means nothing — and you are now temping product with a thermometer you only think is right."
-    },
-    {
-      "n": 6,
-      "title": "In a properly made ice bath your thermometer reads 36°F. What do you do?",
-      "type": "single",
-      "choices": [
-        "Nothing — 36°F is close enough",
-        "Adjust or replace it, and tell your manager",
-        "Use it anyway and take 4°F off every reading in your head",
-        "Put it back in the ice for longer until it reads 32°F"
-      ],
-      "correct": [1],
-      "points": 4,
-      "required": true,
-      "explanation": "FSCC 2.01 says a thermometer has to be accurate to within 2°F. 36°F is 4°F out, so it fails. Get it adjusted or swapped and tell your manager — every temperature taken with it until now was wrong by the same amount."
-    },
-    {
-      "n": 7,
-      "title": "Which kind of thermometer may NOT be used to take a product temperature?",
-      "type": "single",
-      "choices": [
-        "A digital thermocouple",
-        "A bi-metallic stem thermometer",
-        "A laser or infrared thermometer",
-        "A hanging thermometer"
-      ],
-      "correct": [2],
-      "points": 3,
-      "required": true,
-      "explanation": "FSCC 2.01: laser and infrared thermometers read the SURFACE only. They are fine for a quick check of a cooking surface, but they cannot tell you the internal temperature of food — and that is the one that matters."
-    },
-    {
-      "n": 8,
       "title": "Now temp a cold product on your make table. What did it read, in °F?",
       "type": "number",
       "min": 0,
@@ -95,10 +37,10 @@
       "unit": "°F",
       "points": 0,
       "required": true,
-      "help": "Pick any cold TCS product — diced ham, sausage, bacon, cheese. Put the probe into the middle of the product, not against the side of the pan. Dip the probe in sanitiser before you use it and between products."
+      "help": "Any cold product — diced ham, sausage, bacon, cheese. Probe into the middle of the product, not against the side of the pan."
     },
     {
-      "n": 9,
+      "n": 5,
       "title": "Photograph the thermometer in that product, with the reading visible.",
       "type": "photo",
       "maxPhotos": 2,
@@ -106,45 +48,87 @@
       "required": true
     },
     {
-      "n": 10,
-      "title": "What is the highest temperature cold TCS food is allowed to be held at?",
+      "n": 6,
+      "title": "Which of these cups is the right one to calibrate a thermometer in? Tap it.",
+      "type": "hotspot",
+      "image": "/audits/ice-bath-cups.png",
+      "hotspots": [
+        { "x": 83, "y": 51, "rx": 11, "ry": 26, "label": "Packed full of ice, water filled in around it", "why": "Ice packed to the rim with water around it is the one that settles at 32 degrees and stays there." }
+      ],
+      "extraTaps": 0,
+      "points": 3,
+      "required": true,
+      "explanation": "The cup packed full of ice with water added. Pack the ice to the top, then fill the gaps with water. The more ice in there, the longer the water holds steady at 32 degrees.\n\nThe cups with only a little ice are mostly water sitting at room temperature. That water is not 32 degrees, so anything you check against it is wrong — and you will not know it."
+    },
+    {
+      "n": 7,
+      "title": "A team member stands the thermometer in a cup of ice cubes with no water, waits for the number to stop moving, and says it is calibrated. What is wrong with that?",
+      "type": "single",
+      "choices": [
+        "Nothing — that is how you calibrate a thermometer",
+        "There is no water, so nothing is sitting at a known 32 degrees to check the thermometer against",
+        "They should have used hot water instead",
+        "They should have left it in for a full ten minutes"
+      ],
+      "correct": [1],
+      "points": 4,
+      "required": true,
+      "explanation": "Dry ice cubes have air gaps between them and no steady temperature. It is the ice and water together that settle at 32 degrees.\n\nWithout the water there is nothing holding a known temperature, so the reading tells you nothing — and you are now temping product with a thermometer you only think is right."
+    },
+    {
+      "n": 8,
+      "title": "In a properly made ice bath your thermometer reads 36°F. What do you do?",
+      "type": "single",
+      "choices": [
+        "Nothing — 36 is close enough",
+        "Adjust or replace it, and tell your manager",
+        "Use it anyway and take 4 degrees off every reading in your head",
+        "Leave it in the ice longer until it works its way down to 32"
+      ],
+      "correct": [1],
+      "points": 4,
+      "required": true,
+      "explanation": "A thermometer has to be accurate to within 2 degrees. 36 is 4 degrees out, so it fails.\n\nGet it adjusted or swapped and tell your manager — because every temperature you have taken with it until now was wrong by the same amount, and some of those readings were the ones that said product was fine."
+    },
+    {
+      "n": 9,
+      "title": "What is the highest temperature cold product is allowed to be held at?",
       "type": "single",
       "choices": ["38°F", "41°F", "45°F", "50°F"],
       "correct": [1],
       "points": 4,
       "required": true,
-      "explanation": "FSCC 2.03: cold TCS foods must be held at 41°F or below. Not 42. The make table's air temperature has to hold 41°F or less too (2.02)."
+      "explanation": "41 degrees or below. Not 42. The make table's air temperature has to hold 41 or less as well, not just the product sitting in it."
     },
     {
-      "n": 11,
+      "n": 10,
       "title": "Four pans were just temped. Sauce 38°F. Pepperoni 40°F. Diced ham 47°F. Bacon 39°F. Which one is out of temperature?",
       "type": "single",
       "choices": ["Sauce at 38°F", "Pepperoni at 40°F", "Diced ham at 47°F", "Bacon at 39°F"],
       "correct": [2],
       "points": 4,
       "required": true,
-      "explanation": "Diced ham at 47°F is 6°F over the limit. The other three are at or below 41°F and are fine. 40°F is not 'nearly out' — it is in standard."
+      "explanation": "Diced ham at 47 is 6 degrees over. The other three are at or below 41 and are fine.\n\n40 is not 'nearly out'. It is in standard. Do not pull product that is passing."
     },
     {
-      "n": 12,
+      "n": 11,
       "title": "You have just found that diced ham at 47°F. What do you do? Pick everything that applies.",
       "type": "multi",
       "choices": [
         "Tell your manager straight away",
         "Pull the product off the line now rather than at the end of the shift",
         "Check whether the lid was left open or the pan was overfilled",
-        "Use the Cold Hold Temperature Verification Form to find the root cause",
         "Top the pan up with fresh cold product to bring the temperature down",
         "Stir it and temp it again in an hour",
         "Nothing — ham is cured, so it is fine"
       ],
-      "correct": [0, 1, 2, 3],
+      "correct": [0, 1, 2],
       "points": 5,
       "required": true,
-      "explanation": "Tell your manager — always, every time, before anything else. Then get it off the line and work out WHY, because the pan next to it is about to do the same thing. FSCC 2.03 points at the usual causes: lids left open, pans overfilled, too much product out of the cooler at once.\n\nTopping the pan up with fresh product is the one that catches people. It does not cool anything down — it drags the fresh product up to the warm product's temperature, and now you have twice the problem."
+      "explanation": "Tell your manager — always, every time, before anything else. Then get it off the line and work out why, because the pan next to it is about to do the same thing. The usual causes are a lid left open, a pan overfilled, or too much product pulled out of the cooler at once.\n\nTopping the pan up with fresh product is the one that catches people. It does not cool anything down. It drags the fresh product up to the warm product's temperature, and now you have twice the problem."
     },
     {
-      "n": 13,
+      "n": 12,
       "title": "Your make table itself is not holding temperature — the air inside is reading 48°F. What do you do? Pick everything that applies.",
       "type": "multi",
       "choices": [
@@ -158,43 +142,45 @@
       "correct": [0, 1, 2, 3],
       "points": 5,
       "required": true,
-      "explanation": "Tell your manager first — a make table that is not making temperature is their problem to act on, not something to work around quietly. Then record it, get the vendor called, and check the easy causes while you wait.\n\nFSCC 2.02 is specific about open wells: every space needs an insert pan or a separator bar. An open well lets the cold fall straight out, and that alone can stop a table holding 41°F."
+      "explanation": "Tell your manager first. A make table that is not making temperature is theirs to act on, not something to quietly work around for the rest of the shift.\n\nThen record it, get the vendor called, and check the easy causes while you wait. An open well with nothing in it is a common one — cold air falls straight out of the gap."
     },
     {
-      "n": 14,
+      "n": 13,
       "title": "Look at this make table. Tap what is wrong with it.",
       "type": "hotspot",
       "image": "/audits/maketable-full.jpg",
       "hotspots": [
-        { "x": 77, "y": 57, "rx": 9, "ry": 13, "label": "An open well with no insert pan or separator bar", "why": "FSCC 2.02: no open spaces on the make table without an insert pan or separator bar. The cold falls straight out of a gap like this." }
+        { "x": 77, "y": 57, "rx": 9, "ry": 13, "label": "An open well with no insert pan or separator bar", "why": "Every space needs an insert pan or a separator bar. Cold air falls straight out of a gap like this." }
       ],
       "extraTaps": 1,
       "points": 4,
       "required": true,
-      "explanation": "An open well with nothing in it. Cold air sinks, so a gap like this drains the whole rail and the pans either side start creeping up. Every space needs an insert pan or a separator bar, even when you are not using it."
+      "explanation": "An open well with nothing in it.\n\nCold air sinks, so a gap like this drains the whole rail and the pans either side start creeping up. Every space needs an insert pan or a separator bar, even when you are not using it."
     },
     {
-      "n": 15,
+      "n": 14,
       "title": "When do thermometers have to be calibrated?",
       "type": "single",
       "choices": [
         "Every morning, before food prep starts",
         "Once a week",
         "Only when they look wrong",
-        "Whenever the FSCC Specialist asks to see it"
+        "Whenever someone asks to see it"
       ],
       "correct": [0],
       "points": 3,
       "required": true,
-      "explanation": "FSCC 2.01: every morning, before any food prep. The restaurant also has to have ice available to do it — bagged ice or filled ice trays count if there is no ice machine."
+      "explanation": "Every morning, before any food prep. The restaurant also has to keep ice available to do it — bagged ice or filled ice trays count if there is no ice machine."
     },
     {
-      "n": 16,
-      "title": "In your own words: what are you actually trying to do when you calibrate a thermometer?",
-      "type": "longtext",
-      "points": 0,
+      "n": 15,
+      "title": "True or false: the goal of calibrating a thermometer is to make it read 32 degrees.",
+      "type": "single",
+      "choices": ["True", "False"],
+      "correct": [1],
+      "points": 3,
       "required": true,
-      "help": "No right answer to type here — your Area Coach reads these. If it is still fuzzy, go back to question 3 and read it again before you answer."
+      "explanation": "False. It is to check.\n\nWe know that a cup of water filled with ice will reach 32 degrees. We need to see whether the thermometer knows that as well.\n\nYou are not trying to force the number to 32. You are holding the thermometer up against something you already know is 32 and seeing whether it agrees."
     }
   ]
 }
