@@ -102,30 +102,36 @@
     },
     {
       "n": 10,
-      "title": "These pans were just temped. Pepperoni 40°F. Italian sausage 39°F. Diced ham 47°F. Bacon 38°F. Tap the pan that is out of temperature.",
+      "title": "Temp each of these, then tap the pan that is out of temperature.",
       "type": "hotspot",
       "image": "/audits/maketable-full.jpg",
-      "hotspots": [
-        { "x": 60, "y": 34, "rx": 8, "ry": 11, "label": "The diced ham at 47°F", "why": "47 is 6 degrees over the 41 limit. The other three are all at or below 41 and are fine." }
+      "probes": [
+        { "label": "Pepperoni", "value": "47°F" },
+        { "label": "Italian sausage", "value": "39°F" },
+        { "label": "Diced ham", "value": "40°F" },
+        { "label": "Bacon", "value": "38°F" }
       ],
-      "extraTaps": 1,
+      "hotspots": [
+        { "x": 24, "y": 33, "rx": 8, "ry": 11, "label": "PLACEHOLDER — move this onto the pepperoni", "why": "47 is 6 degrees over the 41 limit. The other three are all at or below 41 and are fine." }
+      ],
+      "extraTaps": 0,
       "points": 4,
       "required": true,
-      "explanation": "The diced ham at 47. That is 6 degrees over.\n\nThe other three are at or below 41 and are fine — 40 is not 'nearly out', it is in standard. Do not pull product that is passing."
+      "explanation": "The pepperoni at 47. That is 6 degrees over.\n\nThe other three are at or below 41 and are fine — 40 is not 'nearly out', it is in standard. Do not pull product that is passing."
     },
     {
       "n": 11,
-      "title": "You have just found that diced ham at 47°F. What do you do? Pick everything that applies.",
+      "title": "You have just found that pepperoni at 47°F. What do you do? Pick everything that applies.",
       "type": "multi",
       "choices": [
-        "Tell your manager straight away",
-        "Pull the product off the line now rather than at the end of the shift",
-        "Check whether the lid was left open or the pan was overfilled",
-        "Top the pan up with fresh cold product to bring the temperature down",
         "Stir it and temp it again in an hour",
-        "Nothing — ham is cured, so it is fine"
+        "Tell your manager straight away",
+        "Top the pan up with fresh cold product to bring the temperature down",
+        "Check whether the lid was left open or the pan was overfilled",
+        "Pull the product off the line now rather than at the end of the shift",
+        "Nothing — pepperoni is cured, so it is fine"
       ],
-      "correct": [0, 1, 2],
+      "correct": [1, 3, 4],
       "points": 5,
       "required": true,
       "explanation": "Tell your manager — always, every time, before anything else. Then get it off the line and work out why, because the pan next to it is about to do the same thing. The usual causes are a lid left open, a pan overfilled, or too much product pulled out of the cooler at once.\n\nTopping the pan up with fresh product is the one that catches people. It does not cool anything down. It drags the fresh product up to the warm product's temperature, and now you have twice the problem."
@@ -135,14 +141,14 @@
       "title": "Your make table itself is not holding temperature — the air inside is reading 48°F. What do you do? Pick everything that applies.",
       "type": "multi",
       "choices": [
-        "Tell your manager straight away",
-        "Record it on the Food Safety Checklist",
-        "Contact the service vendor for repair",
-        "Check the lids are closed and no wells are open without an insert pan or separator bar",
         "Turn it to the coldest setting and carry on serving",
-        "Leave it until tomorrow and see if it sorts itself out"
+        "Tell your manager straight away",
+        "Leave it until tomorrow and see if it sorts itself out",
+        "Contact the service vendor for repair",
+        "Check the lids are closed and no wells are open without a pan or separator bar",
+        "Record it on the Food Safety Checklist"
       ],
-      "correct": [0, 1, 2, 3],
+      "correct": [1, 3, 4, 5],
       "points": 5,
       "required": true,
       "explanation": "Tell your manager first. A make table that is not making temperature is theirs to act on, not something to quietly work around for the rest of the shift.\n\nThen record it, get the vendor called, and check the easy causes while you wait. An open well with nothing in it is a common one — cold air falls straight out of the gap."
@@ -155,7 +161,7 @@
       "hotspots": [
         { "x": 50, "y": 50, "rx": 9, "ry": 13, "label": "PLACEHOLDER — move this marker onto the open space", "why": "An open space with no pan in it lets the cold air fall straight out, and the rail stops holding temperature." }
       ],
-      "extraTaps": 1,
+      "extraTaps": 0,
       "points": 4,
       "required": true,
       "explanation": "The open space with no pan in it.\n\nCold air falls straight out of a gap like that, and once it does the line will not keep temperature — not just that space, but the pans either side of it too.\n\nPutting a pan in it is the fix, and an empty pan counts. Every space needs a pan or a separator bar in it, whether you are using that ingredient or not."
