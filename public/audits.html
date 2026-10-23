@@ -473,9 +473,31 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
       <span class="muted" id="edStatus"></span>
       <span style="flex:1"></span>
       <span class="muted" id="edPoints"></span>
+      <button class="btn" onclick="document.getElementById('edImport').click()">Load a file</button>
+      <input type="file" id="edImport" accept=".json,application/json" style="display:none" onchange="importTemplate(this)">
+      <button class="btn" id="edDelete" onclick="deleteOpenTemplate()" style="display:none">Delete</button>
       <button class="btn primary" onclick="saveTemplate()">Save</button>
     </div>
     <div id="edProblems"></div>
+
+    <!-- Describe the change instead of making it twenty times by hand. -->
+    <div class="card">
+      <div class="card-title">Ask P.AI to change it</div>
+      <div class="ask-row">
+        <textarea id="edAi" rows="2"
+          placeholder="Cut it to ten questions. Move the right answers around so they are not all the second choice. Make the wording shorter."
+          onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))runRevise()"></textarea>
+        <button class="btn primary" id="edAiBtn" onclick="runRevise()">Change it</button>
+      </div>
+      <div class="ask-eg">
+        <button onclick="reviseThis('Move the right answers around so they are not always in the same position.')">Shuffle the answers</button>
+        <button onclick="reviseThis('Make every question shorter and plainer, without changing what it asks or any of the answers.')">Shorten the wording</button>
+        <button onclick="reviseThis('Add an explanation to every scored question that does not have one, saying why the right answer is right.')">Explain every answer</button>
+      </div>
+      <div class="muted" style="font-size:12.5px;margin-top:9px;">
+        It changes what is open here and nothing else. Read it before you Save — pictures, hotspots and probes are kept as they are.
+      </div>
+    </div>
     <div class="card">
       <div class="card-title">About this audit</div>
       <label class="ed-label">Title</label>
@@ -1523,9 +1545,16 @@ async function importTemplate(input){
     return alert('That file has no questions in it.');
   }
 
-  SAVED_TOTAL = null;
+  // Loading a file over an audit that is already saved replaces its
+  // questions and keeps its identity, so Save updates that audit and the
+  // link people already have still works. Loading one from the Templates tab
+  // is a new audit.
+  const onto = EDITING && EDITING.version ? { id: EDITING.id, version: EDITING.version } : null;
+
+  SAVED_TOTAL = onto ? SAVED_TOTAL : null;
   EDITING = def;
-  EDITING.version = 0;                    // loading a file is never an edit of a saved version
+  EDITING.id = onto ? onto.id : (def.id || '');
+  EDITING.version = onto ? onto.version : 0;
   EDITING.kind = def.kind || (def.questions.some(q => Number(q.points) > 0) ? 'test' : 'audit');
   EDITING.coach = def.coach || (EDITING.kind === 'test' ? 'adam' : 'none');
   EDITING.questions.forEach((q, i) => { q.n = i + 1; });
@@ -1589,6 +1618,8 @@ function openEditor(status){
   document.getElementById('edId').value = EDITING.id || '';
   document.getElementById('edStatus').textContent = status;
   document.getElementById('edProblems').innerHTML = '';
+  // Nothing to delete until it has been saved once.
+  document.getElementById('edDelete').style.display = EDITING.version ? '' : 'none';
   drawCoachPick();
   for (const t of TABS) document.getElementById('pane-' + t).style.display = 'none';
   document.getElementById('subTabs').style.display = 'none';
@@ -1599,6 +1630,66 @@ function openEditor(status){
 }
 
 function closeEditor(){ showTab('templates'); }
+
+// Delete the audit that is open, rather than closing the editor and hunting
+// for its row. Only offered once it has been saved — an unsaved draft has
+// nothing to delete, and the button would just be a confusing way to close.
+async function deleteOpenTemplate(){
+  if (!EDITING || !EDITING.version || !EDITING.id) return;
+  if (!confirm(`Delete "${EDITING.title || EDITING.id}"?\n\nThe walks people have already done are kept. This only stops it being sent again.`)) return;
+
+  const res = await fetch('/api/audits/templates/' + encodeURIComponent(EDITING.id), { method: 'DELETE' });
+  if (!res.ok) return alert(refused(res, await res.json().catch(() => null)));
+  EDITING = null;
+  showTab('templates');
+}
+
+// ── Changing it by describing the change ────────────────────────────────────
+
+function reviseThis(instruction){
+  document.getElementById('edAi').value = instruction;
+  runRevise();
+}
+
+async function runRevise(){
+  const box = document.getElementById('edAi');
+  const instruction = box.value.trim();
+  if (!instruction) return box.focus();
+  if (!EDITING) return;
+
+  const btn = document.getElementById('edAiBtn');
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Changing…';
+
+  try {
+    const res = await fetch('/api/audits/templates/revise', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instruction, template: EDITING }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) return alert((data && data.error) || 'P.AI could not make that change (HTTP ' + res.status + ').');
+
+    const before = EDITING.questions.length;
+    EDITING = data.template;
+    box.value = '';
+
+    const after = EDITING.questions.length;
+    const moved = after === before ? `${after} questions` : `${before} questions → ${after}`;
+    openEditor(`Changed by P.AI — not saved yet · ${moved}`);
+    if (data.problems && data.problems.length){
+      document.getElementById('edProblems').innerHTML =
+        `<div class="problems"><b>That change left these to fix:</b><ul>` +
+        data.problems.map(p => `<li>${esc(p)}</li>`).join('') + '</ul></div>';
+    }
+  } catch (e) {
+    alert('Could not reach P.AI: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
 
 // The link name is derived from the title until someone types their own, the
 // way a new page gets a slug. Once it is saved it stops moving, because the
