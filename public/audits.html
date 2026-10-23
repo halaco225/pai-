@@ -139,6 +139,12 @@ tr.row:hover td{background:#242831;}
 .drill{background:#191c23;border:1px solid var(--border);border-radius:10px;padding:13px 15px;margin:4px 0 12px;}
 .drill h4{font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-weight:700;}
 .walk{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--border);flex-wrap:wrap;}
+/* Coach, then their stores, then the walks at one of them. Indented and a
+   shade lighter each time, so three levels open on one screen without it
+   turning into a wall of rows. */
+.drill .drill.nested{margin:0 0 10px 22px;background:#1e222b;}
+.walk.openable:hover{background:#1e222b;}
+.walk.openable:hover .caret{color:var(--text);}
 .walk:first-of-type{border-top:none;}
 .walk .who{font-weight:600;font-size:13.5px;min-width:150px;}
 .walk .when{color:var(--muted);font-size:12.5px;min-width:112px;}
@@ -995,12 +1001,64 @@ async function drillStore(store){
     ${walks.map(w => walkLine(w)).join('')}</div>`);
 }
 
+// An Area Coach opens into their stores, not into a pile of walks. The
+// question being asked here is "who has done it and who has not", and that is
+// a question about stores — a flat list of twenty-eight walks buries it.
+// Stores with nothing back sort to the top, because those are the ones worth
+// a phone call.
 async function drillCoach(coach){
   const m = await matrix();
   const walks = m.responses.filter(w => (w.area_coach || 'Nobody assigned') === coach);
+
+  const byStore = new Map();
+  for (const w of walks){
+    if (!byStore.has(w.store_number)){
+      byStore.set(w.store_number, { store_number: w.store_number, store_name: w.store_name, walks: [] });
+    }
+    byStore.get(w.store_number).walks.push(w);
+  }
+
+  // Every store this coach owns, including the ones that have sent nothing
+  // back — a store missing from the responses is the whole point of looking.
+  for (const s of (m.stores || [])){
+    if ((s.area_coach || 'Nobody assigned') !== coach) continue;
+    if (!byStore.has(s.store_number)){
+      byStore.set(s.store_number, { store_number: s.store_number, store_name: s.store_name, walks: [] });
+    }
+  }
+
+  const stores = [...byStore.values()].sort((a, b) =>
+    a.walks.length - b.walks.length || String(a.store_number).localeCompare(String(b.store_number)));
+
   toggleDrill('drill-coach-' + cssId(coach), () => `<div class="drill">
-    <h4>${walks.length} walk${walks.length === 1 ? '' : 's'} under ${esc(coach)}</h4>
-    ${walks.map(w => walkLine(w, { showStore: true })).join('')}</div>`);
+    <h4>${esc(coach)} — ${stores.length} store${stores.length === 1 ? '' : 's'}, ${walks.length} walk${walks.length === 1 ? '' : 's'}</h4>
+    ${stores.map(s => {
+      const n = s.walks.length;
+      const avg = n ? Math.round((s.walks.reduce((t, w) => t + w.score, 0) / n) * 10) / 10 : null;
+      const outOf = n ? s.walks[0].max_score : 0;
+      return `<div class="walk openable" onclick="drillCoachStore('${jsq(coach)}','${jsq(s.store_number)}')">
+        <span class="caret">▸</span>
+        <span class="who">${esc(s.store_number)}${s.store_name ? ' <span class="when">' + esc(s.store_name) + '</span>' : ''}</span>
+        <span class="when">${n ? n + (n === 1 ? ' walk' : ' walks') : 'nothing back yet'}</span>
+        ${n ? `<span class="pill ${band(pct(avg, outOf))}">${avg}/${outOf}</span>` : ''}
+      </div>
+      <div id="drill-cs-${cssId(coach)}-${cssId(s.store_number)}"></div>`;
+    }).join('')}</div>`);
+}
+
+// One store under one coach: who took it, what they scored, what they missed.
+// Open goes to the walk itself, which is the bottom of the drill.
+async function drillCoachStore(coach, store){
+  const m = await matrix();
+  const walks = m.responses.filter(w =>
+    w.store_number === store && (w.area_coach || 'Nobody assigned') === coach);
+
+  toggleDrill(`drill-cs-${cssId(coach)}-${cssId(store)}`, () => `<div class="drill nested">
+    ${walks.length
+      ? `<h4>Store ${esc(store)} — ${walks.length} walk${walks.length === 1 ? '' : 's'}</h4>
+         ${walks.map(w => walkLine(w)).join('')}`
+      : `<h4>Store ${esc(store)} has not sent one back yet</h4>`}
+  </div>`);
 }
 
 // The one that answers "who, and what did they say instead".
@@ -1025,6 +1083,12 @@ async function drillQuestion(n){
 }
 
 const cssId = s => String(s).replace(/[^a-z0-9]/gi, '-');
+
+// A name going into a quoted JS call inside an HTML attribute gets escaped
+// twice, in that order: the browser decodes the entities first and hands
+// what is left to the JS parser. Miss the first step and O'Brien breaks the
+// handler for every row after it.
+const jsq = s => esc(String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
 
 async function loadSummary(){
   const s = await fetch('/api/audits/summary?' + query()).then(r => r.json());
