@@ -149,16 +149,16 @@
     },
     {
       "n": 13,
-      "title": "One well on this make table has no pan in it at all. Tap the empty well.",
+      "title": "What is wrong with this make table that would stop it making temperature? Tap it.",
       "type": "hotspot",
       "image": "/audits/maketable-veg-cheese.jpg",
       "hotspots": [
-        { "x": 50, "y": 60, "rx": 9, "ry": 13, "label": "An open well with no pan in it", "why": "An open well lets the cold air fall straight out. The whole rail stops holding temperature." }
+        { "x": 50, "y": 50, "rx": 9, "ry": 13, "label": "PLACEHOLDER — move this marker onto the open space", "why": "An open space with no pan in it lets the cold air fall straight out, and the rail stops holding temperature." }
       ],
       "extraTaps": 1,
       "points": 4,
       "required": true,
-      "explanation": "The well with nothing in it.\n\nAn empty well lets the cold air escape, and once that happens the line will not keep temperature — not just that space, but the pans either side of it too.\n\nA pan sitting in the well is the right answer, even an empty pan. Every space needs an insert pan or a separator bar in it, whether you are using that ingredient or not."
+      "explanation": "The open space with no pan in it.\n\nCold air falls straight out of a gap like that, and once it does the line will not keep temperature — not just that space, but the pans either side of it too.\n\nPutting a pan in it is the fix, and an empty pan counts. Every space needs a pan or a separator bar in it, whether you are using that ingredient or not."
     },
     {
       "n": 14,
