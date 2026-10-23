@@ -275,6 +275,65 @@ ${String(referenceText || '').slice(0, 120_000)}`,
   return plan;
 }
 
+// ── Changing an audit that already exists ───────────────────────────────────
+//
+// The editor can do anything this can, by hand. What this saves is the
+// tedious kind of edit that touches every question at once: move the right
+// answers around, cut it from twenty questions to twelve, make the wording
+// shorter. Those are the ones nobody does, because doing them by hand means
+// twenty careful edits and one of them will be wrong.
+//
+// It is handed the whole audit and returns the whole audit. Nothing is saved
+// — the result goes back into the editor exactly as a draft does, and Save
+// is still a person pressing a button.
+
+async function reviseTemplate({ template, instruction }) {
+  const system = `You change an existing readiness-walk question set for a
+Pizza Hut franchisee. You are given the whole thing as JSON and an
+instruction. You return the whole thing back as JSON — no prose, no code
+fence, the complete object including the parts you did not touch.
+
+${template.kind === 'test'
+  ? `This is a TEST. "correct" is ALWAYS an array of zero-based indexes into
+"choices", even for one right answer: [0], never 0. Only choice questions
+carry points; text, longtext, number, photo, datetime and scale questions
+have "points": 0 and no "correct".`
+  : `This is an AUDIT. Every question has "points": 0, and no "correct" or
+"explanation".`}
+
+Question types you may use: ${DRAFTABLE_TYPES}
+
+Rules:
+- Change only what the instruction asks for. Everything else comes back
+  exactly as it was, down to the wording.
+- Keep "n" counting from 1 with no gaps after any add or delete.
+- Never invent a food safety standard, a temperature or a rule. If the
+  instruction needs one you were not given, keep what is already there.
+- Keep "image", "hotspots", "probes", "video" and "help" on any question that
+  has them unless told to remove them. Hotspot coordinates were placed by
+  hand against a photograph; do not move them.
+- Leave questions 1 and 2 alone if they ask for a name and a store number.
+- Output the JSON object and nothing else.`;
+
+  const raw = await chat({
+    model: DRAFT_MODEL,
+    maxTokens: 32000,
+    effort: 'high',
+    system,
+    messages: [{
+      role: 'user',
+      content: `The audit as it stands:
+\`\`\`json
+${JSON.stringify(template, null, 2).slice(0, 180_000)}
+\`\`\`
+
+What to change: ${instruction}`,
+    }],
+  });
+
+  return parseDraft(raw);
+}
+
 async function draftTemplate({ ask, kind, referenceText, answers }) {
   const scoring = kind === 'test'
     ? `This is a TEST: answers have right answers and it is scored. Give each
@@ -426,5 +485,5 @@ function parseDraft(raw) {
   return def;
 }
 
-module.exports = { chat, navigate, answerAboutAudits, planTemplate, draftTemplate,
+module.exports = { chat, navigate, answerAboutAudits, planTemplate, draftTemplate, reviseTemplate,
                    parseDraft, parseJsonObject, MODEL, DRAFT_MODEL, MAX_THEMES };

@@ -878,6 +878,43 @@ async function readReferenceFiles(files) {
   return { referenceText: chunks.join('\n\n') || null, read, skipped };
 }
 
+// ── Changing an open audit by describing the change ─────────────────────────
+//
+// Takes the whole thing and gives the whole thing back. Writes nothing: the
+// result goes into the editor the same way a draft does, and Save is still
+// somebody pressing a button on a form they have read.
+router.post('/templates/revise', requireRole('rdo', 'vp'), async (req, res) => {
+  const instruction = String(req.body?.instruction || '').trim();
+  const template = req.body?.template;
+
+  if (!instruction) return res.status(400).json({ error: 'Say what you want changed.' });
+  if (instruction.length > 2000) {
+    return res.status(400).json({ error: 'That is a lot at once. Ask for a few changes at a time.' });
+  }
+  if (!template || !Array.isArray(template.questions) || !template.questions.length) {
+    return res.status(400).json({ error: 'There is nothing open to change.' });
+  }
+
+  try {
+    const def = await agent.reviseTemplate({ template, instruction });
+
+    // The id and version belong to the row, not to the model. Letting it
+    // change either would either collide with a live audit or silently
+    // overwrite a version somebody else is looking at.
+    def.id = template.id || '';
+    def.version = template.version || 0;
+    def.kind = template.kind;
+    def.coach = template.coach;
+    def.questions.forEach((q, i) => { q.n = i + 1; });
+
+    const problems = templates.validateTemplate({ ...def, id: def.id || 'draft' });
+    res.json({ template: def, problems });
+  } catch (e) {
+    console.error('audits/templates/revise:', e);
+    res.status(500).json({ error: e.message || 'P.AI could not make that change.' });
+  }
+});
+
 // ── Create, pass one: read the files and ask before building ────────────────
 router.post('/templates/draft/plan', requireRole('rdo', 'vp'),
   draftUpload.array('files', 12), async (req, res) => {
