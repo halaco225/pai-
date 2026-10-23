@@ -996,7 +996,7 @@ function toggleDrill(id, build){
 async function drillStore(store){
   const m = await matrix();
   const walks = m.responses.filter(w => w.store_number === store);
-  toggleDrill('drill-store-' + store, () => `<div class="drill">
+  toggleDrill('drill-store-' + cssId(store), () => `<div class="drill">
     <h4>${walks.length} walk${walks.length === 1 ? '' : 's'} at store ${esc(store)}</h4>
     ${walks.map(w => walkLine(w)).join('')}</div>`);
 }
@@ -1006,7 +1006,11 @@ async function drillStore(store){
 // a question about stores — a flat list of twenty-eight walks buries it.
 // Stores with nothing back sort to the top, because those are the ones worth
 // a phone call.
-async function drillCoach(coach){
+// `where` is which table was clicked — the Summary tab and the By store tab
+// both list Area Coaches, both panes are in the document at once, and an id
+// only belongs to one of them. Without it, clicking a coach here opens the
+// drill inside the hidden tab and nothing appears to happen.
+async function drillCoach(coach, where){
   const m = await matrix();
   const walks = m.responses.filter(w => (w.area_coach || 'Nobody assigned') === coach);
 
@@ -1030,30 +1034,30 @@ async function drillCoach(coach){
   const stores = [...byStore.values()].sort((a, b) =>
     a.walks.length - b.walks.length || String(a.store_number).localeCompare(String(b.store_number)));
 
-  toggleDrill('drill-coach-' + cssId(coach), () => `<div class="drill">
+  toggleDrill(`drill-${where}-coach-` + cssId(coach), () => `<div class="drill">
     <h4>${esc(coach)} — ${stores.length} store${stores.length === 1 ? '' : 's'}, ${walks.length} walk${walks.length === 1 ? '' : 's'}</h4>
     ${stores.map(s => {
       const n = s.walks.length;
       const avg = n ? Math.round((s.walks.reduce((t, w) => t + w.score, 0) / n) * 10) / 10 : null;
       const outOf = n ? s.walks[0].max_score : 0;
-      return `<div class="walk openable" onclick="drillCoachStore('${jsq(coach)}','${jsq(s.store_number)}')">
+      return `<div class="walk openable" onclick="drillCoachStore('${jsq(coach)}','${jsq(s.store_number)}','${where}')">
         <span class="caret">▸</span>
         <span class="who">${esc(s.store_number)}${s.store_name ? ' <span class="when">' + esc(s.store_name) + '</span>' : ''}</span>
         <span class="when">${n ? n + (n === 1 ? ' walk' : ' walks') : 'nothing back yet'}</span>
         ${n ? `<span class="pill ${band(pct(avg, outOf))}">${avg}/${outOf}</span>` : ''}
       </div>
-      <div id="drill-cs-${cssId(coach)}-${cssId(s.store_number)}"></div>`;
+      <div id="drill-${where}-cs-${cssId(coach)}-${cssId(s.store_number)}"></div>`;
     }).join('')}</div>`);
 }
 
 // One store under one coach: who took it, what they scored, what they missed.
 // Open goes to the walk itself, which is the bottom of the drill.
-async function drillCoachStore(coach, store){
+async function drillCoachStore(coach, store, where){
   const m = await matrix();
   const walks = m.responses.filter(w =>
     w.store_number === store && (w.area_coach || 'Nobody assigned') === coach);
 
-  toggleDrill(`drill-cs-${cssId(coach)}-${cssId(store)}`, () => `<div class="drill nested">
+  toggleDrill(`drill-${where}-cs-${cssId(coach)}-${cssId(store)}`, () => `<div class="drill nested">
     ${walks.length
       ? `<h4>Store ${esc(store)} — ${walks.length} walk${walks.length === 1 ? '' : 's'}</h4>
          ${walks.map(w => walkLine(w)).join('')}`
@@ -1151,10 +1155,10 @@ async function loadSummary(){
 
   document.getElementById('sumCoach').innerHTML = (s.coaches || []).length
     ? `<table><thead><tr><th>Area Coach</th><th>Stores</th><th>Walks</th><th>Average</th></tr></thead><tbody>` +
-      s.coaches.map(c => `<tr class="openable" onclick="drillCoach('${esc(c.coach)}')">
+      s.coaches.map(c => `<tr class="openable" onclick="drillCoach('${jsq(c.coach)}','sum')">
         <td><span class="caret">▸</span>${esc(c.coach)}</td><td>${c.stores}</td><td>${c.responses}</td>
         <td><span class="pill ${band(pct(c.averageScore, c.maxScore))}">${c.averageScore}/${c.maxScore}</span></td></tr>
-        <tr><td colspan="4" style="padding:0;border:none;"><div id="drill-coach-${cssId(c.coach)}"></div></td></tr>`).join('') +
+        <tr><td colspan="4" style="padding:0;border:none;"><div id="drill-sum-coach-${cssId(c.coach)}"></div></td></tr>`).join('') +
       '</tbody></table>'
     : '<div class="empty">Nothing yet.</div>';
 }
@@ -1235,11 +1239,11 @@ async function loadStores(){
   else {
     area.className = '';
     area.innerHTML = `<table><thead><tr><th>Area Coach</th><th>Stores</th><th>Walks</th><th>Average</th></tr></thead><tbody>` +
-      s.areas.map(r => `<tr class="openable" onclick="drillCoach('${esc(r.area_coach)}')">
+      s.areas.map(r => `<tr class="openable" onclick="drillCoach('${jsq(r.area_coach)}','area')">
         <td><span class="caret">▸</span>${esc(r.area_coach)}</td>
         <td class="muted">${r.stores}</td><td>${r.responses}</td>
         <td><span class="pill ${band(pct(r.averageScore, s.maxScore))}">${r.averageScore}/${s.maxScore}</span></td></tr>
-        <tr><td colspan="4" style="padding:0;border:none;"><div id="drill-coach-${esc(r.area_coach)}"></div></td></tr>`).join('') +
+        <tr><td colspan="4" style="padding:0;border:none;"><div id="drill-area-coach-${cssId(r.area_coach)}"></div></td></tr>`).join('') +
       '</tbody></table>';
   }
 
@@ -1247,11 +1251,11 @@ async function loadStores(){
   if (!s.stores.length){ el.className = 'empty'; el.textContent = 'Nothing yet.'; return; }
   el.className = '';
   el.innerHTML = `<table><thead><tr><th>Store</th><th>Area Coach</th><th>Walks</th><th>Average</th></tr></thead><tbody>` +
-    s.stores.map(r => `<tr class="openable" onclick="drillStore('${esc(r.store_number)}')">
+    s.stores.map(r => `<tr class="openable" onclick="drillStore('${jsq(r.store_number)}')">
       <td><span class="caret">▸</span>${esc(r.store_number)}${r.store_name ? ' <span class="muted">' + esc(r.store_name) + '</span>' : ''}</td>
       <td class="muted">${esc(r.area_coach || '—')}</td><td>${r.responses}</td>
       <td><span class="pill ${band(pct(r.averageScore, s.maxScore))}">${r.averageScore}/${s.maxScore}</span></td></tr>
-      <tr><td colspan="4" style="padding:0;border:none;"><div id="drill-store-${esc(r.store_number)}"></div></td></tr>`).join('') +
+      <tr><td colspan="4" style="padding:0;border:none;"><div id="drill-store-${cssId(r.store_number)}"></div></td></tr>`).join('') +
     '</tbody></table>';
 }
 
