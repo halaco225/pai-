@@ -53,7 +53,7 @@
       "type": "hotspot",
       "image": "/audits/ice-bath-cups.png",
       "hotspots": [
-        { "x": 83, "y": 51, "rx": 11, "ry": 26, "label": "Packed full of ice, water filled in around it", "why": "Ice packed to the rim with water around it is the one that settles at 32 degrees and stays there." }
+        { "x": 38, "y": 53, "rx": 11, "ry": 26, "label": "Packed full of ice, water filled in around it", "why": "Ice packed to the rim with water around it is the one that settles at 32 degrees and stays there." }
       ],
       "extraTaps": 0,
       "points": 3,
@@ -102,13 +102,16 @@
     },
     {
       "n": 10,
-      "title": "Four pans were just temped. Sauce 38°F. Pepperoni 40°F. Diced ham 47°F. Bacon 39°F. Which one is out of temperature?",
-      "type": "single",
-      "choices": ["Sauce at 38°F", "Pepperoni at 40°F", "Diced ham at 47°F", "Bacon at 39°F"],
-      "correct": [2],
+      "title": "These pans were just temped. Pepperoni 40°F. Italian sausage 39°F. Diced ham 47°F. Bacon 38°F. Tap the pan that is out of temperature.",
+      "type": "hotspot",
+      "image": "/audits/maketable-full.jpg",
+      "hotspots": [
+        { "x": 60, "y": 34, "rx": 8, "ry": 11, "label": "The diced ham at 47°F", "why": "47 is 6 degrees over the 41 limit. The other three are all at or below 41 and are fine." }
+      ],
+      "extraTaps": 1,
       "points": 4,
       "required": true,
-      "explanation": "Diced ham at 47 is 6 degrees over. The other three are at or below 41 and are fine.\n\n40 is not 'nearly out'. It is in standard. Do not pull product that is passing."
+      "explanation": "The diced ham at 47. That is 6 degrees over.\n\nThe other three are at or below 41 and are fine — 40 is not 'nearly out', it is in standard. Do not pull product that is passing."
     },
     {
       "n": 11,
@@ -146,16 +149,16 @@
     },
     {
       "n": 13,
-      "title": "Look at this make table. Tap what is wrong with it.",
+      "title": "One well on this make table has no pan in it at all. Tap the empty well.",
       "type": "hotspot",
-      "image": "/audits/maketable-full.jpg",
+      "image": "/audits/maketable-veg-cheese.jpg",
       "hotspots": [
-        { "x": 77, "y": 57, "rx": 9, "ry": 13, "label": "An open well with no insert pan or separator bar", "why": "Every space needs an insert pan or a separator bar. Cold air falls straight out of a gap like this." }
+        { "x": 50, "y": 60, "rx": 9, "ry": 13, "label": "An open well with no pan in it", "why": "An open well lets the cold air fall straight out. The whole rail stops holding temperature." }
       ],
       "extraTaps": 1,
       "points": 4,
       "required": true,
-      "explanation": "An open well with nothing in it.\n\nCold air sinks, so a gap like this drains the whole rail and the pans either side start creeping up. Every space needs an insert pan or a separator bar, even when you are not using it."
+      "explanation": "The well with nothing in it.\n\nAn empty well lets the cold air escape, and once that happens the line will not keep temperature — not just that space, but the pans either side of it too.\n\nA pan sitting in the well is the right answer, even an empty pan. Every space needs an insert pan or a separator bar in it, whether you are using that ingredient or not."
     },
     {
       "n": 14,
