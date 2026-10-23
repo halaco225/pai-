@@ -570,6 +570,9 @@ async function summarise(req, res) {
 
   return {
     rows, assignments, graded,
+    // Who this viewer may see, carried through so a caller can list stores
+    // that sent nothing back without working the scoping out a second time.
+    stores: scoped.stores, everywhere: scoped.everywhere,
     summary: {
       responses: rows.length,
       averageScore: read.averageScore,
@@ -634,6 +637,16 @@ router.get('/matrix', async (req, res) => {
 
   res.json({
     questions: [...seen.values()].sort((a, b) => a.n - b.n),
+    // Every store the viewer can see, not only the ones that answered. A
+    // store with nothing back is invisible in the responses and is exactly
+    // the one an Area Coach is looking for when they open their row.
+    stores: Object.entries(assignments)
+      .filter(([number]) => result.everywhere || result.stores.has(String(number)))
+      .map(([number, s]) => ({
+        store_number: number,
+        store_name: s.store_name || '',
+        area_coach: s.area_coach || '',
+      })),
     responses: rows.map((row, i) => {
       const store = assignments[row.store_number] || {};
       return {
