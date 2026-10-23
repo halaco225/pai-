@@ -459,6 +459,8 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
   <div id="pane-templates" style="display:none">
     <div class="filters" id="tplTools">
       <button class="btn primary" onclick="newTemplate()">New audit</button>
+      <button class="btn" onclick="document.getElementById('tplImport').click()">Load from a file</button>
+      <input type="file" id="tplImport" accept=".json,application/json" style="display:none" onchange="importTemplate(this)">
       <span class="muted" style="font-size:12.5px;">These are the walks you send out. Editing one never changes a score somebody already got.</span>
     </div>
     <div class="card"><div id="templateList" class="empty">Loading…</div></div>
@@ -1500,6 +1502,35 @@ async function removeTemplate(id, title){
 
 function newTemplate(){
   document.getElementById('kindAsk').className = 'on';
+}
+
+// A whole audit as a .json file. The save endpoint has always accepted a full
+// definition — this is only the way to hand it one, for an audit built
+// somewhere else rather than typed in here. It opens in the editor rather
+// than saving, so nothing reaches a store without someone reading it first.
+async function importTemplate(input){
+  const file = input.files[0];
+  input.value = '';                       // so picking the same file twice re-reads it
+  if (!file) return;
+
+  let def;
+  try {
+    def = JSON.parse(await file.text());
+  } catch (e) {
+    return alert('That file is not readable JSON: ' + e.message);
+  }
+  if (!def || !Array.isArray(def.questions) || !def.questions.length){
+    return alert('That file has no questions in it.');
+  }
+
+  SAVED_TOTAL = null;
+  EDITING = def;
+  EDITING.version = 0;                    // loading a file is never an edit of a saved version
+  EDITING.kind = def.kind || (def.questions.some(q => Number(q.points) > 0) ? 'test' : 'audit');
+  EDITING.coach = def.coach || (EDITING.kind === 'test' ? 'adam' : 'none');
+  EDITING.questions.forEach((q, i) => { q.n = i + 1; });
+
+  openEditor(`Loaded from ${file.name} — not saved yet`);
 }
 
 function startTemplate(kind){
