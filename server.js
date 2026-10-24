@@ -37,15 +37,8 @@ app.use(session({
   }
 }));
 
-// Anyone who has not picked a password yet gets one page until they do.
-// The page routes below each check the session already; this adds the second
-// half of that check in one place rather than eight.
-app.use((req, res, next) => {
-  if (!req.session.user || !req.session.user.must_change) return next();
-  if (req.path === '/change-password' || req.path.startsWith('/api/auth/')) return next();
-  if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
-  return res.redirect('/change-password');
-});
+// One page until a new password is picked. See middleware/must-change.js.
+app.use(require('./middleware/must-change'));
 
 // express.static would otherwise hand /tracker.html straight to someone the
 // /tracker route turns away. Same door, same lock.

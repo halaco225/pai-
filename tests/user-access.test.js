@@ -72,3 +72,55 @@ describe('gates', () => {
     expect(run(requireModule('tracker'), { username: 'jbuhler', tracker: true }).passed).toBe(true);
   });
 });
+
+// The change-password screen once rendered with no styling at all, because
+// the gate redirected the stylesheet too. These pin which requests it moves.
+describe('must-change gate', () => {
+  const express = require('express');
+  const request = require('supertest');
+  const gate = require('../middleware/must-change');
+
+  const appFor = user => {
+    const app = express();
+    app.use((req, _res, next) => { req.session = { user }; next(); });
+    app.use(gate);
+    app.get('/css/styles.css', (_q, r) => r.type('css').send('body{}'));
+    app.get('/dashboard', (_q, r) => r.send('dash'));
+    app.get('/change-password', (_q, r) => r.send('change'));
+    app.get('/api/tracker/me', (_q, r) => r.json({ ok: true }));
+    app.post('/api/auth/change-password', (_q, r) => r.json({ ok: true }));
+    return app;
+  };
+
+  const forced = () => appFor({ username: 'kreyes', must_change: true });
+
+  test('a stylesheet is served, not redirected', async () => {
+    const r = await request(forced()).get('/css/styles.css').set('Accept', 'text/css,*/*;q=0.1');
+    expect(r.status).toBe(200);
+    expect(r.headers['content-type']).toMatch(/css/);
+  });
+
+  test('a page is redirected', async () => {
+    const r = await request(forced()).get('/dashboard').set('Accept', 'text/html');
+    expect(r.status).toBe(302);
+    expect(r.headers.location).toBe('/change-password');
+  });
+
+  test('the change-password page itself is not redirected', async () => {
+    expect((await request(forced()).get('/change-password').set('Accept', 'text/html')).status).toBe(200);
+  });
+
+  test('the API is left to its own gate, never redirected', async () => {
+    expect((await request(forced()).get('/api/tracker/me')).status).toBe(200);
+    expect((await request(forced()).post('/api/auth/change-password')).status).toBe(200);
+  });
+
+  test('a user who is not forced is untouched', async () => {
+    const app = appFor({ username: 'hlacoste', must_change: false });
+    expect((await request(app).get('/dashboard').set('Accept', 'text/html')).status).toBe(200);
+  });
+
+  test('a signed-out visitor is untouched', async () => {
+    expect((await request(appFor(null)).get('/dashboard').set('Accept', 'text/html')).status).toBe(200);
+  });
+});

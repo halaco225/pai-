@@ -259,9 +259,16 @@ router.post('/change-password', async (req, res) => {
   const user = USER_MAP.get(req.session.user.username.toLowerCase());
   if (!user) return res.status(401).json({ error: 'Unknown account.' });
 
-  const cred = await credentialsFor(user);
-  if (!await bcrypt.compare(currentPassword || '', cred.hash)) {
-    return res.status(401).json({ error: 'Current password is incorrect.' });
+  // A forced first change does not ask for the old password again: the login
+  // that created this session proved it seconds ago, and asking twice is how
+  // someone gets locked out of their own account on day one — the browser
+  // autofills a stale saved password into a field nobody can read back.
+  // A voluntary change still has to prove it, since that session may be old.
+  if (!req.session.user.must_change) {
+    const cred = await credentialsFor(user);
+    if (!await bcrypt.compare(currentPassword || '', cred.hash)) {
+      return res.status(401).json({ error: 'Current password is incorrect.' });
+    }
   }
 
   try {
