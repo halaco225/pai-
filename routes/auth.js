@@ -1,12 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
+const db = require('../services/db');
 
-// All users share the default password: welcome1@
+// The password everyone starts on: welcome1@. It is the fallback, not the
+// stored value — once a user sets or is reset to a password, user_credentials
+// holds the hash and this constant is no longer consulted for them.
+const DEFAULT_PASSWORD = 'welcome1@';
 const DEFAULT_PASSWORD_HASH = '$2a$10$CMS4xDFNmb2.SavfTs2FHufXBO1LjX5Z4YtUWH.t8EWdZ6aHLTPuG';
 
 // ── Org hierarchy (from Master Alignment P10 REV 092926) ───────────────────
 // scope: { type, ac_name?, area?, region_coach?, rc_name?, area_coaches?, vp_name?, region_coaches? }
+// admin:      may reset anyone's password.
+// no_tracker: everything except the Tracker module, which shows "Request access".
+// must_change: forced to pick a new password before the first page loads.
 const USER_ROSTER = [
   // ── VPs ──────────────────────────────────────────────────────────────────
   { username: 'mhester', email: 'mhester@ayvazpizza.com', name: 'Matt Hester', role: 'vp',
@@ -18,6 +25,17 @@ const USER_ROSTER = [
 
   // ── RDOs (Region Coaches) ─────────────────────────────────────────────────
   { username: 'hlacoste', email: 'hlacoste@ayvazpizza.com', name: 'Harold Lacoste', role: 'rdo',
+    admin: true,
+    scope: { type: 'rdo', rc_name: 'Harold Lacoste', vp: 'Matt Hester',
+      area_coaches: ['Darian Spikes','Ebony Simmons','Jadon McNeil','Jorge Garcia','Marc Gannon','Michelle Meehan'] } },
+  // Same region scope as Harold Lacoste — see, and may reset, everything he can.
+  { username: 'jbuhler', email: 'jbuhler@ayvazpizza.com', name: 'Jillian Buhler', role: 'rdo',
+    admin: true, must_change: true,
+    scope: { type: 'rdo', rc_name: 'Harold Lacoste', vp: 'Matt Hester',
+      area_coaches: ['Darian Spikes','Ebony Simmons','Jadon McNeil','Jorge Garcia','Marc Gannon','Michelle Meehan'] } },
+  // Same view, minus Tracker.
+  { username: 'kreyes', email: 'kreyes@ayvazpizza.com', name: 'Krystina Reyes', role: 'rdo',
+    no_tracker: true, must_change: true,
     scope: { type: 'rdo', rc_name: 'Harold Lacoste', vp: 'Matt Hester',
       area_coaches: ['Darian Spikes','Ebony Simmons','Jadon McNeil','Jorge Garcia','Marc Gannon','Michelle Meehan'] } },
   { username: 'parnwine', email: 'parnwine@ayvazpizza.com', name: 'Preston Arnwine', role: 'rdo',
@@ -159,10 +177,32 @@ const USER_ROSTER = [
 
 const USER_MAP = new Map();
 USER_ROSTER.forEach((u, idx) => {
-  const user = { id: idx + 1, ...u, passwordHash: DEFAULT_PASSWORD_HASH };
+  const user = { id: idx + 1, ...u };
   USER_MAP.set(u.username.toLowerCase(), user);
   USER_MAP.set(u.email.toLowerCase(), user);
 });
+
+// What the rest of the app sees on req.session.user.
+function sessionUser(user, mustChange) {
+  return {
+    id: user.id, name: user.name, email: user.email,
+    username: user.username, role: user.role, scope: user.scope,
+    admin: !!user.admin,
+    tracker: !user.no_tracker,
+    must_change: !!mustChange
+  };
+}
+
+// A user with no credentials row has never set a password: the shared default
+// still works, and whether they are forced to change it is the roster's call.
+async function credentialsFor(user) {
+  let row = null;
+  try { row = await db.getCredential(user.username); }
+  catch (e) { console.error('[auth] credential lookup failed:', e.message); }
+  return row
+    ? { hash: row.password_hash, mustChange: row.must_change }
+    : { hash: DEFAULT_PASSWORD_HASH, mustChange: !!user.must_change };
+}
 
 router.post('/login', async (req, res) => {
   const identifier = (req.body.email || req.body.username || '').trim().toLowerCase();
@@ -172,13 +212,17 @@ router.post('/login', async (req, res) => {
   }
   const user = USER_MAP.get(identifier);
   if (!user) return res.status(401).json({ error: 'Invalid credentials.' });
-  const valid = await bcrypt.compare(password, user.passwordHash);
+
+  const cred  = await credentialsFor(user);
+  const valid = await bcrypt.compare(password, cred.hash);
   if (!valid) return res.status(401).json({ error: 'Invalid credentials.' });
-  req.session.user = {
-    id: user.id, name: user.name, email: user.email,
-    username: user.username, role: user.role, scope: user.scope
-  };
-  return res.json({ success: true, user: { name: user.name, role: user.role, username: user.username, scope: user.scope } });
+
+  req.session.user = sessionUser(user, cred.mustChange);
+  return res.json({
+    success: true,
+    mustChangePassword: cred.mustChange,
+    user: req.session.user
+  });
 });
 
 router.post('/logout', (req, res) => {
@@ -194,7 +238,96 @@ router.get('/me', (req, res) => {
   res.json({ authenticated: true, user: req.session.user });
 });
 
+// ── Changing your own password ───────────────────────────────────────────────
+//
+// Reachable while must_change is set — it is the one thing a user in that
+// state is allowed to do.
+
+function passwordProblem(pw) {
+  if (!pw || pw.length < 8) return 'New password must be at least 8 characters.';
+  if (pw === DEFAULT_PASSWORD) return 'Pick a password that is not the starting one.';
+  return null;
+}
+
+router.post('/change-password', async (req, res) => {
+  if (!req.session.user) return res.status(401).json({ error: 'Unauthorized. Please log in.' });
+  const { currentPassword, newPassword } = req.body || {};
+
+  const problem = passwordProblem(newPassword);
+  if (problem) return res.status(400).json({ error: problem });
+
+  const user = USER_MAP.get(req.session.user.username.toLowerCase());
+  if (!user) return res.status(401).json({ error: 'Unknown account.' });
+
+  const cred = await credentialsFor(user);
+  if (!await bcrypt.compare(currentPassword || '', cred.hash)) {
+    return res.status(401).json({ error: 'Current password is incorrect.' });
+  }
+
+  try {
+    await db.setCredential(user.username, await bcrypt.hash(newPassword, 10), false, user.username);
+  } catch (e) {
+    console.error('[auth] change-password failed:', e.message);
+    return res.status(503).json({ error: 'Passwords cannot be saved right now. Tell Harold.' });
+  }
+
+  req.session.user.must_change = false;
+  res.json({ success: true });
+});
+
+// ── Admin: reset anyone ──────────────────────────────────────────────────────
+
+function requireAdmin(req, res, next) {
+  if (!req.session.user) return res.status(401).json({ error: 'Unauthorized. Please log in.' });
+  if (!req.session.user.admin) return res.status(403).json({ error: 'Forbidden.' });
+  next();
+}
+
+router.get('/users', requireAdmin, async (req, res) => {
+  const rows = await db.listCredentials();
+  const byName = new Map(rows.map(r => [r.username, r]));
+  res.json({
+    users: USER_ROSTER.map(u => {
+      const r = byName.get(u.username) || null;
+      return {
+        username: u.username, name: u.name, email: u.email, role: u.role,
+        admin: !!u.admin, tracker: !u.no_tracker,
+        // No row means they are still on the starting password.
+        onDefaultPassword: !r,
+        mustChange: r ? r.must_change : !!u.must_change,
+        updatedAt: r ? r.updated_at : null,
+        updatedBy: r ? r.updated_by : null
+      };
+    })
+  });
+});
+
+// Reset to the shared starting password and force a change at next sign-in.
+// An explicit newPassword is honoured so Harold can hand someone a one-off.
+router.post('/reset-password', requireAdmin, async (req, res) => {
+  const target = String(req.body?.username || '').trim().toLowerCase();
+  const user = USER_MAP.get(target);
+  if (!user) return res.status(404).json({ error: 'No such user.' });
+
+  const pw = req.body?.newPassword;
+  if (pw) {
+    const problem = passwordProblem(pw);
+    if (problem) return res.status(400).json({ error: problem });
+  }
+
+  try {
+    const hash = pw ? await bcrypt.hash(pw, 10) : DEFAULT_PASSWORD_HASH;
+    await db.setCredential(user.username, hash, true, req.session.user.username);
+  } catch (e) {
+    console.error('[auth] reset-password failed:', e.message);
+    return res.status(503).json({ error: 'Passwords cannot be saved right now.' });
+  }
+
+  res.json({ success: true, username: user.username, password: pw ? undefined : DEFAULT_PASSWORD });
+});
+
 module.exports = router;
 
 // Export USER_ROSTER for Intel module cache generation
 module.exports.USER_ROSTER = USER_ROSTER;
+module.exports.DEFAULT_PASSWORD = DEFAULT_PASSWORD;

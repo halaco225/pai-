@@ -1386,6 +1386,62 @@ async function getWinScores(storeIds, periodEndDate) {
   return r.rows;
 }
 
+// ── User credentials ─────────────────────────────────────────────────────────
+//
+// Identity and scope stay in routes/auth.js (USER_ROSTER). Only the password
+// lives here, and only once someone has set or had reset one — a user with no
+// row still signs in with the shared default. That way adding a person to the
+// roster needs no database write.
+
+async function initCredentialsDB() {
+  const p = getPool();
+  if (!p) return;
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS user_credentials (
+      username      VARCHAR(50) PRIMARY KEY,
+      password_hash TEXT        NOT NULL,
+      must_change   BOOLEAN     NOT NULL DEFAULT FALSE,
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by    VARCHAR(50)
+    )
+  `);
+}
+
+async function getCredential(username) {
+  const p = getPool();
+  if (!p) return null;
+  const r = await p.query(
+    'SELECT username, password_hash, must_change FROM user_credentials WHERE username = $1',
+    [String(username).toLowerCase()]
+  );
+  return r.rows[0] || null;
+}
+
+async function setCredential(username, passwordHash, mustChange, updatedBy) {
+  const p = getPool();
+  if (!p) throw new Error('No database configured — passwords cannot be saved.');
+  await p.query(
+    `INSERT INTO user_credentials (username, password_hash, must_change, updated_at, updated_by)
+     VALUES ($1, $2, $3, NOW(), $4)
+     ON CONFLICT (username) DO UPDATE
+       SET password_hash = EXCLUDED.password_hash,
+           must_change   = EXCLUDED.must_change,
+           updated_at    = NOW(),
+           updated_by    = EXCLUDED.updated_by`,
+    [String(username).toLowerCase(), passwordHash, !!mustChange, updatedBy || null]
+  );
+}
+
+// Who has set their own password, and who was last reset — for the admin list.
+async function listCredentials() {
+  const p = getPool();
+  if (!p) return [];
+  const r = await p.query(
+    'SELECT username, must_change, updated_at, updated_by FROM user_credentials'
+  );
+  return r.rows;
+}
+
 module.exports = {
   getPool,
   initDB, saveAnalysis, getHistory, getRecentDaily, getAnalysisById,
@@ -1413,4 +1469,6 @@ module.exports = {
   getHutBotAuth, setHutBotAuth, markHutBotAuthInvalid,
   getSMGAuth, setSMGAuth, markSMGAuthInvalid,
   getWinScores,
+  // User credentials
+  initCredentialsDB, getCredential, setCredential, listCredentials,
 };
