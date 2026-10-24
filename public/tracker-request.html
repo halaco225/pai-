@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>P.AI — Tracker</title>
+<link rel="stylesheet" href="/css/styles.css" />
+<style>
+  .req-shell { max-width: 520px; margin: 80px auto; padding: 0 20px; text-align: center; }
+  .req-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 40px 32px;
+  }
+  .req-icon {
+    width: 56px; height: 56px; margin: 0 auto 20px;
+    background: var(--accent-glow);
+    border: 1px solid rgba(227,24,55,0.2);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px;
+  }
+  .req-card h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.3px; }
+  .req-card p { font-size: 13.5px; color: var(--text-muted); line-height: 1.7; margin-top: 12px; }
+  .req-actions { display: flex; gap: 12px; justify-content: center; margin-top: 26px; }
+  .req-btn {
+    padding: 11px 20px; font-size: 13px; font-weight: 700;
+    border-radius: 8px; text-decoration: none;
+    background: var(--accent); color: #fff; border: 0;
+  }
+  .req-btn.secondary { background: var(--surface-2); color: var(--text-primary); border: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="req-shell">
+  <div class="req-card">
+    <div class="req-icon">&#128274;</div>
+    <h1>Request access</h1>
+    <p>
+      Tracker is not turned on for your account. It holds follow-ups, one-on-ones,
+      the region matrix and two-way texting, and access is granted per person.
+    </p>
+    <p>Email Harold Lacoste to have it switched on.</p>
+    <div class="req-actions">
+      <a class="req-btn" href="mailto:hlacoste@ayvazpizza.com?subject=P.AI%20Tracker%20access%20request">Email Harold</a>
+      <a class="req-btn secondary" href="/dashboard">Back to dashboard</a>
+    </div>
+  </div>
+</div>
+</body>
+</html>

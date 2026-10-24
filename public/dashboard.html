@@ -216,13 +216,13 @@
         </a>
 
         <!-- Tracker Module -->
-        <a href="/tracker" class="module-card">
+        <a href="/tracker" class="module-card" id="trackerCard">
           <div class="module-icon">✅</div>
           <div>
             <h3>Tracker</h3>
             <p>Follow-ups, one-on-ones, the region matrix and two-way texting — scoped to you. Area Coaches see their stores, RDOs their region, VPs their territory.</p>
           </div>
-          <div class="module-cta">Open Module →</div>
+          <div class="module-cta" id="trackerCta">Open Module →</div>
         </a>
 
         <!-- Auditor Module -->
@@ -264,6 +264,14 @@
         </div>
       </div>
 
+      <div class="card" id="accountCard">
+        <div class="card-title">Your account</div>
+        <p style="color: var(--text-secondary); font-size: 13px; line-height: 1.8;">
+          <a href="/change-password">Change your password</a>
+          <span id="adminLinkWrap" style="display:none;"> &nbsp;&middot;&nbsp; <a href="/admin/users">Manage user access</a></span>
+        </p>
+      </div>
+
       <div class="card">
         <div class="card-title">About P.AI</div>
         <p style="color: var(--text-secondary); font-size: 13px; line-height: 1.8;">
@@ -299,6 +307,15 @@
     document.getElementById('userInitial').textContent =
       name.split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
     document.getElementById('welcomeName').textContent = name.split(/\s+/)[0];
+
+    // Tracker is granted per person. Someone without it sees the card as a
+    // way to ask, not as a dead link.
+    if (u.tracker === false) {
+      document.getElementById('trackerCta').textContent = 'Request access →';
+      document.getElementById('trackerCard').querySelector('p').textContent =
+        'Follow-ups, one-on-ones, the region matrix and two-way texting. Not turned on for your account yet.';
+    }
+    if (u.admin) document.getElementById('adminLinkWrap').style.display = 'inline';
   }
 
   async function logout() {

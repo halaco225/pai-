@@ -21,12 +21,12 @@ const express = require('express');
 const router  = express.Router();
 
 const rcDb  = require('../services/rc-db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireModule } = require('../middleware/auth');
 const { visiblePeople, canSee } = require('../services/rc-scope');
 
 const RC_BASE = (process.env.RC_TRACKER_URL || 'https://rc-tracker-hos2.onrender.com').replace(/\/+$/, '');
 
-router.use(requireAuth);
+router.use(requireAuth, requireModule('tracker'));
 
 function sb(res) {
   const c = rcDb.getServiceClient() || rcDb.getClient();

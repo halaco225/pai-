@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>P.AI — User Access</title>
+<link rel="stylesheet" href="/css/styles.css" />
+<style>
+  .adm-shell { max-width: 1040px; margin: 48px auto; padding: 0 20px; }
+  .adm-head h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.4px; }
+  .adm-head p { font-size: 13px; color: var(--text-muted); margin-top: 6px; line-height: 1.6; }
+  .adm-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; margin-top: 24px; overflow: hidden;
+  }
+  .adm-tools { display: flex; gap: 12px; padding: 16px; border-bottom: 1px solid var(--border); }
+  .adm-tools input {
+    flex: 1; padding: 9px 12px; font-size: 13px;
+    background: var(--surface-2); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left; padding: 11px 16px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase;
+    color: var(--text-muted); border-bottom: 1px solid var(--border);
+  }
+  td { padding: 11px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  .who { font-weight: 700; color: var(--text-primary); }
+  .sub { font-size: 12px; color: var(--text-muted); }
+  .tag {
+    display: inline-block; padding: 2px 8px; border-radius: 99px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.3px;
+    background: var(--surface-2); color: var(--text-primary); border: 1px solid var(--border);
+  }
+  .tag.warn { background: rgba(234,179,8,0.12); border-color: rgba(234,179,8,0.35); color: #a16207; }
+  .reset-btn {
+    padding: 7px 13px; font-size: 12px; font-weight: 700;
+    background: var(--accent); color: #fff; border: 0; border-radius: 7px; cursor: pointer;
+  }
+  .reset-btn:disabled { opacity: 0.5; cursor: default; }
+  .adm-msg { margin-top: 16px; font-size: 13px; padding: 11px 14px; border-radius: 6px; display: none; }
+  .adm-msg.err { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
+  .adm-msg.ok  { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: #15803d; }
+</style>
+</head>
+<body>
+<div class="adm-shell">
+  <div class="adm-head">
+    <h1>User access</h1>
+    <p>
+      Resetting puts someone back on the starting password <strong>welcome1@</strong> and forces
+      them to pick a new one the next time they sign in.
+    </p>
+  </div>
+
+  <div class="adm-msg" id="admMsg"></div>
+
+  <div class="adm-card">
+    <div class="adm-tools">
+      <input id="search" type="search" placeholder="Filter by name, username or role…" />
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Person</th><th>Role</th><th>Modules</th><th>Password</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="rows"><tr><td colspan="5" class="sub">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
+  <p class="sub" style="margin-top:18px;"><a href="/dashboard">Back to dashboard</a></p>
+</div>
+
+<script>
+  const ROLES = { rdo: 'RDO / Region Coach', area_coach: 'Area Coach', vp: 'VP Operations' };
+  let USERS = [];
+
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+  function show(kind, text) {
+    const el = document.getElementById('admMsg');
+    el.className = 'adm-msg ' + kind;
+    el.textContent = text;
+    el.style.display = 'block';
+  }
+
+  function passwordCell(u) {
+    if (u.mustChange) return '<span class="tag warn">Must change at next sign-in</span>';
+    if (u.onDefaultPassword) return '<span class="tag warn">Still on welcome1@</span>';
+    return '<span class="tag">Set ' + esc(new Date(u.updatedAt).toLocaleDateString()) + '</span>';
+  }
+
+  function render() {
+    const q = document.getElementById('search').value.trim().toLowerCase();
+    const list = USERS.filter(u => !q ||
+      (u.name + ' ' + u.username + ' ' + (ROLES[u.role] || u.role)).toLowerCase().includes(q));
+
+    document.getElementById('rows').innerHTML = list.length === 0
+      ? '<tr><td colspan="5" class="sub">No one matches that.</td></tr>'
+      : list.map(u => `
+        <tr>
+          <td>
+            <div class="who">${esc(u.name)}${u.admin ? ' <span class="tag">Admin</span>' : ''}</div>
+            <div class="sub">${esc(u.username)} · ${esc(u.email)}</div>
+          </td>
+          <td class="sub">${esc(ROLES[u.role] || u.role)}</td>
+          <td class="sub">${u.tracker ? 'All modules' : 'No Tracker'}</td>
+          <td>${passwordCell(u)}</td>
+          <td style="text-align:right;">
+            <button class="reset-btn" data-user="${esc(u.username)}">Reset</button>
+          </td>
+        </tr>`).join('');
+  }
+
+  async function load() {
+    const res = await fetch('/api/auth/users');
+    if (res.status === 401) { window.location.href = '/'; return; }
+    if (!res.ok) { show('err', 'Could not load the user list.'); return; }
+    USERS = (await res.json()).users;
+    render();
+  }
+
+  async function reset(username, btn) {
+    const u = USERS.find(x => x.username === username);
+    if (!confirm(`Reset ${u ? u.name : username} to welcome1@?\n\nThey will have to choose a new password at their next sign-in.`)) return;
+    btn.disabled = true;
+    btn.textContent = 'Resetting…';
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        show('ok', `${u ? u.name : username} is back on welcome1@ and must change it at next sign-in.`);
+        await load();
+        return;
+      }
+      show('err', data.error || 'Reset failed.');
+    } catch {
+      show('err', 'Network error. Please try again.');
+    }
+    btn.disabled = false;
+    btn.textContent = 'Reset';
+  }
+
+  document.getElementById('search').addEventListener('input', render);
+  document.getElementById('rows').addEventListener('click', e => {
+    const btn = e.target.closest('.reset-btn');
+    if (btn) reset(btn.dataset.user, btn);
+  });
+
+  load();
+</script>
+</body>
+</html>

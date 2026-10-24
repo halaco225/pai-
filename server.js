@@ -37,6 +37,20 @@ app.use(session({
   }
 }));
 
+// Anyone who has not picked a password yet gets one page until they do.
+// The page routes below each check the session already; this adds the second
+// half of that check in one place rather than eight.
+app.use((req, res, next) => {
+  if (!req.session.user || !req.session.user.must_change) return next();
+  if (req.path === '/change-password' || req.path.startsWith('/api/auth/')) return next();
+  if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
+  return res.redirect('/change-password');
+});
+
+// express.static would otherwise hand /tracker.html straight to someone the
+// /tracker route turns away. Same door, same lock.
+app.get('/tracker.html', (req, res) => res.redirect('/tracker'));
+
 // Static files
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders(res, filePath) {
@@ -47,6 +61,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
     if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
   },
 }));
+
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -60,6 +75,17 @@ app.use('/api/brief', require('./routes/brief'));
 app.use('/api/tracker', require('./routes/tracker'));
 app.use('/api/audits', require('./routes/audits'));
 app.use('/api/agent', require('./routes/agent'));
+
+app.get('/change-password', (req, res) => {
+  if (!req.session.user) return res.redirect('/');
+  res.sendFile(path.join(__dirname, 'public', 'change-password.html'));
+});
+
+app.get('/admin/users', (req, res) => {
+  if (!req.session.user) return res.redirect('/');
+  if (!req.session.user.admin) return res.status(403).send('Forbidden.');
+  res.sendFile(path.join(__dirname, 'public', 'admin-users.html'));
+});
 
 // Serve login page as default
 app.get('/', (req, res) => {
@@ -110,6 +136,9 @@ app.get('/velocity', (req, res) => {
 
 app.get('/tracker', (req, res) => {
   if (!req.session.user) return res.redirect('/');
+  if (req.session.user.tracker === false) {
+    return res.sendFile(path.join(__dirname, 'public', 'tracker-request.html'));
+  }
   res.sendFile(path.join(__dirname, 'public', 'tracker.html'));
 });
 
@@ -162,6 +191,7 @@ app.listen(PORT, async () => {
     console.log(`   Intel DB: init failed (${err.message})`);
   }
   try {
+    await require('./services/db').initCredentialsDB();
     await require('./services/audit-templates').initAuditTemplates();
     await require('./services/audit-walks').initAuditWalks();
     console.log(`   Audit templates: initialized ✓`);
