@@ -18,13 +18,24 @@
      buttons and the tail of the question, sat underneath the URL bar. Shift
      leaders reported questions they could not read and had to guess.
      100% stays first as the fallback for anything that does not know dvh. */
-  html,body{margin:0;height:100%;height:100dvh;}
+  /* Three heights, each one a fallback for the one after it. On iOS Safari a
+     percentage height resolves against the viewport with the toolbars
+     retracted, and body:overflow:hidden leaves nothing able to scroll and
+     make up the difference -- so the Back and Next buttons, and the tail of
+     the question, sat underneath the URL bar and shift leaders guessed at
+     questions they could not read.
+       100%                    anything very old
+       -webkit-fill-available  iOS Safari before 15.4
+       100dvh                  iOS 15.4+ and every current browser
+     A browser ignores the ones it does not understand, so the last one it
+     recognises wins. */
+  html,body{margin:0;height:100%;height:-webkit-fill-available;height:100dvh;}
   body{background:var(--bg);color:var(--ink);overflow:hidden;
        font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
        font-size:17px;line-height:1.5;}
 
   /* One question fills the screen: header, the question, then the buttons. */
-  .app{display:flex;flex-direction:column;height:100%;height:100dvh;max-width:640px;margin:0 auto;}
+  .app{display:flex;flex-direction:column;height:100%;height:-webkit-fill-available;height:100dvh;max-width:640px;margin:0 auto;}
 
   header{background:var(--blue);color:#fff;padding:14px 16px 12px;flex:none;}
   header img{height:26px;display:block;margin-bottom:8px;}
@@ -1557,7 +1568,7 @@ function shrink(file){
 // nothing happened, over and over, with a required photo question refusing
 // to let them past.
 async function addPhotos(q, input){
-  const max = q.maxPhotos || 3;
+  const max = q.maxPhotos || 1;
   photos[q.n] = photos[q.n] || [];
   const btn = document.getElementById('shoot');
   btn.textContent = 'Getting the picture ready…';
@@ -1683,7 +1694,7 @@ function drawOn(blob){
 
 function drawThumbs(q){
   const list = photos[q.n] || [];
-  const max = q.maxPhotos || 3;
+  const max = q.maxPhotos || 1;
   document.getElementById('thumbs').innerHTML = list.map((p, i) =>
     `<div class="thumb"><img src="${p.url}" alt="">
        <button type="button" data-i="${i}" aria-label="Remove this picture">×</button>
