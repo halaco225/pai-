@@ -12,13 +12,19 @@
     --ink:#101828; --muted:#5a6475; --line:#dfe3ea; --bg:#f4f6fa;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-  html,body{margin:0;height:100%;}
+  /* 100dvh, not 100%. On iOS Safari a percentage height resolves against the
+     viewport with the toolbars retracted, and body cannot scroll to make up
+     the difference -- so the bottom of the app, which is the Back and Next
+     buttons and the tail of the question, sat underneath the URL bar. Shift
+     leaders reported questions they could not read and had to guess.
+     100% stays first as the fallback for anything that does not know dvh. */
+  html,body{margin:0;height:100%;height:100dvh;}
   body{background:var(--bg);color:var(--ink);overflow:hidden;
        font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
        font-size:17px;line-height:1.5;}
 
   /* One question fills the screen: header, the question, then the buttons. */
-  .app{display:flex;flex-direction:column;height:100%;max-width:640px;margin:0 auto;}
+  .app{display:flex;flex-direction:column;height:100%;height:100dvh;max-width:640px;margin:0 auto;}
 
   header{background:var(--blue);color:#fff;padding:14px 16px 12px;flex:none;}
   header img{height:26px;display:block;margin-bottom:8px;}
@@ -1532,27 +1538,54 @@ function shrink(file){
     };
     // iPhone HEIC the browser cannot decode: upload the original instead.
     img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+
+    // Some iPhone HEICs fire neither onload nor onerror -- the decode just
+    // never comes back. Without this the await below never returns, the
+    // button stays on "Getting the picture ready…" for good, and the walk
+    // cannot be finished. The original uploads fine; the server does not
+    // need it shrunk, that is only to keep the bucket small.
+    setTimeout(() => { URL.revokeObjectURL(url); resolve(file); }, 15000);
+
     img.src = url;
   });
 }
 
+// Whatever happens in here, the button has to come back and the file input
+// has to be emptied. Clearing it only on success was the trap: the input
+// still held the last filename, so picking the SAME photo again fired no
+// change event at all -- they tapped the button, chose the picture, and
+// nothing happened, over and over, with a required photo question refusing
+// to let them past.
 async function addPhotos(q, input){
   const max = q.maxPhotos || 3;
   photos[q.n] = photos[q.n] || [];
   const btn = document.getElementById('shoot');
   btn.textContent = 'Getting the picture ready…';
 
-  for (const file of [...input.files]){
-    if (photos[q.n].length >= max) break;
-    let small = await shrink(file);
-    // On an annotation question the drawing is the answer, so it opens
-    // straight away rather than waiting to be found.
-    if (q.annotate) small = await drawOn(small);
-    photos[q.n].push({ file: small, url: URL.createObjectURL(small) });
+  let failed = 0;
+  try {
+    for (const file of [...input.files]){
+      if (photos[q.n].length >= max) break;
+      try {
+        let small = await shrink(file);
+        // On an annotation question the drawing is the answer, so it opens
+        // straight away rather than waiting to be found.
+        if (q.annotate) small = await drawOn(small);
+        photos[q.n].push({ file: small, url: URL.createObjectURL(small) });
+      } catch (e) {
+        // One bad picture out of three should not lose the other two.
+        console.error('photo', file && file.name, e);
+        failed++;
+      }
+    }
+  } finally {
+    input.value = '';
+    drawThumbs(q);
   }
-  input.value = '';
-  drawThumbs(q);
-  say('');
+
+  say(failed
+    ? `Could not use ${failed} of those pictures. Try taking it again with the camera rather than picking it from your library.`
+    : '');
 }
 
 // Draw on a photo and get the photo back with the drawing baked in, so
