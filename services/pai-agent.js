@@ -201,7 +201,9 @@ number      — a number. Optional "min", "max", "unit".
 scale       — a slider. Needs "min", "max", "step", and
               "minLabel"/"maxLabel". Never scored.
 datetime    — a date and time
-photo       — they take a picture. Optional "maxPhotos".
+photo       — they take a picture. One picture per question: leave
+              "maxPhotos" out. Ask for two things in two questions
+              rather than two pictures in one.
 order       — put steps in the right order. "steps": ["…"] (two or more)
 `.trim();
 

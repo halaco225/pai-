@@ -1793,7 +1793,7 @@ function addQuestion(type, preset){
   };
   if (SETS[preset]) q.choices = SETS[preset].slice();
   if (type === 'photo'){
-    q.maxPhotos = 3;
+    q.maxPhotos = 1;
     if (preset === 'annotate') q.annotate = true;
   }
   if (preset === 'changed') q.beforeImage = '';
@@ -1847,7 +1847,7 @@ function changeType(i, type){
     delete q.choices; delete q.correct; delete q.explanation;
     q.points = 0;
   }
-  if (type === 'photo' && !q.maxPhotos) q.maxPhotos = 3;
+  if (type === 'photo' && !q.maxPhotos) q.maxPhotos = 1;
   if (type === 'scale'){
     if (q.min == null) q.min = 1;
     if (q.max == null) q.max = 10;
@@ -1951,7 +1951,7 @@ function drawQuestions(){
 
     const photo = q.type !== 'photo' ? '' : `
       <label class="ed-label">How many pictures can they add</label>
-      <input type="number" min="1" max="10" value="${q.maxPhotos || 3}"
+      <input type="number" min="1" max="10" value="${q.maxPhotos || 1}"
         oninput="EDITING.questions[${i}].maxPhotos=Number(this.value)">
       <label class="ed-label">Drawing</label>
       <label style="display:flex;gap:9px;align-items:flex-start;font-size:14.5px;">
