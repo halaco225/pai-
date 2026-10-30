@@ -479,6 +479,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
       <span class="muted" id="edStatus"></span>
       <span style="flex:1"></span>
       <span class="muted" id="edPoints"></span>
+      <button class="btn" onclick="exportTemplate()">Save to a file</button>
       <button class="btn" onclick="document.getElementById('edImport').click()">Load a file</button>
       <input type="file" id="edImport" accept=".json,application/json" style="display:none" onchange="importTemplate(this)">
       <button class="btn" id="edDelete" onclick="deleteOpenTemplate()" style="display:none">Delete</button>
@@ -1594,6 +1595,20 @@ function newTemplate(){
   document.getElementById('kindAsk').className = 'on';
 }
 
+// The other half of Load a file: take the open audit out as JSON. Without
+// it the editor is a one-way door — an audit that lives in the database
+// cannot be handed to anyone, backed up, or copied into another region.
+function exportTemplate(){
+  if (!EDITING) return;
+  const name = (EDITING.id || slug(EDITING.title) || 'audit') + '.json';
+  const blob = new Blob([JSON.stringify(EDITING, null, 2) + '\n'], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+}
+
 // A whole audit as a .json file. The save endpoint has always accepted a full
 // definition — this is only the way to hand it one, for an audit built
 // somewhere else rather than typed in here. It opens in the editor rather
@@ -1839,7 +1854,6 @@ function changeType(i, type){
   if (type === 'single' || type === 'multi'){
     q.choices = q.choices && q.choices.length ? q.choices : ['',''];
     q.correct = (q.correct || []).filter(n => n < q.choices.length);
-    if (type === 'single' && q.correct.length > 1) q.correct = [q.correct[0]];
     if (q.explanation == null) q.explanation = '';
     if (!q.points) q.points = 1;
   } else {
@@ -1873,14 +1887,15 @@ function changeType(i, type){
   drawQuestions();
 }
 
+// A one-answer question can have more than one answer marked right. The
+// walker still picks one; any marked answer earns it. That is how "temp them
+// first" and "throw them out and drop fresh" can both be correct without the
+// question having to choose a favourite.
 function setCorrect(i, c, on){
   const q = EDITING.questions[i];
-  if (q.type === 'single') q.correct = on ? [c] : [];
-  else {
-    const set = new Set(q.correct || []);
-    on ? set.add(c) : set.delete(c);
-    q.correct = [...set].sort((a,b) => a-b);
-  }
+  const set = new Set(q.correct || []);
+  on ? set.add(c) : set.delete(c);
+  q.correct = [...set].sort((a, b) => a - b);
   drawQuestions();
 }
 
