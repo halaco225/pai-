@@ -1,0 +1,21 @@
+{
+  "_note": "One question, to be spliced into the existing Wing Street test. Not a template on its own — load the Wing Street test, add this as a question, renumber.",
+  "question": {
+    "n": 0,
+    "title": "You walk past the fryer and see a basket of boneless wings sitting up out of the oil. No timer is running. What do you do?",
+    "type": "single",
+    "image": "/audits/fryer-wings-no-timer.webp",
+    "choices": [
+      "You remember hearing a timer go off a minute ago, so these must be them — sauce them",
+      "Look at them. If they look cooked, they are cooked",
+      "Ask whoever is nearby whether they pulled them up and whether they are ready",
+      "Temp them to make sure they are done, then sauce them",
+      "Throw them away and drop a fresh batch"
+    ],
+    "correct": [3, 4],
+    "points": 5,
+    "required": true,
+    "help": "There is more than one right answer here. Pick the one you would actually do.",
+    "explanation": "Either temp them or bin them. Both are right, and you get the marks for either.\n\nTemping is the quicker one if you are busy: wings have to reach 165°F, and the thermometer is the only thing that can tell you they did. Binning them and dropping fresh costs you a basket and four minutes, and it is never the wrong call.\n\nThe other three are the same mistake wearing different clothes — they all end with someone deciding the wings are done without checking.\n\nA timer you heard was for somebody else's basket. Colour tells you the outside got hot, not the middle. And the person who says \"yeah those are good\" is guessing exactly like you are, only now two of you are confident.\n\nIf nobody can say for certain when a basket went in, nobody can say it is cooked. Temp it or bin it."
+  }
+}
