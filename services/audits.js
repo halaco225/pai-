@@ -271,6 +271,16 @@ function choiceScore(q, given) {
   const right = q.correct || [];
   const points = q.points || 0;
   if (!right.length || !points) return 0;
+
+  // A one-answer question can mark several answers acceptable. They choose
+  // one, and any of the marked ones earns it — so the test can say "either
+  // of these is right" instead of picking a favourite and failing the other.
+  // Pick-all is unchanged: it still wants the whole set.
+  if (q.type === 'single') {
+    const picked = asIndexes(given);
+    return picked.length === 1 && right.includes(picked[0]) ? points : 0;
+  }
+
   return sameSet(given, right) ? points : 0;
 }
 

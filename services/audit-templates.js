@@ -244,9 +244,10 @@ function validateTemplate(def) {
       if (correct.some(n => !Number.isInteger(n) || n < 0 || n >= choices.length)) {
         problems.push(`${where}: the right answer points at an answer that is not there.`);
       }
-      if (q.type === 'single' && correct.length > 1) {
-        problems.push(`${where}: a one-answer question can only have one right answer.`);
-      }
+      // A one-answer question may have more than one acceptable answer. They
+      // still pick one; any of the marked ones earns the points. "Temp them
+      // first" and "throw them out and drop fresh" are both right, and
+      // forcing a single key would mark half the people who know that wrong.
     } else if (points > 0) {
       problems.push(`${where}: only scored questions can be worth points.`);
     }

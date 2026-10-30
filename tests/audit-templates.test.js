@@ -53,10 +53,20 @@ describe('validateTemplate', () => {
       .toContain('Question 2: the right answer points at an answer that is not there.');
   });
 
-  test('a one-answer question cannot have two right answers', () => {
+  // This used to be refused. Some questions genuinely have two right
+  // answers and no favourite — temping wings before saucing them and
+  // binning them for a fresh drop are both correct — and marking one of
+  // them wrong teaches the opposite of the point. The walker still picks
+  // one; services/audits.js gives the points for any marked answer.
+  test('a one-answer question may mark more than one answer acceptable', () => {
     const def = ok(); def.questions[1].correct = [0, 1];
+    expect(validateTemplate(def)).toEqual([]);
+  });
+
+  test('those answers still have to exist', () => {
+    const def = ok(); def.questions[1].correct = [0, 9];
     expect(validateTemplate(def))
-      .toContain('Question 2: a one-answer question can only have one right answer.');
+      .toContain('Question 2: the right answer points at an answer that is not there.');
   });
 
   test('only a scored question can carry points', () => {
