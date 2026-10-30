@@ -479,6 +479,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
       <span class="muted" id="edStatus"></span>
       <span style="flex:1"></span>
       <span class="muted" id="edPoints"></span>
+      <button class="btn" onclick="exportTemplate()">Save to a file</button>
       <button class="btn" onclick="document.getElementById('edImport').click()">Load a file</button>
       <input type="file" id="edImport" accept=".json,application/json" style="display:none" onchange="importTemplate(this)">
       <button class="btn" id="edDelete" onclick="deleteOpenTemplate()" style="display:none">Delete</button>
@@ -1592,6 +1593,20 @@ async function removeTemplate(id, title){
 
 function newTemplate(){
   document.getElementById('kindAsk').className = 'on';
+}
+
+// The other half of Load a file: take the open audit out as JSON. Without
+// it the editor is a one-way door — an audit that lives in the database
+// cannot be handed to anyone, backed up, or copied into another region.
+function exportTemplate(){
+  if (!EDITING) return;
+  const name = (EDITING.id || slug(EDITING.title) || 'audit') + '.json';
+  const blob = new Blob([JSON.stringify(EDITING, null, 2) + '\n'], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
 }
 
 // A whole audit as a .json file. The save endpoint has always accepted a full

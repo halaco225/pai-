@@ -299,7 +299,13 @@ ${template.kind === 'test'
   ? `This is a TEST. "correct" is ALWAYS an array of zero-based indexes into
 "choices", even for one right answer: [0], never 0. Only choice questions
 carry points; text, longtext, number, photo, datetime and scale questions
-have "points": 0 and no "correct".`
+have "points": 0 and no "correct".
+
+A "single" question may mark MORE THAN ONE answer acceptable. The walker
+still picks one, and any marked answer earns full points. Use that where a
+question genuinely has two right answers and no favourite, rather than
+choosing one and marking the other wrong. A "multi" still means pick all
+that apply, and wants the whole set.`
   : `This is an AUDIT. Every question has "points": 0, and no "correct" or
 "explanation".`}
 
@@ -343,8 +349,12 @@ real question "points" (usually 1, up to 5 for something critical) and write a
 one-line "explanation" of why that is the answer.
 
 "correct" is ALWAYS an array of zero-based indexes into "choices", even when
-there is one right answer: "correct": [0], not "correct": 0. A "single"
-question may have exactly one entry; a "multi" may have more.
+there is one right answer: "correct": [0], not "correct": 0.
+
+A "single" question may mark more than one answer acceptable — the walker
+picks one and any marked answer earns full points. Use that where there are
+genuinely two right answers and no favourite. A "multi" means pick all that
+apply and wants the whole set.
 
 Only choice questions can be scored. Give "points": 0 to text, longtext,
 number, photo, datetime and scale questions, and no "correct" — there is
