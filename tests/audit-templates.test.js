@@ -174,3 +174,43 @@ describe('questions that are not scored', () => {
     expect(isScored(scored.questions[1])).toBe(true);
   });
 });
+
+// A picture used to survive only on the two types where you tap it. Everywhere
+// else the editor would accept an image, drop it on save, and the walker would
+// get a question about a photograph it could not see. `video` was already a
+// field any question could carry; this is the same idea for stills.
+describe('a picture on an ordinary question', () => {
+  const { publicForm } = require('../services/audits');
+
+  const withPicture = () => ({
+    id: 'mitt', title: 'Food Safety Mitt', description: '',
+    questions: [
+      { title: 'Where is the mitt now?', type: 'single', points: 5, required: true,
+        image: '/audits/pepper-step-5-drop.webp',
+        choices: ['Still on her hand', 'In the bin with the bag'],
+        correct: [1], explanation: 'It goes in the bin with the bag.' },
+    ],
+  });
+
+  test('survives a save', () => {
+    const clean = cleanTemplate(withPicture());
+    expect(clean.questions[0].image).toBe('/audits/pepper-step-5-drop.webp');
+  });
+
+  test('reaches the walker', () => {
+    const form = publicForm(cleanTemplate(withPicture()));
+    expect(form.questions[0].image).toBe('/audits/pepper-step-5-drop.webp');
+  });
+
+  test('but the answer key does not travel with it', () => {
+    const form = publicForm(cleanTemplate(withPicture()));
+    expect(form.questions[0].correct).toBeUndefined();
+    expect(form.questions[0].explanation).toBeUndefined();
+  });
+
+  test('a question with no picture gains no empty one', () => {
+    const def = withPicture();
+    delete def.questions[0].image;
+    expect(cleanTemplate(def).questions[0].image).toBeUndefined();
+  });
+});

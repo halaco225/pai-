@@ -87,6 +87,9 @@ function publicForm(def) {
       // What to look for is wording, not an answer, so it goes with the form.
       ...(q.help ? { help: q.help } : {}),
       ...(q.video ? { video: q.video } : {}),
+      // Safe to send: a picture to look at gives nothing away. The types where
+      // the picture carries the answer key set their own further down.
+      ...(q.image ? { image: q.image } : {}),
       ...(q.type === 'scale' ? {
         min: Number(q.min ?? 1), max: Number(q.max ?? 10), step: Number(q.step || 1),
         minLabel: q.minLabel || '', maxLabel: q.maxLabel || '',
