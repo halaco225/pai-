@@ -25,22 +25,22 @@
     },
     {
       "n": 2,
-      "title": "The mitt is on. Which hand opens the cooler door?",
+      "title": "Pepper is at the cooler with her mitt on. Look at her hands — something has already gone wrong. What is it?",
       "type": "single",
       "image": "/audits/pepper-step-2-cooler.webp",
       "choices": [
-        "The bare hand, so the mitted hand stays clean for the bag",
-        "The mitted hand, since it is already covered",
-        "Either one, as long as she washes up afterwards",
-        "Neither — she should use a cloth on the handle"
+        "Her mitted hand is flat against the cooler door",
+        "She has not put the mitt on yet",
+        "She should be wearing a mitt on both hands",
+        "Nothing is wrong — this is what it should look like"
       ],
       "correct": [
         0
       ],
       "points": 5,
       "required": true,
-      "help": "One hand is doing a job. The other is being kept out of the way on purpose.",
-      "explanation": "The bare hand opens the door. Look at the picture: the mitted hand is held up and clear, touching nothing.\n\nThat door handle is one of the dirtiest things in the kitchen — every hand in the building has been on it. The moment the mitt touches it, the mitt is no cleaner than the handle, and it may as well not be there.\n\nThis is the step people skip, because opening a door with your awkward hand feels silly. It is the whole reason the mitt works."
+      "help": "Only one of her hands should be touching that door.",
+      "explanation": "The mitted hand is on the door. That is the mistake, and it is the easiest one in the whole process to make.\n\nA cooler door is one of the dirtiest things in the kitchen — every hand in the building has been on it all day. The moment the mitt touches it, the mitt is no cleaner than the door. The next thing that hand touches is raw product, so the mitt has stopped being a barrier and become a carrier.\n\nThe bare hand opens the door. The mitted hand stays up and clear and touches nothing but the bag.\n\nAnd once it has touched something, that mitt is finished — take it off, throw it away, start again with a fresh one. They cost pennies. Carrying on with a mitt that has touched the door is worse than wearing no mitt at all, because now you think you are protected.\n\nNobody does this out of laziness. It happens when you are moving fast and using the hand that is already there."
     },
     {
       "n": 3,
@@ -89,7 +89,7 @@
         "Keep the mitt on — there is still a basket to drop",
         "Mitt in her pocket, ready for the next portion",
         "Both go in the bin, right now, before she touches anything else",
-        "Rinse the mitt in the sanitiser bucket and use it again"
+        "Rinse the mitt in the sanitizer bucket and use it again"
       ],
       "correct": [
         2
@@ -97,7 +97,7 @@
       "points": 5,
       "required": true,
       "help": "This picture is from a different store, so the room looks different. The bin is the thing to look at.",
-      "explanation": "Both go in the bin, together, straight away.\n\nThe bag and the mitt are one disposable item. The moment the bag is empty the mitt has done its job, and every second it stays on your hand is a second it can touch something it should not.\n\nThe sanitiser bucket is for cloths and surfaces, not for a single-use mitt — rinsing one and carrying on is worse than not wearing it, because you think you are protected. And a mitt in a pocket comes out dirty.\n\nThis is the step that disappears when the store is busy. It is the one to be stubborn about."
+      "explanation": "Both go in the bin, together, straight away.\n\nThe bag and the mitt are one disposable item. The moment the bag is empty the mitt has done its job, and every second it stays on your hand is a second it can touch something it should not.\n\nThe sanitizer bucket is for cloths and surfaces, not for a single-use mitt — rinsing one and carrying on is worse than not wearing it, because you think you are protected. And a mitt in a pocket comes out dirty.\n\nThis is the step that disappears when the store is busy. It is the one to be stubborn about."
     },
     {
       "n": 6,
@@ -123,7 +123,7 @@
       "title": "Put the whole thing in order, start to finish.",
       "type": "order",
       "steps": [
-        "Wash and sanitise your hands at the dedicated hand sink",
+        "Wash and sanitize your hands at the dedicated hand sink",
         "Put a Food Safety Mitt on one hand",
         "Open the cooler with the bare hand and lift the bag out with the mitted one",
         "Tip the product into a basket sitting on a sheet pan on the fry prep station",
