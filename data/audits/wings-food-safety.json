@@ -3,8 +3,20 @@
   "title": "Wings Food Safety Quiz",
   "description": "Handling raw wings: hand washing, the Food Safety Mitt, the fryer process, the blue towel and keeping raw away from ready-to-eat. Answer each question, then check it. You will see straight away whether you got it right and why.",
   "questions": [
-    { "n": 1, "title": "Your first and last name", "type": "text", "points": 0, "required": true },
-    { "n": 2, "title": "Your store number", "type": "text", "points": 0, "required": true },
+    {
+      "n": 1,
+      "title": "Your first and last name",
+      "type": "text",
+      "points": 0,
+      "required": true
+    },
+    {
+      "n": 2,
+      "title": "Your store number",
+      "type": "text",
+      "points": 0,
+      "required": true
+    },
     {
       "n": 3,
       "title": "What is the very first step before handling any raw wing product?",
@@ -16,7 +28,9 @@
         "Wash and sanitize hands at the dedicated hand sink",
         "Pull wings from freezer"
       ],
-      "correct": [2],
+      "correct": [
+        2
+      ],
       "explanation": "Hands first, at the hand sink, every time. Gloves go on after — a glove pulled over an unwashed hand just moves the germs somewhere you cannot see them.",
       "required": true
     },
@@ -31,7 +45,9 @@
         "To keep the wings from thawing",
         "To maintain plastic-to-plastic contact with the bag and prevent bare-hand contact with raw chicken"
       ],
-      "correct": [3],
+      "correct": [
+        3
+      ],
       "explanation": "It is not for the cold. It keeps plastic on plastic so your skin never touches raw chicken, which is how raw chicken ends up on everything you touch next.",
       "required": true
     },
@@ -40,8 +56,13 @@
       "title": "When getting wings out of the freezer, you should use the hand that has the Mitt on it to open the freezer door.",
       "type": "single",
       "points": 10,
-      "choices": ["True", "False"],
-      "correct": [1],
+      "choices": [
+        "True",
+        "False"
+      ],
+      "correct": [
+        1
+      ],
       "explanation": "The other hand opens the door. The mitt hand is the one going near the raw product — put it on the door handle and you have just made the handle a raw chicken surface for everybody after you.",
       "required": true
     },
@@ -56,23 +77,27 @@
         "Rinse it and reuse it",
         "Set it on the prep station"
       ],
-      "correct": [1],
+      "correct": [
+        1
+      ],
       "explanation": "Shake it off and bin it with the bag. It touched raw chicken, so it is finished — hanging it back up or rinsing it carries that straight to the next person.",
       "required": true
     },
     {
       "n": 7,
-      "title": "Which hand do you use to grab wings when wearing the Food Safety Mitt?",
+      "title": "You pull a bag of wings out of the freezer and it has split — there is raw product and ice across the prep station. What do you do?",
       "type": "single",
       "points": 10,
       "choices": [
-        "Your non-dominant hand only",
-        "Either hand — it does not matter",
-        "Both hands",
-        "The hand with the mitt on it"
+        "Wipe it up with the nearest towel and carry on",
+        "Work at the other end of the station and come back to it",
+        "Stop, clear it, clean and sanitize the station with the blue towel, then wash your hands before you touch anything else",
+        "Bin the bag and keep going — it is the raw area anyway"
       ],
-      "correct": [3],
-      "explanation": "Only the mitt hand goes near the wings. The whole point is one hand stays clean for doors, handles and everything else.",
+      "correct": [
+        2
+      ],
+      "explanation": "Stop and deal with it first. Raw juice goes on to whatever touches that station next, and \"it is only the raw area\" is how it reaches the make line on somebody's sleeve. Clean it, sanitize it with the blue towel, wash your hands, then carry on.",
       "required": true
     },
     {
@@ -86,7 +111,9 @@
         "Over the sheet pan at the fry prep station",
         "Over the fryer so crumbs fall into the oil"
       ],
-      "correct": [2],
+      "correct": [
+        2
+      ],
       "explanation": "Over the sheet pan at the fry prep station, so whatever falls lands somewhere you can clean. Over the fryer it goes in the oil, over the sink or the freezer lid it goes everywhere.",
       "required": true
     },
@@ -101,7 +128,9 @@
         "Only if they touched their face",
         "Before product finishes cooking AND before moving to any non-prep area"
       ],
-      "correct": [3],
+      "correct": [
+        3
+      ],
       "explanation": "Before the product is out of the fryer, and again before going anywhere else in the kitchen. Waiting for the end of the batch means raw chicken has been on your hands the whole time.",
       "required": true
     },
@@ -116,23 +145,34 @@
         "Blue towel — used on raw prep areas only",
         "Blue towel — used anywhere in the kitchen"
       ],
-      "correct": [2],
+      "correct": [
+        2
+      ],
       "explanation": "Blue, and only on raw prep areas. The colour is the whole system — it is how anyone can see at a glance that a towel has been on raw chicken.",
       "required": true
     },
     {
       "n": 11,
-      "title": "Which surfaces must be wiped with the blue sanitizer towel during the sanitization step?",
-      "type": "single",
+      "title": "Which of these get wiped with the blue sanitizer towel? Select all that apply.",
+      "type": "multi",
       "points": 10,
       "choices": [
-        "Fryer, fryer control panel, fry basket handle, bump bar pad, prep station, and freezer door handle",
-        "Fryer and freezer door handle only",
-        "Just the prep station surface",
-        "Prep station and sink area"
+        "The fryer and its control panel",
+        "The fry basket handle",
+        "The bump bar pad",
+        "The prep station surface",
+        "The freezer door handle",
+        "The make table, if you touched it with the same hands",
+        "The walk-in door handle on your way out"
       ],
-      "correct": [0],
-      "explanation": "All six. The ones people forget are the control panel and the bump bar pad, because they are touched with the same hands and never look dirty.",
+      "correct": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "explanation": "All five in the raw area, every time. The two people forget are the control panel and the bump bar pad — touched all shift with the same hands and they never look dirty. The last two are the test: the blue towel never leaves the raw area. Wash your hands instead.",
       "required": true
     },
     {
@@ -146,7 +186,9 @@
         "Once per shift",
         "Only when visibly soiled"
       ],
-      "correct": [0],
+      "correct": [
+        0
+      ],
       "explanation": "Every two hours at the least, and sooner if it is building up. \"When it looks dirty\" is too late — by then it has been dirty for a while.",
       "required": true
     },
@@ -161,8 +203,48 @@
         "Use it only on raw prep areas — never on ready-to-eat food areas or shared surfaces",
         "Store it on top of the fryer between uses"
       ],
-      "correct": [2],
+      "correct": [
+        2
+      ],
       "explanation": "It never leaves the raw area. One wipe of the make table with a blue towel takes raw chicken straight to food that is going out the door as it is.",
+      "required": true
+    },
+    {
+      "n": 14,
+      "title": "You walk past the fryer and see a basket of wings sitting up out of the oil. No timer is running. What do you do?",
+      "type": "single",
+      "points": 10,
+      "image": "/audits/fryer-wings-no-timer.webp",
+      "choices": [
+        "You heard a timer go off a minute ago, so these must be them — sauce them",
+        "Look at them. If they look cooked, they are cooked",
+        "Ask whoever is nearby whether they pulled them up and whether they are ready",
+        "Temp them to make sure they are done, then sauce them",
+        "Throw them away and drop a fresh basket"
+      ],
+      "correct": [
+        3,
+        4
+      ],
+      "help": "There is more than one right answer here. Pick the one you would actually do.",
+      "explanation": "Temp them or bin them — both are right and you get the marks for either. Wings have to reach 165°F and a thermometer is the only thing that can tell you they did. The other three all end with somebody deciding raw chicken is cooked without checking. A timer you heard was for someone else's basket, colour only tells you the outside got hot, and \"yeah those are good\" is a guess with two people behind it.",
+      "required": true
+    },
+    {
+      "n": 15,
+      "title": "Watch Pepper take wings from the cooler to the fryer. Did she follow the process correctly?",
+      "type": "single",
+      "points": 10,
+      "video": "/audits/pepper-mitt-process.mp4",
+      "choices": [
+        "Yes — every step was right",
+        "No — she got something wrong"
+      ],
+      "correct": [
+        1
+      ],
+      "help": "Watch it through, as many times as you like. Keep your eyes on her hands.",
+      "explanation": "No. At the cooler her mitted hand is flat against the door, and a cooler door is one of the dirtiest things in the kitchen — from that moment the mitt is carrying rather than protecting, and the next thing it touches is raw product.\n\nEverything after it is right: the bag goes straight to the basket, the basket is on a sheet pan and not over the fryer, and the bag and mitt are in the trash before she goes near the oil. One slip at the start undoes all of it. If the mitt touches anything, take it off and get a fresh one.",
       "required": true
     }
   ]
