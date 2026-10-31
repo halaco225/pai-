@@ -1,7 +1,7 @@
 {
   "id": "wings-food-safety",
   "title": "Wings Food Safety Quiz",
-  "description": "Handling raw wings: hand washing, the Food Safety Mitt, the fryer process, the blue towel and keeping raw away from ready-to-eat. Answer each question, then check it. You will see straight away whether you got it right and why.",
+  "description": "Handling raw wings: hand washing, the fryer, and the two ways of keeping raw chicken off everything else — the Food Safety Mitt or the blue towel. They are alternatives, not a pair, and the towel is also how you put a mistake right. Answer each question, then check it. You will see straight away whether you got it right and why.",
   "questions": [
     {
       "n": 1,
@@ -21,7 +21,7 @@
       "n": 3,
       "title": "What is the very first step before handling any raw wing product?",
       "type": "single",
-      "points": 10,
+      "points": 1,
       "choices": [
         "Grab the fry basket",
         "Put on gloves",
@@ -35,42 +35,27 @@
       "required": true
     },
     {
-      "n": 4,
-      "title": "What is the purpose of the Food Safety Mitt when grabbing wings?",
+      "title": "A cook takes wings out of the freezer bare-handed, then washes up and wipes the area down with the blue towel. Is that allowed?",
       "type": "single",
-      "points": 10,
+      "points": 1,
       "choices": [
-        "To protect your hand from the cold freezer",
-        "To keep your hands dry",
-        "To keep the wings from thawing",
-        "To maintain plastic-to-plastic contact with the bag and prevent bare-hand contact with raw chicken"
-      ],
-      "correct": [
-        3
-      ],
-      "explanation": "It is not for the cold. It keeps plastic on plastic so your skin never touches raw chicken, which is how raw chicken ends up on everything you touch next.",
-      "required": true
-    },
-    {
-      "n": 5,
-      "title": "When getting wings out of the freezer, you should use the hand that has the Mitt on it to open the freezer door.",
-      "type": "single",
-      "points": 10,
-      "choices": [
-        "True",
-        "False"
+        "No — the Food Safety Mitt is the only approved way",
+        "Yes — the mitt and the blue towel process are two ways of doing the same job. Either one, as long as you do all of it",
+        "Yes, but only if a manager has said so",
+        "No — you have to do both, every time"
       ],
       "correct": [
         1
       ],
-      "explanation": "The other hand opens the door. The mitt hand is the one going near the raw product — put it on the door handle and you have just made the handle a raw chicken surface for everybody after you.",
-      "required": true
+      "explanation": "Either one, done fully. They are not two steps, they are two routes.\n\nThe mitt stops it happening: plastic on plastic, so your skin never touches raw chicken and nothing from your hands reaches the product.\n\nThe blue towel does the same job from the other end: you handle the product, then you wash your hands and sanitize every surface you touched before anything else happens there.\n\nThe confusion worth clearing up is that you need both, or that the mitt is the only real way. You do not, and it is not. What you cannot do is half of either.\n\nIt is also why the blue towel is worth knowing even on a mitt day — when the mitt touches something it should not, the towel is how you put it right.",
+      "required": true,
+      "n": 4
     },
     {
-      "n": 6,
+      "n": 5,
       "title": "After using the Food Safety Mitt to remove wings from the freezer, what do you do with it?",
       "type": "single",
-      "points": 10,
+      "points": 1,
       "choices": [
         "Hang it back up for the next cook",
         "Shake it off and discard it along with the plastic bag",
@@ -84,27 +69,28 @@
       "required": true
     },
     {
-      "n": 7,
-      "title": "You pull a bag of wings out of the freezer and it has split — there is raw product and ice across the prep station. What do you do?",
+      "title": "A bag of wings splits as you pull it out. There is raw product across the prep station, and you had a hand on the freezer door and the fryer controls on the way. What do you do?",
       "type": "single",
       "points": 10,
       "choices": [
-        "Wipe it up with the nearest towel and carry on",
-        "Work at the other end of the station and come back to it",
-        "Stop, clear it, clean and sanitize the station with the blue towel, then wash your hands before you touch anything else",
+        "Wipe the spill up with the nearest towel and carry on",
+        "Clean and sanitize where the spill landed, then carry on",
+        "Clean it up, then go back over every surface you touched with the blue towel — station, freezer handle, fryer controls, all of it — and wash your hands before you touch anything else",
         "Bin the bag and keep going — it is the raw area anyway"
       ],
       "correct": [
         2
       ],
-      "explanation": "Stop and deal with it first. Raw juice goes on to whatever touches that station next, and \"it is only the raw area\" is how it reaches the make line on somebody's sleeve. Clean it, sanitize it with the blue towel, wash your hands, then carry on.",
-      "required": true
+      "help": "Think about everywhere your hands have been since you opened the freezer, not just where the wings landed.",
+      "explanation": "Everywhere you touched, not just where it landed.\n\nThe spill is the obvious part and it is not the dangerous part. The freezer handle and the fryer controls are what the next person puts their hands on, and neither of them will look like anything happened.\n\nThis is the blue towel earning its place. It is not only a cleaning step at the end of a job — it is how you undo a mistake. Something went wrong, so you go back over everything that could have carried it, sanitize it, wash your hands, and start again clean.\n\n\"It is the raw area anyway\" is the answer that gets somebody sick. The raw area is where you are most careful, not least.",
+      "required": true,
+      "n": 6
     },
     {
-      "n": 8,
+      "n": 7,
       "title": "Where must you fill the fry basket with wings before dropping them?",
       "type": "single",
-      "points": 10,
+      "points": 1,
       "choices": [
         "Over the sink",
         "On top of the freezer lid",
@@ -118,10 +104,10 @@
       "required": true
     },
     {
-      "n": 9,
+      "n": 8,
       "title": "If a cook is NOT using the Food Safety Mitt process, when must they wash and sanitize hands and wipe down the area?",
       "type": "single",
-      "points": 10,
+      "points": 1,
       "choices": [
         "Every 30 minutes on a set schedule",
         "Only at the end of the batch",
@@ -135,27 +121,27 @@
       "required": true
     },
     {
-      "n": 10,
-      "title": "What colour sanitizer towel is used to clean the raw prep area, and where can it be used?",
+      "title": "The blue sanitizer towel — where may it be used?",
       "type": "single",
-      "points": 10,
+      "points": 1,
       "choices": [
-        "Green towel — used on the fryer and prep station",
-        "Any colour towel — colour does not matter",
-        "Blue towel — used on raw prep areas only",
-        "Blue towel — used anywhere in the kitchen"
+        "Anywhere in the kitchen that needs sanitizing",
+        "Anywhere, as long as you rinse it out first",
+        "Only in the raw prep area — never the make table, never anywhere ready-to-eat food is handled",
+        "Only on the fryer and the freezer door"
       ],
       "correct": [
         2
       ],
-      "explanation": "Blue, and only on raw prep areas. The colour is the whole system — it is how anyone can see at a glance that a towel has been on raw chicken.",
-      "required": true
+      "explanation": "Raw area only, and that is the whole point of it being blue — anyone can see at a glance that a towel has been on raw chicken.\n\nOne wipe of the make table with a blue towel takes raw chicken straight onto food that goes out of the door exactly as it is. Rinsing does not fix it. The towel stays where it belongs.",
+      "required": true,
+      "n": 9
     },
     {
-      "n": 11,
+      "n": 10,
       "title": "Which of these get wiped with the blue sanitizer towel? Select all that apply.",
       "type": "multi",
-      "points": 10,
+      "points": 1,
       "choices": [
         "The fryer and its control panel",
         "The fry basket handle",
@@ -176,10 +162,10 @@
       "required": true
     },
     {
-      "n": 12,
+      "n": 11,
       "title": "How often must the raw prep area be wiped down during continuous use?",
       "type": "single",
-      "points": 10,
+      "points": 1,
       "choices": [
         "Every two hours, or more often as build-up occurs",
         "Every 30 minutes",
@@ -193,27 +179,10 @@
       "required": true
     },
     {
-      "n": 13,
-      "title": "What is the most critical rule about the blue sanitizer towel to prevent cross-contamination?",
-      "type": "single",
-      "points": 10,
-      "choices": [
-        "Rinse it between uses",
-        "Replace it every hour",
-        "Use it only on raw prep areas — never on ready-to-eat food areas or shared surfaces",
-        "Store it on top of the fryer between uses"
-      ],
-      "correct": [
-        2
-      ],
-      "explanation": "It never leaves the raw area. One wipe of the make table with a blue towel takes raw chicken straight to food that is going out the door as it is.",
-      "required": true
-    },
-    {
-      "n": 14,
+      "n": 12,
       "title": "You walk past the fryer and see a basket of wings sitting up out of the oil. No timer is running. What do you do?",
       "type": "single",
-      "points": 10,
+      "points": 1,
       "image": "/audits/fryer-wings-no-timer.webp",
       "choices": [
         "You heard a timer go off a minute ago, so these must be them — sauce them",
@@ -231,21 +200,23 @@
       "required": true
     },
     {
-      "n": 15,
       "title": "Watch Pepper take wings from the cooler to the fryer. Did she follow the process correctly?",
       "type": "single",
-      "points": 10,
+      "points": 1,
       "video": "/audits/pepper-mitt-process.mp4",
       "choices": [
         "Yes — every step was right",
-        "No — she got something wrong"
+        "No — her mitted hand was on the cooler door",
+        "No — she filled the basket over the fryer",
+        "No — she kept the mitt on at the fryer"
       ],
       "correct": [
         1
       ],
-      "help": "Watch it through, as many times as you like. Keep your eyes on her hands.",
-      "explanation": "No. At the cooler her mitted hand is flat against the door, and a cooler door is one of the dirtiest things in the kitchen — from that moment the mitt is carrying rather than protecting, and the next thing it touches is raw product.\n\nEverything after it is right: the bag goes straight to the basket, the basket is on a sheet pan and not over the fryer, and the bag and mitt are in the trash before she goes near the oil. One slip at the start undoes all of it. If the mitt touches anything, take it off and get a fresh one.",
-      "required": true
+      "help": "Watch it through as many times as you like. Keep your eyes on her hands.",
+      "explanation": "Her mitted hand is flat against the cooler door. From that moment the mitt is carrying rather than protecting, and the next thing it touches is raw product.\n\nThe other two are worth knowing as the things that did not happen: she fills the basket on a sheet pan and not over the fryer, and the mitt is in the trash before she goes anywhere near the oil.\n\n**Putting it right.** Take the mitt off and bin it. Wipe the cooler door handle with the blue towel, and anything else that hand has been on since. Wash and sanitize your hands. Then start again with a fresh mitt.\n\nThat is the whole point of knowing both processes. A mistake with the mitt is not a disaster — it is a job for the blue towel.",
+      "required": true,
+      "n": 13
     }
   ]
 }
