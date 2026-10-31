@@ -56,6 +56,8 @@
   /* A clip to watch before answering. It loops, because the whole point of
      one of these questions is watching it twice. */
   .clip{margin:0 0 16px;}
+  .pic{margin:0 0 16px;}
+  .pic img{width:100%;border-radius:12px;border:1.5px solid var(--line);display:block;}
   .clip video{width:100%;border-radius:12px;border:1.5px solid var(--line);
               background:#000;display:block;}
   .clip .again{display:block;width:100%;margin-top:8px;padding:11px;border-radius:10px;
@@ -665,6 +667,7 @@ function draw(dir){
       <div class="q-title">${esc(q.title)}</div>
       ${q.help ? `<div class="lookfor"><b>What to look for</b>${esc(q.help)}</div>` : ''}
       ${clipHtml(q)}
+      ${picHtml(q)}
       ${body(q)}
       ${isGraded(q) && !verdict ? `<div class="lockline">✎️
         <span>Change your answer as many times as you like. <b>Checking it locks it in.</b></span></div>` : ''}
@@ -763,6 +766,16 @@ function clipHtml(q){
     <video id="clip" src="${esc(q.video)}" controls playsinline preload="metadata"></video>
     <button type="button" class="again" id="clipAgain">Watch it again</button>
   </div>`;
+}
+
+// A picture to look over before answering — the still half of clipHtml. The
+// hotspot and picture-assign types draw their own, because there the picture
+// is what you tap rather than what you look at.
+function picHtml(q){
+  if (!q.image) return '';
+  if (q.type === 'hotspot') return '';
+  if (q.type === 'assign' && q.layout === 'picture') return '';
+  return `<div class="pic"><img src="${esc(q.image)}" alt=""></div>`;
 }
 
 function body(q){

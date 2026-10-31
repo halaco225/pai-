@@ -294,6 +294,12 @@ function cleanTemplate(def) {
       const video = String(q.video || '').trim();
       if (video) out.video = video;
 
+      // A picture to look at before answering. Any question type can have one,
+      // for the same reason as the clip above. hotspot and picture-assign set
+      // this themselves further down, where the picture IS the answer surface.
+      const image = String(q.image || '').trim();
+      if (image) out.image = image;
+
       if (q.type === 'number') {
         if (q.min !== '' && q.min != null) out.min = Number(q.min);
         if (q.max !== '' && q.max != null) out.max = Number(q.max);

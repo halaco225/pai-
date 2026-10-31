@@ -1,0 +1,140 @@
+{
+  "id": "food-safety-mitt",
+  "title": "The Food Safety Mitt",
+  "description": "Six pictures from our own kitchens, one step each. This is not a memory test — every answer is in the picture above it. The point is that the mitt is a food safety tool, not a heat glove, and that one hand stays clean from the cooler all the way to the basket.",
+  "questions": [
+    {
+      "n": 1,
+      "title": "Pepper has just pulled a Food Safety Mitt out of the box on top of the cooler. What is it actually for?",
+      "type": "single",
+      "image": "/audits/pepper-step-1-mitt.webp",
+      "choices": [
+        "Protecting her hand from the hot oil",
+        "Keeping her hand warm while she is in the cooler",
+        "Keeping bare skin off the bag, so nothing from her hand reaches the product",
+        "Marking her as the person running the fryer this shift"
+      ],
+      "correct": [
+        2
+      ],
+      "points": 5,
+      "required": true,
+      "help": "Watch it through once before you answer. You can watch it again as many times as you like.",
+      "explanation": "It is a food safety tool, not a heat glove.\n\nThe mitt is thin plastic. It would do nothing against 350°F oil and it never goes near it. Its whole job is to sit between your hand and the bag of raw product, so that whatever is on your hands stays on your hands.\n\nIf you have ever thought of it as the fryer glove, that is the thing to unlearn here. Treating it as heat protection is how people end up taking it to the fryer, which is the one place it must never go.",
+      "video": "/audits/pepper-mitt-process.mp4"
+    },
+    {
+      "n": 2,
+      "title": "The mitt is on. Which hand opens the cooler door?",
+      "type": "single",
+      "image": "/audits/pepper-step-2-cooler.webp",
+      "choices": [
+        "The bare hand, so the mitted hand stays clean for the bag",
+        "The mitted hand, since it is already covered",
+        "Either one, as long as she washes up afterwards",
+        "Neither — she should use a cloth on the handle"
+      ],
+      "correct": [
+        0
+      ],
+      "points": 5,
+      "required": true,
+      "help": "One hand is doing a job. The other is being kept out of the way on purpose.",
+      "explanation": "The bare hand opens the door. Look at the picture: the mitted hand is held up and clear, touching nothing.\n\nThat door handle is one of the dirtiest things in the kitchen — every hand in the building has been on it. The moment the mitt touches it, the mitt is no cleaner than the handle, and it may as well not be there.\n\nThis is the step people skip, because opening a door with your awkward hand feels silly. It is the whole reason the mitt works."
+    },
+    {
+      "n": 3,
+      "title": "She is carrying the bag in the mitted hand. Before the bag is empty, what else may that mitted hand touch?",
+      "type": "single",
+      "image": "/audits/pepper-step-3-carry.webp",
+      "choices": [
+        "The basket handle",
+        "The cooler door, to push it shut behind her",
+        "Her apron, to steady the bag",
+        "Nothing at all — only the bag"
+      ],
+      "correct": [
+        3
+      ],
+      "points": 5,
+      "required": true,
+      "help": "Count the things the mitted hand is touching in the picture.",
+      "explanation": "Only the bag. Plastic to plastic, cooler to basket, nothing in between.\n\nOnce the mitted hand touches anything else — the handle, the door, your apron, your phone — it has picked something up, and the next thing it touches is raw product. The mitt stops being a barrier and becomes a carrier.\n\nIf you do touch something, that mitt is finished. Bin it and take a fresh one. They cost pennies."
+    },
+    {
+      "n": 4,
+      "title": "The wings are going into the basket. Where is the basket while that happens?",
+      "type": "single",
+      "image": "/audits/pepper-step-4-dump.webp",
+      "choices": [
+        "Over the fryer, so nothing drops on the floor",
+        "On a sheet pan on the prep station",
+        "In the hand sink",
+        "On the shelf inside the cooler"
+      ],
+      "correct": [
+        1
+      ],
+      "points": 5,
+      "required": true,
+      "help": "The basket is sitting on something in the picture. What is under it?",
+      "explanation": "On a sheet pan on the prep station — never over the fryer.\n\nLoading over the oil looks tidier and it is the instinct most people have. But breading, ice and crumbs fall off a frozen portion as it goes in, and every one of them lands in the oil, burns, and darkens the whole vat. You shorten the life of the oil for every basket after yours.\n\nThe sheet pan catches all of it and goes in the wash. That is the only reason it is there."
+    },
+    {
+      "n": 5,
+      "title": "The bag is empty. What happens to the bag and the mitt now?",
+      "type": "single",
+      "image": "/audits/pepper-step-6-bin.webp",
+      "choices": [
+        "Keep the mitt on — there is still a basket to drop",
+        "Mitt in her pocket, ready for the next portion",
+        "Both go in the bin, right now, before she touches anything else",
+        "Rinse the mitt in the sanitiser bucket and use it again"
+      ],
+      "correct": [
+        2
+      ],
+      "points": 5,
+      "required": true,
+      "help": "This picture is from a different store, so the room looks different. The bin is the thing to look at.",
+      "explanation": "Both go in the bin, together, straight away.\n\nThe bag and the mitt are one disposable item. The moment the bag is empty the mitt has done its job, and every second it stays on your hand is a second it can touch something it should not.\n\nThe sanitiser bucket is for cloths and surfaces, not for a single-use mitt — rinsing one and carrying on is worse than not wearing it, because you think you are protected. And a mitt in a pocket comes out dirty.\n\nThis is the step that disappears when the store is busy. It is the one to be stubborn about."
+    },
+    {
+      "n": 6,
+      "title": "She is at the fryer with the basket and both of her hands are bare. Why is that right?",
+      "type": "single",
+      "image": "/audits/pepper-step-5-drop.webp",
+      "choices": [
+        "The oil has not come up to temperature yet, so it cannot burn her",
+        "The mitt is food safety equipment, not heat protection — its job ended at the basket",
+        "She will put a fresh mitt on once the basket is in the oil",
+        "The basket handle is insulated, so no mitt is needed here"
+      ],
+      "correct": [
+        1
+      ],
+      "points": 5,
+      "required": true,
+      "help": "Think back to the first question in this test.",
+      "explanation": "Because the mitt was never protective equipment. It went in the bin two steps ago and nothing replaces it.\n\nThis is where the misunderstanding does real damage. Someone who believes the mitt is a fryer glove keeps it on for exactly this moment — and a thin plastic bag near 350°F oil is a hazard to them, not a help.\n\nBare hands and a basket handle is what correct looks like at the fryer. If your hands are not bare by the time you get here, something went wrong earlier in the process."
+    },
+    {
+      "n": 7,
+      "title": "Put the whole thing in order, start to finish.",
+      "type": "order",
+      "steps": [
+        "Wash and sanitise your hands at the dedicated hand sink",
+        "Put a Food Safety Mitt on one hand",
+        "Open the cooler with the bare hand and lift the bag out with the mitted one",
+        "Tip the product into a basket sitting on a sheet pan on the fry prep station",
+        "Bin the empty bag, shake the mitt off your hand and bin that too",
+        "Shake the basket over the sheet pan to knock off the loose crumbs",
+        "Lower the basket into an open lane of the fryer"
+      ],
+      "points": 5,
+      "required": true,
+      "help": "Two of these steps are not in any of the pictures. They still have their place in the order.",
+      "explanation": "Hands, mitt, cooler, basket on the pan, bin the bag and mitt, shake off the crumbs, then the oil.\n\nThe two steps with no picture are the first and the second to last. It starts at the hand sink — the mitt covers one hand, not both, and it does nothing about what is already on them. And before the basket goes in, you shake it over the sheet pan, because loose breading burns in the oil and darkens the vat for everybody after you.\n\nNotice where the mitt stops. It goes in the bin before the basket is anywhere near the fryer. Everything after that happens with bare hands, which is why there is no such thing as taking the mitt to the oil."
+    }
+  ]
+}
