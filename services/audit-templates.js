@@ -54,30 +54,51 @@ async function initAuditTemplates() {
   await p.query(`ALTER TABLE audit_templates ADD COLUMN IF NOT EXISTS kind  VARCHAR(10)`);
   await p.query(`ALTER TABLE audit_templates ADD COLUMN IF NOT EXISTS coach VARCHAR(20)`);
 
+  // Which seed files have been lifted already. Counting templates instead
+  // meant the first deploy took everything and every later one took nothing,
+  // so a new file in data/audits never reached the live site.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS audit_template_seeds (
+      file      VARCHAR(200) PRIMARY KEY,
+      seeded_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    )
+  `);
+
   await seedFromFiles();
 }
 
-// First run only: lift whatever is in data/audits into the table. The files
-// stay as the origin of the Steritech walk; the table is what gets served.
+// Lift each file in data/audits into the table once, ever. The files stay the
+// origin of a walk; the table is what gets served and what the editor writes.
+//
+// Recording the file, rather than counting rows, is what lets a new test ship
+// by deploy. Recording it even when the insert conflicts is what stops one
+// Harold deleted in the Audits tab from coming back on the next restart.
+//
+// shortcut: a template deleted before this ledger existed reappears once, on
+// the deploy that creates it. Delete it again and it stays gone.
 async function seedFromFiles() {
   const p = getPool();
   if (!p) return;
-
-  const { rows } = await p.query('SELECT count(*)::int AS n FROM audit_templates');
-  if (rows[0].n > 0) return;
 
   let files = [];
   try {
     files = fs.readdirSync(SEED_DIR).filter(f => f.endsWith('.json'));
   } catch { return; }
 
+  const { rows: seeded } = await p.query('SELECT file FROM audit_template_seeds');
+  const already = new Set(seeded.map(r => r.file));
+
   for (const file of files) {
+    if (already.has(file)) continue;
     try {
       const def = JSON.parse(fs.readFileSync(path.join(SEED_DIR, file), 'utf8'));
       await p.query(
         `INSERT INTO audit_templates (id, title, description, questions, updated_by)
          VALUES ($1, $2, $3, $4, 'seed') ON CONFLICT (id) DO NOTHING`,
         [def.id, def.title, def.description || '', JSON.stringify(def.questions || [])]
+      );
+      await p.query(
+        'INSERT INTO audit_template_seeds (file) VALUES ($1) ON CONFLICT DO NOTHING', [file]
       );
     } catch (err) {
       console.error('audit template seed failed for', file, err.message);
