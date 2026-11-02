@@ -244,3 +244,26 @@ describe('matchTaps', () => {
     expect(m.found).toEqual([0]);
   });
 });
+
+// The phone keeps its draft until the questions change under it, and the
+// verdicts it has already been shown are saved with that draft. It can only
+// tell the difference if the form says which version it is.
+describe('the form carries its version', () => {
+  const def = {
+    id: 'v', title: 'V', version: 7, questions: [
+      { n: 1, title: 'One', type: 'single', choices: ['a', 'b'], correct: [0], points: 1 },
+    ],
+  };
+
+  test('the version goes out with the form', () => {
+    expect(publicForm(def).version).toBe(7);
+  });
+
+  test('a template with no version reads as 0, not undefined', () => {
+    expect(publicForm({ ...def, version: undefined }).version).toBe(0);
+  });
+
+  test('it still does not carry the answer key', () => {
+    expect(JSON.stringify(publicForm(def))).not.toContain('correct');
+  });
+});

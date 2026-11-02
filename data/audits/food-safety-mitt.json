@@ -20,7 +20,7 @@
       "points": 5,
       "required": true,
       "help": "Watch it through once before you answer. You can watch it again as many times as you like.",
-      "explanation": "It is a food safety tool, not a heat glove.\n\nThe mitt is thin plastic. It would do nothing against 350°F oil and it never goes near it. Its whole job is to sit between your hand and the bag of raw product, so that whatever is on your hands stays on your hands.\n\nIf you have ever thought of it as the fryer glove, that is the thing to unlearn here. Treating it as heat protection is how people end up taking it to the fryer, which is the one place it must never go.",
+      "explanation": "It is a food safety tool, not a heat glove.\n\n• Thin plastic. It would do nothing against 350°F oil, and it never goes near it.\n• Its whole job is to sit between your hand and the bag, so whatever is on your hands stays on your hands.\n\nIf you have thought of it as the fryer glove, that is the thing to unlearn. That belief is how people end up taking it to the fryer — the one place it must never go.",
       "video": "/audits/pepper-mitt-process.mp4"
     },
     {
@@ -40,7 +40,7 @@
       "points": 5,
       "required": true,
       "help": "One hand is doing a job. The other is being kept out of the way on purpose.",
-      "explanation": "The bare hand opens the door. Look at the picture: the mitted hand is held clear, touching nothing.\n\nThat door handle is one of the dirtiest things in the kitchen — every hand in the building has been on it all day. The moment the mitt touches it, the mitt is no cleaner than the handle, and the next thing it touches is raw product. It has stopped being a barrier and become a carrier.\n\nThis is the step people skip, because opening a door with your awkward hand feels silly. It is the whole reason the mitt works.\n\nAnd if the mitt does touch the handle, it is not a disaster and you do not start the batch again. Take it off and throw it away, wipe the handle and anything else that hand has been on with the blue sanitizer towel, wash up, and carry on with a fresh mitt."
+      "explanation": "The bare hand opens the door. Look at the picture: the mitted hand is held clear, touching nothing.\n\n• That handle is one of the dirtiest things in the kitchen — every hand in the building has been on it today.\n• The moment the mitt touches it, the mitt is no cleaner than the handle, and raw product is the next thing it touches.\n\nOpening a door with your awkward hand feels silly. It is the whole reason the mitt works.\n\nAnd if the mitt does touch the handle: bin it, blue towel the handle and anything else that hand has been on, wash up, fresh mitt. You do not start the batch again."
     },
     {
       "n": 3,
@@ -59,7 +59,7 @@
       "points": 5,
       "required": true,
       "help": "Count the things the mitted hand is touching in the picture.",
-      "explanation": "Only the bag. Plastic to plastic, cooler to basket, nothing in between.\n\nOnce the mitted hand touches anything else — the handle, the door, your apron, your phone — it has picked something up, and the next thing it touches is raw product. The mitt stops being a barrier and becomes a carrier.\n\nIf you do touch something, that mitt is finished. Bin it and take a fresh one. They cost pennies."
+      "explanation": "Only the bag. Plastic to plastic, cooler to basket, nothing in between.\n\nThe handle, the door, your apron, your phone — touch any of them and the mitt has picked something up. It stops being a barrier and becomes a carrier.\n\nIf you do touch something, that mitt is finished. Bin it and take a fresh one. They cost pennies."
     },
     {
       "n": 4,
@@ -78,7 +78,7 @@
       "points": 5,
       "required": true,
       "help": "The basket is sitting on something in the picture. What is under it?",
-      "explanation": "On a sheet pan on the prep station — never over the fryer.\n\nLoading over the oil looks tidier and it is the instinct most people have. But breading, ice and crumbs fall off a frozen portion as it goes in, and every one of them lands in the oil, burns, and darkens the whole vat. You shorten the life of the oil for every basket after yours.\n\nThe sheet pan catches all of it and goes in the wash. That is the only reason it is there."
+      "explanation": "On a sheet pan on the prep station — never over the fryer.\n\n• Breading, ice and crumbs fall off a frozen portion as it goes in.\n• Over the oil, every one of them burns and darkens the whole vat — for every basket after yours, not just this one.\n\nThe sheet pan catches all of it and goes in the wash. That is the only reason it is there."
     },
     {
       "n": 5,
@@ -97,7 +97,7 @@
       "points": 5,
       "required": true,
       "help": "This picture is from a different store, so the room looks different. The bin is the thing to look at.",
-      "explanation": "Both go in the bin, together, straight away.\n\nThe bag and the mitt are one disposable item. The moment the bag is empty the mitt has done its job, and every second it stays on your hand is a second it can touch something it should not.\n\nThe sanitizer bucket is for cloths and surfaces, not for a single-use mitt — rinsing one and carrying on is worse than not wearing it, because you think you are protected. And a mitt in a pocket comes out dirty.\n\nThis is the step that disappears when the store is busy. It is the one to be stubborn about."
+      "explanation": "Both go in the bin, together, straight away.\n\n• The bag and the mitt are one disposable item. The moment the bag is empty, the mitt has done its job.\n• The sanitizer bucket is for cloths and surfaces. Rinsing a mitt and carrying on is worse than not wearing one, because you think you are protected.\n• A mitt in a pocket comes out dirty.\n\nThis is the step that disappears when the store is busy. It is the one to be stubborn about."
     },
     {
       "n": 6,
@@ -116,7 +116,7 @@
       "points": 5,
       "required": true,
       "help": "Think back to the first question in this test.",
-      "explanation": "Because the mitt was never protective equipment. It went in the bin two steps ago and nothing replaces it.\n\nThis is where the misunderstanding does real damage. Someone who believes the mitt is a fryer glove keeps it on for exactly this moment — and a thin plastic bag near 350°F oil is a hazard to them, not a help.\n\nBare hands and a basket handle is what correct looks like at the fryer. If your hands are not bare by the time you get here, something went wrong earlier in the process."
+      "explanation": "Because the mitt was never protective equipment. It went in the bin two steps ago and nothing replaces it.\n\nThis is where the misunderstanding does real damage: someone who thinks the mitt is a fryer glove keeps it on for exactly this moment — and thin plastic near 350°F oil is a hazard, not a help.\n\nBare hands and a basket handle is what correct looks like at the fryer. If your hands are not bare by the time you get here, something went wrong earlier."
     },
     {
       "n": 7,
@@ -134,7 +134,7 @@
       "points": 5,
       "required": true,
       "help": "Two of these steps are not in any of the pictures. They still have their place in the order.",
-      "explanation": "Hands, mitt, cooler, basket on the pan, bin the bag and mitt, shake off the crumbs, then the oil.\n\nThe two steps with no picture are the first and the second to last. It starts at the hand sink — the mitt covers one hand, not both, and it does nothing about what is already on them. And before the basket goes in, you shake it over the sheet pan, because loose breading burns in the oil and darkens the vat for everybody after you.\n\nNotice where the mitt stops. It goes in the bin before the basket is anywhere near the fryer. Everything after that happens with bare hands, which is why there is no such thing as taking the mitt to the oil."
+      "explanation": "Hands, mitt, cooler, basket on the pan, bin the bag and mitt, shake off the crumbs, then the oil.\n\nThe two steps with no picture:\n• The hand sink comes first. The mitt covers one hand, not both, and it does nothing about what is already on them.\n• Shake the basket over the sheet pan before it goes in. Loose breading burns and darkens the vat for everybody after you.\n\nNotice where the mitt stops — in the bin, before the basket is anywhere near the fryer. Everything after that is bare hands, which is why there is no such thing as taking the mitt to the oil."
     }
   ]
 }

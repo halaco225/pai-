@@ -75,6 +75,9 @@ function publicForm(def) {
     title: def.title,
     description: def.description,
     kind: def.kind || (maxScore(def) > 0 ? 'test' : 'audit'),
+    // The phone keeps a draft, and the answers in it mean nothing once the
+    // questions have been edited. It needs the version to know that.
+    version: Number(def.version) || 0,
     // No one chosen: a test gets Adam, an audit gets nobody, as before.
     coach: def.coach || ((def.kind || (maxScore(def) > 0 ? 'test' : 'audit')) === 'test' ? 'adam' : 'none'),
     totalPoints: maxScore(def),
