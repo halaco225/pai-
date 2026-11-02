@@ -143,20 +143,20 @@
       "type": "multi",
       "points": 1,
       "choices": [
-        "The fryer and its control panel",
-        "The fry basket handle",
         "The bump bar pad",
-        "The prep station surface",
-        "The freezer door handle",
         "The make table, if you touched it with the same hands",
-        "The walk-in door handle on your way out"
+        "The prep station surface",
+        "The fryer and its control panel",
+        "The walk-in door handle on your way out",
+        "The freezer door handle",
+        "The fry basket handle"
       ],
       "correct": [
         0,
-        1,
         2,
         3,
-        4
+        5,
+        6
       ],
       "explanation": "All five in the raw area, every time. The two people forget are the control panel and the bump bar pad — touched all shift with the same hands and they never look dirty. The last two are the test: the blue towel never leaves the raw area. Wash your hands instead.",
       "required": true
@@ -186,17 +186,15 @@
       "image": "/audits/fryer-wings-no-timer.webp",
       "choices": [
         "You heard a timer go off a minute ago, so these must be them — sauce them",
-        "Look at them. If they look cooked, they are cooked",
-        "Ask whoever is nearby whether they pulled them up and whether they are ready",
         "Temp them to make sure they are done, then sauce them",
-        "Throw them away and drop a fresh basket"
+        "Look at them. If they look cooked, they are cooked",
+        "Ask whoever is nearby whether they pulled them up and whether they are ready"
       ],
       "correct": [
-        3,
-        4
+        1
       ],
-      "help": "There is more than one right answer here. Pick the one you would actually do.",
-      "explanation": "Temp them or bin them — both are right and you get the marks for either. Wings have to reach 165°F and a thermometer is the only thing that can tell you they did. The other three all end with somebody deciding raw chicken is cooked without checking. A timer you heard was for someone else's basket, colour only tells you the outside got hot, and \"yeah those are good\" is a guess with two people behind it.",
+      "help": "One of these tells you something the others only guess at.",
+      "explanation": "Temp them. Wings have to reach 165°F and a thermometer is the only thing in the building that can tell you they did.\n\nThrowing them out and dropping a fresh basket is not wrong either — it costs you four minutes and it is never unsafe. If you would rather not take the reading, bin them. What you cannot do is decide.\n\nBecause that is what the other three are, wearing different clothes. A timer you heard was for somebody else's basket. Colour tells you the outside got hot, not the middle. And \"yeah, those are good\" is a guess with two people behind it instead of one.\n\nIf nobody can say for certain when that basket went in, nobody can say it is cooked.",
       "required": true
     },
     {
@@ -205,16 +203,16 @@
       "points": 1,
       "video": "/audits/pepper-mitt-process.mp4",
       "choices": [
-        "Yes — every step was right",
-        "No — her mitted hand was on the cooler door",
+        "No — she put her mitted hand on the cooler door",
         "No — she filled the basket over the fryer",
+        "Yes — every step was right",
         "No — she kept the mitt on at the fryer"
       ],
       "correct": [
-        1
+        2
       ],
       "help": "Watch it through as many times as you like. Keep your eyes on her hands.",
-      "explanation": "Her mitted hand is flat against the cooler door. From that moment the mitt is carrying rather than protecting, and the next thing it touches is raw product.\n\nThe other two are worth knowing as the things that did not happen: she fills the basket on a sheet pan and not over the fryer, and the mitt is in the trash before she goes anywhere near the oil.\n\n**Putting it right.** Take the mitt off and bin it. Wipe the cooler door handle with the blue towel, and anything else that hand has been on since. Wash and sanitize your hands. Then start again with a fresh mitt.\n\nThat is the whole point of knowing both processes. A mistake with the mitt is not a disaster — it is a job for the blue towel.",
+      "explanation": "She did it right, start to finish.\n\nThe bare hand opens the cooler — the mitted one stays clear and touches nothing but the bag. The basket is filled on a sheet pan on the prep station, not over the oil, so the crumbs that come off do not end up in the fryer. And the bag and the mitt are in the trash before she goes anywhere near the fryer, because the mitt was never heat protection and its job ended at the basket.\n\nThe three wrong answers are the three ways this goes wrong in a real kitchen, and all three are easy to do while you are moving fast.\n\nIf any of them had happened, you would not need a manager and you would not need to start the batch again — you would take the mitt off and bin it, go over the door handle and anything else that hand had been on with the blue towel, wash up, and carry on with a fresh one.",
       "required": true,
       "n": 13
     }
