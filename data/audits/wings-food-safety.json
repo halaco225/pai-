@@ -31,7 +31,7 @@
       "correct": [
         2
       ],
-      "explanation": "Hands first, at the hand sink, every time. Gloves go on after — a glove pulled over an unwashed hand just moves the germs somewhere you cannot see them.",
+      "explanation": "Hands first, at the hand sink. Every time.\n\nGloves go on after. A glove pulled over an unwashed hand just hides the germs somewhere you cannot see them.",
       "required": true
     },
     {
@@ -47,7 +47,7 @@
       "correct": [
         1
       ],
-      "explanation": "Either one, done fully. They are not two steps, they are two routes.\n\nThe mitt stops it happening: plastic on plastic, so your skin never touches raw chicken and nothing from your hands reaches the product.\n\nThe blue towel does the same job from the other end: you handle the product, then you wash your hands and sanitize every surface you touched before anything else happens there.\n\nThe confusion worth clearing up is that you need both, or that the mitt is the only real way. You do not, and it is not. What you cannot do is half of either.\n\nIt is also why the blue towel is worth knowing even on a mitt day — when the mitt touches something it should not, the towel is how you put it right.",
+      "explanation": "Either one, done fully. Two routes, not two steps.\n\n• The mitt — plastic on plastic, so your skin never touches raw chicken.\n• The blue towel — you handle it bare, then wash up and sanitize every surface you touched.\n\nYou do not need both. What you cannot do is half of either.\n\nAnd on a mitt day the towel still matters — it is how you put a mistake right.",
       "required": true,
       "n": 4
     },
@@ -65,7 +65,7 @@
       "correct": [
         1
       ],
-      "explanation": "Shake it off and bin it with the bag. It touched raw chicken, so it is finished — hanging it back up or rinsing it carries that straight to the next person.",
+      "explanation": "Shake it off and bin it with the bag.\n\nIt touched raw chicken, so it is finished. Hanging it back up or rinsing it carries that straight to the next person.",
       "required": true
     },
     {
@@ -82,7 +82,7 @@
         2
       ],
       "help": "Think about everywhere your hands have been since you opened the freezer, not just where the wings landed.",
-      "explanation": "Everywhere you touched, not just where it landed.\n\nThe spill is the obvious part and it is not the dangerous part. The freezer handle and the fryer controls are what the next person puts their hands on, and neither of them will look like anything happened.\n\nThis is the blue towel earning its place. It is not only a cleaning step at the end of a job — it is how you undo a mistake. Something went wrong, so you go back over everything that could have carried it, sanitize it, wash your hands, and start again clean.\n\n\"It is the raw area anyway\" is the answer that gets somebody sick. The raw area is where you are most careful, not least.",
+      "explanation": "Everywhere your hands have been — not just the spill.\n\n• Clean up the product\n• Blue towel the station, the freezer handle and the fryer controls\n• Wash your hands before you touch anything else\n\nThe spill is the obvious part. The handles are the dangerous part: nothing about them looks dirty, and the next person grabs them.\n\nThat is the blue towel earning its place — it undoes a mistake, it is not just a clean-up at the end.",
       "required": true,
       "n": 6
     },
@@ -100,7 +100,7 @@
       "correct": [
         2
       ],
-      "explanation": "Over the sheet pan at the fry prep station, so whatever falls lands somewhere you can clean. Over the fryer it goes in the oil, over the sink or the freezer lid it goes everywhere.",
+      "explanation": "Over the sheet pan at the fry prep station.\n\nWhatever falls lands somewhere you can clean. Over the fryer it goes in the oil; over the sink or the freezer lid it goes everywhere.",
       "required": true
     },
     {
@@ -117,7 +117,7 @@
       "correct": [
         3
       ],
-      "explanation": "Before the product is out of the fryer, and again before going anywhere else in the kitchen. Waiting for the end of the batch means raw chicken has been on your hands the whole time.",
+      "explanation": "Before the product comes out of the fryer, and again before you go anywhere else in the kitchen.\n\nWaiting for the end of the batch means raw chicken has been on your hands the whole time.",
       "required": true
     },
     {
@@ -133,7 +133,7 @@
       "correct": [
         2
       ],
-      "explanation": "Raw area only, and that is the whole point of it being blue — anyone can see at a glance that a towel has been on raw chicken.\n\nOne wipe of the make table with a blue towel takes raw chicken straight onto food that goes out of the door exactly as it is. Rinsing does not fix it. The towel stays where it belongs.",
+      "explanation": "Raw area only.\n\nThat is the point of it being blue — anyone can see at a glance where that towel has been.\n\nOne wipe of the make table takes raw chicken onto food that goes out of the door exactly as it is. Rinsing does not fix it.",
       "required": true,
       "n": 9
     },
@@ -158,7 +158,7 @@
         5,
         6
       ],
-      "explanation": "All five in the raw area, every time. The two people forget are the control panel and the bump bar pad — touched all shift with the same hands and they never look dirty. The last two are the test: the blue towel never leaves the raw area. Wash your hands instead.",
+      "explanation": "All five in the raw area, every time.\n\n• The two people forget: the fryer control panel and the bump bar pad. Touched all shift with the same hands, and they never look dirty.\n• The two that are the test: the make table and the walk-in handle. The blue towel never leaves the raw area — wash your hands instead.",
       "required": true
     },
     {
@@ -175,7 +175,7 @@
       "correct": [
         0
       ],
-      "explanation": "Every two hours at the least, and sooner if it is building up. \"When it looks dirty\" is too late — by then it has been dirty for a while.",
+      "explanation": "Every two hours at the least, sooner if it is building up.\n\n\"When it looks dirty\" is too late. By then it has been dirty a while.",
       "required": true
     },
     {
@@ -194,7 +194,7 @@
         1
       ],
       "help": "One of these tells you something the others only guess at.",
-      "explanation": "Temp them. Wings have to reach 165°F and a thermometer is the only thing in the building that can tell you they did.\n\nThrowing them out and dropping a fresh basket is not wrong either — it costs you four minutes and it is never unsafe. If you would rather not take the reading, bin them. What you cannot do is decide.\n\nBecause that is what the other three are, wearing different clothes. A timer you heard was for somebody else's basket. Colour tells you the outside got hot, not the middle. And \"yeah, those are good\" is a guess with two people behind it instead of one.\n\nIf nobody can say for certain when that basket went in, nobody can say it is cooked.",
+      "explanation": "Temp them. Wings have to reach 165°F, and a thermometer is the only thing in the building that can tell you they got there.\n\n• A timer you heard was somebody else's basket.\n• Colour tells you the outside got hot, not the middle.\n• \"Yeah, those are good\" is a guess with two people behind it.\n\nBinning them and dropping a fresh basket is fine too — four minutes, never unsafe. What you cannot do is guess.",
       "required": true
     },
     {
@@ -212,7 +212,7 @@
         2
       ],
       "help": "Watch it through as many times as you like. Keep your eyes on her hands.",
-      "explanation": "She did it right, start to finish.\n\nThe bare hand opens the cooler — the mitted one stays clear and touches nothing but the bag. The basket is filled on a sheet pan on the prep station, not over the oil, so the crumbs that come off do not end up in the fryer. And the bag and the mitt are in the trash before she goes anywhere near the fryer, because the mitt was never heat protection and its job ended at the basket.\n\nThe three wrong answers are the three ways this goes wrong in a real kitchen, and all three are easy to do while you are moving fast.\n\nIf any of them had happened, you would not need a manager and you would not need to start the batch again — you would take the mitt off and bin it, go over the door handle and anything else that hand had been on with the blue towel, wash up, and carry on with a fresh one.",
+      "explanation": "She did it right, start to finish.\n\n• Bare hand on the cooler door — the mitted hand touches nothing but the bag.\n• Basket filled on the sheet pan, not over the oil.\n• Bag and mitt in the bin before she goes near the fryer.\n\nThe three wrong answers are the three ways this goes wrong for real, and all three are easy to do in a rush.\n\nIf one of them happens: bin the mitt, blue towel the handle and anything else that hand touched, wash up, fresh mitt. No manager, no starting the batch again.",
       "required": true,
       "n": 13
     }

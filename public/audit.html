@@ -382,7 +382,9 @@
   .r.wrong{border-left-color:var(--red);}
   .mark{font-weight:700;}
   .mark.ok{color:var(--green);} .mark.no{color:var(--red);}
-  .why{background:#f4f6fa;border-radius:9px;padding:12px;margin-top:11px;font-size:15.5px;}
+  /* The explanations are written with line breaks and bullets. Without this
+     they rendered as one unbroken block of text. */
+  .why{background:#f4f6fa;border-radius:9px;padding:12px;margin-top:11px;font-size:15.5px;white-space:pre-line;}
   .quiet{color:var(--muted);font-size:14.5px;}
 </style>
 </head>
@@ -610,8 +612,29 @@ function celebrate(){
 }
 
 // Draft save/restore. Pictures cannot be saved, so only answers come back.
-function saveDraft(){ try{ localStorage.setItem(DRAFT_KEY, JSON.stringify(answers)); }catch(e){} }
-function loadDraft(){ try{ return JSON.parse(localStorage.getItem(DRAFT_KEY) || '{}'); }catch(e){ return {}; } }
+//
+// The verdicts are saved with the answers, because the server writes each
+// answer down the first time it is given and grades that one forever after.
+// Without them a reload reopened a question that was already marked: they
+// would answer it again, and the server would hand back the verdict for the
+// answer they gave the first time -- "not quite", under the answer they had
+// just picked. Saved together, a marked question stays marked.
+function saveDraft(){
+  try{
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      v: (FORM && Number(FORM.version)) || 0, answers, checked,
+    }));
+  }catch(e){}
+}
+function loadDraft(){
+  try{
+    const kept = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+    // Anything written against a different set of questions, or by a version
+    // of this page that saved the answers on their own, starts clean.
+    if (!kept || !kept.answers || kept.v !== ((FORM && Number(FORM.version)) || 0)) return {};
+    return kept;
+  }catch(e){ return {}; }
+}
 function clearDraft(){ try{ localStorage.removeItem(DRAFT_KEY); localStorage.removeItem(WALK_KEY); }catch(e){} }
 
 async function start(){
@@ -629,7 +652,9 @@ async function start(){
   document.getElementById('title').textContent = FORM.title;
   // A draft only brings back questions that were never marked; a marked one
   // is finished and should not reopen.
-  Object.assign(answers, loadDraft());
+  const kept = loadDraft();
+  Object.assign(answers, kept.answers || {});
+  Object.assign(checked, kept.checked || {});
   draw();
 }
 
@@ -1452,6 +1477,7 @@ async function check(q){
       return false;
     }
     checked[q.n] = await res.json();
+    saveDraft();                 // so a reload does not reopen a marked question
   }catch(err){
     // No signal is not a reason to stop the walk.
     checked[q.n] = { offline: true };
