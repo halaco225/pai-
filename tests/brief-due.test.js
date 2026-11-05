@@ -118,16 +118,19 @@ describe('isDue', () => {
 });
 
 describe('recipients', () => {
-  test('defaults to Harold, Matt and the six area coaches', () => {
+  test('defaults to both of Matt\'s regions', () => {
     expect(recipients({})).toEqual(['hlacoste', 'mhester',
-      'dspikes', 'esimmons', 'jmcneil', 'jgarcia', 'mgannon', 'mmeehan']);
+      'dspikes', 'esimmons', 'jmcneil', 'jgarcia', 'mgannon', 'mmeehan',
+      'parnwine', 'eboateng', 'epizzo', 'jmcneal', 'rkowalczyk', 'swhite']);
   });
 
-  // The list only ever holds people who have signed up. Adding a username
-  // without a consent record sends nothing, so a longer list would only
-  // disagree with who actually gets a text.
-  test('stays at the eight who are signed up', () => {
-    expect(recipients({})).toHaveLength(8);
+  // Nobody outside Matt's two regions. Tracy's five are a separate decision,
+  // and a name that is not on the roster at all would be sent nowhere.
+  test('covers Preston and his five area coaches', () => {
+    const list = recipients({});
+    expect(list).toEqual(expect.arrayContaining(
+      ['parnwine', 'eboateng', 'epizzo', 'jmcneal', 'rkowalczyk', 'swhite']));
+    expect(list).toHaveLength(14);
   });
 
   test('reads a comma list from the environment', () => {
