@@ -49,6 +49,9 @@ router.post('/automation/pull-ods', async (req, res) => {
     try { fs.unlinkSync(pullResult.filePath); } catch(e){}
 
     if (!parsed.stores?.length) throw new Error('No store data in report');
+    if (parsed.reportDate && parsed.reportDate !== targetDate) {
+      throw new Error(`Report is for ${parsed.reportDate}, not ${targetDate} — ODS served a different day`);
+    }
 
     const weekKey  = getWeekKey(targetDate);
     const periodWk = getPeriodWeek(targetDate);
@@ -56,7 +59,9 @@ router.post('/automation/pull-ods', async (req, res) => {
 
     for (const s of parsed.stores) {
       if (!ALIGNMENT[s.store_id]) continue;
-      await db.upsertVelocityRecord({
+      // Count what the DB actually wrote: upsert returns null on error, and
+      // counting the loop instead logged "350 stores" for a pull that saved none.
+      const row = await db.upsertVelocityRecord({
         store_id: s.store_id, record_date: targetDate,
         week_key: weekKey, period_week: periodWk,
         ist_avg: s.ist_avg,
@@ -69,8 +74,9 @@ router.post('/automation/pull-ods', async (req, res) => {
         on_time_pct: s.on_time_pct ?? null,
         data_source: parsed.source, uploader: 'system'
       });
-      saved++;
+      if (row) saved++;
     }
+    if (!saved) throw new Error(`Parsed ${parsed.stores.length} stores but wrote 0 rows`);
 
     await db.logVelocityJob({ jobType: 'ods_pull', targetDate, status: 'success', storesProcessed: saved, message: `Pulled ${saved} stores` });
     console.log(`[Velocity ODS] Done — ${saved} stores saved for ${targetDate}`);
@@ -214,6 +220,10 @@ router.post('/backfill-buckets', requireAuth, async (req, res) => {
             : await parseAboveStorePDF(pullResult.filePath);
           try { fs.unlinkSync(pullResult.filePath); } catch(e) {}
           if (!parsed.stores?.length) continue;
+          if (parsed.reportDate && parsed.reportDate !== targetDate) {
+            console.warn('[BucketFill] Skipping', targetDate, '— report is for', parsed.reportDate);
+            continue;
+          }
 
           const weekKey  = getWeekKey(targetDate);
           const periodWk = getPeriodWeek(targetDate);
@@ -363,6 +373,9 @@ router.post('/automation/pull-ods-now', requireAuth, requireRole('rdo', 'vp'), a
       try { fs.unlinkSync(pullResult.filePath); } catch(e){}
 
       if (!parsed.stores?.length) throw new Error('No store data in report');
+      if (parsed.reportDate && parsed.reportDate !== targetDate) {
+        throw new Error(`Report is for ${parsed.reportDate}, not ${targetDate} — ODS served a different day`);
+      }
 
       const weekKey  = getWeekKey(targetDate);
       const periodWk = getPeriodWeek(targetDate);

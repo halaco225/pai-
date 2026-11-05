@@ -309,7 +309,7 @@ function parseSOSExcelODS(filePath) {
   const colIdx = {};
   hdr.forEach((cell, i) => {
     if (!cell) return;
-    const c = String(cell).trim();
+    const c = String(cell).replace(/\s+/g, ' ').trim();
     if (/^in.?store$/i.test(c))                     colIdx.ist_avg        = i;
     if (/^#.?del|total.?orders|orders$/i.test(c))  colIdx.total_orders   = i;
     if (/^make(\s*(time|avg))?$/i.test(c))         colIdx.make_time      = i;
@@ -326,6 +326,22 @@ function parseSOSExcelODS(filePath) {
   });
   console.log('[ODS Parser] colIdx:', JSON.stringify(colIdx));
 
+  // A heading we could not match used to fall back to a hard-coded column
+  // number, so a shifted report was read from the wrong columns and saved as
+  // real numbers. Refuse the file instead, and name what moved.
+  const REQUIRED = {
+    ist_avg: 'In Store', total_orders: '# Del', make_time: 'Make',
+    pct_lt4: '% < 4', production_time: 'Production', pct_lt15: '% < 15',
+    on_time_pct: 'On Time %'
+  };
+  const missing = Object.keys(REQUIRED).filter(k => colIdx[k] == null).map(k => REQUIRED[k]);
+  if (missing.length) {
+    throw new Error(
+      `SOS report layout changed — no column found for: ${missing.join(', ')}. ` +
+      `Header row ${headerIdx} reads: ${JSON.stringify(hdr.filter(Boolean))}`
+    );
+  }
+
   function pctVal(v) {
     if (v == null) return null;
     const s = String(v).replace('%', '').trim();
@@ -340,7 +356,7 @@ function parseSOSExcelODS(filePath) {
     if (!storeRaw || !/^S\d/.test(String(storeRaw))) continue;
     const store_id = normalizeStoreId(String(storeRaw));
 
-    const ist_raw = row[colIdx.ist_avg ?? 8];
+    const ist_raw = row[colIdx.ist_avg];
     const ist_avg = ist_raw != null ? parseFloat(String(ist_raw)) : null;
 
     const ist_lt10 = colIdx.ist_lt10 != null ? (parseInt(row[colIdx.ist_lt10]) || 0) : 0;
@@ -348,7 +364,7 @@ function parseSOSExcelODS(filePath) {
     const ist_1518 = colIdx.ist_1518 != null ? (parseInt(row[colIdx.ist_1518]) || 0) : 0;
     const ist_1925 = colIdx.ist_1925 != null ? (parseInt(row[colIdx.ist_1925]) || 0) : 0;
     const ist_gt25 = colIdx.ist_gt25 != null ? (parseInt(row[colIdx.ist_gt25]) || 0) : 0;
-    const total_orders_raw = row[colIdx.total_orders ?? 9];
+    const total_orders_raw = row[colIdx.total_orders];
     const total_orders = total_orders_raw != null ? parseInt(total_orders_raw) : null;
     const ist_lt19_pct = (total_orders && (ist_lt10 || ist_1014 || ist_1518))
       ? parseFloat(((ist_lt10 + ist_1014 + ist_1518) / total_orders * 100).toFixed(1))
@@ -359,11 +375,11 @@ function parseSOSExcelODS(filePath) {
       ist_avg:         isNaN(ist_avg) ? null : Math.round(ist_avg * 10) / 10,
       total_orders,
       ist_lt10, ist_1014, ist_1518, ist_1925, ist_gt25, ist_lt19_pct,
-      make_time:       row[colIdx.make_time      ?? 11] ?? null,
-      pct_lt4:         pctVal(row[colIdx.pct_lt4  ?? 13]),
-      production_time: row[colIdx.production_time?? 17] ?? null,
-      pct_lt15:        pctVal(row[colIdx.pct_lt15 ?? 19]),
-      on_time_pct:     pctVal(row[colIdx.on_time_pct ?? 3])
+      make_time:       row[colIdx.make_time] ?? null,
+      pct_lt4:         pctVal(row[colIdx.pct_lt4]),
+      production_time: row[colIdx.production_time] ?? null,
+      pct_lt15:        pctVal(row[colIdx.pct_lt15]),
+      on_time_pct:     pctVal(row[colIdx.on_time_pct])
     });
   }
 
