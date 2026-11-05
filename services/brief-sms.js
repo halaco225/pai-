@@ -317,17 +317,19 @@ async function buildBody(username, targetDate) {
 function recipients(env = process.env) {
   // Deliberately explicit: an empty setting sends to nobody. Defaulting an
   // empty value to "everyone" is how 62 people get an unexpected text.
-  // Harold, Matt, and Harold's six area coaches. All eight have an opted-in
-  // consent record; anyone who has not opted in is skipped at send time
-  // regardless of being listed here.
+  // Matt's two regions: Harold and his six area coaches, Preston and his five.
+  // A name here is permission to text that person, not a promise anything goes
+  // out — hasConsent() skips anyone who has not opted in, at send time.
   //
   // Briefly widened to all 52 area coaches and put back: the other 46 have no
   // consent record, so listing them sends nothing and only makes the list
   // disagree with reality. Widen it when those people have signed up, not
-  // before.
+  // before. Preston's six join on exactly those terms: whoever has signed up
+  // starts receiving, and the rest change nothing until they do.
   if (env.PAI_BRIEF_RECIPIENTS === undefined) {
     return ['hlacoste', 'mhester',
-            'dspikes', 'esimmons', 'jmcneil', 'jgarcia', 'mgannon', 'mmeehan'];
+            'dspikes', 'esimmons', 'jmcneil', 'jgarcia', 'mgannon', 'mmeehan',
+            'parnwine', 'eboateng', 'epizzo', 'jmcneal', 'rkowalczyk', 'swhite'];
   }
   return env.PAI_BRIEF_RECIPIENTS.split(',').map(s => s.trim()).filter(Boolean);
 }
