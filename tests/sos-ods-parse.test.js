@@ -9,10 +9,11 @@ const XLSX = require('xlsx');
 
 const { parseSOSExcelODS } = require('../services/velocity-parser');
 
-// Minimal stand-in for PH_Speed_Of_Service.xlsx: summary rows, then the
-// per-store header at row 9 and one store row. `makeLabel` is what the Make
-// column is called, so a test can rename it.
-function writeSheet(makeLabel) {
+// Minimal stand-in for PH_Speed_Of_Service.xlsx: a summary header that also
+// says "In Store", the chart placeholder rows, then the per-store header and
+// one store row. `makeLabel` renames the Make column and `headerRow` moves the
+// per-store header, which is what an added chart does to the real report.
+function writeSheet({ makeLabel = 'Make', headerRow = 9 } = {}) {
   // Rows are padded to a fixed width: a sparse row past the sheet's widest
   // column is dropped on write, which would lose the date cell at col 23.
   const row = (pairs) => {
@@ -21,13 +22,15 @@ function writeSheet(makeLabel) {
     return r;
   };
   const aoa = [];
-  for (let i = 0; i < 9; i++) aoa.push(row([]));
+  for (let i = 0; i <= headerRow + 1; i++) aoa.push(row([]));
   aoa[1] = row([[23, 46113]]);                       // report date, Excel serial
-  aoa[9] = row([
+  aoa[3] = row([[0, 'On Time %'], [4, 'In Store'], [8, '# Deliveries']]);
+  for (let i = 5; i < headerRow; i++) aoa[i] = row([[0, '[Flash Component Not Supported]']]);
+  aoa[headerRow] = row([
     [3, 'On Time %'], [8, 'In Store'], [9, '# Del'], [11, makeLabel],
     [13, '% < 4'], [15, 'Oven / Cut'], [17, 'Production'], [19, '% < 15']
   ]);
-  aoa[10] = row([
+  aoa[headerRow + 1] = row([
     [0, 'S039382'], [3, '72.4%'], [8, 17], [9, '29'], [11, '04:03'],
     [13, '59.4%'], [15, '26:14'], [17, '13:05'], [19, '87.2%']
   ]);
@@ -44,7 +47,7 @@ describe('parseSOSExcelODS', () => {
   afterAll(() => files.forEach(f => { try { fs.unlinkSync(f); } catch (e) {} }));
 
   test('reads each value from the column its heading names', () => {
-    const file = writeSheet('Make');
+    const file = writeSheet();
     files.push(file);
 
     const { stores, reportDate } = parseSOSExcelODS(file);
@@ -63,8 +66,23 @@ describe('parseSOSExcelODS', () => {
     });
   });
 
+  // An added chart pushes the per-store header past where it used to be looked
+  // for, which is what broke the 2026-11-05 pull.
+  test('finds the per-store header wherever an added chart pushed it', () => {
+    const file = writeSheet({ headerRow: 13 });
+    files.push(file);
+
+    const { stores } = parseSOSExcelODS(file);
+
+    expect(stores).toHaveLength(1);
+    expect(stores[0]).toMatchObject({
+      store_id: 'S039382', ist_avg: 17, total_orders: 29,
+      make_time: '04:03', production_time: '13:05', on_time_pct: 72.4
+    });
+  });
+
   test('refuses the file and names the heading when a column moves', () => {
-    const file = writeSheet('Make Time (min)');
+    const file = writeSheet({ makeLabel: 'Make Time (min)' });
     files.push(file);
 
     expect(() => parseSOSExcelODS(file)).toThrow(/layout changed.*Make/s);

@@ -297,10 +297,23 @@ function parseSOSExcelODS(filePath) {
     }
   }
 
-  // Find header row: row where col 8 === 'In Store'
-  let headerIdx = 9; // default
-  for (let i = 0; i < Math.min(15, raw.length); i++) {
-    if ((raw[i] || [])[8] === 'In Store') { headerIdx = i; break; }
+  // Find the per-store header: the last row holding an "In Store" heading
+  // before the first store row. It used to be looked for at exactly column 8
+  // within the first 15 rows, defaulting to row 9 — and the report grew
+  // another chart, which pushed the header down and left row 9 holding a
+  // Flash placeholder. The summary header near the top says "In Store" too,
+  // hence the last match rather than the first.
+  const norm = (c) => String(c ?? '').replace(/\s+/g, ' ').trim();
+  let headerIdx = -1;
+  for (let i = 0; i < raw.length; i++) {
+    if (/^S\d/.test(norm((raw[i] || [])[0]))) break;
+    if ((raw[i] || []).some(c => /^in.?store$/i.test(norm(c)))) headerIdx = i;
+  }
+  if (headerIdx < 0) {
+    throw new Error(
+      'SOS report layout changed — no "In Store" heading above the store rows. ' +
+      `First 15 rows: ${JSON.stringify(raw.slice(0, 15).map(r => (r || []).filter(Boolean)))}`
+    );
   }
 
   // Determine column positions from header row
