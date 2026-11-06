@@ -293,6 +293,15 @@ router.get('/diag/scorecard', async (req, res) => {
                                  FROM intel_automation_log
                                 WHERE job_type = 'pipeline'
                                 ORDER BY created_at DESC LIMIT 5`, []),
+    // The pipeline row says 'success' even when a step inside it failed, so a
+    // metric that stops reporting looks like a healthy run. These carry the
+    // step's own error -- an ODS pull that 404'd reads differently from a pull
+    // that worked and parsed zero rows, and the fix differs with it.
+    q('recent_step_runs', `SELECT job_type, TO_CHAR(target_date,'YYYY-MM-DD') AS target_date,
+                                  status, message, created_at
+                             FROM intel_automation_log
+                            WHERE job_type LIKE 'step:%'
+                            ORDER BY created_at DESC LIMIT 20`, []),
   ])));
 
   res.json(out);
