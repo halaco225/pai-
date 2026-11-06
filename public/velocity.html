@@ -1643,7 +1643,12 @@ function renderTableDay(stores) {
 
 function fmtMakeMin(v) {
   if (v == null) return '—';
-  return (typeof v === 'number' ? v.toFixed(2) : v) + ' min';
+  // The report writes these as m:ss, so decimal minutes made every time on the
+  // page look wrong beside it — a 3:50 make time printed as "3.83 min".
+  if (typeof v !== 'number') return v;
+  const mins = Math.floor(v);
+  const secs = Math.round((v - mins) * 60);
+  return secs === 60 ? `${mins + 1}:00` : `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
 function avgMakeMin(stores, field) {
