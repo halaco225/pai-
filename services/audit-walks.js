@@ -29,6 +29,11 @@ async function initAuditWalks() {
   `);
 
   await p.query(`ALTER TABLE audit_walks ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 0`);
+  // What a video on this walk was found to show, kept per question. It is
+  // read while they are still answering and used several questions later, so
+  // it cannot live on the phone: a reload would lose it and there is nothing
+  // to read it from a second time.
+  await p.query(`ALTER TABLE audit_walks ADD COLUMN IF NOT EXISTS readings JSONB NOT NULL DEFAULT '{}'::jsonb`);
 
   await p.query(`
     CREATE INDEX IF NOT EXISTS idx_audit_walks_created
@@ -160,6 +165,44 @@ async function deleteWalk(walkId) {
   await p.query('DELETE FROM audit_walks WHERE walk_id = $1', [walkId]);
 }
 
+/**
+ * Keep what a video was found to show, and read it back later.
+ *
+ * Written once per question and never overwritten: the first reading is the
+ * one they are shown, for the same reason the first answer is the one that
+ * gets marked. A second upload on the same question would otherwise let
+ * somebody shop for a reading they liked better.
+ */
+async function saveReading(walkId, auditId, n, reading) {
+  const p = getPool();
+  if (!p || !isUuid(walkId)) return null;
+  const key = String(Number(n));
+  if (!/^\d+$/.test(key)) return null;
+
+  const { rows } = await p.query(`
+    INSERT INTO audit_walks (walk_id, audit_id, readings)
+    VALUES ($1, $2, jsonb_build_object($3::text, $4::jsonb))
+    ON CONFLICT (walk_id) DO UPDATE SET
+      readings = CASE
+        WHEN jsonb_exists(audit_walks.readings, $3::text) THEN audit_walks.readings
+        ELSE audit_walks.readings || jsonb_build_object($3::text, $4::jsonb)
+      END
+    RETURNING readings -> $3::text AS reading
+  `, [walkId, String(auditId), key, JSON.stringify(reading ?? null)]);
+
+  return rows[0] ? rows[0].reading : null;
+}
+
+async function getReading(walkId, n) {
+  const p = getPool();
+  if (!p || !isUuid(walkId)) return null;
+  const { rows } = await p.query(
+    'SELECT readings -> $2::text AS reading FROM audit_walks WHERE walk_id = $1',
+    [walkId, String(Number(n))]);
+  return rows[0] ? rows[0].reading : null;
+}
+
 module.exports = {
   initAuditWalks, recordAnswer, getAnswers, sealed, deleteWalk, isUuid, fits, startedAt,
+  saveReading, getReading,
 };
