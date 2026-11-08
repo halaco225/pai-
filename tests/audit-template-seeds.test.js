@@ -5,7 +5,7 @@ jest.mock('../services/db', () => ({ getPool: jest.fn() }));
 
 const fs = require('fs');
 const { getPool } = require('../services/db');
-const { initAuditTemplates } = require('../services/audit-templates');
+const { initAuditTemplates, validateTemplate } = require('../services/audit-templates');
 
 // A pool that records what it was asked and answers the two SELECTs seeding
 // makes. `seeded` is the ledger it starts with.
@@ -98,5 +98,40 @@ describe('seeding the audit templates', () => {
       expect(def.id).not.toHaveLength(0);
       expect(Array.isArray(def.questions)).toBe(true);
     }
+  });
+
+  // Every file in the folder is what stores get asked, so a file that would
+  // not pass the editor's own checks should not reach the table either.
+  test('every file in the seed folder would pass the editor', () => {
+    for (const file of files) {
+      const def = JSON.parse(fs.readFileSync(`${__dirname}/../data/audits/${file}`, 'utf8'));
+      expect({ file, problems: validateTemplate(def) }).toEqual({ file, problems: [] });
+    }
+  });
+
+  // This insert was written before the columns existed, so a test that
+  // shipped by deploy arrived as an audit with nobody walking it: no coach,
+  // and the score screen gone.
+  test('a seeded walk keeps the kind and the coach its file asks for', async () => {
+    const pool = fakePool([]);
+    getPool.mockReturnValue(pool);
+    await initAuditTemplates();
+
+    const sent = pool.calls.filter(c => c.sql.includes('INSERT INTO audit_templates'));
+    expect(sent.length).toBeGreaterThan(0);
+    for (const call of sent) {
+      expect(call.sql).toMatch(/kind/);
+      expect(call.sql).toMatch(/coach/);
+    }
+
+    const file = files.find(f => {
+      const def = JSON.parse(fs.readFileSync(`${__dirname}/../data/audits/${f}`, 'utf8'));
+      return def.coach;
+    });
+    if (!file) return;                 // no file asks for one, nothing to check
+    const want = JSON.parse(fs.readFileSync(`${__dirname}/../data/audits/${file}`, 'utf8'));
+    const call = sent.find(c => c.params[0] === want.id);
+    expect(call.params).toContain(want.coach);
+    expect(call.params).toContain(want.kind);
   });
 });

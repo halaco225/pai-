@@ -91,11 +91,16 @@ async function seedFromFiles() {
   for (const file of files) {
     if (already.has(file)) continue;
     try {
-      const def = JSON.parse(fs.readFileSync(path.join(SEED_DIR, file), 'utf8'));
+      // Through cleanTemplate, so a file and an edit in the browser land in
+      // the same shape. It also carries kind and coach, which this insert did
+      // not: it was written before those columns existed, so every test that
+      // ever shipped by deploy came up as an audit with nobody walking it.
+      const def = cleanTemplate(JSON.parse(fs.readFileSync(path.join(SEED_DIR, file), 'utf8')));
       await p.query(
-        `INSERT INTO audit_templates (id, title, description, questions, updated_by)
-         VALUES ($1, $2, $3, $4, 'seed') ON CONFLICT (id) DO NOTHING`,
-        [def.id, def.title, def.description || '', JSON.stringify(def.questions || [])]
+        `INSERT INTO audit_templates (id, title, description, questions, kind, coach, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, 'seed') ON CONFLICT (id) DO NOTHING`,
+        [def.id, def.title, def.description || '', JSON.stringify(def.questions || []),
+         def.kind || null, def.coach || null]
       );
       await p.query(
         'INSERT INTO audit_template_seeds (file) VALUES ($1) ON CONFLICT DO NOTHING', [file]

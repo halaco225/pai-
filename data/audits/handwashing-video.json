@@ -1,7 +1,7 @@
 {
   "id": "handwashing-video",
   "title": "Hand Washing, Side by Side",
-  "kind": "test",
+  "kind": "audit",
   "coach": "krystina",
   "description": "Film one of your team washing their hands, then say what you saw. I look at the same video and we compare. The point is not to catch anybody out — it is to find out whether you and I are reading the same wash the same way, because that is what an auditor standing in your kitchen will be doing.",
   "questions": [
