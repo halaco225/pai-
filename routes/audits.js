@@ -2,9 +2,10 @@
 //
 // The readiness walks, in two halves with different doors:
 //
-//   PUBLIC  — /api/audits/form, /stores and /submit. No login, because shift
-//             leaders have no P.AI account; Harold texts them the link. These
-//             are the only endpoints without requireAuth in this file.
+//   PUBLIC  — /api/audits/form, /stores, /check, /read-clip and /submit. No
+//             login, because shift leaders have no P.AI account; Harold texts
+//             them the link. These are the only endpoints without requireAuth
+//             in this file.
 //
 //   SCOPED  — responses, summary, photos, exports and the template editor sit
 //             behind P.AI's login. Responses are filtered to the viewer's
@@ -31,6 +32,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { visibleStores, canSee } = require('../services/rc-scope');
 const { USER_ROSTER } = require('./auth');
 const insights = require('../services/audit-insights');
+const video = require('../services/audit-video');
 const agent = require('../services/pai-agent');
 const claude = require('../services/claude');
 const { publicForm, grade, missingAnswers, checkOne } = require('../services/audits');
@@ -116,11 +118,102 @@ router.post('/check', safe(async (req, res) => {
     console.error('audit walk record failed:', err.message);
   }
 
+  // Checked against the video rather than an answer key. Both readings are in
+  // hand by now — theirs on this request, mine stored when the clip went up —
+  // so this is the comparison, not a mark.
+  if (q.compareTo) return res.json(await compareToClip(def, q, answer, req.body.walkId));
+
   const result = checkOne(def, req.body.n, answer);
   if (!result) {
     return res.status(400).json({ error: 'Answer this one before checking it.' });
   }
   res.json(result);
+}));
+
+// Their reading of the clip against mine. The comparison itself lives in
+// services/audit-video.js, where it can be tested without a database; this
+// only fetches the reading that was stored when the clip went up.
+async function compareToClip(def, q, answer, walkId) {
+  // The step list is the pick-all question's answers — the same list the video
+  // was read against. A yes/no in front of it is a question about that list
+  // too, so it looks the list up rather than using its own Yes and No.
+  const list = def.questions.find(x => x.type === 'multi' && Number(x.compareTo) === Number(q.compareTo));
+
+  let reading = null;
+  try {
+    reading = await walks.getReading(walkId, q.compareTo);
+  } catch (err) {
+    console.error('audit reading read failed:', err.message);
+  }
+
+  return video.compare(q, (list && list.choices) || [], answer, reading);
+}
+
+// ── Public: read the stills taken off a video ───────────────────────────────
+//
+// The video stays on the phone. What arrives is one still a second, each named
+// with its second, which is what gets read and what makes a timestamp possible
+// in the answer. The stills are not kept: the six the phone sends with the
+// submission are the record, and ninety near-identical frames of somebody's
+// face are not something to leave in a bucket.
+const frameUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 400 * 1024, files: video.MAX_FRAMES + 5 },
+});
+
+router.post('/read-clip', frameUpload.array('frames'), safe(async (req, res) => {
+  const def = await templates.getTemplate(req.body.auditId || DEFAULT_AUDIT);
+  if (!def) return res.status(404).json({ error: 'That walk does not exist.' });
+
+  const q = def.questions.find(x => x.n === Number(req.body.n) && x.type === 'video');
+  if (!q) return res.status(400).json({ error: 'That question does not take a video.' });
+
+  // The step list lives on the question that will be compared against this
+  // one, so there is one list and not two that can drift apart.
+  const asked = def.questions.find(x => Number(x.compareTo) === q.n);
+  const steps = (asked && asked.choices) || [];
+  if (!steps.length) return res.status(400).json({ error: 'Nothing is set up to be compared against this video.' });
+
+  const frames = (req.files || []).map(f => ({
+    // t014.jpg -> 14. A frame the phone named some other way has no second,
+    // and a reading cannot say when it saw something, so it is left out.
+    second: Number(String(f.originalname || '').replace(/^t0*/, '').replace(/\D.*$/, '')),
+    data: f.buffer.toString('base64'),
+    mediaType: f.mimetype || 'image/jpeg',
+  })).filter(f => Number.isFinite(f.second));
+
+  if (frames.length < 2) return res.status(400).json({ error: 'Those stills did not come through. Try the video again.' });
+
+  // Already read. Saying so costs nothing; reading it again costs a model
+  // call, and the stored one is the one they will be shown either way.
+  try {
+    const had = await walks.getReading(req.body.walkId, q.n);
+    if (had) return res.json({ read: true, frames: frames.length, already: true });
+  } catch (err) {
+    console.error('audit reading read failed:', err.message);
+  }
+
+  let reading;
+  try {
+    reading = await video.readSteps(frames, steps, `${def.title} — ${q.title}`);
+  } catch (err) {
+    console.error('audit clip read failed:', err.message);
+    return res.status(502).json({ error: 'I could not read that video just now. Carry on — your answers are safe.' });
+  }
+
+  // First reading wins, like the first answer does: otherwise a second upload
+  // on the same question is a way to shop for a reading you liked better.
+  try {
+    const onRecord = await walks.saveReading(req.body.walkId, def.id, q.n, reading);
+    if (onRecord) reading = onRecord;
+  } catch (err) {
+    console.error('audit reading write failed:', err.message);
+  }
+
+  // The phone only needs to know it is done; the comparison is built later,
+  // on the server, from what was stored. Sending the reading here would hand
+  // the answer to the next question straight to the page.
+  res.json({ read: true, frames: frames.length });
 }));
 
 // ── Public: submit a walk ───────────────────────────────────────────────────

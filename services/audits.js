@@ -90,6 +90,12 @@ function publicForm(def) {
       // What to look for is wording, not an answer, so it goes with the form.
       ...(q.help ? { help: q.help } : {}),
       ...(q.video ? { video: q.video } : {}),
+      // When to show it, and which video it is checked against. Neither is an
+      // answer key: showIf names a choice on an earlier question that has no
+      // right answer, and compareTo only says where the marking comes from.
+      ...(q.showIf ? { showIf: q.showIf } : {}),
+      ...(q.compareTo ? { compareTo: q.compareTo } : {}),
+      ...(q.type === 'video' ? { maxSeconds: Number(q.maxSeconds || 60) } : {}),
       // Safe to send: a picture to look at gives nothing away. The types where
       // the picture carries the answer key set their own further down.
       ...(q.image ? { image: q.image } : {}),
@@ -214,14 +220,30 @@ function sameSet(a, b) {
  * What is missing, in words a shift leader can act on.
  * answers: { [n]: string | number[] }, photos: { [n]: string[] }
  */
+// Whether a question is on screen at all. A question with no `showIf` always
+// is; one with it waits on an earlier answer. Asked both here and on the
+// phone, because a question nobody was shown cannot be required and cannot be
+// missing — and the phone is not the thing that gets to decide that.
+function visible(q, answers = {}) {
+  if (!q || !q.showIf) return true;
+  const on = answers[q.showIf.n];
+  const given = Array.isArray(on) ? on.map(Number) : [Number(on)];
+  return (q.showIf.is || []).some(x => given.includes(Number(x)));
+}
+
 function missingAnswers(def, answers = {}, photos = {}) {
   const missing = [];
   for (const q of def.questions) {
     if (q.required === false) continue;
+    if (!visible(q, answers)) continue;
 
-    if (q.type === 'photo') {
+    // A video arrives as the frames pulled off it, which go up the same way
+    // pictures do — so what has to be there is the same thing.
+    if (q.type === 'photo' || q.type === 'video') {
       if (!Array.isArray(photos[q.n]) || photos[q.n].length === 0) {
-        missing.push({ n: q.n, message: `Question ${q.n} needs at least one picture.` });
+        missing.push({ n: q.n, message: q.type === 'video'
+          ? `Question ${q.n} needs a video.`
+          : `Question ${q.n} needs at least one picture.` });
       }
       continue;
     }
@@ -460,5 +482,5 @@ function checkOne(def, n, given) {
 
 module.exports = {
   publicForm, grade, missingAnswers, maxScore, checkOne, matchTaps, shuffle, isScored, choiceScore,
-  assignScore,
+  assignScore, visible,
 };

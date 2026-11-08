@@ -1,0 +1,66 @@
+{
+  "id": "handwashing-video",
+  "title": "Hand Washing, Side by Side",
+  "kind": "test",
+  "coach": "krystina",
+  "description": "Film one of your team washing their hands, then say what you saw. I look at the same video and we compare. The point is not to catch anybody out — it is to find out whether you and I are reading the same wash the same way, because that is what an auditor standing in your kitchen will be doing.",
+  "questions": [
+    {
+      "n": 1,
+      "title": "What is your name?",
+      "type": "text",
+      "points": 0,
+      "required": true
+    },
+    {
+      "n": 2,
+      "title": "What is your store number?",
+      "type": "text",
+      "points": 0,
+      "required": true
+    },
+    {
+      "n": 3,
+      "title": "Record someone on your team washing their hands, start to finish.",
+      "type": "video",
+      "maxSeconds": 90,
+      "points": 0,
+      "required": true,
+      "help": "One take, no stopping. Start recording before the water goes on and keep going until they have used the sanitizer. If the clip starts with the water already running there is no way to tell how long the wash took, and that is half the standard. Hold the phone so the sink, their hands and the towels are all in shot."
+    },
+    {
+      "n": 4,
+      "title": "Watching that back: did they complete every step of hand washing properly?",
+      "type": "single",
+      "choices": [
+        "Yes — every step, start to finish",
+        "No — something was missed"
+      ],
+      "allDone": 0,
+      "compareTo": 3,
+      "points": 0,
+      "required": true,
+      "help": "Answer it before you read any list. The job in a real kitchen is spotting a miss without a sheet in your hand."
+    },
+    {
+      "n": 5,
+      "title": "Which steps did they miss? Tick every one.",
+      "type": "multi",
+      "choices": [
+        "Washed at a dedicated hand wash sink, not a prep or dish sink",
+        "Wet their hands before the soap went on",
+        "Used antibacterial soap and worked up a lather",
+        "The whole wash took at least 20 seconds — wet, lather, rinse, dry",
+        "Rinsed under running water",
+        "Dried with a single-use paper towel",
+        "Used hand sanitizer after drying",
+        "Turned the faucet off with a paper towel, unless the sink is hands-free"
+      ],
+      "showIf": { "n": 4, "is": [1] },
+      "compareTo": 3,
+      "points": 0,
+      "required": true,
+      "help": "Tick what was missed, not what was done. If you are not sure one way or the other, leave it alone — we will compare notes either way."
+    }
+  ]
+}

@@ -21,8 +21,8 @@ const SEED_DIR = path.join(__dirname, '..', 'data', 'audits');
 // why picking Pepper looked like it saved and came back as Adam.
 const COACHES = ['adam', 'krystina', 'pepper', 'none'];
 
-const TYPES = new Set(['text', 'longtext', 'single', 'multi', 'photo', 'hotspot', 'order', 'scale',
-                       'number', 'datetime', 'assign']);
+const TYPES = new Set(['text', 'longtext', 'single', 'multi', 'photo', 'video', 'hotspot', 'order',
+                       'scale', 'number', 'datetime', 'assign']);
 const CHOICE_TYPES = new Set(['single', 'multi']);
 const GRADED_TYPES = new Set(['single', 'multi', 'hotspot', 'order', 'assign']);
 
@@ -189,6 +189,57 @@ function validateTemplate(def) {
       problems.push(`${where}: points must be a whole number from 0 to 100.`);
     }
 
+    // Both of these point at another question by its number, which is its
+    // place in the list, and both only ever point upwards — a question
+    // cannot wait on an answer that has not been given yet. Reordering the
+    // list can leave one pointing down, so say which one and at what.
+    if (q.showIf) {
+      const on = questions[Number(q.showIf.n) - 1];
+      if (!on || !(Number(q.showIf.n) < i + 1)) {
+        problems.push(`${where}: it waits on question ${q.showIf.n || '?'}, which is not above it. Pick a question further up.`);
+      } else if (!CHOICE_TYPES.has(on.type)) {
+        problems.push(`${where}: question ${q.showIf.n} has no answers to choose from, so nothing can wait on it.`);
+      } else {
+        const is = Array.isArray(q.showIf.is) ? q.showIf.is : [];
+        const choices = Array.isArray(on.choices) ? on.choices : [];
+        if (is.length === 0) {
+          problems.push(`${where}: say which answer to question ${q.showIf.n} brings this one up.`);
+        }
+        if (is.some(x => !Number.isInteger(Number(x)) || Number(x) < 0 || Number(x) >= choices.length)) {
+          problems.push(`${where}: it waits on an answer that is not in question ${q.showIf.n}.`);
+        }
+      }
+    }
+
+    if (q.compareTo != null && q.compareTo !== '') {
+      const on = questions[Number(q.compareTo) - 1];
+      const choices = Array.isArray(q.choices) ? q.choices : [];
+      if (!on || !(Number(q.compareTo) < i + 1) || on.type !== 'video') {
+        problems.push(`${where}: compare it against a video question above it.`);
+      } else if (q.type !== 'multi' && q.type !== 'single') {
+        problems.push(`${where}: only a one-answer or pick-all question can be compared against a video.`);
+      } else if (q.type === 'single') {
+        const n = Number(q.allDone);
+        if (!Number.isInteger(n) || n < 0 || n >= choices.length) {
+          problems.push(`${where}: say which answer means every step was done.`);
+        }
+        // The steps themselves live on the pick-all question read against the
+        // same video. A yes/no on its own has nothing to be compared about.
+        const hasList = questions.some(x => x.type === 'multi'
+          && Number(x.compareTo) === Number(q.compareTo));
+        if (!hasList) {
+          problems.push(`${where}: add a pick-all question with the steps in it, also checked against question ${q.compareTo}.`);
+        }
+      }
+    }
+
+    if (q.type === 'video') {
+      const max = Number(q.maxSeconds || 60);
+      if (!Number.isInteger(max) || max < 10 || max > 180) {
+        problems.push(`${where}: allow between 10 and 180 seconds of video.`);
+      }
+    }
+
     if (q.type === 'order') {
       const steps = Array.isArray(q.steps) ? q.steps : [];
       if (steps.length < 2) problems.push(`${where}: needs at least two steps to put in order.`);
@@ -320,6 +371,41 @@ function cleanTemplate(def) {
       // this themselves further down, where the picture IS the answer surface.
       const image = String(q.image || '').trim();
       if (image) out.image = image;
+
+      // Only asked when an earlier question was answered a particular way:
+      // "which steps did they miss" has no business being on screen for
+      // somebody who just said nothing was missed. Never scored — people who
+      // skip it would otherwise be marked out of a smaller total than people
+      // who see it, and the two scores would not be comparable.
+      if (q.showIf && Number(q.showIf.n) > 0) {
+        out.showIf = {
+          n: Number(q.showIf.n),
+          is: [...new Set((q.showIf.is || []).map(Number))].filter(Number.isInteger).sort((a, b) => a - b),
+        };
+        out.points = 0;
+      }
+
+      // Checked against what the video in that question was found to show,
+      // rather than against a fixed answer key. The choices here ARE the list
+      // of steps the video is judged on, so there is one list and not two
+      // that can drift apart. Unscored: the key is a model's reading of a
+      // phone video, which is good enough to talk about and not to mark.
+      if (Number(q.compareTo) > 0) {
+        out.compareTo = Number(q.compareTo);
+        out.points = 0;
+        // On a yes/no, which answer is the "everything was done" one. Without
+        // it there is no way to tell agreement from disagreement: "Yes" and
+        // "No" are just two strings, and which of them matches a clean
+        // reading of the video is the whole comparison.
+        if (q.type === 'single' && Number.isInteger(Number(q.allDone))) {
+          out.allDone = Number(q.allDone);
+        }
+      }
+
+      if (q.type === 'video') {
+        // Bounds the frames pulled off it, and so what the reading costs.
+        out.maxSeconds = Number(q.maxSeconds || 60);
+      }
 
       if (q.type === 'number') {
         if (q.min !== '' && q.min != null) out.min = Number(q.min);

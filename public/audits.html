@@ -538,6 +538,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);}
         <button class="btn" onclick="addQuestion('datetime')">Date &amp; time</button>
         <button class="btn" onclick="addQuestion('photo')">Picture</button>
         <button class="btn" onclick="addQuestion('photo','annotate')">Picture they draw on</button>
+        <button class="btn" onclick="addQuestion('video')">Record a video</button>
         <button class="btn" onclick="addQuestion('hotspot')">Tap what is wrong in a picture</button>
         <button class="btn" onclick="addQuestion('hotspot','changed')">Spot what changed</button>
         <button class="btn" onclick="addQuestion('text')">Short text</button>
@@ -1521,7 +1522,7 @@ let EDITING = null;
 // What the audit was worth when it was opened, so a save can notice a drop.
 let SAVED_TOTAL = null;
 
-const TYPE_NAMES = { single:'One answer', multi:'Pick all that apply', photo:'Picture', text:'Short text', longtext:'Long text', hotspot:'Tap the picture', order:'Put in order',
+const TYPE_NAMES = { single:'One answer', multi:'Pick all that apply', photo:'Picture', video:'Record a video', text:'Short text', longtext:'Long text', hotspot:'Tap the picture', order:'Put in order',
                      scale:'Slider', number:'Number', datetime:'Date & time',
                      assign:'Put it where it goes' };
 
@@ -1811,6 +1812,7 @@ function addQuestion(type, preset){
     q.maxPhotos = 1;
     if (preset === 'annotate') q.annotate = true;
   }
+  if (type === 'video') q.maxSeconds = 60;
   if (preset === 'changed') q.beforeImage = '';
   if (type === 'scale'){ q.min = 1; q.max = 10; q.step = 1; q.minLabel = ''; q.maxLabel = ''; }
   if (type === 'number'){ q.min = ''; q.max = ''; q.unit = ''; }
@@ -1931,6 +1933,86 @@ function helpField(q, i){
 
 // Points only make sense on a test. On an audit there is nothing to score,
 // so the box is not there to be wondered about.
+// When to ask it. A question can only wait on a question above it, and only
+// on one with answers to pick from — there is nothing to wait for otherwise.
+// Setting this drops the question to 0 points: somebody who skips it would be
+// marked out of a smaller total than somebody who sees it, and then the two
+// scores do not mean the same thing.
+function showIfField(q, i){
+  const above = EDITING.questions.slice(0, i)
+    .map((x, xi) => ({ x, n: xi + 1 }))
+    .filter(o => o.x.type === 'single' || o.x.type === 'multi');
+
+  if (!above.length) return '';
+  const on = q.showIf ? EDITING.questions[Number(q.showIf.n) - 1] : null;
+
+  return `<label class="ed-label">When to ask it</label>
+    <select onchange="setShowIf(${i}, this.value)">
+      <option value="">Always</option>
+      ${above.map(o => `<option value="${o.n}"${q.showIf && Number(q.showIf.n) === o.n ? ' selected' : ''}>
+        Only after question ${o.n} — ${esc((o.x.title || 'untitled').slice(0, 44))}</option>`).join('')}
+    </select>
+    ${!on ? '' : `<div class="choice" style="flex-wrap:wrap;margin-top:6px;">
+      ${(on.choices || []).map((c, ci) => `<label style="font-size:14.5px;">
+        <input type="checkbox" ${(q.showIf.is || []).includes(ci) ? 'checked' : ''}
+          onchange="setShowIfAnswer(${i},${ci},this.checked)"> ${esc(c || 'Answer ' + (ci + 1))}</label>`).join('')}
+    </div>
+    <div class="muted" style="font-size:12.5px;">Asked only when question ${q.showIf.n} is answered one of those. Not scored.</div>`}`;
+}
+
+function setShowIf(i, n){
+  const q = EDITING.questions[i];
+  if (!n){ delete q.showIf; } else { q.showIf = { n: Number(n), is: [] }; q.points = 0; }
+  drawQuestions();
+}
+function setShowIfAnswer(i, ci, on){
+  const q = EDITING.questions[i];
+  if (!q.showIf) return;
+  const is = new Set(q.showIf.is || []);
+  on ? is.add(ci) : is.delete(ci);
+  q.showIf.is = [...is].sort((a, b) => a - b);
+  drawQuestions();
+}
+
+// Marked against a video on this walk instead of against a right answer. The
+// answers on THIS question are the list of steps the video gets judged on, so
+// the list is written once. Never scored — it is a model reading a phone
+// video, which is worth talking about and not worth marking anybody on.
+function compareField(q, i){
+  const clips = EDITING.questions.slice(0, i)
+    .map((x, xi) => ({ x, n: xi + 1 }))
+    .filter(o => o.x.type === 'video');
+
+  if (!clips.length || (q.type !== 'multi' && q.type !== 'single')) return '';
+  return `<label class="ed-label">Check it against a video</label>
+    <select onchange="setCompareTo(${i}, this.value)">
+      <option value="">No — mark it against the right answers above</option>
+      ${clips.map(o => `<option value="${o.n}"${Number(q.compareTo) === o.n ? ' selected' : ''}>
+        The video in question ${o.n}</option>`).join('')}
+    </select>
+    ${!q.compareTo ? '' : q.type === 'multi'
+      ? `<div class="muted" style="font-size:12.5px;">The answers above are the steps the
+          video is read for, and what they tick is compared with what was seen. Not scored.</div>`
+      : `<label class="ed-label">Which answer means every step was done</label>
+         <select onchange="EDITING.questions[${i}].allDone=Number(this.value)">
+           ${(q.choices || []).map((c, ci) => `<option value="${ci}"${Number(q.allDone) === ci ? ' selected' : ''}>
+             ${esc(c || 'Answer ' + (ci + 1))}</option>`).join('')}
+         </select>
+         <div class="muted" style="font-size:12.5px;">The steps go on a pick-all question
+           that is also checked against the same video. Not scored.</div>`}`;
+}
+
+function setCompareTo(i, n){
+  const q = EDITING.questions[i];
+  if (!n){ delete q.compareTo; delete q.allDone; }
+  else {
+    q.compareTo = Number(n); q.points = 0; q.correct = [];
+    if (q.type === 'single' && !Number.isInteger(q.allDone)) q.allDone = 0;
+  }
+  drawQuestions();
+  updatePoints();
+}
+
 function pointsField(q, i, scorable){
   if (!isTest() || !scorable) return '<span class="muted" style="font-size:12.5px;">Not scored</span>';
   return `<label>Points <input type="number" min="0" max="100" value="${q.points || 0}"
@@ -1975,6 +2057,15 @@ function drawQuestions(){
         <span>Open the pen as soon as they take it, so they circle what they mean.
           <span class="muted">They can draw on any picture either way.</span></span>
       </label>`;
+
+    const clip = q.type !== 'video' ? '' : `
+      <label class="ed-label">How long a video to read <span class="muted">— seconds</span></label>
+      <input type="number" min="10" max="180" value="${q.maxSeconds || 60}"
+        oninput="EDITING.questions[${i}].maxSeconds=Number(this.value)">
+      <div class="muted" style="font-size:12.5px;">They record it or pick one off their
+        phone. The phone takes one still a second off it and only those are sent —
+        the video itself never leaves the phone. Add a pick-all question below this
+        one and set it to be checked against this video.</div>`;
 
     const number = q.type !== 'number' ? '' : `
       <label class="ed-label">Allowed range <span class="muted">— optional</span></label>
@@ -2025,9 +2116,11 @@ function drawQuestions(){
         oninput="EDITING.questions[${i}].title=this.value; updatePoints()">${esc(q.title)}</textarea>
       ${helpField(q, i)}
     ${videoField(q, i)}
-      ${choices}${photo}${scale}${number}
+      ${choices}${photo}${clip}${scale}${number}
+      ${compareField(q, i)}
+      ${showIfField(q, i)}
       <div class="qfoot">
-        ${pointsField(q, i, graded)}
+        ${pointsField(q, i, graded && !q.compareTo && !q.showIf)}
         <label><input type="checkbox" ${q.required !== false ? 'checked' : ''}
           onchange="EDITING.questions[${i}].required=this.checked"> Must be answered</label>
       </div>
@@ -2081,8 +2174,9 @@ function orderCard(q, i){
     <label class="ed-label">Why — shown after they submit</label>
     <textarea rows="2" oninput="EDITING.questions[${i}].explanation=this.value">${esc(q.explanation || '')}</textarea>
 
+    ${showIfField(q, i)}
     <div class="qfoot">
-      ${pointsField(q, i, true)}
+      ${pointsField(q, i, !q.showIf)}
       <label><input type="checkbox" ${q.required !== false ? 'checked' : ''}
         onchange="EDITING.questions[${i}].required=this.checked"> Must be answered</label>
       <span class="muted" style="font-size:12.5px;">All ${steps.length} in place to score.</span>
@@ -2199,8 +2293,9 @@ function assignCard(q, i){
 
     <label class="ed-label">Why — shown after they submit</label>
     <textarea rows="2" oninput="EDITING.questions[${i}].explanation=this.value">${esc(q.explanation || '')}</textarea>
+    ${showIfField(q, i)}
     <div class="qfoot">
-      ${pointsField(q, i, true)}
+      ${pointsField(q, i, !q.showIf)}
       <label><input type="checkbox" ${q.required !== false ? 'checked' : ''}
         onchange="EDITING.questions[${i}].required=this.checked"> Must be answered</label>
       <span class="muted" style="font-size:12.5px;">Paid per item placed right.</span>
@@ -2349,8 +2444,9 @@ function hotspotCard(q, i){
 
     <label class="ed-label">Why — shown after they submit</label>
     <textarea rows="2" oninput="EDITING.questions[${i}].explanation=this.value">${esc(q.explanation || '')}</textarea>
+    ${showIfField(q, i)}
     <div class="qfoot">
-      ${pointsField(q, i, true)}
+      ${pointsField(q, i, !q.showIf)}
       <label><input type="checkbox" ${q.required !== false ? 'checked' : ''}
         onchange="EDITING.questions[${i}].required=this.checked"> Must be answered</label>
     </div>
