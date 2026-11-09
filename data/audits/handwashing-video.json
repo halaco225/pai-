@@ -1,8 +1,8 @@
 {
   "id": "handwashing-video",
   "title": "Hand Washing, Side by Side",
-  "kind": "audit",
-  "coach": "krystina",
+  "kind": "test",
+  "coach": "pepper",
   "description": "Film one of your team washing their hands, then say what you saw. I look at the same video and we compare. The point is not to catch anybody out — it is to find out whether you and I are reading the same wash the same way, because that is what an auditor standing in your kitchen will be doing.",
   "questions": [
     {
@@ -56,11 +56,116 @@
         "Used hand sanitizer after drying",
         "Turned the faucet off with a paper towel, unless the sink is hands-free"
       ],
-      "showIf": { "n": 4, "is": [1] },
+      "showIf": {
+        "n": 4,
+        "is": [
+          1
+        ]
+      },
       "compareTo": 3,
       "points": 0,
       "required": true,
       "help": "Tick what was missed, not what was done. If you are not sure one way or the other, leave it alone — we will compare notes either way."
+    },
+    {
+      "n": 6,
+      "title": "You must wash your hands when you arrive at work.",
+      "type": "single",
+      "choices": [
+        "True",
+        "False"
+      ],
+      "correct": [
+        0
+      ],
+      "points": 1,
+      "required": true,
+      "explanation": "First thing, every shift, before you touch anything."
+    },
+    {
+      "n": 7,
+      "title": "You must wash your hands before putting on gloves and each time you change gloves.",
+      "type": "single",
+      "choices": [
+        "True",
+        "False"
+      ],
+      "correct": [
+        0
+      ],
+      "points": 1,
+      "required": true,
+      "explanation": "Every time. A clean glove over a dirty hand is still a dirty hand."
+    },
+    {
+      "n": 8,
+      "title": "After using the restroom, you only need to wash your hands once.",
+      "type": "single",
+      "choices": [
+        "True",
+        "False"
+      ],
+      "correct": [
+        1
+      ],
+      "points": 1,
+      "required": true,
+      "explanation": "Twice. Once before you leave the restroom, then again at the back hand sink — you touched the door on the way out."
+    },
+    {
+      "n": 9,
+      "title": "It is acceptable to dry your hands on your apron if paper towels are unavailable.",
+      "type": "single",
+      "choices": [
+        "True",
+        "False"
+      ],
+      "correct": [
+        1
+      ],
+      "points": 1,
+      "required": true,
+      "explanation": "No. If there are no paper towels, that is the problem to fix — an apron undoes the whole wash."
+    },
+    {
+      "n": 10,
+      "title": "When do you have to wash your hands? Tick every one that counts.",
+      "type": "multi",
+      "choices": [
+        "Before you put gloves on, and every time you change them",
+        "After handling money, trash or dirty dishes",
+        "After sneezing, coughing or blowing your nose",
+        "After handling raw chicken",
+        "Only when your hands look dirty"
+      ],
+      "correct": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "points": 1,
+      "required": true,
+      "help": "More than one is right. The list is on the poster above your hand sink.",
+      "explanation": "All four, and none of them are optional. Hands do not have to look dirty to be dirty — that is the whole reason the rule is a list of moments and not a judgement call."
+    },
+    {
+      "n": 11,
+      "title": "What is wrong with this picture?",
+      "type": "single",
+      "image": "/audits/handwash-station-gloves.webp",
+      "choices": [
+        "Chemicals in the shot",
+        "Nothing",
+        "Every glove holder should have gloves in it",
+        "Need more information"
+      ],
+      "correct": [
+        2
+      ],
+      "points": 1,
+      "required": true,
+      "explanation": "Both glove holders are empty. A hand sink has to be stocked — towels, soap, sanitizer, and gloves within reach — or the wash stops at the point where somebody has to walk off to find a box."
     }
   ]
 }
