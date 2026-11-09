@@ -446,11 +446,13 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;
 const isChoice = q => q.type === 'single' || q.type === 'multi';
 // Scored means it gets marked and locked. A question worth nothing is just
 // recorded — no Check, no verdict, straight on to the next one.
-// A question checked against a video is worth nothing — the key is a reading
-// of a phone video, not a fact — but it still gets a Check and a verdict,
-// because the whole point of it is seeing where you and I disagreed.
-const isGraded = q => ((isChoice(q) || q.type === 'hotspot' || q.type === 'order'
-                       || q.type === 'assign') && q.points > 0) || !!q.compareTo;
+// A question checked against a video is not scored and is not checked here
+// either: saying "we disagree" to somebody mid-walk settles the yes/no before
+// they have been asked which steps they thought were missed. It all goes in
+// the review on the results screen, once they have finished saying what they
+// saw — and once the reading has had the rest of the walk to finish.
+const isGraded = q => (isChoice(q) || q.type === 'hotspot' || q.type === 'order'
+                       || q.type === 'assign') && q.points > 0;
 
 // Whether this question is on screen at all. One with `showIf` waits on an
 // earlier answer: "which steps did they miss" has no business being asked of
@@ -749,47 +751,6 @@ function verdictHtml(q, v){
   if (!v) return '';
   if (v.offline) return `<div class="verdict no"><div class="head">Could not check that one</div>
     <div class="why">No signal. Your answer is saved — keep going.</div></div>`;
-
-  // Their reading of the video against mine, step by step. Nothing here is
-  // marked right or wrong: where we disagree, the timestamp is the argument,
-  // and they can go and watch it and decide which of us is wrong.
-  if (v.compare){
-    if (v.unread) return `<div class="verdict no"><div class="head">I could not read the video</div>
-      <div class="why">${esc(v.unread)}</div></div>`;
-
-    const rows = (v.steps || []).map(s => {
-      // Number(null) is 0, so without the null check a step that was never
-      // given a second offers "Watch 0:00" and plays the wrong thing.
-      const at = s.at == null || !Number.isFinite(Number(s.at)) ? '' : stamp(s.at);
-      const watch = at && clips[q.compareTo]
-        ? ` <button type="button" class="again seek" data-at="${Number(s.at)}">Watch ${at}</button>` : '';
-      return `<div class="finding ${s.agreed ? 'found' : 'missed'}">
-        <span class="no">${s.agreed ? '✔' : '≠'}</span>
-        <div><div class="what">${esc(s.text)}</div>
-          <div class="why">${esc(s.note || '')}${watch}</div></div></div>`;
-    }).join('');
-
-    const agreed = (v.steps || []).filter(s => s.agreed).length;
-    // The yes/no in front of the list asks one thing, so it gets one answer.
-    const head = v.overall
-      ? (v.agreed
-          ? (v.steps || []).length
-              ? '✔ We both saw steps missed — ' + (v.steps || []).length + ' of them'
-              : '✔ We both saw every step done'
-          : (v.steps || []).length
-              ? '≠ You had it as done. I did not see ' + (v.steps || []).length + ' of the steps'
-              : '≠ You had steps missed. I saw all of them done')
-      : 'We saw the same thing on ' + agreed + ' of ' + (v.steps || []).length;
-
-    return `<div class="verdict ${(v.overall ? v.agreed : agreed === (v.steps || []).length) ? 'ok' : 'no'}">
-        <div class="head">${head}</div>
-        ${v.seconds ? `<div class="answer">The wash ran ${Math.round(v.seconds)} seconds, start to dry.</div>` : ''}
-        ${coachVerdict(v, q.n)}</div>
-      ${clips[q.compareTo] ? `<div class="clip"><video id="backclip"
-        src="${clips[q.compareTo].url}" controls playsinline preload="metadata"></video></div>` : ''}
-      <div class="findings">${rows}</div>`;
-  }
-
 
 
   if (q.type === 'order'){
@@ -1110,9 +1071,10 @@ function stamp(seconds){
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 }
 
-function wire(q){
-  // "Watch 0:34" on a disagreement: the video is already on this phone, so
-  // this is a seek and not a download.
+// "Watch 0:34" on a disagreement: the video is already on this phone, so this
+// is a seek and not a download. Lives on the results screen now, which is not
+// a question and so never goes through wire().
+function wireSeeks(){
   for (const b of document.querySelectorAll('.seek')){
     b.addEventListener('click', () => {
       const v = document.getElementById('backclip');
@@ -1122,6 +1084,10 @@ function wire(q){
       v.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
   }
+}
+
+function wire(q){
+  wireSeeks();
 
   const again = document.getElementById('clipAgain');
   if (again) again.addEventListener('click', () => {
@@ -1558,18 +1524,6 @@ function drawStores(typed){
 // ── Marking ─────────────────────────────────────────────────────────────────
 async function check(q){
   if (checked[q.n]) return true;
-  // A question checked against the video cannot be marked until the video has
-  // been read. By here it usually has — it started several questions ago —
-  // but on a slow connection this is where they wait, and it says so.
-  if (q.compareTo && reading[q.compareTo]){
-    const btn = document.getElementById('next');
-    const label = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = 'Looking at the video…';
-    try { await reading[q.compareTo]; }
-    catch (err) { /* the server has it or it does not; /check says which */ }
-    finally { btn.disabled = false; btn.textContent = label; }
-  }
   try{
     // Marked once, and the server keeps the first answer, so a second go at
     // a dropped request costs nothing and saves a question being written off
@@ -2060,6 +2014,20 @@ async function submit(){
   }
 
   const next = document.getElementById('next');
+
+  // The review is built on the server from the reading, so the reading has to
+  // be in before the walk goes. It started several questions ago and has
+  // almost always landed by here; on a slow connection this is where they
+  // wait, and the button says what for rather than just sitting there.
+  const reads = Object.values(reading).filter(Boolean);
+  if (reads.length){
+    next.disabled = true;
+    next.textContent = 'Looking at the video…';
+    try { await Promise.all(reads); }
+    catch (err) { /* the server stored it or it did not; the review says which */ }
+    finally { next.disabled = false; }
+  }
+
   const body = new FormData();
   body.append('auditId', FORM.id);
   body.append('walkId', WALK_ID);
@@ -2264,6 +2232,71 @@ function finishRetry(){
   stage.scrollTop = 0;
 }
 
+// What they said they saw, next to what I saw. One block, built from however
+// many questions were compared: the yes/no gives the headline, the pick-all
+// gives the step-by-step. Somebody who said every step was done never sees the
+// pick-all, so their headline carries the steps instead.
+//
+// Nothing here is marked right or wrong. Where we disagree the timestamp is
+// the argument — they can go and watch it and decide which of us is wrong,
+// which is the only version of this that is worth anyone's time.
+function reviewHtml(review){
+  const list = (review || []).filter(v => v && v.compare);
+  if (!list.length) return '';
+
+  const unread = list.find(v => v.unread);
+  if (unread) return `<div class="r">
+    <div class="q-num">What you saw, what I saw</div>
+    <div class="verdict no"><div class="head">I could not read the video</div>
+      <div class="why">${esc(unread.unread)}</div></div></div>`;
+
+  const overall = list.find(v => v.overall);
+  const detail  = list.find(v => v.type === 'multi');
+  const steps   = ((detail || overall || {}).steps) || [];
+  const seconds = (overall || detail || {}).seconds;
+
+  const vid  = FORM.questions.find(q => q.type === 'video');
+  const clip = vid && clips[vid.n];
+
+  const rows = steps.map(s => {
+    // Number(null) is 0, so without the null check a step that was never given
+    // a second offers "Watch 0:00" and plays the wrong thing.
+    const at = s.at == null || !Number.isFinite(Number(s.at)) ? '' : stamp(s.at);
+    const watch = at && clip
+      ? ` <button type="button" class="again seek" data-at="${Number(s.at)}">Watch ${at}</button>` : '';
+    return `<div class="finding ${s.agreed ? 'found' : 'missed'}">
+      <span class="no">${s.agreed ? '✔' : '≠'}</span>
+      <div><div class="what">${esc(s.text)}</div>
+        <div class="why">${esc(s.note || '')}${watch}</div></div></div>`;
+  }).join('');
+
+  const agreed = steps.filter(s => s.agreed).length;
+  // The headline counts the steps I did not see, which is the yes/no's own
+  // list — not the merged list below it, which is every step there is. Using
+  // the merged one read "we both saw 8 steps missed" off a wash that missed
+  // one, because 8 is just how long the list is.
+  const mine = (overall && overall.steps) || [];
+  const head = overall
+    ? (overall.agreed
+        ? (mine.length ? '✔ We both saw steps missed — ' + mine.length + ' of them'
+                       : '✔ We both saw every step done')
+        : mine.length
+            ? '≠ You had it as done. I did not see ' + mine.length + ' of the steps'
+            : '≠ You had steps missed. I saw all of them done')
+    : 'We saw the same thing on ' + agreed + ' of ' + steps.length;
+  const ok = overall ? overall.agreed : agreed === steps.length;
+
+  return `<div class="r">
+    <div class="q-num">What you saw, what I saw</div>
+    <div class="verdict ${ok ? 'ok' : 'no'}">
+      <div class="head">${head}</div>
+      ${seconds ? `<div class="answer">The wash ran ${Math.round(seconds)} seconds, start to dry.</div>` : ''}
+    </div>
+    ${clip ? `<div class="clip"><video id="backclip"
+      src="${clip.url}" controls playsinline preload="metadata"></video></div>` : ''}
+    <div class="findings">${rows}</div></div>`;
+}
+
 function showResults(data){
   const names = (q, list) => (list || []).map(i => (q.choices || [])[i]).filter(Boolean).join(' · ');
   // An order question and an assign question have no choices to name: what
@@ -2313,11 +2346,13 @@ function showResults(data){
     ${IS_TEST ? `<div class="score">You got <b>${data.score} out of ${data.maxScore}</b></div>` : ''}
     ${COACH !== 'none' ? coachHtml(signOff, 'Thanks for walking it. See you on the next one.',
          hasPose('clap') ? 'clap' : (share >= 0.9 ? 'cheer' : 'hello')) : ''}
+    ${reviewHtml(data.review)}
     ${blocks}
     <div class="intro"><b>Fix what you found before the audit.</b> Your manager will see your photos.</div>
     ${missedFrom(data).length ? `<div class="again"><button class="btn-big" id="goAgain">
         Go again on the ${missedFrom(data).length} I missed</button></div>` : ''}`;
 
+  wireSeeks();
   const again = document.getElementById('goAgain');
   if (again) again.addEventListener('click', () => startRetry(data));
   stage.scrollTop = 0;

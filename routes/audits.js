@@ -35,7 +35,7 @@ const insights = require('../services/audit-insights');
 const video = require('../services/audit-video');
 const agent = require('../services/pai-agent');
 const claude = require('../services/claude');
-const { publicForm, grade, missingAnswers, checkOne } = require('../services/audits');
+const { publicForm, grade, missingAnswers, checkOne, visible } = require('../services/audits');
 
 const DEFAULT_AUDIT = 'steritech-readiness';
 const BUCKET        = 'audit-photos';
@@ -118,10 +118,13 @@ router.post('/check', safe(async (req, res) => {
     console.error('audit walk record failed:', err.message);
   }
 
-  // Checked against the video rather than an answer key. Both readings are in
-  // hand by now — theirs on this request, mine stored when the clip went up —
-  // so this is the comparison, not a mark.
-  if (q.compareTo) return res.json(await compareToClip(def, q, answer, req.body.walkId));
+  // A question checked against the video gets no verdict here. It used to get
+  // one, which meant the yes/no in front of the list was answered before the
+  // list had been asked: somebody who said "no, something was missed" was told
+  // they disagreed with me before they had said what they thought was missed,
+  // and the read was still running besides. The comparison is built once, at
+  // the end, in /submit — by then both sides have had their say.
+  if (q.compareTo) return res.json({ compare: true, noted: true });
 
   const result = checkOne(def, req.body.n, answer);
   if (!result) {
@@ -147,6 +150,23 @@ async function compareToClip(def, q, answer, walkId) {
   }
 
   return video.compare(q, (list && list.choices) || [], answer, reading);
+}
+
+// Everything that was checked against a video, side by side with what they
+// said. Built at the end rather than question by question so the walker has
+// finished saying what they saw before I say what I saw.
+async function reviewClips(def, answers, walkId) {
+  const out = [];
+  for (const q of def.questions) {
+    // A question they were never shown has no answer to compare. Saying "you
+    // ticked nothing" to somebody who was never asked is not a disagreement.
+    if (!q.compareTo || !visible(q, answers)) continue;
+    out.push({
+      n: q.n, type: q.type, title: q.title,
+      ...(await compareToClip(def, q, answers[q.n], walkId)),
+    });
+  }
+  return out;
 }
 
 // ── Public: read the stills taken off a video ───────────────────────────────
@@ -289,6 +309,11 @@ router.post('/submit', upload.any(), safe(async (req, res) => {
 
   const graded = grade(def, answers);
 
+  // Frozen with the marks, for the same reason: the reading it is built from
+  // was fixed when the clip went up, and a later edit to the step list must
+  // not rewrite what somebody was shown at the end of their own walk.
+  graded.review = await reviewClips(def, answers, req.body.walkId);
+
   // One row per walk. A submission that saved but whose reply never got back
   // to the phone looks like a failure, so people press the button again —
   // and a double tap sends two at once. Either way the walk only lands once.
@@ -322,6 +347,7 @@ router.post('/submit', upload.any(), safe(async (req, res) => {
           id: already.id,
           score: already.score, maxScore: already.max_score,
           results: frozen.results,
+          review: frozen.review || [],
           alreadyIn: true,
         });
       }
@@ -330,7 +356,8 @@ router.post('/submit', upload.any(), safe(async (req, res) => {
   }
 
   // Only now does the answer key go out, for the results screen.
-  res.json({ id: data.id, score: graded.score, maxScore: graded.maxScore, results: graded.results });
+  res.json({ id: data.id, score: graded.score, maxScore: graded.maxScore,
+             results: graded.results, review: graded.review });
 }));
 
 // ───────────────────────────── everything below needs a login ───────────────

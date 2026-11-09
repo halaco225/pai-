@@ -279,3 +279,31 @@ describe('their reading against mine', () => {
     expect(out.steps[1].agreed).toBe(false);
   });
 });
+
+// The review at the end is built from every compared question the walker was
+// actually shown. Somebody who said every step was done never sees the list,
+// so their review has to come off the yes/no alone — and must not include a
+// pick-all they were never asked, which would read as "you ticked nothing".
+describe('which questions the end-of-walk review is built from', () => {
+  const live = cleanTemplate(JSON.parse(
+    require('fs').readFileSync('data/audits/handwashing-video.json', 'utf8')));
+
+  const compared = answers => live.questions
+    .filter(q => q.compareTo && visible(q, answers))
+    .map(q => q.n);
+
+  test('saying something was missed brings the list into the review', () => {
+    expect(compared({ 4: 1 })).toEqual([4, 5]);
+  });
+
+  test('saying every step was done leaves the list out of it', () => {
+    expect(compared({ 4: 0 })).toEqual([4]);
+  });
+
+  test('the scored half of the walk is never part of the review', () => {
+    // Six points of written questions sit after the video. None of them is
+    // compared against it, so none of them can turn up in the side-by-side.
+    expect(compared({ 4: 1 }).every(n => n <= 5)).toBe(true);
+    expect(maxScore(live)).toBe(6);
+  });
+});
