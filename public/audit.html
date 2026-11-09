@@ -1689,8 +1689,12 @@ async function takeClip(q, input){
     say('');
   } catch (err) {
     console.error('clip', err);
-    say('This phone could not open that video. Record it again with the camera '
-      + 'rather than picking it out of your library.');
+    // The reason goes on the screen. There is no console on a shift leader's
+    // phone, so without it a report comes back as "it didn't load" and there
+    // is nothing to go on.
+    say('This phone could not read that video (' + (err.message || 'unknown') + '). '
+      + 'Record it again with the camera rather than picking it out of your library, '
+      + 'and tell Harold what it says in the brackets.');
   } finally {
     shoot.disabled = false;
     shoot.textContent = label;
@@ -1707,7 +1711,14 @@ function grabFrames(url, maxSeconds){
     const v = document.createElement('video');
     v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = url;
     v.onerror = () => reject(new Error('cannot decode'));
-    v.onloadedmetadata = async () => {
+    // Nothing else here has a deadline: if a phone fires neither loadeddata
+    // nor error the button sits on "Reading the video…" for good.
+    const gaveUp = setTimeout(() => reject(new Error('video never opened')), 30000);
+    // loadeddata, not loadedmetadata: iOS reports the duration before a single
+    // frame is decodable, and seeking or drawing from a video in that state
+    // either stalls or hands back a blank frame.
+    v.onloadeddata = async () => {
+      clearTimeout(gaveUp);
       const seconds = Math.min(v.duration || 0, maxSeconds);
       if (!(seconds > 0) || !v.videoWidth) return reject(new Error('no length'));
       const scale = Math.min(1, 512 / Math.max(v.videoWidth, v.videoHeight));
@@ -1718,13 +1729,19 @@ function grabFrames(url, maxSeconds){
       const frames = [];
       try {
         for (let t = 0; t < seconds; t++){
-          await seekTo(v, t);
+          // One second that will not seek is a gap in the strip, not a dead
+          // walk. Throwing here threw away every frame already taken.
+          try { await seekTo(v, t); } catch { continue; }
+          // After a stall the late 'seeked' can land on the next wait, which
+          // would file the wrong second under this name. The clock decides.
+          if (Math.abs(v.currentTime - t) > 0.75) continue;
           ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
           const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.6));
           // The second is in the name: it is how the reading knows when it saw
           // something, and so what to tell them to go and watch.
           if (blob) frames.push(new File([blob], `t${String(t).padStart(3, '0')}.jpg`, { type: 'image/jpeg' }));
         }
+        if (!frames.length) return reject(new Error('this phone would not seek the video'));
         resolve({ frames, seconds });
       } catch (err) { reject(err); }
     };
