@@ -307,4 +307,43 @@ describe('which questions the end-of-walk review is built from', () => {
     expect(compared({ 4: 1 }).every(n => n <= 5)).toBe(true);
     expect(maxScore(live)).toBe(6);
   });
+
+  // Two questions point at the video: the yes/no and the list of steps. The
+  // reading has to be made against the list. It used to take whichever came
+  // first, which is the yes/no, so the video was read against "Yes, every
+  // step" and "No, something was missed" as though those were the steps of a
+  // hand wash — and then the comparison, which does pick the list, found a
+  // reading two entries long where it wanted eight and told the walker the
+  // questions had changed under them.
+  describe('which list a video is read against', () => {
+    const vid = live.questions.find(q => q.type === 'video');
+
+    const pickedBy = fn => {
+      const asked = live.questions.find(x => fn(x));
+      return ((asked && asked.choices) || []).length;
+    };
+
+    test('the step list is what gets read, not the yes/no in front of it', () => {
+      expect(pickedBy(x => x.type === 'multi' && Number(x.compareTo) === vid.n)).toBe(8);
+    });
+
+    test('the two questions that point at the video are the yes/no and the list', () => {
+      const pointing = live.questions.filter(x => Number(x.compareTo) === vid.n);
+      expect(pointing.map(q => q.type)).toEqual(['single', 'multi']);
+      // The yes/no comes first, which is exactly why picking by compareTo
+      // alone took the wrong one.
+      expect(pointing[0].choices).toHaveLength(2);
+    });
+
+    test('the reading and the comparison measure the same list', () => {
+      const read = live.questions.find(x => x.type === 'multi' && Number(x.compareTo) === vid.n);
+      const shown = live.questions.find(x => x.type === 'multi' && Number(x.compareTo) === Number(vid.n));
+      expect(read.choices).toEqual(shown.choices);
+      // A reading of that length lines up; the old two-entry one did not.
+      const reading = { seconds: 20, steps: read.choices.map((_, i) => ({ i, done: true, at: i, note: '' })) };
+      expect(compare({ type: 'multi' }, shown.choices, [], reading).unread).toBeUndefined();
+      const short = { seconds: 20, steps: [{ i: 0, done: true, at: 0, note: '' }, { i: 1, done: true, at: 1, note: '' }] };
+      expect(compare({ type: 'multi' }, shown.choices, [], short).unread).toMatch(/questions changed/i);
+    });
+  });
 });
