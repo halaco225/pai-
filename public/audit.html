@@ -1045,6 +1045,7 @@ function body(q){
       <button type="button" class="photo-btn" id="pickclip">${got ? 'Choose another video' : 'Choose a video I already have'}</button>
       <input type="file" accept="video/*" capture="camcorder" id="file" style="display:none">
       <input type="file" accept="video/*" id="file2" style="display:none">
+      ${clipNote[q.n] ? `<div class="why">${esc(clipNote[q.n])}</div>` : ''}
       <div id="cliphold">${got ? clipBack(q) : ''}</div>`;
   }
 
@@ -1664,20 +1665,27 @@ document.addEventListener('keydown', e => {
 // nothing to download back.
 const clips   = {};          // { n: {url, seconds, frames} } — url is a local blob
 const reading = {};          // { n: Promise } — runs while they answer the next ones
+// What the last attempt did, kept on the question rather than in the red line
+// at the bottom. The red line is wiped the moment they press Next, so the one
+// screenshot that comes back is always of the wrong message.
+const clipNote = {};
 
 async function takeClip(q, input){
   const file = input.files && input.files[0];
   input.value = '';            // so picking the same video twice still fires
   if (!file) return;
+  clipNote[q.n] = 'Opening ' + Math.round(file.size / 1048576) + 'MB · ' + (file.type || 'no type') + '…';
 
   const shoot = document.getElementById('shoot');
   const label = shoot.textContent;
   shoot.disabled = true;
   shoot.textContent = 'Reading the video…';
+  let redLine = '';
   try {
     const url = URL.createObjectURL(file);
     const { frames, seconds } = await grabFrames(url, q.maxSeconds || 60);
-    if (frames.length < 2) throw new Error('too few frames');
+    if (frames.length < 2) throw new Error('only ' + frames.length + ' still out of '
+      + Math.round(seconds) + ' seconds');
 
     if (clips[q.n]) URL.revokeObjectURL(clips[q.n].url);
     clips[q.n] = { url, seconds, frames: frames.length };
@@ -1686,20 +1694,26 @@ async function takeClip(q, input){
     // questions it has come back, which is the whole point of the order.
     reading[q.n] = readClip(q, frames);
     reading[q.n].catch(err => console.error('reading', err));
-    say('');
+    clipNote[q.n] = 'Took ' + frames.length + ' stills from ' + Math.round(seconds)
+      + ' seconds. Press Next.';
   } catch (err) {
     console.error('clip', err);
     // The reason goes on the screen. There is no console on a shift leader's
     // phone, so without it a report comes back as "it didn't load" and there
     // is nothing to go on.
-    say('This phone could not read that video (' + (err.message || 'unknown') + '). '
-      + 'Record it again with the camera rather than picking it out of your library, '
-      + 'and tell Harold what it says in the brackets.');
+    clipNote[q.n] = 'Stopped at: ' + (err.message || 'unknown')
+      + '. Send Harold a picture of this line.';
+    // After the redraw, not before it: draw() opens with say(''), so every
+    // message this ever set was wiped a moment later and nobody ever saw one.
+    redLine = 'This phone could not read that video. Record it again with the camera '
+      + 'rather than picking it out of your library — and send Harold a picture '
+      + 'of the grey box above this line.';
   } finally {
     shoot.disabled = false;
     shoot.textContent = label;
     saveDraft();
     draw();
+    if (redLine) say(redLine);
   }
 }
 
@@ -1709,7 +1723,16 @@ async function takeClip(q, input){
 function grabFrames(url, maxSeconds){
   return new Promise((resolve, reject) => {
     const v = document.createElement('video');
-    v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = url;
+    v.muted = true; v.playsInline = true; v.preload = 'auto';
+    // On the page, not floating in memory. iOS will not bring a decoder up for
+    // a video element that was never attached and never played, and without a
+    // decoder every seek stalls and every drawImage hands back nothing. One
+    // pixel in a corner is enough to count as attached.
+    v.setAttribute('style', 'position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0.01;pointer-events:none');
+    document.body.appendChild(v);
+    v.src = url;
+    const done = fn => (...a) => { v.remove(); v.removeAttribute('src'); v.load(); return fn(...a); };
+    resolve = done(resolve); reject = done(reject);
     v.onerror = () => reject(new Error('cannot decode'));
     // Nothing else here has a deadline: if a phone fires neither loadeddata
     // nor error the button sits on "Reading the video…" for good.
@@ -1720,7 +1743,12 @@ function grabFrames(url, maxSeconds){
     v.onloadeddata = async () => {
       clearTimeout(gaveUp);
       const seconds = Math.min(v.duration || 0, maxSeconds);
-      if (!(seconds > 0) || !v.videoWidth) return reject(new Error('no length'));
+      if (!(seconds > 0) || !v.videoWidth)
+        return reject(new Error('no picture in it (' + Math.round(v.duration || 0)
+          + 's, ' + v.videoWidth + 'x' + v.videoHeight + ')'));
+      // A muted play, then straight back to a stop. It costs a frame's worth of
+      // time and it is what makes the first seek answer on a phone.
+      try { await v.play(); v.pause(); } catch { /* a refused play still warmed it */ }
       const scale = Math.min(1, 512 / Math.max(v.videoWidth, v.videoHeight));
       const canvas = document.createElement('canvas');
       canvas.width  = Math.round(v.videoWidth  * scale);
@@ -1728,10 +1756,14 @@ function grabFrames(url, maxSeconds){
       const ctx = canvas.getContext('2d');
       const frames = [];
       try {
+        let stalls = 0;
         for (let t = 0; t < seconds; t++){
           // One second that will not seek is a gap in the strip, not a dead
-          // walk. Throwing here threw away every frame already taken.
-          try { await seekTo(v, t); } catch { continue; }
+          // walk. Throwing here threw away every frame already taken. Six in a
+          // row is a phone that is not going to start: stop, rather than make
+          // them watch five seconds a second for a minute and a half.
+          try { await seekTo(v, t); stalls = 0; }
+          catch { if (++stalls >= 6) break; else continue; }
           // After a stall the late 'seeked' can land on the next wait, which
           // would file the wrong second under this name. The clock decides.
           if (Math.abs(v.currentTime - t) > 0.75) continue;
@@ -1741,7 +1773,8 @@ function grabFrames(url, maxSeconds){
           // something, and so what to tell them to go and watch.
           if (blob) frames.push(new File([blob], `t${String(t).padStart(3, '0')}.jpg`, { type: 'image/jpeg' }));
         }
-        if (!frames.length) return reject(new Error('this phone would not seek the video'));
+        if (!frames.length) return reject(new Error('no second of ' + Math.round(seconds)
+          + ' would seek (' + canvas.width + 'x' + canvas.height + ')'));
         resolve({ frames, seconds });
       } catch (err) { reject(err); }
     };
