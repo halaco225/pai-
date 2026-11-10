@@ -1045,7 +1045,6 @@ function body(q){
       <button type="button" class="photo-btn" id="pickclip">${got ? 'Choose another video' : 'Choose a video I already have'}</button>
       <input type="file" accept="video/*" capture="camcorder" id="file" style="display:none">
       <input type="file" accept="video/*" id="file2" style="display:none">
-      ${clipNote[q.n] ? `<div class="why">${esc(clipNote[q.n])}</div>` : ''}
       <div id="cliphold">${got ? clipBack(q) : ''}</div>`;
   }
 
@@ -1665,16 +1664,11 @@ document.addEventListener('keydown', e => {
 // nothing to download back.
 const clips   = {};          // { n: {url, seconds, frames} } — url is a local blob
 const reading = {};          // { n: Promise } — runs while they answer the next ones
-// What the last attempt did, kept on the question rather than in the red line
-// at the bottom. The red line is wiped the moment they press Next, so the one
-// screenshot that comes back is always of the wrong message.
-const clipNote = {};
 
 async function takeClip(q, input){
   const file = input.files && input.files[0];
   input.value = '';            // so picking the same video twice still fires
   if (!file) return;
-  clipNote[q.n] = 'Opening ' + Math.round(file.size / 1048576) + 'MB · ' + (file.type || 'no type') + '…';
 
   const shoot = document.getElementById('shoot');
   const label = shoot.textContent;
@@ -1694,20 +1688,17 @@ async function takeClip(q, input){
     // questions it has come back, which is the whole point of the order.
     reading[q.n] = readClip(q, frames);
     reading[q.n].catch(err => console.error('reading', err));
-    clipNote[q.n] = 'Took ' + frames.length + ' stills from ' + Math.round(seconds)
-      + ' seconds. Press Next.';
   } catch (err) {
     console.error('clip', err);
     // The reason goes on the screen. There is no console on a shift leader's
     // phone, so without it a report comes back as "it didn't load" and there
     // is nothing to go on.
-    clipNote[q.n] = 'Stopped at: ' + (err.message || 'unknown')
-      + '. Send Harold a picture of this line.';
     // After the redraw, not before it: draw() opens with say(''), so every
     // message this ever set was wiped a moment later and nobody ever saw one.
-    redLine = 'This phone could not read that video. Record it again with the camera '
-      + 'rather than picking it out of your library — and send Harold a picture '
-      + 'of the grey box above this line.';
+    // The reason rides in this line rather than the grey box above, because
+    // this line is the one a tester has actually been seen to read.
+    redLine = 'This phone could not read that video — ' + (err.message || 'unknown')
+      + '. Try recording it again, and send Harold this whole message.';
   } finally {
     shoot.disabled = false;
     shoot.textContent = label;
@@ -1717,9 +1708,20 @@ async function takeClip(q, input){
   }
 }
 
-// One still a second, scaled to something worth reading and no more. Seeking
-// a frame at a time rather than playing and grabbing: play-and-grab silently
-// drops frames on a busy phone, and a dropped frame here is a missing second.
+// One still a second, scaled to something worth reading and no more.
+//
+// It plays the video and takes a still as each new second goes by, rather than
+// seeking to each second and waiting. Seeking is the tidier idea and it is the
+// one thing a phone is worst at: iPhones answer the first seek and then stop
+// answering, which is what left two testers on "Reading the video…" with
+// nothing to show. Playing is the path a phone is built for. Dropped frames
+// used to be the objection, and they stop mattering once the still is named
+// after the second the clock actually read rather than the second we asked
+// for — a drop is a gap, not a lie about when something happened.
+//
+// Muted and four times speed, so a ninety-second clip is done in twenty-odd
+// and the picker does not sit there. Seeking is still here, behind it, for a
+// browser that refuses to play.
 function grabFrames(url, maxSeconds){
   return new Promise((resolve, reject) => {
     const v = document.createElement('video');
@@ -1746,39 +1748,99 @@ function grabFrames(url, maxSeconds){
       if (!(seconds > 0) || !v.videoWidth)
         return reject(new Error('no picture in it (' + Math.round(v.duration || 0)
           + 's, ' + v.videoWidth + 'x' + v.videoHeight + ')'));
-      // A muted play, then straight back to a stop. It costs a frame's worth of
-      // time and it is what makes the first seek answer on a phone.
-      try { await v.play(); v.pause(); } catch { /* a refused play still warmed it */ }
       const scale = Math.min(1, 512 / Math.max(v.videoWidth, v.videoHeight));
       const canvas = document.createElement('canvas');
       canvas.width  = Math.round(v.videoWidth  * scale);
       canvas.height = Math.round(v.videoHeight * scale);
       const ctx = canvas.getContext('2d');
       const frames = [];
-      try {
-        let stalls = 0;
-        for (let t = 0; t < seconds; t++){
-          // One second that will not seek is a gap in the strip, not a dead
-          // walk. Throwing here threw away every frame already taken. Six in a
-          // row is a phone that is not going to start: stop, rather than make
-          // them watch five seconds a second for a minute and a half.
-          try { await seekTo(v, t); stalls = 0; }
-          catch { if (++stalls >= 6) break; else continue; }
-          // After a stall the late 'seeked' can land on the next wait, which
-          // would file the wrong second under this name. The clock decides.
-          if (Math.abs(v.currentTime - t) > 0.75) continue;
-          ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
-          const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.6));
-          // The second is in the name: it is how the reading knows when it saw
-          // something, and so what to tell them to go and watch.
-          if (blob) frames.push(new File([blob], `t${String(t).padStart(3, '0')}.jpg`, { type: 'image/jpeg' }));
-        }
-        if (!frames.length) return reject(new Error('no second of ' + Math.round(seconds)
-          + ' would seek (' + canvas.width + 'x' + canvas.height + ')'));
-        resolve({ frames, seconds });
-      } catch (err) { reject(err); }
+      let want = 0;                       // the next second we still need
+
+      // Whatever the clock says now. Named for the second it came from, which
+      // is how the reading knows what to tell them to go back and watch.
+      const shoot = () => {
+        const t = Math.floor(v.currentTime);
+        if (t < want || t >= seconds) return;
+        want = t + 1;
+        ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(b => {
+          if (b) frames.push(new File([b], `t${String(t).padStart(3, '0')}.jpg`, { type: 'image/jpeg' }));
+        }, 'image/jpeg', 0.6);
+        // Only a still that was actually taken counts as progress. Resetting
+        // this on every look instead would mean a video stuck at four seconds
+        // kept the watchdog asleep for as long as the phone cared to look.
+        clearTimeout(idle);
+        idle = setTimeout(() => quit('went quiet'), 12000);
+      };
+
+      let quit;
+      // Nothing new for twelve seconds means it has stopped, whether or not it
+      // ever said so. Phones go quiet rather than ending.
+      let idle = setTimeout(() => quit('went quiet'), 12000);
+      const tick = () => {
+        shoot();
+        if (v.currentTime >= seconds) quit('reached the end');
+      };
+
+      let over = false;
+      const quits = [];                 // whatever needs turning off at the end
+      quit = why => {
+        if (over) return;               // ended, idle and the cap can all fire
+        over = true;
+        v.ontimeupdate = null; v.onended = null;
+        clearTimeout(idle);
+        for (const off of quits) off();
+        v.pause();
+        // toBlob is not instant. Give the last few a moment to land, then sort,
+        // because they finish in whatever order the phone gets to them.
+        setTimeout(() => {
+          frames.sort((a, b) => a.name.localeCompare(b.name));
+          if (frames.length) return resolve({ frames, seconds });
+          // Nothing came of playing it. The old way, once, before giving up.
+          seekFrames(v, ctx, canvas, seconds)
+            .then(got => got.length
+              ? resolve({ frames: got, seconds })
+              : reject(new Error('no stills off ' + Math.round(seconds) + 's (' + why + ')')))
+            .catch(err => reject(new Error(err.message + ' (' + why + ')')));
+        }, 400);
+      };
+
+      v.onended = () => quit('ended');
+      v.ontimeupdate = tick;
+      // A timer, not requestVideoFrameCallback and not requestAnimationFrame.
+      // The first only runs for frames the browser actually paints, and this
+      // video is a pixel in the corner that nothing paints, so it never fires
+      // once. The second stops dead the moment somebody switches apps, and a
+      // phone in a kitchen gets put down. A timer keeps running either way --
+      // slowed to about once a second when the page is in the background,
+      // which at double speed still lands twice in every second of video.
+      // timeupdate, which fires about four times a second, is the third net.
+      const timer = setInterval(tick, 100);
+      quits.push(() => clearInterval(timer));
+      v.playbackRate = 2;                 // a phone may refuse and play at 1
+      try { await v.play(); v.playbackRate = 2; }
+      catch { return quit('would not play'); }
     };
   });
+}
+
+// The way it used to work, kept for a browser that will not play in the
+// background. It stops on six stalled seconds in a row rather than spending
+// five seconds a second on a phone that is never going to answer.
+async function seekFrames(v, ctx, canvas, seconds){
+  const frames = [];
+  let stalls = 0;
+  for (let t = 0; t < seconds; t++){
+    try { await seekTo(v, t); stalls = 0; }
+    catch { if (++stalls >= 6) break; else continue; }
+    // A late 'seeked' from a stall can land on the next wait and file the
+    // wrong second under this name. The clock settles it.
+    if (Math.abs(v.currentTime - t) > 0.75) continue;
+    ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.6));
+    if (blob) frames.push(new File([blob], `t${String(t).padStart(3, '0')}.jpg`, { type: 'image/jpeg' }));
+  }
+  return frames;
 }
 
 function seekTo(v, t){
