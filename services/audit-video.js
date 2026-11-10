@@ -49,13 +49,18 @@ async function readSteps(frames, steps, what) {
     + `For each item below, say whether the video shows it happening.\n\n${list}\n\n`
     + `Reply with JSON and nothing else:\n`
     + `{"seconds": <how many seconds the whole thing took, from the first step to the last>,\n`
-    + ` "steps": [{"i": <the number above>, "done": true|false,\n`
+    + ` "steps": [{"i": <the number above>, "done": true|false|null,\n`
     + `            "at": <the second you saw it, or null>,\n`
     + `            "note": "<one short sentence, what you saw or did not see>"}]}\n\n`
-    + `One entry per item, in the same order. Say done: false only when the `
-    + `stills actually show it not happening or show it skipped — not when you `
-    + `are unsure, and not when it may have happened off camera. If you cannot `
-    + `tell, say done: true and say so in the note.`,
+    + `One entry per item, in the same order. Three answers, and the third is `
+    + `the important one:\n`
+    + `- done: true when the stills show it happening.\n`
+    + `- done: false when the stills show it not happening or show it skipped.\n`
+    + `- done: null when you cannot tell — out of frame, too blurred, happened `
+    + `between stills, or the video does not show this at all.\n\n`
+    + `Never guess between them. "I could not see it" is a useful answer here `
+    + `and a wrong "it happened" is not: somebody is about to be told whether `
+    + `they and you read the same wash the same way.`,
   });
 
   const res = await client.messages.create({
@@ -78,7 +83,10 @@ async function readSteps(frames, steps, what) {
  * it in a sentence or a fence, so this takes the outermost braces rather than
  * trusting the whole string. Anything missing or out of range reads as "I
  * could not tell", which is a true thing to say and the safe way to be wrong:
- * nobody is told they missed a step on the strength of a broken reply.
+ * nobody is told they missed a step on the strength of a broken reply, and
+ * nobody is told a step was done on the strength of one either. That second
+ * half used to be untrue — a missing answer came back as done — and it meant
+ * a video of the ceiling could be reported as a perfect wash.
  */
 function shape(text, count) {
   const body = String(text || '');
@@ -96,7 +104,9 @@ function shape(text, count) {
     const at = s.at == null ? NaN : Number(s.at);
     return {
       i,
-      done: s.done !== false,
+      // Three states, and anything that is not plainly true or false is the
+      // third one. null means "I could not tell", not "fine".
+      done: s.done === true ? true : s.done === false ? false : null,
       at: Number.isFinite(at) && at >= 0 ? Math.round(at) : null,
       note: String(s.note || '').trim().slice(0, 220),
     };
@@ -143,6 +153,11 @@ function compare(q, choices, answer, reading) {
     return {
       compare: true, overall: true, seconds: reading.seconds,
       agreed: theySaidClean === (iSawMissed.length === 0),
+      // Counted and said out loud. Agreeing that nothing was missed means
+      // something quite different when four of the eight were never visible,
+      // and the walker is the one who knows whether that is the camera angle
+      // or the wash.
+      unsure: reading.steps.filter(s => s.done == null).length,
       steps: iSawMissed.map(s => ({
         text: choices[s.i] == null ? `Step ${s.i + 1}` : choices[s.i],
         at: s.at, agreed: false, note: s.note || 'I did not see this one happen.',
@@ -154,6 +169,14 @@ function compare(q, choices, answer, reading) {
     const mine = reading.steps[i] || {};
     const theyMissed = ticked.has(i);
     const iMissed = mine.done === false;
+    // A step I could not make out is not a step we agree on and not one we
+    // disagree on. Ticking it as agreed was the bug: it put a ✔ beside a step
+    // nobody had seen.
+    if (mine.done == null) return {
+      text, at: mine.at, agreed: null, unsure: true,
+      note: (mine.note || 'I could not make this one out in the video.')
+        + (theyMissed ? ' You had it as missed.' : ''),
+    };
     return {
       text,
       at: mine.at,

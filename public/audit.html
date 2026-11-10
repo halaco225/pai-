@@ -284,6 +284,9 @@
                font-weight:700;line-height:24px;text-align:center;}
   .finding.found .no{background:var(--green);}
   .finding.missed .no{background:var(--red);}
+  /* Neither agreed nor disagreed: a step the camera never showed. Grey, so it
+     does not read as a pass at a glance. */
+  .finding.unsure .no{background:var(--muted);}
   .finding .what{font-weight:600;}
   .finding .why{font-size:15px;color:var(--muted);margin-top:4px;line-height:1.45;}
   .photo-btn{display:block;width:100%;padding:18px;border:2px dashed var(--blue);border-radius:13px;
@@ -302,6 +305,10 @@
   .verdict .head{font-weight:700;font-size:17px;}
   .verdict.ok .head{color:#13803a;}
   .verdict.no .head{color:#a5121b;}
+  /* Agreed as far as it goes, on a video that did not show everything. Green
+     would overstate it and red would call it a fail; it is neither. */
+  .verdict.part{border-color:var(--line);background:var(--bg);}
+  .verdict.part .head{color:var(--ink);}
   .verdict .answer{margin-top:9px;font-weight:600;}
   .verdict .why{margin-top:9px;font-size:15.5px;line-height:1.5;}
 
@@ -2390,13 +2397,24 @@ function reviewHtml(review){
     const at = s.at == null || !Number.isFinite(Number(s.at)) ? '' : stamp(s.at);
     const watch = at && clip
       ? ` <button type="button" class="again seek" data-at="${Number(s.at)}">Watch ${at}</button>` : '';
-    return `<div class="finding ${s.agreed ? 'found' : 'missed'}">
-      <span class="no">${s.agreed ? '✔' : '≠'}</span>
+    // Three marks, not two. A step the camera never showed gets its own, so
+    // it cannot be read as a tick at a glance.
+    const mark = s.unsure ? ['unsure', '?'] : s.agreed ? ['found', '✔'] : ['missed', '≠'];
+    return `<div class="finding ${mark[0]}">
+      <span class="no">${mark[1]}</span>
       <div><div class="what">${esc(s.text)}</div>
         <div class="why">${esc(s.note || '')}${watch}</div></div></div>`;
   }).join('');
 
-  const agreed = steps.filter(s => s.agreed).length;
+  const agreed = steps.filter(s => s.agreed === true).length;
+  const unsure = steps.filter(s => s.unsure).length
+    || (overall && overall.unsure) || 0;
+  // Said in the headline box rather than left to the rows. "We both saw every
+  // step done" means something else entirely when half of them were never in
+  // shot, and the walker is the one who knows whether that was the angle.
+  const couldNotSee = unsure
+    ? `<div class="answer">I could not make out ${unsure} of the steps — `
+      + `they were out of shot, or went by between stills.</div>` : '';
   // The headline counts the steps I did not see, which is the yes/no's own
   // list — not the merged list below it, which is every step there is. Using
   // the merged one read "we both saw 8 steps missed" off a wash that missed
@@ -2409,14 +2427,22 @@ function reviewHtml(review){
         : mine.length
             ? '≠ You had it as done. I did not see ' + mine.length + ' of the steps'
             : '≠ You had steps missed. I saw all of them done')
-    : 'We saw the same thing on ' + agreed + ' of ' + steps.length;
-  const ok = overall ? overall.agreed : agreed === steps.length;
+    : 'We saw the same thing on ' + agreed + ' of ' + (steps.length - unsure);
+  const lined = overall ? overall.agreed : agreed === steps.length - unsure;
+  // Agreement I could only half see is not a pass and not a fail. Green would
+  // overstate it; red would read as "you got this wrong" to somebody whose
+  // only mistake was where they stood with the phone.
+  // A disagreement is a disagreement whatever else was out of shot, so it
+  // keeps its colour; the neutral tone is only for an agreement I could not
+  // fully see.
+  const tone = !lined ? 'no' : unsure ? 'part' : 'ok';
 
   return `<div class="r">
     <div class="q-num">What you saw, what I saw</div>
-    <div class="verdict ${ok ? 'ok' : 'no'}">
+    <div class="verdict ${tone}">
       <div class="head">${head}</div>
       ${seconds ? `<div class="answer">The wash ran ${Math.round(seconds)} seconds, start to dry.</div>` : ''}
+      ${couldNotSee}
     </div>
     ${clip ? `<div class="clip"><video id="backclip"
       src="${clip.url}" controls playsinline preload="metadata"></video></div>` : ''}

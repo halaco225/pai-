@@ -185,12 +185,13 @@ describe('a reading of the frames', () => {
     expect(out.steps[0].done).toBe(false);
   });
 
-  test('a step the model did not mention reads as done, not as missed', () => {
-    // Being wrong the other way tells somebody they skipped a step on the
-    // strength of a reply that said nothing about it.
+  test('a step the model did not mention is unknown, neither done nor missed', () => {
+    // It used to read as done, which told somebody their wash was clean on the
+    // strength of a reply that said nothing about it. Saying it was missed
+    // would be the same mistake pointed the other way. Neither: unknown.
     const out = shape('{"seconds": 25, "steps": [{"i":0,"done":false,"note":"no soap"}]}', three.length);
     expect(out.steps).toHaveLength(3);
-    expect(out.steps.map(s => s.done)).toEqual([false, true, true]);
+    expect(out.steps.map(s => s.done)).toEqual([false, null, null]);
     expect(out.steps[2].note).toBe('');
   });
 
