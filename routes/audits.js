@@ -189,8 +189,13 @@ router.post('/read-clip', frameUpload.array('frames'), safe(async (req, res) => 
   if (!q) return res.status(400).json({ error: 'That question does not take a video.' });
 
   // The step list lives on the question that will be compared against this
-  // one, so there is one list and not two that can drift apart.
-  const asked = def.questions.find(x => Number(x.compareTo) === q.n);
+  // one, so there is one list and not two that can drift apart. It has to be
+  // the multi: the yes/no in front of it points at the same video, and it
+  // comes first, so a plain find() handed over its two choices — "Yes, every
+  // step" and "No, something was missed" — as if those were the steps of a
+  // hand wash. The reading came back two entries long, the comparison wanted
+  // eight, and a walker was told the questions had changed under them.
+  const asked = def.questions.find(x => x.type === 'multi' && Number(x.compareTo) === q.n);
   const steps = (asked && asked.choices) || [];
   if (!steps.length) return res.status(400).json({ error: 'Nothing is set up to be compared against this video.' });
 
