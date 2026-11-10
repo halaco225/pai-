@@ -52,15 +52,26 @@ async function readSteps(frames, steps, what) {
     + ` "steps": [{"i": <the number above>, "done": true|false|null,\n`
     + `            "at": <the second you saw it, or null>,\n`
     + `            "note": "<one short sentence, what you saw or did not see>"}]}\n\n`
-    + `One entry per item, in the same order. Three answers, and the third is `
-    + `the important one:\n`
+    + `One entry per item, in the same order. Three answers:\n`
     + `- done: true when the stills show it happening.\n`
-    + `- done: false when the stills show it not happening or show it skipped.\n`
-    + `- done: null when you cannot tell — out of frame, too blurred, happened `
-    + `between stills, or the video does not show this at all.\n\n`
-    + `Never guess between them. "I could not see it" is a useful answer here `
-    + `and a wrong "it happened" is not: somebody is about to be told whether `
-    + `they and you read the same wash the same way.`,
+    + `- done: false ONLY when the stills show it being skipped — they move on `
+    + `to the next thing without it, or walk away, or do something that rules `
+    + `it out. You have to be able to point at what they did instead.\n`
+    + `- done: null when you cannot tell. Out of frame, hands out of shot, too `
+    + `blurred, obscured, over before the next still, or simply not shown.\n\n`
+    + `The line between false and null is the one that matters, and it is easy `
+    + `to get wrong. "I cannot see a sanitizer bottle" is null, not false. Not `
+    + `seeing a thing is not the same as seeing it not happen. If your own note `
+    + `would say "no X is visible" or "I cannot see", the answer is null.\n\n`
+    + `These are one still a second, so anything quick can land between two of `
+    + `them: a pump of sanitizer, a tap turned off with a towel, a quick rinse. `
+    + `A step you would expect to take a second or two and cannot find is null. `
+    + `The stills also stop when the recording stopped, and something may have `
+    + `been underway at the last one — the end of the strip is not the end of `
+    + `the wash.\n\n`
+    + `Somebody is about to be told whether they and you read the same wash the `
+    + `same way, and they were standing there. "I could not see it" is a useful `
+    + `thing to tell them. "They did not do it" when they did is not.`,
   });
 
   const res = await client.messages.create({
@@ -68,7 +79,9 @@ async function readSteps(frames, steps, what) {
     max_tokens: 2000,
     system: 'You read kitchen camera stills for a restaurant food safety test. '
       + 'You are careful about what the pictures actually show, you never guess '
-      + 'at something out of frame, and you answer in JSON exactly as asked.',
+      + 'at something out of frame, and you hold "I did not see it" firmly '
+      + 'apart from "it did not happen" — the first is about the stills and the '
+      + 'second is about the person. You answer in JSON exactly as asked.',
     messages: [{ role: 'user', content }],
   });
 

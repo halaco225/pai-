@@ -1765,6 +1765,7 @@ function grabFrames(url, maxSeconds){
       let canvas, ctx;
       const frames = [];
       let want = 0;                       // the next second we still need
+      let pending = 0;                    // stills drawn but not yet encoded
 
       // Whatever the clock says now. Named for the second it came from, which
       // is how the reading knows what to tell them to go back and watch.
@@ -1780,8 +1781,10 @@ function grabFrames(url, maxSeconds){
         }
         want = t + 1;
         ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+        pending++;
         canvas.toBlob(b => {
           if (b) frames.push(new File([b], `t${String(t).padStart(3, '0')}.jpg`, { type: 'image/jpeg' }));
+          pending--;
         }, 'image/jpeg', 0.6);
         // Only a still that was actually taken counts as progress. Resetting
         // this on every look instead would mean a video stuck at four seconds
@@ -1808,9 +1811,12 @@ function grabFrames(url, maxSeconds){
         clearTimeout(idle);
         for (const off of quits) off();
         v.pause();
-        // toBlob is not instant. Give the last few a moment to land, then sort,
-        // because they finish in whatever order the phone gets to them.
-        setTimeout(() => {
+        // toBlob is not instant, and the stills still in the encoder when the
+        // video ends are the last seconds of the wash — the sanitizer, the tap
+        // turned off with a towel, the end of the thing. A flat wait dropped
+        // them on a slow phone. Wait for the count, not for the clock.
+        const settle = (left) => {
+          if (pending && left > 0) return setTimeout(() => settle(left - 1), 100);
           frames.sort((a, b) => a.name.localeCompare(b.name));
           if (frames.length) return resolve({ frames, seconds });
           // Nothing came of playing it. The old way, once, before giving up —
@@ -1823,7 +1829,8 @@ function grabFrames(url, maxSeconds){
               ? resolve({ frames: got, seconds })
               : reject(new Error('no stills off ' + Math.round(seconds) + 's (' + why + ')')))
             .catch(err => reject(new Error(err.message + ' (' + why + ')')));
-        }, 400);
+        };
+        settle(50);                       // five seconds at the outside
       };
 
       v.onended = () => quit('ended');
