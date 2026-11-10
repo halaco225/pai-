@@ -1726,6 +1726,10 @@ function grabFrames(url, maxSeconds){
   return new Promise((resolve, reject) => {
     const v = document.createElement('video');
     v.muted = true; v.playsInline = true; v.preload = 'auto';
+    // As attributes too. A muted video is the one thing iOS will start without
+    // being asked, and it checks the attributes, not only the properties.
+    v.setAttribute('muted', ''); v.setAttribute('playsinline', '');
+    v.setAttribute('webkit-playsinline', '');
     // On the page, not floating in memory. iOS will not bring a decoder up for
     // a video element that was never attached and never played, and without a
     // decoder every seek stalls and every drawImage hands back nothing. One
@@ -1736,23 +1740,22 @@ function grabFrames(url, maxSeconds){
     const done = fn => (...a) => { v.remove(); v.removeAttribute('src'); v.load(); return fn(...a); };
     resolve = done(resolve); reject = done(reject);
     v.onerror = () => reject(new Error('cannot decode'));
-    // Nothing else here has a deadline: if a phone fires neither loadeddata
-    // nor error the button sits on "Reading the video…" for good.
+    // Nothing else here has a deadline: if a phone fires neither event nor
+    // error the button sits on "Reading the video…" for good.
     const gaveUp = setTimeout(() => reject(new Error('video never opened')), 30000);
-    // loadeddata, not loadedmetadata: iOS reports the duration before a single
-    // frame is decodable, and seeking or drawing from a video in that state
-    // either stalls or hands back a blank frame.
-    v.onloadeddata = async () => {
+    // loadedmetadata, not loadeddata. iOS ignores preload and will not fetch a
+    // frame of a video until something plays it, so loadeddata never arrives —
+    // and waiting for it before calling play() is a deadlock with itself. That
+    // is what "video never opened" was on both testers' phones: not a codec it
+    // could not read and not a seek it would not answer, a frame it was never
+    // going to fetch because nothing had asked it to play yet.
+    v.onloadedmetadata = async () => {
       clearTimeout(gaveUp);
+      // Metadata is enough for the length. The picture size can still be zero
+      // here on a phone, so the canvas waits until there is a frame to measure.
       const seconds = Math.min(v.duration || 0, maxSeconds);
-      if (!(seconds > 0) || !v.videoWidth)
-        return reject(new Error('no picture in it (' + Math.round(v.duration || 0)
-          + 's, ' + v.videoWidth + 'x' + v.videoHeight + ')'));
-      const scale = Math.min(1, 512 / Math.max(v.videoWidth, v.videoHeight));
-      const canvas = document.createElement('canvas');
-      canvas.width  = Math.round(v.videoWidth  * scale);
-      canvas.height = Math.round(v.videoHeight * scale);
-      const ctx = canvas.getContext('2d');
+      if (!(seconds > 0)) return reject(new Error('no length (' + v.duration + ')'));
+      let canvas, ctx;
       const frames = [];
       let want = 0;                       // the next second we still need
 
@@ -1760,7 +1763,14 @@ function grabFrames(url, maxSeconds){
       // is how the reading knows what to tell them to go back and watch.
       const shoot = () => {
         const t = Math.floor(v.currentTime);
-        if (t < want || t >= seconds) return;
+        if (t < want || t >= seconds || !v.videoWidth) return;
+        if (!canvas){
+          const scale = Math.min(1, 512 / Math.max(v.videoWidth, v.videoHeight));
+          canvas = document.createElement('canvas');
+          canvas.width  = Math.round(v.videoWidth  * scale);
+          canvas.height = Math.round(v.videoHeight * scale);
+          ctx = canvas.getContext('2d');
+        }
         want = t + 1;
         ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
         canvas.toBlob(b => {
@@ -1796,7 +1806,11 @@ function grabFrames(url, maxSeconds){
         setTimeout(() => {
           frames.sort((a, b) => a.name.localeCompare(b.name));
           if (frames.length) return resolve({ frames, seconds });
-          // Nothing came of playing it. The old way, once, before giving up.
+          // Nothing came of playing it. The old way, once, before giving up —
+          // but only if there was ever a picture to measure a canvas against.
+          if (!canvas) return reject(new Error('no picture in it ('
+            + Math.round(seconds) + 's, ' + v.videoWidth + 'x' + v.videoHeight
+            + ', ' + why + ')'));
           seekFrames(v, ctx, canvas, seconds)
             .then(got => got.length
               ? resolve({ frames: got, seconds })
