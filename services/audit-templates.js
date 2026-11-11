@@ -48,6 +48,11 @@ async function initAuditTemplates() {
   // who could already see them.
   await p.query(`ALTER TABLE audit_templates ADD COLUMN IF NOT EXISTS created_by VARCHAR(100)`);
 
+  // Rows from before the column: the last editor is the only record of who
+  // made them, and the seeded ones honestly say 'seed', which the Templates
+  // tab shows as Built in rather than as a person's folder.
+  await p.query(`UPDATE audit_templates SET created_by = updated_by WHERE created_by IS NULL`);
+
   // Whether it is a test or an audit, and who walks them through it. Both
   // were worked out from the questions before they could be chosen; rows
   // from then have them null and still fall back to that.
