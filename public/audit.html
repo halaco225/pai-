@@ -1769,8 +1769,16 @@ function grabFrames(url, maxSeconds){
 
       // Whatever the clock says now. Named for the second it came from, which
       // is how the reading knows what to tell them to go back and watch.
+      // Twice a second on a short clip, once on a long one. A pump of
+      // sanitizer or a tap turned off with a towel can pass between two whole
+      // seconds, and that came back as "I could not make this one out". The
+      // reading only looks at the first 90 stills, so anything over 45 seconds
+      // has to stay at one a second or the back half of the wash is dropped —
+      // which would be a worse bargain than the one this is fixing.
+      const step = seconds > 45 ? 1 : 0.5;
+
       const shoot = () => {
-        const t = Math.floor(v.currentTime);
+        const t = Math.round(Math.floor(v.currentTime / step) * step * 10) / 10;
         if (t < want || t >= seconds || !v.videoWidth) return;
         if (!canvas){
           const scale = Math.min(1, 512 / Math.max(v.videoWidth, v.videoHeight));
@@ -1779,11 +1787,18 @@ function grabFrames(url, maxSeconds){
           canvas.height = Math.round(v.videoHeight * scale);
           ctx = canvas.getContext('2d');
         }
-        want = t + 1;
+        want = t + step;
         ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
         pending++;
+        // t014.jpg, and t014_5.jpg for the half. The second is in the name:
+        // it is how the reading knows when it saw something, and so what to
+        // tell them to go back and watch. An underscore, because a dash sorts
+        // ahead of the dot and would file every half second before the whole
+        // one it comes after.
+        const name = `t${String(Math.floor(t)).padStart(3, '0')}`
+          + (Number.isInteger(t) ? '' : '_5') + '.jpg';
         canvas.toBlob(b => {
-          if (b) frames.push(new File([b], `t${String(t).padStart(3, '0')}.jpg`, { type: 'image/jpeg' }));
+          if (b) frames.push(new File([b], name, { type: 'image/jpeg' }));
           pending--;
         }, 'image/jpeg', 0.6);
         // Only a still that was actually taken counts as progress. Resetting
@@ -1817,7 +1832,15 @@ function grabFrames(url, maxSeconds){
         // them on a slow phone. Wait for the count, not for the clock.
         const settle = (left) => {
           if (pending && left > 0) return setTimeout(() => settle(left - 1), 100);
-          frames.sort((a, b) => a.name.localeCompare(b.name));
+          // By the second they came from, not by name: localeCompare walks
+          // past the dot and reads t000_5 as "t0005", which lands every half
+          // second ahead of the whole one it follows. The server sorts by
+          // second too, so this is about the six stills kept as the record.
+          const secOf = n => {
+            const m = /^t0*(\d+)(?:_(\d))?\./.exec(n);
+            return m ? Number(m[1]) + (m[2] ? Number(m[2]) / 10 : 0) : 0;
+          };
+          frames.sort((a, b) => secOf(a.name) - secOf(b.name));
           if (frames.length) return resolve({ frames, seconds });
           // Nothing came of playing it. The old way, once, before giving up —
           // but only if there was ever a picture to measure a canvas against.
@@ -2419,9 +2442,18 @@ function reviewHtml(review){
   // Said in the headline box rather than left to the rows. "We both saw every
   // step done" means something else entirely when half of them were never in
   // shot, and the walker is the one who knows whether that was the angle.
+  // Named, not just counted. A walker who is told two steps were not visible
+  // can do nothing with that; told which two, they know what to stand closer
+  // to next time — and the steps themselves get said one more time, which is
+  // the point of the whole walk.
+  const unseen = (overall && overall.unsureSteps)
+    || steps.filter(s => s.unsure).map(s => s.text);
   const couldNotSee = unsure
     ? `<div class="answer">I could not make out ${unsure} of the steps — `
-      + `they were out of shot, or went by between stills.</div>` : '';
+      + `they were out of shot, or went by between stills.</div>`
+      + (unseen.length ? `<div class="why">Either way, make sure these happen every `
+        + `single time:<br>${unseen.map(t => '• ' + esc(t)).join('<br>')}</div>` : '')
+    : '';
   // The headline counts the steps I did not see, which is the yes/no's own
   // list — not the merged list below it, which is every step there is. Using
   // the merged one read "we both saw 8 steps missed" off a wash that missed
