@@ -62,6 +62,11 @@ async function main() {
   let videoWalk = null;
   for (const id of ids) {
     const { res, body } = await get('/api/audits/form?id=' + encodeURIComponent(id));
+    // A seed file is where a walk started, not a promise that it is still
+    // live. Retiring one is an ordinary thing to do — handwashing-s2s went
+    // when its questions moved into the video test — so a walk that is not in
+    // the database is worth saying out loud and is not a failure.
+    if (res.status === 404) { skip(id, 'retired — not in the database'); continue; }
     if (!res.ok || !body || !Array.isArray(body.questions)) {
       bad(id, `the form did not come back (${res.status})`);
       continue;
