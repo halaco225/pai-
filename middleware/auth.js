@@ -28,11 +28,11 @@ const requireRole = (...roles) => {
 };
 
 // Named people who may build audit templates without holding an RDO or VP
-// role. Jorge Garcia builds his own food safety tests; nothing else about his
-// area coach access changes, and he still only reaches the templates he made.
-// When this widens to every area coach, add 'area_coach' to the roles below
-// and empty this list.
-const TEMPLATE_EDITORS = ['jgarcia'];
+// role. Jorge Garcia and Szymon Lubas build their own food safety tests;
+// nothing else about their area coach access changes, and each still only
+// reaches the templates they made. When this widens to every area coach, add
+// 'area_coach' to the roles below and empty this list.
+const TEMPLATE_EDITORS = ['jgarcia', 'slubas'];
 
 const mayEditTemplates = (user) =>
   !!user && (['rdo', 'vp'].includes(user.role) || TEMPLATE_EDITORS.includes(user.username));

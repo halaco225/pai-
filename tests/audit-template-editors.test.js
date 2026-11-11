@@ -1,9 +1,9 @@
 // Who may build an audit template, and whose folder it lands in.
 //
-// Jorge Garcia is an area coach who builds his own food safety tests. He is
-// named in an allow-list rather than promoted, because promoting him would
-// hand him every other RDO power, and opening it to `area_coach` would hand
-// it to forty people nobody asked about.
+// Jorge Garcia and Szymon Lubas are area coaches who build their own food
+// safety tests. They are named in an allow-list rather than promoted, because
+// promoting them would hand them every other RDO power, and opening it to
+// `area_coach` would hand it to forty people nobody asked about.
 
 const { mayEditTemplates, requireTemplateEditor, TEMPLATE_EDITORS } = require('../middleware/auth');
 const { maySeeTemplate, mayEditTemplate, creatorName } = require('../routes/audits');
@@ -17,7 +17,8 @@ const user = name => {
 
 const harold = user('hlacoste');   // RDO
 const matt   = user('mhester');    // VP
-const jorge  = user('jgarcia');    // the area coach on the list
+const jorge  = user('jgarcia');    // an area coach on the list
+const szymon = user('slubas');     // the other one, in another region
 const darian = user('dspikes');    // an area coach who is not
 
 // A middleware run reduced to what came out of it: the next() call, or the
@@ -38,6 +39,11 @@ describe('who may build a template', () => {
     expect(run(requireTemplateEditor, jorge).next).toBe(true);
   });
 
+  test('so may Szymon', () => {
+    expect(mayEditTemplates(szymon)).toBe(true);
+    expect(run(requireTemplateEditor, szymon).next).toBe(true);
+  });
+
   test('RDOs and VPs still may', () => {
     expect(mayEditTemplates(harold)).toBe(true);
     expect(mayEditTemplates(matt)).toBe(true);
@@ -51,9 +57,10 @@ describe('who may build a template', () => {
     expect(out.status).toBe(403);
   });
 
-  test('it is Jorge only, not every area coach', () => {
-    expect(TEMPLATE_EDITORS).toEqual(['jgarcia']);
-    const otherACs = USER_ROSTER.filter(u => u.role === 'area_coach' && u.username !== 'jgarcia');
+  test('it is those two only, not every area coach', () => {
+    expect(TEMPLATE_EDITORS).toEqual(['jgarcia', 'slubas']);
+    const otherACs = USER_ROSTER.filter(
+      u => u.role === 'area_coach' && !TEMPLATE_EDITORS.includes(u.username));
     expect(otherACs.length).toBeGreaterThan(1);
     expect(otherACs.some(mayEditTemplates)).toBe(false);
   });
@@ -80,6 +87,12 @@ describe('what Jorge may change', () => {
     expect(mayEditTemplate(jorge, { createdBy: 'seed' })).toBe(false);
   });
 
+  test('and not each other\'s', () => {
+    expect(mayEditTemplate(jorge, { createdBy: 'slubas' })).toBe(false);
+    expect(mayEditTemplate(szymon, { createdBy: 'jgarcia' })).toBe(false);
+    expect(mayEditTemplate(szymon, { createdBy: 'slubas' })).toBe(true);
+  });
+
   test('an RDO may still change anyone\'s', () => {
     expect(mayEditTemplate(harold, { createdBy: 'jgarcia' })).toBe(true);
     expect(mayEditTemplate(matt, { createdBy: 'seed' })).toBe(true);
@@ -96,6 +109,7 @@ describe('which folder a template shows up in', () => {
   test('a person gets their own name', () => {
     expect(creatorName('hlacoste')).toBe('Harold Lacoste');
     expect(creatorName('jgarcia')).toBe('Jorge Garcia');
+    expect(creatorName('slubas')).toBe('Szymon Lubas');
   });
 
   test('the seeded ones are Built in, not a person', () => {
