@@ -6,7 +6,31 @@
  * the step done, and the walker was told the two of them had seen the same
  * perfect wash on a video of the ceiling. These are the cases that stop that.
  */
-const { shape, compare } = require('../services/audit-video');
+const { shape, compare, frameSecond } = require('../services/audit-video');
+
+describe('which second a still came from', () => {
+  test('a whole second and a half second', () => {
+    expect(frameSecond('t014.jpg')).toBe(14);
+    expect(frameSecond('t014_5.jpg')).toBe(14.5);
+    expect(frameSecond('t000.jpg')).toBe(0);
+    expect(frameSecond('t000_5.jpg')).toBe(0.5);
+  });
+
+  test('the strip reads in the order it was filmed', () => {
+    // Whatever order the phone's JPEG encoder finished them in, the second is
+    // what puts them back in order — on the phone before they go, and here
+    // again before they are read.
+    const names = ['t010.jpg', 't009_5.jpg', 't000.jpg', 't009.jpg', 't010_5.jpg'];
+    expect([...names].sort((a, b) => frameSecond(a) - frameSecond(b)))
+      .toEqual(['t000.jpg', 't009.jpg', 't009_5.jpg', 't010.jpg', 't010_5.jpg']);
+  });
+
+  test('anything named some other way has no second', () => {
+    for (const name of ['IMG_8531.jpg', 'frame.jpg', '', null, 'tXX.jpg']) {
+      expect(Number.isFinite(frameSecond(name))).toBe(false);
+    }
+  });
+});
 
 const reply = steps => JSON.stringify({ seconds: 20, steps });
 
@@ -60,6 +84,13 @@ describe('what the walker is shown', () => {
     const out = compare({ type: 'multi' }, choices, [1], reading);
     expect(out.steps[1].agreed).toBeNull();
     expect(out.steps[1].note).toMatch(/you had it as missed/i);
+  });
+
+  test('the steps that were never in shot come back by name', () => {
+    // A walker told "2 of the steps" can do nothing with that. Told which
+    // two, they know what to hold the phone on next time.
+    const out = compare({ type: 'single', allDone: 0 }, choices, [0], reading);
+    expect(out.unsureSteps).toEqual(['Used soap']);
   });
 
   test('the yes/no carries how many steps were never in shot', () => {

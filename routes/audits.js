@@ -200,9 +200,7 @@ router.post('/read-clip', frameUpload.array('frames'), safe(async (req, res) => 
   if (!steps.length) return res.status(400).json({ error: 'Nothing is set up to be compared against this video.' });
 
   const frames = (req.files || []).map(f => ({
-    // t014.jpg -> 14. A frame the phone named some other way has no second,
-    // and a reading cannot say when it saw something, so it is left out.
-    second: Number(String(f.originalname || '').replace(/^t0*/, '').replace(/\D.*$/, '')),
+    second: video.frameSecond(f.originalname),
     data: f.buffer.toString('base64'),
     mediaType: f.mimetype || 'image/jpeg',
   })).filter(f => Number.isFinite(f.second));

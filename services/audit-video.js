@@ -21,6 +21,22 @@ const MODEL = 'claude-sonnet-4-6';
 const MAX_FRAMES = 90;
 
 /**
+ * t014.jpg -> 14, t014_5.jpg -> 14.5.
+ *
+ * The second a still came from travels in its name, which is how a reading can
+ * say when it saw something and so what to tell somebody to go back and watch.
+ * A short clip is sampled twice a second — a pump of sanitizer can pass
+ * between two whole ones — and the half is the `_5`. An underscore and not a
+ * dash because `-` sorts before `.`, which would file every half second ahead
+ * of the whole one it follows. Anything named some other way has no second
+ * and is dropped.
+ */
+function frameSecond(name) {
+  const m = String(name || '').match(/^t0*(\d+)(?:_(\d))?\./);
+  return m ? Number(m[1]) + (m[2] ? Number(m[2]) / 10 : 0) : NaN;
+}
+
+/**
  * @param frames [{ second, data (base64), mediaType }]
  * @param steps  the step list to judge, in the walker's own wording
  * @returns { seconds, steps: [{ i, done, at, note }] }
@@ -169,8 +185,11 @@ function compare(q, choices, answer, reading) {
       // Counted and said out loud. Agreeing that nothing was missed means
       // something quite different when four of the eight were never visible,
       // and the walker is the one who knows whether that is the camera angle
-      // or the wash.
+      // or the wash. Named as well as counted, so the walk can end by saying
+      // which ones to be sure of rather than leaving them a number.
       unsure: reading.steps.filter(s => s.done == null).length,
+      unsureSteps: reading.steps.filter(s => s.done == null)
+        .map(s => (choices[s.i] == null ? `Step ${s.i + 1}` : choices[s.i])),
       steps: iSawMissed.map(s => ({
         text: choices[s.i] == null ? `Step ${s.i + 1}` : choices[s.i],
         at: s.at, agreed: false, note: s.note || 'I did not see this one happen.',
@@ -205,4 +224,4 @@ function compare(q, choices, answer, reading) {
   return { compare: true, seconds: reading.seconds, steps };
 }
 
-module.exports = { readSteps, shape, compare, MAX_FRAMES };
+module.exports = { readSteps, shape, compare, frameSecond, MAX_FRAMES };
