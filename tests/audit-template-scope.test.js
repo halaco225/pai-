@@ -12,7 +12,7 @@ const { canSee } = require('../services/rc-scope');
 // deliberate in both places.
 function maySeeTemplate(user, t) {
   if (user.role === 'rdo' || user.role === 'vp') return true;
-  if (!t.createdBy) return true;
+  if (!t.createdBy || t.createdBy === 'seed') return true;
   if (t.createdBy === user.username) return true;
   const maker = USER_ROSTER.find(u => u.username === t.createdBy);
   return maker ? canSee(maker, user.name) : false;
@@ -54,5 +54,9 @@ describe('who sees a template', () => {
 
   test('a template from before owners existed stays visible', () => {
     expect(maySeeTemplate(darian, { createdBy: null })).toBe(true);
+  });
+
+  test('a seeded one belongs to nobody and stays visible', () => {
+    expect(maySeeTemplate(darian, { createdBy: 'seed' })).toBe(true);
   });
 });

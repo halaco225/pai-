@@ -1530,18 +1530,28 @@ const TYPE_NAMES = { single:'One answer', multi:'Pick all that apply', photo:'Pi
 // else, so the page must not offer it. Asked once: a role cannot change
 // without signing in again.
 let MAY_EDIT = null;
+let ME = {};
 async function mayEdit(){
   if (MAY_EDIT === null){
-    const me = await fetch('/api/tracker/me').then(r => r.ok ? r.json() : {}).catch(() => ({}));
-    MAY_EDIT = me.role === 'rdo' || me.role === 'vp';
+    ME = await fetch('/api/tracker/me').then(r => r.ok ? r.json() : {}).catch(() => ({}));
+    MAY_EDIT = !!ME.mayEditAudits;
   }
   return MAY_EDIT;
 }
 
+// Someone on the allow-list who is not an RDO or VP works on their own only,
+// so the buttons that change an audit are offered per row, not per person.
+const mineToEdit = t => MAY_EDIT &&
+  (ME.role === 'rdo' || ME.role === 'vp' || t.createdBy === ME.username);
+
 // What to say when the server turns an edit down anyway.
-const refused = (res, body) => res.status === 403
-  ? 'Only an RDO or VP can build or change an audit. Ask yours to make this change.'
-  : (body && body.error) || 'That did not work.';
+const refused = (res, body) => {
+  const err = body && body.error;
+  if (res.status === 403 && (!err || /insufficient permissions/i.test(err))) {
+    return 'Only an RDO or VP can build or change an audit. Ask yours to make this change.';
+  }
+  return err || 'That did not work.';
+};
 
 async function loadTemplates(){
   const edit = await mayEdit();
@@ -1555,7 +1565,27 @@ async function loadTemplates(){
     return;
   }
   el.className = '';
-  el.innerHTML = `<table><thead><tr><th>Audit</th><th>Questions</th><th>Points</th><th>Version</th><th>Status</th><th></th></tr></thead><tbody>` +
+  // One folder per person who made something. A folder only exists because a
+  // template is in it, so nobody shows up here with an empty one. Built in —
+  // the ones that shipped as seed files — sits last.
+  const folders = new Map();
+  for (const t of list){
+    const name = t.createdByName || 'Built in';
+    if (!folders.has(name)) folders.set(name, []);
+    folders.get(name).push(t);
+  }
+  const names = [...folders.keys()].sort((a, b) =>
+    a === 'Built in' ? 1 : b === 'Built in' ? -1 : a.localeCompare(b));
+
+  el.innerHTML = names.map(name => `<details class="tpl-folder" open>
+    <summary style="cursor:pointer;font-weight:600;padding:8px 0;">${esc(name)}
+      <span class="muted" style="font-weight:400;font-size:12.5px;">· ${folders.get(name).length}</span></summary>
+    ${templateTable(folders.get(name))}
+  </details>`).join('');
+}
+
+function templateTable(list){
+  return `<table><thead><tr><th>Audit</th><th>Questions</th><th>Points</th><th>Version</th><th>Status</th><th></th></tr></thead><tbody>` +
     list.map(t => `<tr class="tpl-row">
       <td><div style="font-weight:600;">${esc(t.title)}</div>
           <div class="muted" style="font-size:12px;">/audit?id=${esc(t.id)}${t.updatedBy ? ' · last edited by ' + esc(t.updatedBy) : ''}</div></td>
@@ -1564,9 +1594,9 @@ async function loadTemplates(){
       <td class="muted">v${t.version}</td>
       <td><span class="tag ${t.active ? 'on' : 'off'}">${t.active ? 'Sending' : 'Paused'}</span></td>
       <td style="text-align:right;white-space:nowrap;">
-        ${edit ? `<button class="btn" onclick="editTemplate('${esc(t.id)}')">Edit</button>` : ''}
+        ${mineToEdit(t) ? `<button class="btn" onclick="editTemplate('${esc(t.id)}')">Edit</button>` : ''}
         <button class="btn" onclick="copyAuditLink('${esc(t.id)}')">Copy link</button>
-        ${edit ? `<button class="btn" onclick="toggleActive('${esc(t.id)}',${!t.active})">${t.active ? 'Pause' : 'Send'}</button>
+        ${mineToEdit(t) ? `<button class="btn" onclick="toggleActive('${esc(t.id)}',${!t.active})">${t.active ? 'Pause' : 'Send'}</button>
         <button class="btn" onclick="removeTemplate('${esc(t.id)}','${esc(t.title)}')">Delete</button>` : ''}
       </td></tr>`).join('') + '</tbody></table>';
 }

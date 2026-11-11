@@ -21,7 +21,7 @@ const express = require('express');
 const router  = express.Router();
 
 const rcDb  = require('../services/rc-db');
-const { requireAuth, requireModule } = require('../middleware/auth');
+const { requireAuth, requireModule, mayEditTemplates } = require('../middleware/auth');
 const { visiblePeople, canSee } = require('../services/rc-scope');
 
 const RC_BASE = (process.env.RC_TRACKER_URL || 'https://rc-tracker-hos2.onrender.com').replace(/\/+$/, '');
@@ -39,6 +39,9 @@ router.get('/me', (req, res) => {
   const u = req.session.user;
   res.json({
     username: u.username, name: u.name, role: u.role,
+    // The Templates tab asks here whether to offer the editing buttons, so
+    // the allow-list lives in one place: middleware/auth.js.
+    mayEditAudits: mayEditTemplates(u),
     scope: visiblePeople(u),
     rcBase: RC_BASE,
   });

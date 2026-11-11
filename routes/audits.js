@@ -28,7 +28,8 @@ const rcDb = require('../services/rc-db');
 const db   = require('../services/db');
 const templates = require('../services/audit-templates');
 const walks = require('../services/audit-walks');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, requireTemplateEditor,
+        mayEditTemplates } = require('../middleware/auth');
 const { visibleStores, canSee } = require('../services/rc-scope');
 const { USER_ROSTER } = require('./auth');
 const insights = require('../services/audit-insights');
@@ -471,15 +472,34 @@ function applyFilters(rows, query) {
  */
 function maySeeTemplate(user, t) {
   if (user.role === 'rdo' || user.role === 'vp') return true;
-  if (!t.createdBy) return true;
+  if (!t.createdBy || t.createdBy === 'seed') return true;
   if (t.createdBy === user.username) return true;
   const maker = USER_ROSTER.find(u => u.username === t.createdBy);
   return maker ? canSee(maker, user.name) : false;
 }
 
+/**
+ * Who may change a template. RDOs and VPs may change any of them, the way
+ * they always could. Anyone else holding the editor allow-list works on what
+ * they made: somebody else's answer key is not theirs to read or delete.
+ */
+function mayEditTemplate(user, t) {
+  if (user.role === 'rdo' || user.role === 'vp') return true;
+  return !!t && t.createdBy === user.username;
+}
+
+// The folder a template shows up in. Seeded ones came from the repo rather
+// than from a person, so they group together instead of under a name.
+function creatorName(username) {
+  if (!username || username === 'seed') return 'Built in';
+  const u = USER_ROSTER.find(x => x.username === username);
+  return u ? u.name : username;
+}
+
 router.get('/templates', async (req, res) => {
   const list = await templates.listTemplates();
   res.json(list.filter(t => maySeeTemplate(req.session.user, t)).map(t => ({
+    createdByName: creatorName(t.createdBy),
     id: t.id, title: t.title, description: t.description,
     kind: t.kind,
     questions: t.questions.length,
@@ -492,27 +512,47 @@ router.get('/templates', async (req, res) => {
 // The whole definition, answer key and all. That is the editor's copy, so it
 // is held to the people who may edit — everyone else gets the form through
 // /form, which strips the answers out.
-router.get('/templates/:id', requireRole('rdo', 'vp'), async (req, res) => {
+router.get('/templates/:id', requireTemplateEditor, async (req, res) => {
   const def = await templates.getTemplate(req.params.id);
   if (!def) return res.status(404).json({ error: 'Not found' });
+  if (!mayEditTemplate(req.session.user, def)) {
+    return res.status(403).json({ error: 'That audit is not yours to change.' });
+  }
   res.json(def);
 });
 
-router.post('/templates', requireRole('rdo', 'vp'), async (req, res) => {
+router.post('/templates', requireTemplateEditor, async (req, res) => {
   const problems = templates.validateTemplate(req.body);
   if (problems.length) return res.status(400).json({ error: problems[0], problems });
+
+  // Saving an id that already exists is an edit, so it is held to the same
+  // ownership rule as opening one.
+  const existing = await templates.getTemplate(req.body.id);
+  if (existing && !mayEditTemplate(req.session.user, existing)) {
+    return res.status(403).json({ error: 'That audit is not yours to change.' });
+  }
 
   const saved = await templates.saveTemplate(req.body, req.session.user.username);
   res.json(saved);
 });
 
-router.post('/templates/:id/active', requireRole('rdo', 'vp'), async (req, res) => {
+router.post('/templates/:id/active', requireTemplateEditor, async (req, res) => {
+  const def = await templates.getTemplate(req.params.id);
+  if (!def) return res.status(404).json({ error: 'Not found' });
+  if (!mayEditTemplate(req.session.user, def)) {
+    return res.status(403).json({ error: 'That audit is not yours to change.' });
+  }
   const saved = await templates.setActive(req.params.id, req.body.active);
   if (!saved) return res.status(404).json({ error: 'Not found' });
   res.json(saved);
 });
 
-router.delete('/templates/:id', requireRole('rdo', 'vp'), async (req, res) => {
+router.delete('/templates/:id', requireTemplateEditor, async (req, res) => {
+  const def = await templates.getTemplate(req.params.id);
+  if (!def) return res.status(404).json({ error: 'Not found' });
+  if (!mayEditTemplate(req.session.user, def)) {
+    return res.status(403).json({ error: 'That audit is not yours to change.' });
+  }
   // Responses keep their own frozen copy of the questions, so deleting a
   // template never blanks out a walk somebody already did.
   const gone = await templates.deleteTemplate(req.params.id);
@@ -1019,7 +1059,7 @@ async function readReferenceFiles(files) {
 // Takes the whole thing and gives the whole thing back. Writes nothing: the
 // result goes into the editor the same way a draft does, and Save is still
 // somebody pressing a button on a form they have read.
-router.post('/templates/revise', requireRole('rdo', 'vp'), async (req, res) => {
+router.post('/templates/revise', requireTemplateEditor, async (req, res) => {
   const instruction = String(req.body?.instruction || '').trim();
   const template = req.body?.template;
 
@@ -1052,7 +1092,7 @@ router.post('/templates/revise', requireRole('rdo', 'vp'), async (req, res) => {
 });
 
 // ── Create, pass one: read the files and ask before building ────────────────
-router.post('/templates/draft/plan', requireRole('rdo', 'vp'),
+router.post('/templates/draft/plan', requireTemplateEditor,
   draftUpload.array('files', 12), async (req, res) => {
   const ask = String(req.body?.ask || '').trim();
   const kind = req.body?.kind === 'test' ? 'test' : 'audit';
@@ -1087,7 +1127,7 @@ router.post('/templates/draft/plan', requireRole('rdo', 'vp'),
 // answers given to its questions. Without one it is the original single-shot
 // path: a description, optionally with files, and no questions asked — still
 // the right flow for "a short opening checklist" with nothing to attach.
-router.post('/templates/draft', requireRole('rdo', 'vp'),
+router.post('/templates/draft', requireTemplateEditor,
   draftUpload.array('files', 12), async (req, res) => {
   const ask = String(req.body?.ask || '').trim();
   const files = req.files || [];
@@ -1267,3 +1307,9 @@ router.get('/export.xlsx', async (req, res) => {
 });
 
 module.exports = router;
+
+// Exported for the tests: who sees a template, who may change it, and the
+// folder its creator puts it in.
+module.exports.maySeeTemplate = maySeeTemplate;
+module.exports.mayEditTemplate = mayEditTemplate;
+module.exports.creatorName = creatorName;
