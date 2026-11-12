@@ -7,6 +7,10 @@ const express = require('express');
 const router  = express.Router();
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { USER_ROSTER } = require('./auth');
+const { intelUser: scopedUser } = require('../services/intel-scope');
+
+// Handlers read the user through this, so the territory view is decided once.
+const intelUser = (req) => scopedUser(req, USER_ROSTER);
 const db = require('../services/db');
 const multer = require('multer');
 const path   = require('path');
@@ -613,7 +617,7 @@ router.use(requireAuth);
 
 // ── POST /api/intel/automation/run-labor-hutbot-now — session-auth re-run of Fourth + HutBot ──
 router.post('/automation/run-labor-hutbot-now', requireRole('rdo', 'vp'), async (req, res) => {
-  const user = req.session.user;
+  const user = intelUser(req);
   const targetDate = req.body?.date || null;
   const date = targetDate || (() => {
     const d = new Date(); d.setDate(d.getDate() - 1);
@@ -661,7 +665,7 @@ router.post('/automation/run-labor-hutbot-now', requireRole('rdo', 'vp'), async 
 
 // ── POST /api/intel/automation/run-now — manual batch trigger (session auth, rdo/vp only) ──
 router.post('/automation/run-now', requireRole('rdo', 'vp'), async (req, res) => {
-  const user = req.session.user;
+  const user = intelUser(req);
   const targetDate = req.body.date || null;
   console.log(`[Intel] Manual batch triggered by ${user.username} (${user.role}) for ${targetDate || 'yesterday'}`);
   res.json({ status: 'started', targetDate, triggeredBy: user.username });
@@ -681,7 +685,7 @@ router.post('/automation/run-now', requireRole('rdo', 'vp'), async (req, res) =>
 // ── POST /api/intel/automation/bulk-backfill — run pipeline for a date range ──
 // Session auth only — no token needed. Responds immediately, runs async.
 router.post('/automation/bulk-backfill', requireRole('rdo', 'vp'), async (req, res) => {
-  const user = req.session.user;
+  const user = intelUser(req);
   const { start, end } = req.body;
   if (!start || !end) return res.status(400).json({ error: 'start and end dates required (YYYY-MM-DD)' });
 
@@ -731,7 +735,7 @@ router.get('/automation/pipeline-status', requireRole('rdo', 'vp'), async (req, 
 // ── GET /api/intel/dashboard — serve cached intel for logged-in user ──────────
 router.get('/dashboard', async (req, res) => {
   try {
-    const user      = req.session.user;
+    const user      = intelUser(req);
     const today     = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
     const yesterday = (() => {
       const d = new Date();
@@ -761,7 +765,7 @@ router.get('/dashboard', async (req, res) => {
 // ── GET /api/intel/vp-scope-options — regions + area coaches for VP filter ────
 router.get('/vp-scope-options', async (req, res) => {
   try {
-    const user = req.session.user;
+    const user = intelUser(req);
     if (user.role !== 'vp') return res.json({ regions: [] });
     const rcNames = user.scope?.region_coaches || [];
     const regions = rcNames.map(rcName => {
@@ -777,7 +781,7 @@ router.get('/vp-scope-options', async (req, res) => {
 // ── GET /api/intel/kpis — aggregated KPI dashboard (sales, growth, flags) ────
 router.get('/kpis', async (req, res) => {
   try {
-    const user = req.session.user;
+    const user = intelUser(req);
     const requestedDate = req.query.date || (() => {
       const d = new Date(); d.setDate(d.getDate() - 1);
       return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
@@ -1093,7 +1097,7 @@ router.get('/kpis', async (req, res) => {
 // ── GET /api/intel/performance — Region → AC → Store drill-down ──────────────
 router.get('/performance', async (req, res) => {
   try {
-    const user = req.session.user;
+    const user = intelUser(req);
     const date = req.query.date || (() => {
       const d = new Date(); d.setDate(d.getDate() - 1);
       return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
@@ -1152,7 +1156,7 @@ router.get('/performance', async (req, res) => {
 // ── GET /api/intel/flags — live flag query (filters by session user scope) ────
 router.get('/flags', async (req, res) => {
   try {
-    const user  = req.session.user;
+    const user  = intelUser(req);
     const statusFilter = req.query.status || null;
     const filterAC    = req.query.filter_ac    || null;
     const filterStore = req.query.filter_store || null;
@@ -1216,7 +1220,7 @@ router.get('/flags', async (req, res) => {
 // scope: 'week' (current Mon–Sun), 'weekly' (last 8 weeks), 'period' (last 3 × 4-week blocks)
 router.get('/trends', async (req, res) => {
   try {
-    const user = req.session.user;
+    const user = intelUser(req);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
     const p = db.getPool();
     if (!p) return res.json({ trends: [], scope: req.query.scope || 'week' });
@@ -1289,7 +1293,7 @@ router.get('/flags/:id', async (req, res) => {
 // ── POST /api/intel/acknowledge — area coach submits acknowledgment ────────────
 router.post('/acknowledge', async (req, res) => {
   try {
-    const user       = req.session.user;
+    const user       = intelUser(req);
     const { flag_id, action_taken } = req.body;
     if (!flag_id || !action_taken) return res.status(400).json({ error: 'flag_id and action_taken required' });
     if (action_taken.trim().length < 5) return res.status(400).json({ error: 'action_taken must be at least 5 characters — explain what you actually did.' });
@@ -1319,7 +1323,7 @@ router.post('/acknowledge', async (req, res) => {
 // ── GET /api/intel/accountability — RDO/VP: see all acknowledgments in scope ───
 router.get('/accountability', requireRole('rdo', 'vp'), async (req, res) => {
   try {
-    const user = req.session.user;
+    const user = intelUser(req);
     let acks = [];
     if (user.role === 'rdo') {
       acks = await db.getAcknowledgments({ region_coach: user.scope?.rc_name || user.name });
@@ -1345,7 +1349,7 @@ router.get('/accountability', requireRole('rdo', 'vp'), async (req, res) => {
 // ── GET /api/intel/shoutouts — positive comments for user's scope ─────────────
 router.get('/shoutouts', async (req, res) => {
   try {
-    const user = req.session.user;
+    const user = intelUser(req);
     const date = req.query.date || null;
     const p    = db.getPool();
     if (!p) return res.json({ shoutouts: [] });
@@ -1372,7 +1376,7 @@ router.get('/shoutouts', async (req, res) => {
 // ?date=YYYY-MM-DD           (explicit single date, overrides range)
 router.get('/smg-comments', async (req, res) => {
   try {
-    const user = req.session.user;
+    const user = intelUser(req);
     const p    = db.getPool();
     if (!p) return res.json({ date_start: null, date_end: null, positive: [], negative: [] });
 
@@ -1541,7 +1545,7 @@ router.get('/smg-comments', async (req, res) => {
 // ── GET /api/intel/weekly-digest — WTD visual dashboard data for user's scope ──
 router.get('/weekly-digest', async (req, res) => {
   try {
-    const user = req.session.user;
+    const user = intelUser(req);
     const p    = db.getPool();
     if (!p) return res.status(503).json({ error: 'Database unavailable' });
 
@@ -2043,7 +2047,7 @@ async function getDataFreshness(p) {
 // ── GET /api/intel/morning-brief — AI executive memo + priority flags + shoutouts ──
 router.get('/morning-brief', requireAuth, async (req, res) => {
   try {
-    const user = req.session.user;
+    const user = intelUser(req);
     const p    = db.getPool();
     if (!p) return res.json({ memo_text: 'Database unavailable.', priority_flags: [], shoutouts: [], follow_up_items: [] });
 
@@ -2585,7 +2589,7 @@ router.get('/automation/fourth-diag', async (req, res) => {
 // ── GET /api/intel/scope-stores — AC list + stores for global filter dropdowns ─
 router.get('/scope-stores', requireAuth, async (req, res) => {
   try {
-    const user = req.session.user;
+    const user = intelUser(req);
     const p    = db.getPool();
     if (!p) return res.json({ area_coaches: [], stores_by_ac: {} });
 

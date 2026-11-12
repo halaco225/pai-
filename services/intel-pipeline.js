@@ -280,6 +280,21 @@ async function runIntelPipeline(targetDate) {
     console.error('[Intel Pipeline] Morning brief generation failed:', err.message);
   }
 
+  // ── Coverage: did the day's data actually reach every region? ─────────────
+  // A source that comes back as one region instead of the territory does not
+  // fail — it just returns fewer stores, which is invisible unless counted.
+  try {
+    results.coverage = await coverageByRegion(targetDate);
+    for (const row of results.coverage) {
+      const short = row.assigned - row.withData;
+      console.log(`[Intel Pipeline] Coverage ${row.region_coach} (${row.vp}): ${row.withData}/${row.assigned} stores${short > 0 ? ` — ${short} with no data` : ''}`);
+    }
+    const empty = results.coverage.filter(r => r.withData === 0).map(r => r.region_coach);
+    if (empty.length) console.warn(`[Intel Pipeline] NO DATA for: ${empty.join(', ')} — the pull is coming back narrower than the territory`);
+  } catch (err) {
+    console.warn('[Intel Pipeline] Coverage check failed:', err.message);
+  }
+
   const successCount = Object.values(results.steps).filter(s => s.success || s.skipped).length;
   const totalSteps = Object.keys(results.steps).length;
   console.log(`\n[Intel Pipeline] Complete — ${successCount}/${totalSteps} steps OK, ${results.errors.length} errors`);
@@ -291,13 +306,37 @@ async function runIntelPipeline(targetDate) {
       status: results.errors.length === 0 ? 'success' : (successCount === 0 ? 'error' : 'partial'),
       storesProcessed: results.steps.dbs?.storesProcessed || 0,
       flagsCreated: Object.values(results.steps).reduce((s, r) => s + (r.flagsWritten || 0), 0),
-      message: JSON.stringify({ steps: results.steps, errors: results.errors })
+      message: JSON.stringify({ steps: results.steps, errors: results.errors, coverage: results.coverage || null })
     });
   } catch (logErr) {
     console.error('[Intel Pipeline] Failed to write job log:', logErr.message);
   }
 
   return results;
+}
+
+/**
+ * Stores with data today vs stores assigned, per region coach.
+ * Assignments are company-wide, so this answers "whose stores did the pull
+ * miss" without anyone having to know what the pull asked for.
+ */
+async function coverageByRegion(targetDate) {
+  const p = db.getPool();
+  if (!p) return [];
+  const res = await p.query(`
+    SELECT sa.region_coach, sa.vp,
+           COUNT(DISTINCT sa.store_id)::int AS assigned,
+           COUNT(DISTINCT m.store_id)::int  AS with_data
+      FROM store_assignments sa
+      LEFT JOIN intel_dbs_metrics m
+        ON m.store_id = sa.store_id AND m.metric_date = $1
+     WHERE sa.region_coach IS NOT NULL
+     GROUP BY sa.region_coach, sa.vp
+     ORDER BY sa.vp, sa.region_coach
+  `, [targetDate]);
+  return res.rows.map(r => ({
+    region_coach: r.region_coach, vp: r.vp, assigned: r.assigned, withData: r.with_data,
+  }));
 }
 
 async function generateIntelCache(targetDate) {
@@ -540,4 +579,4 @@ async function generateMorningBriefs(targetDate) {
   }
 }
 
-module.exports = { runIntelPipeline, generateIntelCache, generateMorningBriefs };
+module.exports = { runIntelPipeline, generateIntelCache, generateMorningBriefs, coverageByRegion };

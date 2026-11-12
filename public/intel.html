@@ -546,14 +546,19 @@ let curFilter='all',curBriefTab='urgent',openDrillAC=null,currentFlagId=null;
 let selectedDate='';
 let vpScopeFilter={rc_name:null,ac_name:null};
 let vpScopeOptions=[];
+// An admin Region Coach can look past their own region at the whole territory.
+// Off by default: the server only widens when this flag is on the request.
+let territoryMode=false;
+let isTerritoryViewer=false;   // set once we know who is logged in
 let globalACFilter='';
 let globalStoreFilter='';
 let globalStoreData={area_coaches:[],stores_by_ac:{}};
 
 function vpFilterParam(){
-  if(vpScopeFilter.ac_name) return '&ac_name='+encodeURIComponent(vpScopeFilter.ac_name);
-  if(vpScopeFilter.rc_name) return '&rc_name='+encodeURIComponent(vpScopeFilter.rc_name);
-  return '';
+  const scope=territoryMode?'&scope=territory':'';
+  if(vpScopeFilter.ac_name) return scope+'&ac_name='+encodeURIComponent(vpScopeFilter.ac_name);
+  if(vpScopeFilter.rc_name) return scope+'&rc_name='+encodeURIComponent(vpScopeFilter.rc_name);
+  return scope;
 }
 
 function globalFilterParam(){
@@ -614,6 +619,10 @@ function reloadActiveTab(){
 }
 
 function onVpSelectChange(val){
+  // "mine" exists only for an admin Region Coach: back to their own region,
+  // which means dropping the territory flag, not filtering inside it.
+  if(val==='mine'){ territoryMode=false; setVpFilter(null,null); return; }
+  if(isTerritoryViewer) territoryMode=true;
   if(val==='all') setVpFilter(null,null);
   else if(val.startsWith('rc:')) setVpFilter(val.slice(3),null);
 }
@@ -637,7 +646,9 @@ async function setVpFilter(rcName,acName){
     else sel.value='all';
   }
   // Update page title
-  const titleSuffix=acName?acName:rcName?(rcName+' Region'):'All Regions';
+  const titleSuffix=acName?acName:rcName?(rcName+' Region')
+    :(isTerritoryViewer&&!territoryMode)?'My Region'
+    :(isTerritoryViewer?'Whole Territory':'All Regions');
   document.getElementById('pageTitle').textContent='Daily Intel — '+titleSuffix;
   // Reset global AC/store filter and reload store list for new scope
   globalACFilter=''; globalStoreFilter='';
@@ -654,17 +665,31 @@ async function setVpFilter(rcName,acName){
 }
 
 async function setupVpFilter(u){
-  if(u.role!=='vp') return;
+  const isVp=u.role==='vp';
+  // An admin Region Coach gets the same filter, with their own region as the
+  // default — the territory is somewhere to go, not where they land.
+  isTerritoryViewer=!isVp && u.role==='rdo' && u.admin===true && !!(u.scope&&u.scope.vp);
+  if(!isVp && !isTerritoryViewer) return;
   try{
-    const data=await fetch('/api/intel/vp-scope-options').then(r=>r.json());
+    const data=await fetch('/api/intel/vp-scope-options'+(isTerritoryViewer?'?scope=territory':'')).then(r=>r.json());
     vpScopeOptions=data.regions||[];
+    if(isTerritoryViewer && !vpScopeOptions.length) return;   // nothing to offer
     const sel=document.getElementById('vpFilterSelect');
-    // Build grouped options: All Regions + one optgroup per RDO with their ACs
-    let html='<option value="all">All Regions</option>';
+    const myRegion=(u.scope&&u.scope.rc_name)||u.name;
+    const vpName=(u.scope&&u.scope.vp)||'';
+    let html='';
+    if(isTerritoryViewer){
+      html+=`<option value="mine">My Region — ${escH(myRegion)}</option>`;
+      html+=`<option value="all">Whole Territory${vpName?' — '+escH(vpName):''}</option>`;
+    } else {
+      html+='<option value="all">All Regions</option>';
+    }
     for(const r of vpScopeOptions){
+      if(isTerritoryViewer && r.rc_name===myRegion) continue;   // already the default
       html+=`<option value="rc:${escH(r.rc_name)}">${escH(r.rc_name)}</option>`;
     }
     sel.innerHTML=html;
+    if(isTerritoryViewer) sel.value='mine';
     document.getElementById('vpFilterBar').classList.add('visible');
   }catch(e){console.error('vpFilter:',e);}
 }

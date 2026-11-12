@@ -17,6 +17,17 @@ const ODS_PASS = process.env.ODS_PASSWORD || '';
 // a date. SUS_DBS is scoped by an organizational level rather than by the login,
 // so without its parameters it returns the viewer's own region instead of the
 // territory -- a quiet wrong answer rather than an error.
+const TERRITORY_ID = process.env.ODS_TERRITORY_ID || '26';   // 26 = Matt Hester
+
+// The organisational scope to ask for. Without it a report comes back as the
+// login's own region, which for hlacoste is one of the territory's three.
+const ORG_SCOPE = { orgType: 'territory', orgTypeValue: TERRITORY_ID };
+
+// Reports that get ORG_SCOPE added on top of their own params. SUS_DBS already
+// carries it. Set ODS_TERRITORY_SCOPE=off to go back to region-only pulls
+// without a deploy.
+const ORG_SCOPED_REPORTS = new Set(['DBS', 'SOS', 'PAYROLL', 'CHANGE_DOWN', 'CANCEL_TENDER', 'SUS_DBS']);
+
 const REPORTS = {
   DBS:            '/Reports/Pizza_Hut/Operations/PH_DGIDBS_1',
   SOS:            '/Reports/Pizza_Hut/Operations/PH_Speed_Of_Service',
@@ -26,8 +37,6 @@ const REPORTS = {
   SUS_DBS: {
     uri: '/Reports/Pizza_Hut/Operations/SUS_DBS',
     params: {
-      orgType:                'territory',
-      orgTypeValue:           process.env.ODS_TERRITORY_ID || '26',   // 26 = Matt Hester
       groupBy:                'store_number',
       includeDeliveryCharges: 'false',
       showHistoricalGrowth:   'false',
@@ -39,6 +48,15 @@ const REPORTS = {
 
 function reportUri(key)    { const r = REPORTS[key]; return typeof r === 'string' ? r : r && r.uri; }
 function reportParams(key) { const r = REPORTS[key]; return (typeof r === 'string' ? null : r && r.params) || {}; }
+
+// The params to ask for, and the params to fall back to. A report whose input
+// controls do not include orgType would fail the whole pull, so the territory
+// ask is always retried without it rather than losing the day's data.
+function paramSets(key) {
+  const base = reportParams(key);
+  if (process.env.ODS_TERRITORY_SCOPE === 'off' || !ORG_SCOPED_REPORTS.has(key)) return [base];
+  return [{ ...base, ...ORG_SCOPE }, base];
+}
 
 const POLL_INTERVAL_MS  = 5000;
 const POLL_MAX_ATTEMPTS = 60;
@@ -88,11 +106,11 @@ async function login() {
   return { cookie: mergeCookies(c1, csrf1.cookies, c3, csrf2.cookies), csrfName: csrf2.name, csrfValue: csrf2.value, ua: UA };
 }
 
-async function downloadReport(session, reportKey, targetDate, outPath) {
+async function downloadReport(session, reportKey, targetDate, outPath, extra = null) {
   const { cookie, csrfName, csrfValue, ua } = session;
   const reportURI = reportUri(reportKey);
   if (!reportURI) throw new Error(`Unknown report key: ${reportKey}`);
-  const extra = reportParams(reportKey);
+  if (!extra) extra = reportParams(reportKey);
 
   const hdrs = { Cookie: cookie, 'User-Agent': ua, Accept: 'application/json',
                  'X-Requested-With': 'XMLHttpRequest' };
@@ -148,12 +166,21 @@ async function pullReport(reportKey, targetDate) {
   try {
     if (!ODS_PASS) throw new Error('ODS_PASSWORD env var not set');
     const session = await login();
-    await downloadReport(session, reportKey, targetDate, outPath);
-    return { success: true, filePath: outPath, reportKey, date: targetDate };
+    const sets = paramSets(reportKey);
+    for (let i = 0; i < sets.length; i++) {
+      try {
+        await downloadReport(session, reportKey, targetDate, outPath, sets[i]);
+        if (i > 0) console.warn(`[IntelODS] ${reportKey}: territory scope was rejected — pulled region-only instead. Stores outside ${ODS_USER}'s own region are missing from today's ${reportKey}.`);
+        return { success: true, filePath: outPath, reportKey, date: targetDate, scope: i === 0 && sets.length > 1 ? 'territory' : 'region' };
+      } catch (err) {
+        if (i === sets.length - 1) throw err;
+        console.warn(`[IntelODS] ${reportKey} territory-scoped pull failed (${err.message}) — retrying unscoped`);
+      }
+    }
   } catch (err) {
     console.error(`[IntelODS] ${reportKey} pull failed:`, err.message);
     return { success: false, error: err.message, reportKey };
   }
 }
 
-module.exports = { pullReport, REPORTS };
+module.exports = { pullReport, REPORTS, paramSets };
