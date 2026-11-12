@@ -281,7 +281,11 @@ router.post('/submit', upload.any(), safe(async (req, res) => {
   // them — a rejected submission should not leave orphan photos behind.
   const pending = {};
   for (const [n, list] of Object.entries(byQuestion)) pending[n] = list.map(() => 'pending');
-  const missing = missingAnswers(def, answers, pending);
+  // A video the phone could not read is still a video that was recorded. The
+  // walk goes in without the frames; the review says the reading is missing.
+  let unread = {};
+  try { unread = JSON.parse(req.body.unread || '{}') || {}; } catch { unread = {}; }
+  const missing = missingAnswers(def, answers, pending, unread);
   if (missing.length) return res.status(400).json({ error: 'Some questions are not finished.', missing });
 
   const nameQ  = def.questions.find(q => q.type === 'text');

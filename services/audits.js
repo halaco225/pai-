@@ -231,7 +231,10 @@ function visible(q, answers = {}) {
   return (q.showIf.is || []).some(x => given.includes(Number(x)));
 }
 
-function missingAnswers(def, answers = {}, photos = {}) {
+// `unread` is the phone's own report of video questions it recorded but could
+// not pull stills off. The clip exists and the walk is done; there is just
+// nothing to read, and the review already says so for itself.
+function missingAnswers(def, answers = {}, photos = {}, unread = {}) {
   const missing = [];
   for (const q of def.questions) {
     if (q.required === false) continue;
@@ -240,6 +243,7 @@ function missingAnswers(def, answers = {}, photos = {}) {
     // A video arrives as the frames pulled off it, which go up the same way
     // pictures do — so what has to be there is the same thing.
     if (q.type === 'photo' || q.type === 'video') {
+      if (q.type === 'video' && unread[q.n]) continue;
       if (!Array.isArray(photos[q.n]) || photos[q.n].length === 0) {
         missing.push({ n: q.n, message: q.type === 'video'
           ? `Question ${q.n} needs a video.`

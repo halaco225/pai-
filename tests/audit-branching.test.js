@@ -154,6 +154,13 @@ describe('missingAnswers', () => {
     const missing = missingAnswers(def, { 2: [0] }, {});
     expect(missing.find(m => m.n === 1).message).toMatch(/needs a video/);
   });
+
+  test('a video the phone could not read is not missing', () => {
+    // They recorded it; the stills are what failed. Sending the walk back as
+    // unfinished leaves them on a question they can never get past.
+    const missing = missingAnswers(def, { 2: [0] }, {}, { 1: 'would not play' });
+    expect(missing.map(m => m.n)).not.toContain(1);
+  });
 });
 
 describe('grade', () => {

@@ -1578,7 +1578,10 @@ function answered(q){
   if (!visible(q)) return true;        // never asked, so nothing is owed
   // A video is sent as the frames taken off it, so what has to be there is
   // the same thing a picture question needs.
-  if (q.type === 'photo' || q.type === 'video') return (photos[q.n] || []).length > 0;
+  // A video this phone could not pull stills off still counts as recorded.
+  if (q.type === 'video') return (photos[q.n] || []).length > 0
+    || !!(clips[q.n] && clips[q.n].unread);
+  if (q.type === 'photo') return (photos[q.n] || []).length > 0;
   if (q.type === 'order') return (answers[q.n] || []).length === (q.steps || []).length;
   if (q.type === 'assign'){
     const placed = answers[q.n] || [];
@@ -1682,8 +1685,8 @@ async function takeClip(q, input){
   shoot.disabled = true;
   shoot.textContent = 'Reading the video…';
   let redLine = '';
+  const url = URL.createObjectURL(file);
   try {
-    const url = URL.createObjectURL(file);
     const { frames, seconds } = await grabFrames(url, q.maxSeconds || 60);
     if (frames.length < 2) throw new Error('only ' + frames.length + ' still out of '
       + Math.round(seconds) + ' seconds');
@@ -1704,8 +1707,16 @@ async function takeClip(q, input){
     // message this ever set was wiped a moment later and nobody ever saw one.
     // The reason rides in this line rather than the grey box above, because
     // this line is the one a tester has actually been seen to read.
-    redLine = 'This phone could not read that video — ' + (err.message || 'unknown')
-      + '. Try recording it again, and send Harold this whole message.';
+    // The video is kept, and the walk goes on. The reading is what failed, not
+    // the walk: somebody who has recorded the wash twice on a phone this code
+    // cannot pull stills off has done their part, and a required question that
+    // can never be satisfied is the worse of the two faults.
+    if (clips[q.n]) URL.revokeObjectURL(clips[q.n].url);
+    clips[q.n] = { url, seconds: 0, frames: 0, unread: err.message || 'unknown' };
+    photos[q.n] = [];
+    redLine = 'This phone could not read that video (' + (err.message || 'unknown')
+      + '), so there is no coaching off it — but it is saved and you can carry '
+      + 'on. Send Harold this whole message.';
   } finally {
     shoot.disabled = false;
     shoot.textContent = label;
@@ -1777,16 +1788,24 @@ function grabFrames(url, maxSeconds){
       // which would be a worse bargain than the one this is fixing.
       const step = seconds > 45 ? 1 : 0.5;
 
-      const shoot = () => {
-        const t = Math.round(Math.floor(v.currentTime / step) * step * 10) / 10;
-        if (t < want || t >= seconds || !v.videoWidth) return;
-        if (!canvas){
+      // Made wherever it is first needed, which is not always in shoot(): a
+      // phone that refuses to play never reaches shoot() at all, and the seek
+      // fallback below cannot run without a canvas to draw on. That is what
+      // turned "would not play" into a dead end instead of a fallback.
+      const makeCanvas = () => {
+        if (!canvas && v.videoWidth){
           const scale = Math.min(1, 512 / Math.max(v.videoWidth, v.videoHeight));
           canvas = document.createElement('canvas');
           canvas.width  = Math.round(v.videoWidth  * scale);
           canvas.height = Math.round(v.videoHeight * scale);
           ctx = canvas.getContext('2d');
         }
+        return canvas;
+      };
+
+      const shoot = () => {
+        const t = Math.round(Math.floor(v.currentTime / step) * step * 10) / 10;
+        if (t < want || t >= seconds || !makeCanvas()) return;
         want = t + step;
         ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
         pending++;
@@ -1844,7 +1863,7 @@ function grabFrames(url, maxSeconds){
           if (frames.length) return resolve({ frames, seconds });
           // Nothing came of playing it. The old way, once, before giving up —
           // but only if there was ever a picture to measure a canvas against.
-          if (!canvas) return reject(new Error('no picture in it ('
+          if (!makeCanvas()) return reject(new Error('no picture in it ('
             + Math.round(seconds) + 's, ' + v.videoWidth + 'x' + v.videoHeight
             + ', ' + why + ')'));
           seekFrames(v, ctx, canvas, seconds)
@@ -1926,8 +1945,11 @@ async function readClip(q, frames){
 function clipBack(q){
   const c = clips[q.n];
   if (!c) return '';
+  const read = c.unread
+    ? 'Saved, but this phone could not pull stills off it, so there is nothing to compare your answers against.'
+    : `${Math.round(c.seconds)} seconds, ${c.frames} stills read off it.`;
   return `<div class="clip"><video src="${c.url}" controls playsinline preload="metadata"></video></div>
-    <div class="intro quiet">${Math.round(c.seconds)} seconds, ${c.frames} stills read off it.
+    <div class="intro quiet">${read}
       The video itself stays on this phone.</div>`;
 }
 
@@ -2195,6 +2217,12 @@ async function submit(){
   body.append('auditId', FORM.id);
   body.append('walkId', WALK_ID);
   body.append('answers', JSON.stringify(answers));
+  // Which video questions have a clip the phone could not read. Without it the
+  // server sees a video question with no frames and sends the walk back as
+  // unfinished, which is the same wall the phone just stopped putting up.
+  const unread = {};
+  for (const [n, c] of Object.entries(clips)) if (c && c.unread) unread[n] = c.unread;
+  if (Object.keys(unread).length) body.append('unread', JSON.stringify(unread));
   let count = 0;
   for (const [n, list] of Object.entries(photos)){
     for (const p of list){ body.append('photo_' + n, p.file, 'photo.jpg'); count++; }
