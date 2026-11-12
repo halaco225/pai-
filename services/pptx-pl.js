@@ -2,42 +2,8 @@ const PptxGenJS = require('pptxgenjs');
 const { buildACDeepDive } = require('./pptx-pl-ac');
 const { chromium } = require('playwright');
 
-// ─── Base palette (no # prefix — pptxgenjs uses raw hex) ──────────────────
-const C = {
-  navy:   '1E2761',  // matches reference PPTX
-  gold:   'E07B2A',
-  white:  'FFFFFF',
-  light:  'F4F6FA',  // matches reference PPTX bg
-  dk:     '1E293B',
-  green:  '1D9E75',  // matches reference PPTX
-  red:    'C0392B',
-  amber:  'D68910',
-  gray:   '64748B',
-  lgray:  'E2E8F0',
-  border: 'D1D9E6',
-  lgred:  'FFF5F5',
-};
-
-// ─── Per-theme overrides (only keys that differ from base) ─────────────────
-const THEME_OVERRIDES = {
-  'command-dark':   { navy: '111111', light: '1A1A1A', gold: 'CC0000', lgray: '2A2A2A', border: '333333', gray: '888888', dk: 'CCCCCC' },
-  'clean-white':    { navy: 'CC0000', light: 'F9F9F9', gold: 'CC0000', border: 'E0E0E0', lgray: 'EEEEEE' },
-  'maroon':         { navy: '3D0C0C', light: '2A0808', gold: 'F9A825', lgray: '350E0E', border: '4A1010', gray: 'A07070', dk: 'F0D0D0' },
-  'royal-white':    { navy: '003594', light: 'EEF2FA', gold: '4A90D9', border: 'C5D5EE', lgray: 'DCE8FA' },
-  'purple-gold':    { navy: '2D0A5E', light: '1A0535', gold: 'F5C518', lgray: '250845', border: '350A70', gray: 'A080C0', dk: 'E0C0FF' },
-  'forest-gold':    { navy: '1A4731', light: '102C1E', gold: 'B8960C', lgray: '183D28', border: '204F33', gray: '709080', dk: 'C0E0D0' },
-  'navy-orange':    { navy: '0D1B2A', light: '071018', gold: 'E85D04', lgray: '0E1E30', border: '152438', gray: '607080', dk: 'C0D0E0' },
-  'black-gold':     { navy: '0F0F0F', light: '1A1A0A', gold: 'C9A84C', lgray: '222215', border: '333320', gray: '807060', dk: 'E0D0B0' },
-  'slate-teal':     { navy: '1C3A4A', light: '0E2030', gold: '00B4D8', lgray: '152C3A', border: '1E3A4A', gray: '608090', dk: 'C0D8E8' },
-  'crimson-silver': { navy: '6B0F1A', light: '3D0810', gold: 'A8A9AD', lgray: '4A0E18', border: '5A1220', gray: 'A09090', dk: 'E0C0C0' },
-};
-
-const BASE_C = { ...C };
-
-// ─── Apply theme colors (mutates C for this request) ──────────────────────
-function applyTheme(slug) {
-  Object.assign(C, BASE_C, THEME_OVERRIDES[slug] || {});
-}
+const { C, applyTheme } = require('./pptx-theme');
+const { renderDeck, hasDeckSpec } = require('./pptx-deck');
 
 // ─── Parse analysis data ───────────────────────────────────────────────────
 function parseAnalysis(analysis) {
@@ -53,6 +19,21 @@ function parseAnalysis(analysis) {
   return null;
 }
 
+// The 1-pager was written against the old slide2/4/6/8 keys. The analyzer now
+// returns the same content under `summary`, so map it rather than rewrite the
+// HTML — saved analyses from before the change still open.
+function legacyShape(data) {
+  if (!data || !data.summary || data.slide2) return data;
+  const s = data.summary;
+  return {
+    ...data,
+    slide2: { metrics: s.metrics || [], narrative: s.narrative || [] },
+    slide4: { rows: s.acRows || [] },
+    slide6: { cards: s.flags || [] },
+    slide8: { priorities: s.priorities || [] },
+  };
+}
+
 // ─── Entry point ───────────────────────────────────────────────────────────
 async function generatePLPPTX(analysis, options = {}) {
   applyTheme(options.theme || 'default');
@@ -62,7 +43,10 @@ async function generatePLPPTX(analysis, options = {}) {
   pptx.layout = 'LAYOUT_WIDE'; // 13.33" × 7.5"
   pptx.author = 'P.AI by Ayvaz Pizza';
 
-  if (data) {
+  if (hasDeckSpec(data)) {
+    // Claude designed the slides for this period — render what it asked for.
+    renderDeck(pptx, data.deck, options);
+  } else if (data) {
     if (data.storeName || data.plLines) {
       buildStoreDeck(pptx, data, options);
     } else {
@@ -78,7 +62,7 @@ async function generatePLPPTX(analysis, options = {}) {
 // ─── 1-Pager: PDF via Playwright ──────────────────────────────────────────
 async function generateOnePager(analysis, options = {}) {
   applyTheme(options.theme || 'default');
-  const data = parseAnalysis(analysis);
+  const data = legacyShape(parseAnalysis(analysis));
   const html = buildOnePagerHTML(data, options);
 
   const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
@@ -1256,7 +1240,10 @@ async function generateACPPTX(analysis, options = {}) {
   pptx.layout = 'LAYOUT_WIDE';
   pptx.author = 'P.AI by Ayvaz Pizza';
 
-  if (data && (data.acName || data.scorecard)) {
+  if (hasDeckSpec(data)) {
+    applyTheme(options.theme || 'default');
+    renderDeck(pptx, data.deck, options);
+  } else if (data && (data.acName || data.scorecard)) {
     // Direct acDeepDive object from analyzePLForAC
     buildACDeepDive(pptx, data, C);
   } else {

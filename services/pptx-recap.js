@@ -1,4 +1,6 @@
 const PptxGenJS = require('pptxgenjs');
+const { applyTheme } = require('./pptx-theme');
+const { renderDeck, hasDeckSpec } = require('./pptx-deck');
 
 // ── Themes ────────────────────────────────────────────────────────────────────
 const THEMES = {
@@ -152,8 +154,18 @@ async function generateRecapPPTX(data, options = {}) {
   B = buildBrand(options.theme || 'command-dark');
 
   const pptx = new PptxGenJS();
-  pptx.layout = 'LAYOUT_16x9'; // 10" × 7.5" — matches the coordinate system used below
   pptx.author = 'P.AI by Ayvaz Pizza';
+
+  // Claude designed the slides for this week — render those instead of the fixed template.
+  // The spec renderer works in 13.33" coordinates, so it needs the wide layout.
+  if (hasDeckSpec(data)) {
+    pptx.layout = 'LAYOUT_WIDE';
+    applyTheme(options.theme || 'command-dark');
+    renderDeck(pptx, data.deck, options);
+    return pptx.write({ outputType: 'nodebuffer' });
+  }
+
+  pptx.layout = 'LAYOUT_16x9'; // 10" × 7.5" — matches the coordinate system used below
 
   // Handle raw text fallback (Claude couldn't produce JSON)
   if (data.rawContent) {

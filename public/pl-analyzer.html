@@ -32,57 +32,8 @@
     color: var(--text-muted);
     margin-bottom: 10px;
   }
-  .theme-dropdown { position: relative; margin-bottom: 24px; }
-  .theme-trigger { display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: border-color 0.15s; user-select: none; }
-  .theme-trigger:hover { border-color: var(--accent); }
-  .theme-trigger.open { border-color: var(--accent); border-radius: 8px 8px 0 0; }
-  .t-swatches { display: flex; width: 48px; height: 26px; border-radius: 4px; overflow: hidden; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.1); }
-  .t-sw-dark { flex: 1.4; }
-  .t-sw-accent { flex: 1; }
-  .t-name { flex: 1; font-size: 13px; font-weight: 700; color: var(--text-primary); }
-  .t-arrow { color: var(--text-muted); font-size: 11px; transition: transform 0.15s; }
-  .theme-trigger.open .t-arrow { transform: rotate(180deg); }
-  .theme-panel { display: none; position: absolute; top: 100%; left: 0; right: 0; background: var(--surface-2); border: 1px solid var(--accent); border-top: none; border-radius: 0 0 8px 8px; z-index: 200; overflow: hidden; }
-  .theme-panel.open { display: block; }
-  .theme-opt { display: flex; align-items: center; gap: 10px; padding: 8px 14px; cursor: pointer; transition: background 0.1s; }
-  .theme-opt:hover { background: var(--surface); }
-  .theme-opt.selected { background: rgba(204,0,0,0.1); }
-  .t-opt-swatches { display: flex; width: 40px; height: 22px; border-radius: 3px; overflow: hidden; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.08); }
-  .t-opt-dark { flex: 1.4; }
-  .t-opt-accent { flex: 1; }
-  .t-opt-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
 
-  /* ── Logo Selector ──────────────────────────────────── */
-  .logo-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 10px;
-    margin-bottom: 24px;
-  }
-  .logo-option {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px 8px;
-    cursor: pointer;
-    transition: all 0.15s;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    background: var(--surface);
-  }
-  .logo-option:hover { border-color: var(--accent); }
-  .logo-option.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(227,24,55,0.25); }
-  .logo-option img { height: 44px; width: auto; max-width: 90px; object-fit: contain; }
-  .logo-option-none { color: var(--text-muted); font-size: 22px; height: 44px; display: flex; align-items: center; justify-content: center; }
-  .logo-option span { font-size: 10px; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
-  .logo-missing { font-size: 10px; color: #F59E0B; margin-top: 2px; display: none; }
 
-  /* ── Level Selector ─────────────────────────────────── */
-  .level-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); border-radius: 6px; padding: 6px 16px; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer; transition: all 0.15s; }
-  .level-btn:hover { border-color: var(--accent); color: var(--text-primary); }
-  .level-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
   .scope-input { width:100%; padding:8px 10px; background:var(--surface-2,#222); border:1px solid var(--border); border-radius:8px; color:var(--text-primary,#eee); font-size:13px; }
   .gl-label { display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--surface-2,#222); border:1px solid var(--border); border-radius:8px; cursor:pointer; transition:border-color 0.15s; }
   .gl-label:hover { border-color:var(--accent); }
@@ -152,27 +103,20 @@
         <!-- ── Report Level & Scope ───────────────────────────────────── -->
         <div id="scopeSection" style="margin-top:20px;display:none;">
           <div style="height:1px;background:var(--border);margin:0 0 16px;"></div>
-          <div class="options-label">Analysis Level</div>
-          <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;" id="levelBtns">
-            <button class="level-btn" data-level="territory" onclick="setLevel('territory')">Territory</button>
-            <button class="level-btn active" data-level="region" onclick="setLevel('region')">Region</button>
-            <button class="level-btn" data-level="area" onclick="setLevel('area')">Area Coach</button>
-            <button class="level-btn" data-level="store" onclick="setLevel('store')">Store</button>
+          <div style="font-size:12px;color:var(--text-muted,#888);margin-bottom:16px;line-height:1.5;">P.AI reads the file and works out what it covers on its own — one store, one area coach, a region or the whole territory.</div>
+          <!-- FRS upload — optional; it is what makes the P&L-vs-store tie-outs possible -->
+          <div id="frsRow" style="margin-bottom:12px;">
+            <div class="options-label">FRS Report <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted,#888)">(optional · lets P.AI tie the P&amp;L to the store numbers — sales, COS vs PCA, labor, cash)</span></div>
+            <label for="frsFile" class="gl-label">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span id="frsLabel" style="font-size:13px;color:var(--text-muted,#888);">Upload FRS file (Excel or PDF)</span>
+            </label>
+            <input type="file" id="frsFile" style="display:none;" accept=".xlsx,.xls,.csv,.pdf" onchange="onFrsSelected()"/>
           </div>
-          <div style="font-size:11px;color:var(--text-muted,#888);margin-bottom:14px;" id="levelHint">Full 8-slide region deck — all area coaches, variance bridge, anomalies, priorities</div>
-          <!-- Region/Area target dropdown -->
-          <div id="targetSelectRow" style="margin-bottom:12px;display:none;">
-            <div class="options-label" id="targetSelectLabel">Select Target</div>
-            <select id="targetSelect" class="scope-input"></select>
-          </div>
-          <!-- Store target text input -->
-          <div id="targetStoreRow" style="margin-bottom:12px;display:none;">
-            <div class="options-label">Store # <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted,#888)">(leave blank to analyze all stores in file)</span></div>
-            <input id="targetStore" type="text" placeholder="e.g. 039382" class="scope-input"/>
-          </div>
-          <!-- GL upload — prompted at store level, optional otherwise -->
-          <div id="glRow" style="display:none;">
-            <div class="options-label">General Ledger <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted,#888)" id="glHint">(optional · upload for deeper cost cross-reference)</span></div>
+
+          <!-- GL upload — optional -->
+          <div id="glRow">
+            <div class="options-label">General Ledger <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted,#888)">(optional · lets P.AI cross-reference every expense line)</span></div>
             <label for="ledgerFile" class="gl-label">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               <span id="ledgerLabel" style="font-size:13px;color:var(--text-muted,#888);">Upload GL file (Excel or PDF)</span>
@@ -212,46 +156,10 @@
           <div class="card">
             <div class="step-header">
               <div class="step-number">3</div>
-              <h3>Export as PowerPoint</h3>
+              <h3>Want a PowerPoint or a 1-pager?</h3>
             </div>
 
-            <!-- Theme Selector -->
-            <div class="options-label">Presentation Theme</div>
-            <div class="theme-dropdown" id="themeDropdown">
-              <div class="theme-trigger" id="themeTrigger" onclick="toggleThemeDropdown()">
-                <div class="t-swatches">
-                  <div class="t-sw-dark" id="triggerDark" style="background:#1A1A1A"></div>
-                  <div class="t-sw-accent" id="triggerAccent" style="background:#CC0000"></div>
-                </div>
-                <span class="t-name" id="triggerName">Command</span>
-                <span class="t-arrow">▾</span>
-              </div>
-              <div class="theme-panel" id="themePanel"></div>
-            </div>
-
-            <!-- Logo Selector -->
-            <div class="options-label">Cover Logo</div>
-            <div class="logo-grid">
-              <div class="logo-option selected" data-logo="none" onclick="selectLogo('none', this)">
-                <div class="logo-option-none">∅</div>
-                <span>No Logo</span>
-              </div>
-              <div class="logo-option" data-logo="seal" onclick="selectLogo('seal', this)">
-                <img src="/images/logo-seal.png" alt="Seal" onerror="this.style.display='none'; this.nextElementSibling.style.display='block'"/>
-                <div class="logo-missing">Save logo-seal.png to public/images/</div>
-                <span>Seal</span>
-              </div>
-              <div class="logo-option" data-logo="wordmark" onclick="selectLogo('wordmark', this)">
-                <img src="/images/logo-wordmark.png" alt="Wordmark" onerror="this.style.display='none'; this.nextElementSibling.style.display='block'"/>
-                <div class="logo-missing">Save logo-wordmark.png to public/images/</div>
-                <span>Wordmark</span>
-              </div>
-              <div class="logo-option" data-logo="icon" onclick="selectLogo('icon', this)">
-                <img src="/images/logo-icon.png" alt="Icon" onerror="this.style.display='none'; this.nextElementSibling.style.display='block'"/>
-                <div class="logo-missing">Save logo-icon.png to public/images/</div>
-                <span>Icon</span>
-              </div>
-            </div>
+            <p style="font-size:13px;color:var(--text-muted,#888);margin:0 0 18px;line-height:1.6;">Both open and edit like any other file — the PowerPoint in PowerPoint, the 1-pager as a PDF.</p>
 
             <div class="action-row">
               <button class="btn btn-primary" onclick="downloadPPTX()">
@@ -277,8 +185,7 @@
   let analysisResult = null;
   let selectedTheme = 'command-dark';
   let logoBase64 = null;
-  let currentLevel = 'region';
-  let userScope = null;
+  let currentLevel = 'auto';   // P.AI reads the file and decides the breadth itself
   let currentUser = null;
 
   async function init() {
@@ -286,11 +193,9 @@
     const data = await res.json();
     if (!res.ok || !data.authenticated) { window.location.href = '/'; return; }
     currentUser = data.user;
-    userScope = data.user.scope || null;
     document.getElementById('userName').textContent = data.user.name;
     document.getElementById('userRole').textContent = data.user.role.toUpperCase();
     document.getElementById('userInitial').textContent = data.user.name.charAt(0).toUpperCase();
-    buildScopeUI();
   }
 
   async function logout() {
@@ -298,91 +203,10 @@
     window.location.href = '/';
   }
 
-  // ── Scope / Level UI ──────────────────────────────────────────────────────
-  function buildScopeUI() {
-    if (!userScope) return;
-    // Area coaches default to area level, hide region button
-    if (userScope.type === 'area_coach') {
-      document.querySelector('[data-level="region"]').style.display = 'none';
-      currentLevel = 'area';
-      document.querySelectorAll('.level-btn').forEach(b => b.classList.toggle('active', b.dataset.level === 'area'));
-    }
-    setLevel(currentLevel);
-  }
 
-  const LEVEL_HINTS = {
-    territory: 'Territory overview — all regions, all area coaches, VP-level scorecard and priorities',
-    region:    'Full 8-slide region deck — all area coaches, variance bridge, anomalies, priorities',
-    area:      'Area Coach deep dive — per-store scorecard, labor/COGS charts, coaching priorities',
-    store:     'Store-level P&L breakdown — every line vs prior period, coaching notes, GL cross-reference',
-  };
-
-  function setLevel(level) {
-    currentLevel = level;
-    document.querySelectorAll('.level-btn').forEach(b => b.classList.toggle('active', b.dataset.level === level));
-    const hint = document.getElementById('levelHint');
-    if (hint) hint.textContent = LEVEL_HINTS[level] || '';
-
-    const selectRow = document.getElementById('targetSelectRow');
-    const selectEl  = document.getElementById('targetSelect');
-    const storeRow  = document.getElementById('targetStoreRow');
-    const glRow     = document.getElementById('glRow');
-    const glHint    = document.getElementById('glHint');
-
-    selectRow.style.display = 'none';
-    storeRow.style.display  = 'none';
-    glRow.style.display     = 'none';
-
-    if (level === 'territory') {
-      glRow.style.display = 'block';
-      glHint.textContent = '(optional · cross-reference cost data)';
-    } else if (level === 'region') {
-      const rcs = getAvailableRegions();
-      if (rcs.length > 1) {
-        document.getElementById('targetSelectLabel').textContent = 'Select Region Coach';
-        selectEl.innerHTML = '<option value="">— All Regions —</option>' + rcs.map(r => `<option value="${r}">${r}</option>`).join('');
-        selectRow.style.display = 'block';
-      }
-      glRow.style.display = 'block';
-      glHint.textContent = '(optional · cross-reference cost data)';
-    } else if (level === 'area') {
-      const acs = getAvailableACs();
-      if (acs.length > 0) {
-        document.getElementById('targetSelectLabel').textContent = 'Select Area Coach';
-        selectEl.innerHTML = (acs.length > 1 ? '<option value="">— All Areas —</option>' : '') + acs.map(a => `<option value="${a}">${a}</option>`).join('');
-        selectRow.style.display = 'block';
-      }
-      glRow.style.display = 'block';
-      glHint.textContent = '(optional · cross-reference cost data)';
-    } else if (level === 'store') {
-      storeRow.style.display = 'block';
-      glRow.style.display = 'block';
-      glHint.innerHTML = '<strong style="color:var(--accent)">Recommended</strong> — upload GL for full cost breakdown';
-    }
-  }
-
-  function getAvailableACs() {
-    if (!userScope) return [];
-    if (userScope.type === 'area_coach') return [userScope.ac_name];
-    if (userScope.type === 'rdo') return userScope.area_coaches || [];
-    if (userScope.type === 'vp') {
-      // VP can type any AC — return empty so no dropdown shown, store row used
-      return [];
-    }
-    return [];
-  }
-
-  function getAvailableRegions() {
-    if (!userScope) return [];
-    if (userScope.type === 'rdo') return [userScope.rc_name];
-    if (userScope.type === 'vp') return userScope.region_coaches || [];
-    return [];
-  }
-
-  function getScopeTarget() {
-    if (currentLevel === 'store') return document.getElementById('targetStore').value.trim();
-    const sel = document.getElementById('targetSelect');
-    return sel ? sel.value : '';
+  function onFrsSelected() {
+    const f = document.getElementById('frsFile').files[0];
+    document.getElementById('frsLabel').textContent = f ? `✓ ${f.name}` : 'Upload FRS file (Excel or PDF)';
   }
 
   function onLedgerSelected() {
@@ -420,87 +244,7 @@
     }
   });
 
-  // ── Theme dropdown ────────────────────────────────────────────────────────
-  const THEME_OPTIONS = [
-    { slug: 'command-dark',   name: 'Command',          dark: '#1A1A1A', accent: '#CC0000' },
-    { slug: 'clean-white',    name: 'Clean White',       dark: '#E8E8E8', accent: '#CC0000' },
-    { slug: 'maroon',         name: 'Maroon & Gold',     dark: '#3D0C0C', accent: '#F9A825' },
-    { slug: 'royal-white',    name: 'Royal & White',     dark: '#003594', accent: '#E8EEF8' },
-    { slug: 'purple-gold',    name: 'Purple & Gold',     dark: '#2D0A5E', accent: '#F5C518' },
-    { slug: 'forest-gold',    name: 'Forest & Gold',     dark: '#1A4731', accent: '#B8960C' },
-    { slug: 'navy-orange',    name: 'Navy & Orange',     dark: '#0D1B2A', accent: '#E85D04' },
-    { slug: 'black-gold',     name: 'Black & Gold',      dark: '#0F0F0F', accent: '#C9A84C' },
-    { slug: 'slate-teal',     name: 'Slate & Teal',      dark: '#1C3A4A', accent: '#00B4D8' },
-    { slug: 'crimson-silver', name: 'Crimson & Silver',  dark: '#6B0F1A', accent: '#A8A9AD' },
-  ];
 
-  function buildThemeDropdown() {
-    const panel = document.getElementById('themePanel');
-    panel.innerHTML = THEME_OPTIONS.map(t => `
-      <div class="theme-opt${t.slug === selectedTheme ? ' selected' : ''}" data-slug="${t.slug}" onclick="selectTheme('${t.slug}')">
-        <div class="t-opt-swatches">
-          <div class="t-opt-dark" style="background:${t.dark}"></div>
-          <div class="t-opt-accent" style="background:${t.accent}"></div>
-        </div>
-        <span class="t-opt-name">${t.name}</span>
-      </div>`).join('');
-  }
-
-  function selectTheme(slug) {
-    selectedTheme = slug;
-    const t = THEME_OPTIONS.find(o => o.slug === slug);
-    if (t) {
-      document.getElementById('triggerDark').style.background   = t.dark;
-      document.getElementById('triggerAccent').style.background = t.accent;
-      document.getElementById('triggerName').textContent        = t.name;
-    }
-    document.querySelectorAll('.theme-opt').forEach(o => {
-      o.classList.toggle('selected', o.dataset.slug === slug);
-    });
-    closeThemeDropdown();
-  }
-
-  function toggleThemeDropdown() {
-    const trigger = document.getElementById('themeTrigger');
-    const panel   = document.getElementById('themePanel');
-    const isOpen  = panel.classList.contains('open');
-    if (!isOpen) buildThemeDropdown();
-    trigger.classList.toggle('open', !isOpen);
-    panel.classList.toggle('open', !isOpen);
-  }
-
-  function closeThemeDropdown() {
-    document.getElementById('themeTrigger').classList.remove('open');
-    document.getElementById('themePanel').classList.remove('open');
-  }
-
-  document.addEventListener('click', e => {
-    if (!document.getElementById('themeDropdown').contains(e.target)) closeThemeDropdown();
-  });
-
-  // ── Logo selector ─────────────────────────────────────────────────────────
-  async function selectLogo(logoKey, el) {
-    document.querySelectorAll('.logo-option').forEach(c => c.classList.remove('selected'));
-    el.classList.add('selected');
-
-    if (logoKey === 'none') {
-      logoBase64 = null;
-      return;
-    }
-
-    try {
-      const res = await fetch(`/images/logo-${logoKey}.png`);
-      if (!res.ok) { logoBase64 = null; return; }
-      const blob = await res.blob();
-      await new Promise(resolve => {
-        const reader = new FileReader();
-        reader.onload = (e) => { logoBase64 = e.target.result; resolve(); };
-        reader.readAsDataURL(blob);
-      });
-    } catch {
-      logoBase64 = null;
-    }
-  }
 
   // ── Analyze ───────────────────────────────────────────────────────────────
   async function analyzeFile() {
@@ -519,9 +263,10 @@
     const formData = new FormData();
     formData.append('file', plFile.files[0]);
     formData.append('level', currentLevel);
-    formData.append('scopeTarget', getScopeTarget());
     const instructions = (document.getElementById('analysisInstructions')?.value || '').trim();
     if (instructions) formData.append('instructions', instructions);
+    const frsFile = document.getElementById('frsFile').files[0];
+    if (frsFile) formData.append('frs', frsFile);
     const ledgerFile = document.getElementById('ledgerFile').files[0];
     if (ledgerFile) formData.append('ledger', ledgerFile);
 
@@ -563,7 +308,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `P.AI_PL_${currentLevel}_Analysis.pptx`;
+      a.download = 'P.AI_PL_Analysis.pptx';
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -687,11 +432,13 @@
   function renderRegionLevelSummary(d) {
     const period  = d.period || '';
     const region  = d.region || {};
-    const metrics = (d.slide2 || {}).metrics || [];
-    const narrative = (d.slide2 || {}).narrative || [];
-    const acRows  = (d.slide4 || {}).rows || [];
-    const anomCards = (d.slide6 || {}).cards || [];
-    const priorities = (d.slide8 || {}).priorities || [];
+    // Current analyses return a `summary` block; older saved ones used slide2/4/6/8.
+    const sum = d.summary || {};
+    const metrics = sum.metrics || (d.slide2 || {}).metrics || [];
+    const narrative = sum.narrative || (d.slide2 || {}).narrative || [];
+    const acRows  = sum.acRows || (d.slide4 || {}).rows || [];
+    const anomCards = sum.flags || (d.slide6 || {}).cards || [];
+    const priorities = sum.priorities || (d.slide8 || {}).priorities || [];
 
     // KPI cards from slide2.metrics
     const kpiHtml = metrics.slice(0, 4).map(m => {
@@ -728,8 +475,22 @@
           </div>`).join('')}
       </div>` : '';
 
-    // 8-slide deck preview
-    const slideCards = [
+    // Deck preview — P.AI designs the slides, so list what it actually built.
+    const designed = ((d.deck || {}).slides || []).map((s, i) => ({
+      n: i + 1,
+      title: s.title || (s.layout === 'cover' ? 'Cover' : s.layout === 'closing' ? 'What Happens Next' : `Slide ${i + 1}`),
+      preview: s.layout === 'cover'    ? [s.subtitle, ...((s.meta || []).map(m => `${m.label}: ${m.value}`))].filter(Boolean).join(' · ')
+             : s.layout === 'metrics'  ? (s.metrics || []).slice(0, 3).map(m => `${m.label}: ${m.value}`).join(' · ')
+             : s.layout === 'table'    ? `${(s.rows || []).length} rows · ${(s.columns || []).map(c => c.label || c).join(', ')}`
+             : s.layout === 'cards'    ? `${(s.cards || []).length} cards · ${(s.cards || []).map(c => c.severity).filter(Boolean).join(', ')}`
+             : s.layout === 'bridge'   ? `${(s.items || []).length} drivers`
+             : s.layout === 'callout'  ? (s.statement || '')
+             : s.layout === 'quotes'   ? `${(s.quotes || []).length} verbatim comments`
+             : s.layout === 'twoColumn'? `${(s.left || {}).heading || ''} vs ${(s.right || {}).heading || ''}`
+             : (s.items || []).slice(0, 2).map(i2 => (typeof i2 === 'string' ? i2 : i2.heading || i2.text || '')).join(' · '),
+    }));
+
+    const slideCards = designed.length ? designed : [
       { n: 1, title: 'Title Slide',               preview: `${period} · ${region.name || ''} · ${region.director || ''}` },
       { n: 2, title: 'Region Headline',            preview: metrics.slice(0,2).map(m => `${m.label}: ${m.value}`).join(' · ') || 'EBITDA + narrative' },
       { n: 3, title: 'EBITDA Variance Bridge',     preview: 'Where did the EBITDA go? Tailwinds vs headwinds by driver' },
@@ -742,7 +503,7 @@
 
     const deckPreview = `
       <div style="margin-top:20px;">
-        <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text-muted,#888);margin-bottom:10px;">DECK PREVIEW — 8 SLIDES</div>
+        <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text-muted,#888);margin-bottom:10px;">DECK PREVIEW — ${slideCards.length} SLIDES</div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
           ${slideCards.map(s => `
             <div style="background:var(--surface-2,#1e1e1e);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
@@ -777,6 +538,8 @@
     document.getElementById('scopeSection').style.display = 'none';
     document.getElementById('ledgerFile').value = '';
     document.getElementById('ledgerLabel').textContent = 'Upload GL file (Excel or PDF)';
+    document.getElementById('frsFile').value = '';
+    document.getElementById('frsLabel').textContent = 'Upload FRS file (Excel or PDF)';
     analysisResult = null;
     uploadZone.scrollIntoView({ behavior: 'smooth' });
   }

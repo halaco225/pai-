@@ -21,16 +21,18 @@ const upload = multer({ storage, limits: { fileSize: 25 * 1024 * 1024 } });
 // POST /api/pl/analyze
 router.post('/analyze', requireAuth, upload.fields([
   { name: 'file',   maxCount: 1 },
+  { name: 'frs',    maxCount: 1 },
   { name: 'ledger', maxCount: 1 }
 ]), async (req, res) => {
   const plFile   = req.files?.file?.[0];
+  const frsFile  = req.files?.frs?.[0];
   const glFile   = req.files?.ledger?.[0];
   if (!plFile) return res.status(400).json({ error: 'No P&L file uploaded.' });
 
   const role         = req.session.user.role;
   const name         = req.session.user.name;
   const scope        = req.session.user.scope || null;
-  const level        = req.body.level        || (role === 'area_coach' ? 'area' : 'region');
+  const level        = req.body.level        || 'auto';
   const scopeTarget  = req.body.scopeTarget  || '';
   const instructions = req.body.instructions || '';
 
@@ -42,7 +44,7 @@ router.post('/analyze', requireAuth, upload.fields([
     const alignmentText = (alignRow && alignRow.content_text) ? alignRow.content_text : MASTER_ALIGNMENT_TEXT;
 
     const result = await analyzePL(plFile, {
-      level, scopeTarget, glFile, userName: name, scope, alignmentText, instructions
+      level, scopeTarget, glFile, frsFile, userName: name, scope, alignmentText, instructions
     });
 
     res.json({ success: true, analysis: result, role, level });
@@ -50,7 +52,7 @@ router.post('/analyze', requireAuth, upload.fields([
     console.error('P&L analysis error:', err);
     res.status(500).json({ error: err.message || 'Analysis failed.' });
   } finally {
-    [plFile, glFile].forEach(f => { if (f) try { fs.unlinkSync(f.path); } catch (e) {} });
+    [plFile, frsFile, glFile].forEach(f => { if (f) try { fs.unlinkSync(f.path); } catch (e) {} });
   }
 });
 
@@ -61,13 +63,18 @@ router.post('/generate-pptx', requireAuth, express.json({ limit: '10mb' }), asyn
 
   const role  = req.session.user.role;
   const name  = req.session.user.name;
-  const level = options?.level || (role === 'area_coach' ? 'area' : 'region');
+  const level = options?.level || 'auto';
 
   try {
     const { generatePLPPTX, generateACPPTX } = require('../services/pptx-pl');
+    const { hasDeckSpec } = require('../services/pptx-deck');
 
     let pptxBuffer, filename;
-    if (level === 'area' || role === 'area_coach') {
+    // A Claude-designed deck carries its own slides, whoever asked for it.
+    if (hasDeckSpec(analysis)) {
+      pptxBuffer = await generatePLPPTX(analysis, options || {});
+      filename = 'P.AI_PL_Analysis.pptx';
+    } else if (level === 'area' || role === 'area_coach') {
       pptxBuffer = await generateACPPTX(analysis, options || {});
       const safeName = (options?.scopeTarget || name).replace(/[^a-zA-Z0-9]/g, '_');
       filename = `P.AI_${safeName}_Area_PL.pptx`;
