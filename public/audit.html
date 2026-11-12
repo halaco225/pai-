@@ -1755,6 +1755,13 @@ function grabFrames(url, maxSeconds){
     v.setAttribute('style', 'position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0.01;pointer-events:none');
     document.body.appendChild(v);
     v.src = url;
+    // Asked for inside the tap that picked the video. iOS grants playback off
+    // a gesture, and by the time metadata arrives that gesture is spent — one
+    // of the two ways play() comes back refused, the other being Low Power
+    // Mode, which refuses either way. The real play() below is still there;
+    // this one just gets the question in while the answer can still be yes.
+    const early = v.play();
+    if (early && early.catch) early.catch(() => {});
     const done = fn => (...a) => { v.remove(); v.removeAttribute('src'); v.load(); return fn(...a); };
     resolve = done(resolve); reject = done(reject);
     v.onerror = () => reject(new Error('cannot decode'));
