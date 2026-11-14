@@ -13,7 +13,8 @@
 const https = require('https');
 
 const BASE_URL = process.env.PAI_BASE_URL || 'https://pai-ayvaz.onrender.com';
-const TOKEN    = process.env.INTEL_AUTOMATION_TOKEN || '38b8091924e1f85583454212a9860038';
+const TOKEN = process.env.INTEL_AUTOMATION_TOKEN;
+if (!TOKEN) { console.error('INTEL_AUTOMATION_TOKEN is not set.'); process.exit(1); }
 
 // Delay between pipeline triggers — pipeline takes ~10 min on Render Starter
 const DELAY_BETWEEN_DATES_MS = 14 * 60 * 1000; // 14 minutes

@@ -62,9 +62,9 @@ services:
         value: /tmp/hutbot-profile
       # ── Automation tokens ───────────────────────────────────
       - key: VELOCITY_AUTOMATION_TOKEN
-        value: 022f4a0fa4e2ec99541609c47744d599
+        sync: false        # set in the Render dashboard; never in this repo
       - key: INTEL_AUTOMATION_TOKEN
-        value: 38b8091924e1f85583454212a9860038
+        sync: false        # set in the Render dashboard; never in this repo
       # ── RC Tracker's Supabase (follow-ups, SMS history, consent) ──
       # Same project RC Tracker uses. Read and written in place; nothing is
       # migrated, so there is no window in which rows can be lost.
@@ -118,4 +118,4 @@ services:
       - key: PAI_BASE_URL
         value: https://pai-ayvaz.onrender.com
       - key: INTEL_AUTOMATION_TOKEN
-        value: 38b8091924e1f85583454212a9860038
+        sync: false        # set in the Render dashboard; never in this repo

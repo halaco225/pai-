@@ -624,7 +624,7 @@ function postLocal(path, payload) {
       headers: {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body),
-        'X-Automation-Token': process.env.INTEL_AUTOMATION_TOKEN || '38b8091924e1f85583454212a9860038',
+        'X-Automation-Token': require('./automation-token').automationToken(),
       },
     }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
     req.on('error', (e) => { console.error(`[BriefSMS] ${path} failed:`, e.message); resolve(0); });

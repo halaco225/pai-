@@ -15,3 +15,7 @@ people.json
 .impeccable/
 .superpowers/
 graphify-out/
+
+# Claude Code permission allow-lists. Machine-local, and every entry is a
+# command line, so credentials typed once end up in it. Never in a public repo.
+.claude/settings.local.json

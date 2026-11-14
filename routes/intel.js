@@ -8,6 +8,7 @@ const router  = express.Router();
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { USER_ROSTER } = require('./auth');
 const { intelUser: scopedUser } = require('../services/intel-scope');
+const { tokenOk } = require('../services/automation-token');
 
 // Handlers read the user through this, so the territory view is decided once.
 const intelUser = (req) => scopedUser(req, USER_ROSTER);
@@ -35,11 +36,7 @@ let lastPipelineResult = null; // in-memory store of most recent pipeline run
 
 // ── POST /api/intel/automation/run-batch — cron trigger ──────────────────────
 router.post('/automation/run-batch', async (req, res) => {
-  const token = req.headers['x-automation-token'] || req.query.token;
-  // Accept the dashboard INTEL_AUTOMATION_TOKEN OR the cron service's known token
-  // (cron token is defined in render.yaml and shared in the repo — low-risk endpoint)
-  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, '38b8091924e1f85583454212a9860038'].filter(Boolean);
-  if (!validTokens.includes(token)) {
+  if (!tokenOk(req)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   const targetDate = req.body.date || req.query.date || null;
@@ -77,9 +74,7 @@ router.post('/automation/run-batch', async (req, res) => {
 
 // ── POST /api/intel/automation/run-labor-hutbot — re-run Fourth + HutBot + cache only ──
 router.post('/automation/run-labor-hutbot', async (req, res) => {
-  const token = req.headers['x-automation-token'] || req.query.token;
-  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, '38b8091924e1f85583454212a9860038'].filter(Boolean);
-  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!tokenOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   const targetDate = req.body?.date || req.query.date || null;
   const date = targetDate || (() => {
     const d = new Date(); d.setDate(d.getDate() - 1);
@@ -169,9 +164,7 @@ router.get('/automation/last-run', async (req, res) => {
 
 // ── GET /api/intel/automation/logs — persistent pipeline run history ─────────
 router.get('/automation/logs', async (req, res) => {
-  const token = req.query.token || req.headers['x-automation-token'];
-  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, process.env.INTEL_REGEN_TOKEN, '38b8091924e1f85583454212a9860038'].filter(Boolean);
-  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!tokenOk(req, { regen: true })) return res.status(401).json({ error: 'Unauthorized' });
   try {
     const logs = await db.getIntelLogs(20);
     const parsed = logs.map(l => {
@@ -219,9 +212,7 @@ router.get('/automation/regenerate-cache', async (req, res) => {
 
 // ── GET /api/intel/automation/browser-check — diagnose Playwright binary path ──
 router.get('/automation/browser-check', async (req, res) => {
-  const token = req.query.token || req.headers['x-automation-token'];
-  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, process.env.INTEL_REGEN_TOKEN, '38b8091924e1f85583454212a9860038'].filter(Boolean);
-  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!tokenOk(req, { regen: true })) return res.status(401).json({ error: 'Unauthorized' });
   const fss = require('fs');
   const pathh = require('path');
   const browsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH || '/tmp/ms-playwright';
@@ -451,9 +442,7 @@ router.get('/automation/seed-hierarchy', async (req, res) => {
 
 // ── GET /api/intel/debug/playwright — check browser binary filesystem ──────────
 router.get('/debug/playwright', async (req, res) => {
-  const token = req.headers['x-automation-token'] || req.query.token;
-  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, '38b8091924e1f85583454212a9860038'].filter(Boolean);
-  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!tokenOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   const fs   = require('fs');
   const path = require('path');
   const home = process.env.HOME || '/root';
@@ -504,9 +493,7 @@ router.get('/debug/playwright', async (req, res) => {
 
 // ── GET /api/intel/debug/winscore — run Win Score and return raw response snippet ──
 router.get('/debug/winscore', async (req, res) => {
-  const token = req.headers['x-automation-token'] || req.query.token;
-  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, '38b8091924e1f85583454212a9860038'].filter(Boolean);
-  if (!validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!tokenOk(req)) return res.status(401).json({ error: 'Unauthorized' });
   try {
     const { debugWinScore } = require('../services/intel-smg-winscore');
     const result = await debugWinScore();
@@ -521,9 +508,7 @@ router.get('/debug/winscore', async (req, res) => {
 // NOTE: This route must be BEFORE router.use(requireAuth) so the automation token works.
 router.post('/upload/smg', smgUpload.single('file'), async (req, res) => {
   // Accept either a logged-in RDO/VP session OR the automation token
-  const tkn = req.headers['x-automation-token'] || req.query.token;
-  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, '38b8091924e1f85583454212a9860038'].filter(Boolean);
-  const hasToken = tkn && validTokens.includes(tkn);
+  const hasToken = tokenOk(req);
   const hasRole  = req.session?.user && ['rdo','vp','area_coach'].includes(req.session.user.role);
   if (!hasToken && !hasRole) return res.status(401).json({ error: 'Unauthorized' });
   const file = req.file;
@@ -571,9 +556,7 @@ router.post('/upload/smg', smgUpload.single('file'), async (req, res) => {
 // Accepts the "Organization Breakdown Summary" CSV from the ByteCoach/HutBot portal.
 // Clears existing HutBot flags for the target date and rewrites from CSV data.
 router.post('/upload/hutbot-csv', hutbotUpload.single('file'), async (req, res) => {
-  const tkn = req.headers['x-automation-token'] || req.query.token;
-  const validTokens = [process.env.INTEL_AUTOMATION_TOKEN, '38b8091924e1f85583454212a9860038'].filter(Boolean);
-  const hasToken = tkn && validTokens.includes(tkn);
+  const hasToken = tokenOk(req);
   const hasRole  = req.session?.user && ['rdo','vp','area_coach'].includes(req.session?.user?.role);
   if (!hasToken && !hasRole) return res.status(401).json({ error: 'Unauthorized' });
   const file = req.file;

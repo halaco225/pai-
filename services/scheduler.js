@@ -120,7 +120,7 @@ function triggerPull(dateStr) {
 function triggerIntel(dateStr) {
   return postLocal(
     '/api/intel/automation/run-batch',
-    process.env.INTEL_AUTOMATION_TOKEN || '38b8091924e1f85583454212a9860038',
+    automationToken(),
     { date: dateStr }
   );
 }

@@ -19,7 +19,8 @@ const http  = require('http');
 const SMG_USER    = process.env.SMG_USER;
 const SMG_PASS    = process.env.SMG_PASSWORD;
 const PAI_URL     = (process.env.PAI_BASE_URL || 'https://pai-ayvaz.onrender.com').replace(/\/$/, '');
-const AUTH_TOKEN  = process.env.INTEL_AUTOMATION_TOKEN || '38b8091924e1f85583454212a9860038';
+const AUTH_TOKEN = process.env.INTEL_AUTOMATION_TOKEN;
+if (!AUTH_TOKEN) { console.error('INTEL_AUTOMATION_TOKEN is not set.'); process.exit(1); }
 const TARGET_DATE = process.env.TARGET_DATE || (() => {
   const d = new Date();
   d.setDate(d.getDate() - 1);
