@@ -16,8 +16,15 @@ describe('salesBackfillDue', () => {
     expect(salesBackfillDue(new Date('2026-10-09T11:00:00Z'))).toBe(true);  // 07:00 EDT
   });
 
-  test('not due once the send time has passed', () => {
-    expect(salesBackfillDue(new Date('2026-10-09T12:31:00Z'))).toBe(false); // 08:31 EDT
+  // Shares the catch-up window with the labor refresh, which now runs to the
+  // 09:00 backstop rather than stopping at the send. A rerun in that half hour
+  // still reaches the text, because the text is waiting for exactly this.
+  test('still due between the send and the backstop', () => {
+    expect(salesBackfillDue(new Date('2026-10-09T12:31:00Z'))).toBe(true);  // 08:31 EDT
+  });
+
+  test('not due once the backstop has passed', () => {
+    expect(salesBackfillDue(new Date('2026-10-09T13:00:00Z'))).toBe(false); // 09:00 EDT
   });
 
   test('not due overnight', () => {

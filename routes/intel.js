@@ -124,6 +124,26 @@ router.post('/automation/run-labor-hutbot', async (req, res) => {
       console.error('[Intel] HutBot failed:', err.message);
     }
 
+    // SUS_DBS cheese — the same pull as Step 1b of the pipeline. It belongs in
+    // the catch-up and not just the 6am batch: SUS_DBS posts on its own
+    // schedule, and on 2026-11-15 it had written nothing by 08:30, so the
+    // morning text said "Chz not reporting" for a number that was on the intel
+    // page later the same morning.
+    try {
+      const { pullReport }  = require('../services/intel-ods');
+      const { parseSusDbs } = require('../services/parsers/sus-dbs-parser');
+      const pull = await pullReport('SUS_DBS', date);
+      if (!pull.success) throw new Error(pull.error);
+      const { softIndicators, skipped } = parseSusDbs(pull.filePath, date);
+      for (const si of softIndicators) await db.upsertSoftIndicator(si);
+      try { require('fs').unlinkSync(pull.filePath); } catch (_) {}
+      steps.susDbs = { success: true, written: softIndicators.length, skipped: skipped.length };
+      console.log('[Intel] SUS_DBS cheese done:', steps.susDbs);
+    } catch (err) {
+      steps.susDbs = { success: false, error: err.message };
+      console.error('[Intel] SUS_DBS cheese failed:', err.message);
+    }
+
     // Regenerate cache
     try {
       await generateIntelCache(date);

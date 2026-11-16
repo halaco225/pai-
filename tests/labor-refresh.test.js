@@ -25,10 +25,17 @@ describe('catch-up window', () => {
     expect(laborRefreshDue(new Date('2026-10-09T11:00:00Z'))).toBe(true);  // 07:00 EDT
   });
 
-  // Past the send there is nothing left to catch up for, and a pull then would
-  // cost a Fourth round trip for no one's benefit.
-  test('not due once the send time has passed', () => {
-    expect(laborRefreshDue(new Date('2026-10-09T12:31:00Z'))).toBe(false); // 08:31 EDT
+  // The window used to shut at the send. It now runs to the 09:00 backstop,
+  // because the send itself waits that long for labor and cheese to land --
+  // and waiting is pointless if nothing is still pulling during the wait.
+  test('still due between the send and the backstop', () => {
+    expect(laborRefreshDue(new Date('2026-10-09T12:31:00Z'))).toBe(true);  // 08:31 EDT
+  });
+
+  // Past the backstop the text has gone, so there is nothing left to catch up
+  // for and a pull would cost a Fourth round trip for no one's benefit.
+  test('not due once the backstop has passed', () => {
+    expect(laborRefreshDue(new Date('2026-10-09T13:00:00Z'))).toBe(false); // 09:00 EDT
   });
 
   test('not due in the middle of the night', () => {

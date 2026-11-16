@@ -357,6 +357,24 @@ function isDue({ person, now, sendLocal = DEFAULT_SEND_LOCAL, consented, already
   return nowMin >= dueMin && nowMin < dueMin + SEND_WINDOW_MINUTES;
 }
 
+// Fourth posts the previous day's punches through the morning and SUS_DBS
+// posts cheese on its own schedule, so at 08:30 the text can be honest and
+// still useless: "Labor still posting / Chz not reporting" for numbers that
+// are on the intel page by mid-morning. Wait for them -- but only to here,
+// because a text that never arrives is worse than one that says "not
+// reporting". Inside the window by construction: past 09:05 isDue is false
+// and nothing would send at all.
+const DATA_BACKSTOP_LOCAL = process.env.PAI_BRIEF_BACKSTOP_LOCAL || '09:00';
+
+// Eastern, not the reader's zone: this asks whether the feeds have had their
+// morning, and the feeds keep Eastern hours. A Pacific reader is due at 08:30
+// their time, which is 11:30 here -- long after the catch-up stopped looking,
+// so holding them to a Pacific 09:00 would wait on flags nobody is refreshing.
+function holdForData({ now, ready, backstopLocal = DATA_BACKSTOP_LOCAL }) {
+  if (ready) return false;
+  return toMinutes(localHHMM(now, REFRESH_TZ)) < toMinutes(backstopLocal);
+}
+
 // ── Supabase reads/writes ────────────────────────────────────────────────────
 
 const db     = require('./db');
@@ -535,6 +553,13 @@ async function sendOne(username, now = new Date()) {
   // labelled as today's go into someone's decisions.
   if (!memo) return `${personName}: brief for ${dataDate} not cached yet — will retry`;
 
+  // Both numbers are still arriving: wait rather than print "Labor still
+  // posting / Chz not reporting" for figures that land before 09:00 anyway.
+  // Past the backstop this is false and the text goes as it always did.
+  if (holdForData({ now, ready: !_laborLookedPartial && !_cheeseMissing })) {
+    return `${personName}: labor/cheese still landing — holding until ${DATA_BACKSTOP_LOCAL}`;
+  }
+
   let body;
   try {
     body = await buildBody(username, dataDate);
@@ -596,9 +621,13 @@ function sendMinutes() {
   return toMinutes(process.env.PAI_BRIEF_SEND_LOCAL_TIME || DEFAULT_SEND_LOCAL);
 }
 
+// Runs past the send and up to the backstop, not up to the send. The hold
+// below buys time for the feeds to land, and time is worth nothing if the
+// pulls have already stopped: an 08:30-09:00 wait with a window that shut at
+// 08:30 is the same incomplete text, half an hour later.
 function inCatchupWindow(now) {
   const m = toMinutes(localHHMM(now, REFRESH_TZ));
-  return m >= toMinutes(CATCHUP_START) && m < sendMinutes();
+  return m >= toMinutes(CATCHUP_START) && m < toMinutes(DATA_BACKSTOP_LOCAL);
 }
 
 let _refreshedFor   = null;          // local date of the last labor pull
@@ -608,7 +637,9 @@ let _refreshCount   = 0;
 function laborRefreshDue(now) {
   if (!inCatchupWindow(now)) return false;
   if (_refreshedFor !== localDate(now, REFRESH_TZ)) return true;   // first of the day
-  if (!_laborLookedPartial) return false;                          // the day has landed
+  // Both feeds, not just labor: cheese routinely lands after Fourth finishes,
+  // and stopping the loop on labor alone is what left 11/15 with no cheese.
+  if (!_laborLookedPartial && !_cheeseMissing) return false;       // the day has landed
   return toMinutes(localHHMM(now, REFRESH_TZ)) - _lastRefreshMin >= RETRY_SPACING_MIN;
 }
 
@@ -658,6 +689,22 @@ async function laborLooksPartial(dataDate) {
   const act = rows[0] && rows[0].act, sch = rows[0] && rows[0].sch;
   if (!sch) return false;                       // nothing scheduled: nothing to judge
   return (act / sch) < LABOR_PLAUSIBLE_RATIO;
+}
+
+// Cheese is written once, by Step 1b of the intel pipeline, and SUS_DBS posts
+// on its own schedule. Zero rows for the day is exactly what prints "Chz not
+// reporting"; a single row means the feed has started.
+let _cheeseMissing = true;   // assume so until a read says otherwise
+
+async function cheeseMissing(dataDate) {
+  const pool = db.getPool();
+  if (!pool) return false;   // never hold the text on a check we cannot run
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM dbs_soft_indicators
+      WHERE metric_date = $1 AND indicator = 'cheese_usage'`,
+    [dataDate]
+  );
+  return !(rows[0] && rows[0].n > 0);
 }
 
 // ── Sales backfill ───────────────────────────────────────────────────────────
@@ -736,10 +783,12 @@ async function tick(now = new Date()) {
     const dataDate = briefCacheDate(now);
     try { _laborLookedPartial = await laborLooksPartial(dataDate); }
     catch (e) { console.error('[BriefSMS] labor check failed:', e.message); }
-    if (_refreshCount === 0 || _laborLookedPartial) {
+    try { _cheeseMissing = await cheeseMissing(dataDate); }
+    catch (e) { console.error('[BriefSMS] cheese check failed:', e.message); }
+    if (_refreshCount === 0 || _laborLookedPartial || _cheeseMissing) {
       const status = await refreshLabor(now);
-      console.log(`[BriefSMS] labor refresh #${_refreshCount} for ${dataDate} ` +
-                  `(partial=${_laborLookedPartial}) -> HTTP ${status}`);
+      console.log(`[BriefSMS] data refresh #${_refreshCount} for ${dataDate} ` +
+                  `(labor partial=${_laborLookedPartial}, cheese missing=${_cheeseMissing}) -> HTTP ${status}`);
       return; // let it finish before composing; the next tick sends
     }
   }
@@ -762,6 +811,7 @@ module.exports = {
   laborLooksPartial, inCatchupWindow, CATCHUP_START, RETRY_SPACING_MIN,
   MAX_SALES_BACKFILLS,
   renderForSms, shortLabel, dayLabel,
+  holdForData, DATA_BACKSTOP_LOCAL, cheeseMissing,
   hasConsent, sentDates, claim, releaseClaim, recordClaimResult, logMessage,
   MAX_SMS_CHARS, BRIEF_MODEL, SEND_WINDOW_MINUTES, DEFAULT_SEND_LOCAL,
   CONDENSE_TIMEOUT_MS,
