@@ -1,9 +1,9 @@
 {
   "id": "expiration-dates",
-  "title": "Control Expiration Dates & Shelf Life — Shift Leader Walk",
+  "title": "Expiration Dates & Shelf Life — Shift Leader Walk",
   "kind": "test",
   "coach": "adam",
-  "description": "Controlling expiration dates and shelf life is one of the brand's Big 6 areas of food safety risk. This walk is about that one thing.\n\nIt starts at our own make table, then you finish it standing in your walk-in with the door open. Nothing here is a memory test — the dates are in front of you. Read the labels.",
+  "description": "This walk is about dates. It is one of the six biggest food safety risks the brand tracks.\n\nStart at the make table. Then finish it standing in your walk-in with the door open. Nothing here is a memory test. The dates are right in front of you. Read them.",
   "questions": [
     {
       "n": 1,
@@ -21,7 +21,7 @@
     },
     {
       "n": 3,
-      "title": "It is Monday 11/16. Tap each label to read it, then tap the one product that has to come out of this table.",
+      "title": "Today is Monday, November 16. Tap each product to see its date. Then tap the one that should already be gone.",
       "type": "hotspot",
       "image": "/audits/maketable-full.jpg",
       "probes": [
@@ -48,77 +48,77 @@
           "y": 56,
           "rx": 6,
           "ry": 10,
-          "label": "The bacon — Discard Sun 11/15 Close, and it is Monday",
-          "why": "Its discard day was last night at close. It should never have made it to this shift."
+          "label": "The bacon. Its date was Sunday, and today is Monday.",
+          "why": "It should have been thrown out last night at close."
         }
       ],
       "extraTaps": 0,
       "points": 5,
       "required": true,
-      "help": "This is our own make table. Our labels read Made, Ready and Discard.",
-      "explanation": "The bacon. Its label says Discard Sun 11/15 Close, and it is Monday morning.\n\n• The Italian sausage says Mon 11/16 Close. That is today, so it is fine right now — it comes out tonight at close, not now.\n• Pepperoni and diced ham are both still days out.\n• Only the bacon is already past, and it is past by one night.\n\nThis is the one that catches stores out. Nobody pulled it at close, it is still sitting there in the morning, and now it is a deviation. Dated product gets pulled at close, not at open."
+      "help": "This is our own make table. Our labels say Made, Ready, and Discard.",
+      "explanation": "The bacon. Its label says Sunday 11/15. Today is Monday.\n\n• The Italian sausage says Monday 11/16. That is today, so it is still fine. It goes tonight at close.\n• The pepperoni and the ham are both still days away.\n• Only the bacon is late, and only by one night.\n\nThis is the one that catches stores out. Nobody threw it out at close. It was still there in the morning. Now it costs us points.\n\nThrow out dated food at close. Not in the morning."
     },
     {
       "n": 4,
-      "title": "A case of diced tomatoes in the walk-in has the manufacturer's date printed on the bag. You find one bag a single day past that date. What does that score?",
+      "title": "The company that made these diced tomatoes printed a date on the bag. Today is one day after that date. How does the auditor score it?",
       "type": "single",
       "choices": [
-        "Nothing — one day past is still inside the window",
-        "A Secondary deviation",
-        "A Significant deviation",
-        "Nothing, as long as the bag is still sealed"
+        "It does not count. One day is close enough.",
+        "Secondary — the less serious kind",
+        "Significant — the most serious kind",
+        "It does not count, because the bag is still sealed."
       ],
       "correct": [
         2
       ],
       "points": 5,
       "required": true,
-      "explanation": "Significant. There is no grace day — one day past is past.\n\n• A TCS product past the manufacturer's date is the most serious finding in this whole section.\n• A Significant deviation has to be remediated within 24 hours.\n• Still sealed rescues nothing. Unopened and out of date is still out of date.\n\nThis is not hypothetical. An auditor found exactly this in one of our walk-ins: diced tomatoes, expiration date 06/13, found on 06/14. One day. Scored Significant."
+      "explanation": "Significant. This is the most serious kind.\n\n• There is no grace day. One day late is late.\n• A Significant problem has to be fixed within 24 hours.\n• A sealed bag does not help. Sealed and out of date is still out of date.\n\nThis really happened to us. An auditor found diced tomatoes in one of our walk-ins. The date said June 13. He found them June 14. One day. It scored Significant."
     },
     {
       "n": 5,
-      "title": "In the same walk-in, a tub of Alfredo that we opened and date-marked ourselves is two days past the date we wrote on it. What does that score?",
+      "title": "We opened a tub of Alfredo and wrote our own date on it. Today is two days after the date we wrote. How does the auditor score it?",
       "type": "single",
       "choices": [
-        "A Significant deviation, the same as the tomatoes",
-        "A Secondary deviation",
-        "Nothing — we wrote the date, so we can extend it",
-        "Nothing, because it is not a manufacturer's date"
+        "Significant — the same as the tomatoes",
+        "Secondary — the less serious kind",
+        "It does not count. We wrote the date, so we can change it.",
+        "It does not count, because the company did not print that date."
       ],
       "correct": [
         1
       ],
       "points": 5,
       "required": true,
-      "explanation": "Secondary. Whose date it is changes how hard it hits.\n\n• Manufacturer's date past — Significant.\n• Our own date-mark past — Secondary.\n• An opened item with no date on it at all — also Secondary, and just as avoidable.\n\nBoth of these came off the same cooler on the same day: the tomatoes scored Significant, the Alfredo scored Secondary. Same shelf, same visit, different severity.\n\nThe Secondary line is the one that is entirely ours. It is fixed with a marker."
+      "explanation": "Secondary. Whose date it is changes how much it hurts.\n\n• The company's date, past — Significant.\n• Our own date, past — Secondary.\n• Something we opened with no date at all — also Secondary.\n\nBoth of these came off the same cooler on the same day. The tomatoes scored Significant. The Alfredo scored Secondary.\n\nThe Secondary one is the one we control. A marker fixes it."
     },
     {
       "n": 6,
-      "title": "A bag has two dates printed on it: \"Sell By 11/20\" and \"Best By 11/28\". Which one is the expiration date for the audit?",
+      "title": "A bag has two dates on it: \"Sell By 11/20\" and \"Best By 11/28\". Which one do we go by?",
       "type": "single",
       "choices": [
-        "Best By 11/28 — it is the latest one",
-        "Sell By 11/20 — it is the earliest one",
-        "Neither — only a date that says \"Expiration\" counts",
-        "Whichever one the manufacturer says is the real one"
+        "Best By 11/28, because it is later",
+        "Sell By 11/20, because it is earlier",
+        "Neither. Only a date that says \"Expiration\" counts.",
+        "Whichever one the company says is the real one"
       ],
       "correct": [
         1
       ],
       "points": 5,
       "required": true,
-      "explanation": "The earliest date on the packaging, whatever it is called.\n\n• \"Best By\", \"Use By\", \"Expiration\", \"Sell By\" — they all count.\n• The earliest one wins. This bag is out of date after 11/20, not 11/28.\n\nReading for the latest date on a bag is how a product sits in the cooler looking legal for another week."
+      "explanation": "Always the earliest date on the bag.\n\n• It does not matter what it is called. Best By, Use By, Sell By, Expiration — they all count.\n• The earliest one wins. This bag is out of date after 11/20.\n\nLooking for the latest date is how food sits in the cooler looking fine for another week."
     },
     {
       "n": 7,
-      "title": "Which of these would cost us points? Pick ALL that apply.",
+      "title": "Which of these would cost us points? Pick all that apply.",
       "type": "multi",
       "choices": [
-        "A sealed bag of a TCS product with no manufacturer's expiration date printed on it anywhere",
-        "An opened bag of sauce in the walk-in with no date written on it",
-        "A tub we prepped three days ago, labeled, still inside its date",
-        "A case of a TCS product past the manufacturer's date, still sealed",
-        "An opened, date-marked container that is past the date we wrote on it"
+        "A sealed bag of cold food with no date printed on it anywhere",
+        "An opened bag of sauce with no date written on it",
+        "A tub we made three days ago, labeled, still good",
+        "A sealed case that is past the date on the box",
+        "An opened tub that is past the date we wrote on it"
       ],
       "correct": [
         0,
@@ -128,52 +128,52 @@
       ],
       "points": 5,
       "required": true,
-      "explanation": "Four of these five score against us.\n\n• No manufacturer's date on a TCS product — Significant. A missing date is treated as seriously as a passed one.\n• Opened with no date written on it — Secondary.\n• Sealed but past the manufacturer's date — Significant.\n• Past our own date-mark — Secondary.\n\nThe prepped tub, labeled and still in date, is the only one that is right. That is what good looks like, and it took somebody ten seconds with a marker."
+      "explanation": "Four of these five cost us points.\n\n• No date printed on it at all — Significant. A missing date counts as much as a late one.\n• Opened, with no date written on it — Secondary.\n• Sealed but past the date — Significant.\n• Past the date we wrote — Secondary.\n\nThe tub we made three days ago is the only right one. It is labeled and still good. Somebody spent ten seconds with a marker, and that is all it took."
     },
     {
       "n": 8,
-      "title": "You open a bag of a ready-to-eat TCS product and put it in the walk-in. You are going to hold it longer than 24 hours. What has to happen?",
+      "title": "You open a bag of ready-to-eat food and put it in the walk-in. You will keep it longer than one day. What has to happen?",
       "type": "single",
       "choices": [
-        "Nothing — the manufacturer's date on the bag still covers it",
-        "It gets labeled, and served or thrown out within 7 days",
-        "It gets labeled, and served or thrown out within 14 days",
-        "It has to be used by the end of the next day"
+        "Nothing. The date on the bag still covers it.",
+        "Write a date on it. Use it or throw it out within 7 days.",
+        "Write a date on it. Use it or throw it out within 14 days.",
+        "Use it by the end of tomorrow."
       ],
       "correct": [
         1
       ],
       "points": 5,
       "required": true,
-      "explanation": "Labeled, then served or discarded within 7 days.\n\n• Opening it starts a second clock. The bag's own date is no longer the only one running.\n• Ready-to-eat, TCS, staying more than 24 hours — it needs our label on it.\n• Seven days is the outer limit, not a target.\n\nPlenty of products are shorter than seven days. Look at our own make table: the buttery sauce is made Wednesday and discarded Thursday at close. One day. Check Pizzapedia for the item in your hand rather than defaulting everything to seven."
+      "explanation": "Put a date on it. Then use it or throw it out within 7 days.\n\n• Opening it starts a new clock. The date on the bag is no longer the only one.\n• 7 days is the longest it can ever go. It is not a target.\n\nPlenty of food is shorter than 7 days. Look at our own make table. The buttery sauce is made Wednesday and thrown out Thursday. That is one day.\n\nCheck Pizzapedia for the item in your hand. Do not give everything 7 days."
     },
     {
       "n": 9,
-      "title": "It is 4pm. You find a product whose discard date is today. What do you do?",
+      "title": "It is 4pm. You find food with today's date on it. What do you do?",
       "type": "single",
       "choices": [
-        "Throw it out right now — it is already expired",
-        "It is good through close of business today, then it is discarded",
-        "It is good until this time tomorrow",
-        "Mark it down and use it first"
+        "Throw it out right now. It is already bad.",
+        "Keep using it today. Throw it out at close tonight.",
+        "Keep it until this time tomorrow.",
+        "Mark it down and use it first."
       ],
       "correct": [
         1
       ],
       "points": 5,
       "required": true,
-      "explanation": "Good through close of business, then discarded.\n\n• The date on the label is the last day you can use it, not the first day it is bad.\n• That is why our labels say \"Close\" — Discard Thu 10/22 Close means it goes at close on Thursday.\n\nThrowing it out at 4pm is waste. Leaving it for tomorrow is a deviation. The label already tells you exactly when, and somebody has to actually do it."
+      "explanation": "Use it today. Throw it out at close.\n\n• The date on the label is the last day you can use it. It is not the first day it is bad.\n• That is why our labels say Close. \"Discard Thu 10/22 Close\" means it goes at close on Thursday.\n\nThrowing it out at 4pm wastes food. Leaving it for tomorrow costs us points. The label already tells you when. Somebody just has to do it."
     },
     {
       "n": 10,
-      "title": "You just found product that is past date. What do you do? Pick everything that applies.",
+      "title": "You found food that is past its date. What do you do? Pick all that apply.",
       "type": "multi",
       "choices": [
-        "Pull it out of the walk-in now, not at the end of the shift",
+        "Take it off the shelf now, not at the end of your shift",
         "Tell your manager",
-        "Check the rest of that product and anything stored beside it",
-        "Use it today and order fresh for tomorrow",
-        "Look at why it was missed — whether it was rotation, labeling or over-ordering"
+        "Check the rest of that food, and whatever is next to it",
+        "Use it today and order more for tomorrow",
+        "Find out why it got missed"
       ],
       "correct": [
         0,
@@ -183,62 +183,44 @@
       ],
       "points": 5,
       "required": true,
-      "explanation": "Pull it, say something, check around it, and work out how it got there.\n\n• Pull it now. \"At the end of the shift\" is how it gets used by somebody who did not know.\n• Check what is stored beside it. This is the step people skip, and it is the one that pays — one expired item is almost never one expired item. It is usually a delivery that got put away in front of the older stock.\n• Ask why. If the answer is \"we never rotate that shelf\", you have just found next week's problem too.\n\nExpired product is discarded. It does not get used up today because it is only just past."
+      "explanation": "Take it out, say something, check around it, and find out how it got there.\n\n• Take it out now. \"At the end of my shift\" is how somebody else uses it without knowing.\n• Check what is next to it. People skip this step, and it is the one that pays off. One bad item is almost never one bad item. Usually a delivery got put away in front of the older stock.\n• Ask why. If nobody ever rotates that shelf, you just found next week's problem too.\n\nFood that is past its date gets thrown out. You do not use it up because it is only a little late."
     },
     {
       "n": 11,
-      "title": "Put it in order, from the case arriving to the product leaving.",
+      "title": "Put these in order, from the box arriving to the food going out.",
       "type": "order",
       "steps": [
-        "Check the manufacturer's date on the case before you open anything",
-        "Open the product",
-        "Fill the label in — made, ready and discard",
-        "Put it in the cooler behind what is already there, not in front of it",
-        "Check it on your daily walk through the walk-in",
-        "Pull it at close on the discard date"
+        "Check the date on the box before you open it",
+        "Open the food",
+        "Fill in the label: made, ready, and discard",
+        "Put it behind the older stock, not in front of it",
+        "Check it on your daily walk-in check",
+        "Throw it out at close on the discard date"
       ],
       "points": 5,
       "required": true,
-      "explanation": "The two steps that get skipped are the fourth and the last.\n\n• Checking the manufacturer's date BEFORE you open it is what stops you putting a seven-day label on something that expires in two.\n• Putting it behind the older stock is the whole of rotation. Put it in front and the old product is now invisible, and it will still be there in three weeks.\n• Pulling at close on the discard day is the one that turns into a morning deviation when nobody does it.\n\nNone of these takes extra time. They take doing it in this order."
+      "explanation": "Two steps get skipped: the fourth one and the last one.\n\n• Check the date before you open it. That stops you putting a 7-day label on something that goes bad in two.\n• Put it behind the older stock. That is all rotation is. Put it in front and the old food disappears from view, and it will still be there in three weeks.\n• Throw it out at close. Skip this and it becomes a morning problem.\n\nNone of this takes extra time. It just has to happen in this order."
     },
     {
       "n": 12,
-      "title": "PHOTO: Go into your walk-in. Find the product that is CLOSEST to its date — or past it. Photograph the label so the date is readable.",
+      "title": "PHOTO: Go in your walk-in. Find the food closest to its date, or already past it. Take a picture of the label so we can read the date.",
       "type": "photo",
       "maxPhotos": 2,
       "points": 0,
       "required": true,
       "annotate": true,
-      "help": "The closest one, not a tidy one. If something is already past date, that is the picture we want. Circle the date."
+      "help": "Find the closest one, not a tidy one. If something is already past its date, that is the picture we want. Circle the date."
     },
     {
       "n": 13,
-      "title": "PHOTO: Find an item that WE opened and date-marked ourselves. Photograph our label on it.",
-      "type": "photo",
-      "maxPhotos": 2,
-      "points": 0,
-      "required": true,
-      "annotate": true,
-      "help": "If you cannot find a single opened item with our own date written on it, photograph the opened item that has no date. That is the finding, and it is worth knowing."
-    },
-    {
-      "n": 14,
-      "title": "How many items did you have to pull or re-label while taking this walk?",
+      "title": "How many items did you have to throw out or re-label on this walk?",
       "type": "number",
       "min": 0,
       "max": 100,
       "unit": "items",
       "points": 0,
       "required": true,
-      "help": "Zero is a real answer. So is eleven. Your Area Coach would rather see the true number."
-    },
-    {
-      "n": 15,
-      "title": "What are you changing so this does not come back? Say who is doing it and when.",
-      "type": "longtext",
-      "points": 0,
-      "required": true,
-      "help": "Be specific. \"Check dates daily\" is not a plan. Who pulls dated product at close, and which shift checks the walk-in on the way in?"
+      "help": "Zero is a real answer. So is eleven. Your Area Coach would rather have the true number."
     }
   ]
 }
