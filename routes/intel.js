@@ -34,6 +34,21 @@ const smgUpload = multer({ storage: smgStorage, limits: { fileSize: 20 * 1024 * 
 
 let lastPipelineResult = null; // in-memory store of most recent pipeline run
 
+// The same pull and parse as Step 1b of the pipeline, shared by both re-run
+// routes. SUS_DBS posts cheese on its own schedule, later than Fourth often
+// enough that a re-run which skips it leaves "Chz not reporting" in the
+// morning text for a number the source already has.
+async function pullSusDbsCheese(date) {
+  const { pullReport }  = require('../services/intel-ods');
+  const { parseSusDbs } = require('../services/parsers/sus-dbs-parser');
+  const pull = await pullReport('SUS_DBS', date);
+  if (!pull.success) throw new Error(pull.error);
+  const { softIndicators, skipped } = parseSusDbs(pull.filePath, date);
+  for (const si of softIndicators) await db.upsertSoftIndicator(si);
+  try { require('fs').unlinkSync(pull.filePath); } catch (_) {}
+  return { success: true, written: softIndicators.length, skipped: skipped.length };
+}
+
 // ── POST /api/intel/automation/run-batch — cron trigger ──────────────────────
 router.post('/automation/run-batch', async (req, res) => {
   if (!tokenOk(req)) {
@@ -130,14 +145,7 @@ router.post('/automation/run-labor-hutbot', async (req, res) => {
     // morning text said "Chz not reporting" for a number that was on the intel
     // page later the same morning.
     try {
-      const { pullReport }  = require('../services/intel-ods');
-      const { parseSusDbs } = require('../services/parsers/sus-dbs-parser');
-      const pull = await pullReport('SUS_DBS', date);
-      if (!pull.success) throw new Error(pull.error);
-      const { softIndicators, skipped } = parseSusDbs(pull.filePath, date);
-      for (const si of softIndicators) await db.upsertSoftIndicator(si);
-      try { require('fs').unlinkSync(pull.filePath); } catch (_) {}
-      steps.susDbs = { success: true, written: softIndicators.length, skipped: skipped.length };
+      steps.susDbs = await pullSusDbsCheese(date);
       console.log('[Intel] SUS_DBS cheese done:', steps.susDbs);
     } catch (err) {
       steps.susDbs = { success: false, error: err.message };
@@ -658,6 +666,11 @@ router.post('/automation/run-labor-hutbot-now', requireRole('rdo', 'vp'), async 
       await processHutBot(date);
       console.log('[Intel] HutBot re-run complete');
     } catch (err) { console.error('[Intel] HutBot re-run failed:', err.message); }
+
+    try {
+      const chz = await pullSusDbsCheese(date);
+      console.log('[Intel] SUS_DBS cheese re-run complete:', chz);
+    } catch (err) { console.error('[Intel] SUS_DBS cheese re-run failed:', err.message); }
 
     try {
       await generateIntelCache(date);
