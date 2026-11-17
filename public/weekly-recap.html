@@ -675,9 +675,7 @@
     log('Re-analyzing with your answers...', 'info');
 
     try {
-      const res = await fetch('/api/recap/analyze', { method: 'POST', body: newFd });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Analysis failed'); }
-      const result = await res.json();
+      const result = await runAnalyze(newFd);
       analyzedData = result.data;
       log('✓ Analysis complete. Building deck...', 'ok');
       buildStatus.innerHTML = `<div style="text-align:center;padding:12px;background:rgba(16,185,129,0.08);border-radius:8px;border:1px solid rgba(16,185,129,0.2);"><div style="color:var(--success);font-weight:700;">✓ Analysis Complete</div><div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Reviewed ${result.fileCount} file(s)</div></div>`;
@@ -800,6 +798,51 @@
     document.getElementById('appendPreviewArea').style.display = 'none';
   }
 
+  // The analysis outlives the request. Cloudflare cuts any single request at 100
+  // seconds and a full recap takes longer, so the POST only starts the work and
+  // hands back a ticket — we ask for the result until it arrives.
+  const POLL_EVERY_MS = 3000;
+  const GIVE_UP_AFTER_MS = 12 * 60 * 1000;
+
+  async function runAnalyze(formData) {
+    const started = await fetch('/api/recap/analyze', { method: 'POST', body: formData });
+    if (!started.ok) {
+      const ct = started.headers.get('content-type') || '';
+      if (ct.includes('application/json')) {
+        const errData = await started.json();
+        throw new Error(errData.error || 'Analysis failed');
+      }
+      throw new Error(`Server error ${started.status} — the analysis did not start. Please try again.`);
+    }
+    const { jobId } = await started.json();
+
+    // A dropped poll is not a failed analysis; the work is still running on the
+    // server, so let a few go by before giving up on it.
+    let misses = 0;
+    for (let waited = 0; waited < GIVE_UP_AFTER_MS; waited += POLL_EVERY_MS) {
+      await new Promise(r => setTimeout(r, POLL_EVERY_MS));
+      let state;
+      try {
+        const poll = await fetch(`/api/recap/analyze/${jobId}`);
+        if (poll.status === 404) {
+          const gone = await poll.json().catch(() => ({}));
+          throw new Error(gone.error || 'Lost track of the analysis.');
+        }
+        if (!poll.ok) throw new Error(`Lost track of the analysis (${poll.status}).`);
+        state = await poll.json();
+        misses = 0;
+      } catch (e) {
+        if (e.message && e.message.startsWith('Lost track')) throw e;
+        if (++misses >= 5) throw new Error('Lost contact with the server while it was analysing. Check History — it may have finished anyway.');
+        continue;
+      }
+      if (state.status === 'done')  return state;
+      if (state.status === 'error') throw new Error(state.error || 'Analysis failed');
+      if (waited > 0 && waited % 30000 === 0) log(`Still analysing… ${Math.round(waited / 1000)}s elapsed`, 'info');
+    }
+    throw new Error('The analysis is taking unusually long. Check History in a few minutes — it may still finish and save.');
+  }
+
   function log(msg, type = 'info') {
     const logEl = document.getElementById('progressLog');
     const line = document.createElement('div');
@@ -843,20 +886,7 @@
     pendingFormData = formData; // save for potential Q&A re-submission
 
     try {
-      const res = await fetch('/api/recap/analyze', { method: 'POST', body: formData });
-      if (!res.ok) {
-        const ct = res.headers.get('content-type') || '';
-        if (!ct.includes('application/json')) {
-          if (res.status === 524 || res.status === 504 || res.status === 0) {
-            throw new Error('Analysis timed out (server took >100s). Try uploading fewer or smaller files, then retry.');
-          }
-          throw new Error(`Server error ${res.status} — the analysis request did not complete. Please try again.`);
-        }
-        const errData = await res.json();
-        throw new Error(errData.error || 'Analysis failed');
-      }
-
-      const result = await res.json();
+      const result = await runAnalyze(formData);
 
       // Claude has clarifying questions — show Q&A panel instead of building
       if (result.needsInput === true) {

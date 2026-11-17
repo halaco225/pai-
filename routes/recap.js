@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { requireAuth } = require('../middleware/auth');
 const { MASTER_ALIGNMENT_TEXT } = require('../services/alignment-data');
 const { getAlignment, saveRecapSession, getRecapSessions, getRecapSessionById } = require('../services/db');
@@ -53,16 +54,48 @@ function getRecapDay() {
   return days[next.getDay()];
 }
 
-router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res) => {
-  if (req.files == null || req.files.length === 0) {
-    return res.status(400).json({ error: 'At least one report file is required.' });
+// A full recap reads several reports and takes two or three minutes. Cloudflare
+// (Render's CDN) cuts any request at 100 seconds, so holding the connection open
+// until the analysis finished meant the browser lost it every time: the page
+// said "Failed to fetch" while the work carried on and quietly saved itself.
+//
+// So the request starts the work and hands back a ticket, and the page asks for
+// the result until it is there.
+const jobs = new Map();
+const JOB_TTL_MS = 30 * 60 * 1000;
+
+function sweepJobs(now = Date.now()) {
+  for (const [id, job] of jobs) {
+    if ((job.endedAt || job.startedAt) < now - JOB_TTL_MS) jobs.delete(id);
   }
+}
+
+function startJob(username, run) {
+  const id = crypto.randomUUID();
+  const job = { status: 'pending', username, startedAt: Date.now() };
+  jobs.set(id, job);
+  // Deliberately not awaited: the response has already gone back to the browser.
+  Promise.resolve().then(run).then(
+    result => Object.assign(job, { status: 'done', result, endedAt: Date.now() }),
+    err => {
+      console.error('Recap analyze error:', err);
+      Object.assign(job, {
+        status: 'error', endedAt: Date.now(),
+        error: err.message || 'Analysis failed.',
+      });
+    }
+  );
+  sweepJobs();
+  return id;
+}
+
+async function runRecapAnalysis(files, body, username) {
   try {
     const { analyzeRecap } = require('../services/claude');
     const recapDay = getRecapDay();
-    const lastAcOfWeek = req.body.lastAcOfWeek || null;
-    const instructions  = req.body.instructions  || null;
-    const level         = req.body.level         || 'region';
+    const lastAcOfWeek = body.lastAcOfWeek || null;
+    const instructions  = body.instructions  || null;
+    const level         = body.level         || 'region';
 
     // Use DB override if uploaded, otherwise use built-in alignment (always current)
     const alignRow = await getAlignment();
@@ -72,7 +105,7 @@ router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res)
     // Load last 3 recap sessions for trend context
     let historicalContext = null;
     try {
-      const sessions = await getRecapSessions(req.session.user.username, 3);
+      const sessions = await getRecapSessions(username, 3);
       if (sessions && sessions.length) {
         historicalContext = sessions.map(s => {
           try {
@@ -90,28 +123,53 @@ router.post('/analyze', requireAuth, upload.array('files', 10), async (req, res)
       console.warn('[Recap] Could not load history:', e.message);
     }
 
-    const data = await withRetry(() => analyzeRecap(req.files, '', recapDay, lastAcOfWeek, alignmentText, historicalContext, instructions, level));
+    const data = await withRetry(() => analyzeRecap(files, '', recapDay, lastAcOfWeek, alignmentText, historicalContext, instructions, level));
+    const fileNames = files.map(f => f.originalname).join(', ');
 
-    // If Claude has clarifying questions, return them immediately — don't save as session
+    // If Claude has clarifying questions, hand them back — don't save as a session
     if (data && data.needsInput === true) {
-      return res.json({ data, needsInput: true, fileCount: req.files.length, fileNames: req.files.map(f => f.originalname).join(', ') });
+      return { data, needsInput: true, fileCount: files.length, fileNames };
     }
 
-    // Persist session to DB (non-blocking — don't fail the request if this errors)
+    // Persist session to DB (non-blocking — don't fail the analysis if this errors)
     saveRecapSession({
-      username: req.session.user.username,
-      fileNames: req.files.map(f => f.originalname).join(', '),
+      username,
+      fileNames,
       weekLabel: data.weekLabel || '',
       analysisJson: JSON.stringify(data)
     }).catch(e => console.error('[Recap] Session save error:', e.message));
 
-    res.json({ data, fileCount: req.files.length, fileNames: req.files.map(f => f.originalname).join(', ') });
-  } catch (err) {
-    console.error('Recap analyze error:', err);
-    res.status(500).json({ error: err.message || 'Analysis failed.' });
+    return { data, fileCount: files.length, fileNames };
   } finally {
-    if (req.files) req.files.forEach(f => { try { fs.unlinkSync(f.path); } catch (e) {} });
+    files.forEach(f => { try { fs.unlinkSync(f.path); } catch (e) {} });
   }
+}
+
+router.post('/analyze', requireAuth, upload.array('files', 10), (req, res) => {
+  if (req.files == null || req.files.length === 0) {
+    return res.status(400).json({ error: 'At least one report file is required.' });
+  }
+  const files = req.files;
+  const body = req.body || {};
+  const username = req.session.user.username;
+  const jobId = startJob(username, () => runRecapAnalysis(files, body, username));
+  res.status(202).json({ jobId });
+});
+
+// The page polls this until the analysis lands. A job the server has never heard
+// of is the restart case: the result may still have saved, so say so rather than
+// leaving the operator thinking the week's work is gone.
+router.get('/analyze/:jobId', requireAuth, (req, res) => {
+  const job = jobs.get(req.params.jobId);
+  if (!job || job.username !== req.session.user.username) {
+    return res.status(404).json({
+      status: 'unknown',
+      error: 'That analysis is no longer in progress — the server may have restarted. It may still have finished and saved; check History before running it again.'
+    });
+  }
+  if (job.status === 'pending') return res.json({ status: 'pending', elapsedMs: Date.now() - job.startedAt });
+  if (job.status === 'error')   return res.json({ status: 'error', error: job.error });
+  return res.json({ status: 'done', ...job.result });
 });
 
 router.post('/build', requireAuth, async (req, res) => {
