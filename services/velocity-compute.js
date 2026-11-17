@@ -78,6 +78,36 @@ function parseMinutes(v) {
   return n;
 }
 
+// A week's figure is an average over orders, not over days. A 7-order Tuesday
+// and a 36-order Friday are not each worth half the week, which is what a plain
+// mean of the two daily averages makes them — and it is why these numbers did
+// not agree with the ones Velocity reports for the same week. Each daily
+// average times the orders it was measured over, divided by the total, gets
+// the real mean back.
+//
+// The weight is total_orders, which the Speed of Service report fills from its
+// "# Del" column — the same orders every figure in that report is measured
+// over.
+function meanOverOrders(days, value) {
+  const rows = [];
+  for (const d of days || []) {
+    const v = value(d);
+    if (v == null || !Number.isFinite(v)) continue;
+    const n = Number(d.total_orders);
+    rows.push({ v, n: Number.isFinite(n) && n > 0 ? n : null });
+  }
+  if (!rows.length) return null;
+  // shortcut: a day with no order count cannot be weighted, so it is left out
+  // while any other day has one. Upgrade if a source starts omitting counts.
+  const weighted = rows.filter(r => r.n != null);
+  const use = weighted.length ? weighted : rows.map(r => ({ v: r.v, n: 1 }));
+  const total = use.reduce((a, r) => a + r.n, 0);
+  return use.reduce((a, r) => a + r.v * r.n, 0) / total;
+}
+
+const roundTo = (v, places) =>
+  v == null ? null : Math.round(v * 10 ** places) / 10 ** places;
+
 // ── Compute WTD aggregates from raw DB rows ──────────────────────────
 function computeWTD(records) {
   // records: array of velocity_daily_records rows for one week
@@ -93,14 +123,11 @@ function computeWTD(records) {
     const align = ALIGNMENT[storeId];
     if (!align) continue;
 
-    const validIST = days.filter(d => d.ist_avg != null);
-    const wtd_ist = validIST.length > 0
-      ? Math.round((validIST.reduce((a, d) => a + parseFloat(d.ist_avg), 0) / validIST.length) * 10) / 10
-      : null;
-
-    const wtd_lt19_pct = validIST.length > 0
-      ? Math.round(validIST.reduce((a, d) => a + (parseFloat(d.ist_lt19_pct) || 0), 0) / validIST.length * 10) / 10
-      : null;
+    const num = v => (v == null ? null : parseFloat(v));
+    const wtd_ist = roundTo(meanOverOrders(days, d => num(d.ist_avg)), 1);
+    // A day with an IST but no bucket split used to count as 0% here, which
+    // dragged the week down; it is simply absent from the average now.
+    const wtd_lt19_pct = roundTo(meanOverOrders(days, d => num(d.ist_lt19_pct)), 1);
 
     const wtd_lt10 = days.reduce((a, d) => a + (d.ist_lt10 || 0), 0);
     const wtd_1014 = days.reduce((a, d) => a + (d.ist_1014 || 0), 0);
@@ -109,15 +136,8 @@ function computeWTD(records) {
     const wtd_gt25 = days.reduce((a, d) => a + (d.ist_gt25 || 0), 0);
     const wtd_orders = days.reduce((a, d) => a + (d.total_orders || 0), 0);
 
-    const validMake = days.map(d => parseMinutes(d.make_time)).filter(v => v != null);
-    const wtd_make_min = validMake.length > 0
-      ? Math.round(validMake.reduce((a, v) => a + v, 0) / validMake.length * 100) / 100
-      : null;
-
-    const validProd = days.map(d => parseMinutes(d.production_time)).filter(v => v != null);
-    const wtd_prod_min = validProd.length > 0
-      ? Math.round(validProd.reduce((a, v) => a + v, 0) / validProd.length * 100) / 100
-      : null;
+    const wtd_make_min = roundTo(meanOverOrders(days, d => parseMinutes(d.make_time)), 2);
+    const wtd_prod_min = roundTo(meanOverOrders(days, d => parseMinutes(d.production_time)), 2);
 
     // Build daily breakdown map
     const daily = {};
@@ -204,5 +224,5 @@ function getInsight(ist, avg) {
 module.exports = {
   getWeekKey, getPeriodWeek, getWeekDateRange,
   getYesterdayChicago, computeWTD, istColorClass, istColor,
-  analyzeDOWPatterns, FISCAL_CALENDAR, DOW_NAMES, parseMinutes
+  analyzeDOWPatterns, FISCAL_CALENDAR, DOW_NAMES, parseMinutes, meanOverOrders
 };
