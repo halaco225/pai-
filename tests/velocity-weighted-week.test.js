@@ -1,10 +1,16 @@
 // A tester reported that make and production times on the Velocity screen did
 // not agree with what Velocity itself reports for the same week.
 //
-// The week's figure was a plain mean of the daily averages, so a 7-order
-// Tuesday weighed exactly as much as a 36-order Friday. The real mean is over
-// orders, not over days. These pin that down, including the case the old code
+// The week's figure was a plain mean of the daily averages, so a 7-delivery
+// Tuesday weighed exactly as much as a 36-delivery Friday. Weighting by the
+// day's volume fixes that. These pin it down, including the case the old code
 // got silently wrong: a day with an IST but no bucket split counted as 0%.
+//
+// One honest limit, confirmed with Harold on 2026-11-17: the only count in the
+// Speed of Service report is "# Del", while Make and Production in it are all
+// orders. So the weight is a proxy for how busy the day was, not the exact
+// order count behind those two figures. Unequal days are no longer treated as
+// equal, which was the error worth fixing; it is not yet the true mean.
 
 const { computeWTD, meanOverOrders, parseMinutes } = require('../services/velocity-compute');
 const { ALIGNMENT } = require('../services/velocity-alignment');
@@ -108,6 +114,27 @@ describe('the week on the screen', () => {
         ist_avg: '15', ist_lt19_pct: null },
     ]);
     expect(store.wtd_lt19_pct).toBeCloseTo(90, 1);
+  });
+});
+
+describe('the orders column says which orders it counts', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const read = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+
+  // It is filled from the Speed of Service report's "# Del" — deliveries only —
+  // and both the screen and the export used to call it total orders. A tester
+  // comparing it against Velocity's real order count found it short, correctly.
+  test('the export header does not claim to be a total', () => {
+    const exporter = read('services/velocity-export.js');
+    expect(exporter).toContain("'Delivery Orders'");
+    expect(exporter).not.toContain("'Total Orders'");
+  });
+
+  test('the screen column says delivery too', () => {
+    const page = read('public/velocity.html');
+    expect(page).toMatch(/<th[^>]*>Del Orders<\/th>/);
+    expect(page).not.toMatch(/<th>Orders<\/th>/);
   });
 });
 

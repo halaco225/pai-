@@ -86,8 +86,12 @@ function parseMinutes(v) {
 // the real mean back.
 //
 // The weight is total_orders, which the Speed of Service report fills from its
-// "# Del" column — the same orders every figure in that report is measured
-// over.
+// "# Del" column: deliveries only. Make and Production in that report are all
+// orders, so this weights an all-order average by the delivery count. It is a
+// proxy for how busy the day was, not the exact denominator — a busy day and a
+// quiet one are no longer equal, which is the error that mattered, but the
+// result is not the true order-weighted mean.
+// shortcut: upgrade when a source gives an all-order count per day.
 function meanOverOrders(days, value) {
   const rows = [];
   for (const d of days || []) {

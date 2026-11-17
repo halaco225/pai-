@@ -39,7 +39,10 @@ function istColorArgb(val) {
 
 const IST_HEADERS = [
   'Level','Region','Area Coach','Store #','Store Name',
-  'Avg IST (mins)','Total Orders',
+  // "Total Orders" was a lie: this column is filled from the Speed of Service
+  // report's "# Del", which counts deliveries only. Make and Production in that
+  // report are all orders; the only count in it is the delivery one.
+  'Avg IST (mins)','Delivery Orders',
   'IST <10 #','IST <10 %',
   'IST 10-14 #','IST 10-14 %',
   'IST 15-18 #','IST 15-18 %',
