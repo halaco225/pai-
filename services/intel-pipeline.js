@@ -26,7 +26,13 @@ const { processSMG, processSMGFromComments } = require('./parsers/smg-parser');
 const { processHutBot }        = require('./intel-hutbot');
 const { downloadFourthReport } = require('./intel-fourth');
 const { downloadSMGCommentsAPI } = require('./intel-smg-api');
-const { processWinScore }      = require('./intel-smg-winscore');
+// The HTTP version in ./intel-smg-winscore drives a saved SMG favourite that is
+// region-level and rolling-30-day. A region-level report returns one aggregate
+// row with no store id, so its parser found no store rows and wrote nothing —
+// which is why smg_win_scores sat empty while this step logged success every
+// night. The browser version rebuilds the report Harold's way and is the one
+// /api/brief/winscore/run has been using by hand.
+const { pullAndStore: pullWinScores } = require('./intel-smg-winscore-browser');
 const db   = require('./db');
 const { USER_ROSTER } = require('../routes/auth');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -235,8 +241,14 @@ async function runIntelPipeline(targetDate) {
   // Step 6b: SMG WIN Score (auto-pull daily)
   console.log('[Intel Pipeline] Step 6b: SMG WIN Score');
   try {
-    const wr = await processWinScore(targetDate);
-    results.steps.winScore = wr;
+    // No target date: Win Score is period-to-date and the report carries its
+    // own "Current Fiscal Period" dates, so the period comes back from SMG.
+    const wr = await pullWinScores();
+    // A pull that writes no store rows is a failed pull, not a quiet success.
+    // Reporting success on zero rows is how this went unnoticed for months.
+    results.steps.winScore = wr.written > 0
+      ? { success: true, ...wr }
+      : { success: false, error: `Win Score pull wrote no store rows (period ending ${wr.periodEnd || 'unknown'})`, ...wr };
   } catch (err) {
     console.error('[Intel Pipeline] WIN score error:', err.message);
     results.steps.winScore = { success: false, error: err.message };

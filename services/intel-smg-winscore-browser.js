@@ -25,6 +25,12 @@ const LOGIN = `${BASE}/Index.aspx`;
 // shifts whenever SMG reorders a dropdown.
 const WANT = {
   reportType: 'Comparison',
+  // Survey Date counts when the guest answered; Visit Date counts when they
+  // came in. The same period gives different numbers under each, which is the
+  // usual reason a Win Score here does not match one read off SMG's own
+  // dashboard. docs/SMG_WIN_SCORE.md records Survey Date, captured watching
+  // Harold run the report by hand. Change this one string to switch.
+  dateType:   'Survey Date',
   dateRange:  'Current Fiscal Period',
   level:      'Store',
   groupBy:    'Area',
@@ -46,6 +52,46 @@ async function selectByText(page, selector, text) {
 }
 
 // ASP.NET repopulates half the form on each change; give it a beat to settle.
+// Find a radio by the text sitting next to it — its <label for>, its wrapping
+// label, its aria-label or title, or the text immediately after it — check it,
+// and confirm it took. Throws naming what was on offer, because a date type
+// that silently stays on SMG's default is the failure this exists to stop.
+async function checkRadioByLabel(page, text) {
+  const wanted = String(text).trim().toLowerCase();
+  const labelled = await page.$$eval('input[type=radio]', (radios) => radios.map((el, i) => {
+    const bits = [];
+    if (el.id) {
+      const l = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+      if (l) bits.push(l.innerText);
+    }
+    const wrap = el.closest('label');
+    if (wrap) bits.push(wrap.innerText);
+    if (el.getAttribute('aria-label')) bits.push(el.getAttribute('aria-label'));
+    if (el.title) bits.push(el.title);
+    if (el.nextSibling && el.nextSibling.textContent) bits.push(el.nextSibling.textContent);
+    if (el.parentElement) bits.push(el.parentElement.innerText);
+    const label = bits.map(b => String(b).replace(/\s+/g, ' ').trim()).find(Boolean) || '';
+    return { i, label, name: el.name || '', value: el.value || '' };
+  }));
+
+  const hit = labelled.find(r => r.label.toLowerCase().includes(wanted));
+  if (!hit) {
+    const offered = labelled.map(r => r.label || `[${r.name}=${r.value}]`).filter(Boolean);
+    throw new Error(
+      `SMG report builder has no "${text}" option — the date type could not be set, `
+      + `so the pull was stopped rather than counted the wrong way. On offer: ${offered.join(' | ') || 'no radios found'}`
+    );
+  }
+
+  const ok = await page.$$eval('input[type=radio]', (radios, i) => {
+    const el = radios[i];
+    if (!el) return false;
+    el.click();
+    return el.checked;
+  }, hit.i);
+  if (!ok) throw new Error(`Could not select "${text}" on the SMG report builder.`);
+}
+
 async function settle(page) {
   await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
   await page.waitForTimeout(600);
@@ -72,10 +118,13 @@ async function buildReport(page) {
   await selectByText(page, 'select[name=rbReportTypeSEL]', WANT.reportType);
   await settle(page);
 
-  // Survey Date, not Visit Date. Those count different things and quietly
-  // produce different numbers for the same period.
-  const surveyRadio = await page.$('input[type=radio][value="2"], #rbDateTypeRadio2, input[name=rbDateTypeRadio][value="2"]');
-  if (surveyRadio) { await surveyRadio.check().catch(() => {}); await settle(page); }
+  // This used to hunt for a radio by its value attribute and shrug if it found
+  // nothing, so a renamed input left SMG's own default date type in place and
+  // the pull returned real-looking numbers counted the wrong way. Pick it by
+  // the label the operator reads, the way every dropdown here is picked, and
+  // refuse the run if it cannot be set.
+  await checkRadioByLabel(page, WANT.dateType);
+  await settle(page);
 
   // The Current Fiscal Period option carries its own dates and period id
   // (e.g. "9/8/2026|10/5/2026|False|95"), so it has to be read at run time.
