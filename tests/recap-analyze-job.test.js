@@ -137,11 +137,13 @@ describe('a ticket belongs to the person who asked', () => {
     expect(res.body.status).toBe('unknown');
   });
 
-  test('an id the server never issued says to check History rather than nothing', async () => {
+  test('an id the server never issued warns against re-running the week', async () => {
     const res = await request(app).get('/api/recap/analyze/not-a-real-job');
     expect(res.status).toBe(404);
-    // The restart case: the work may well have finished and mockSaved.
-    expect(res.body.error).toMatch(/history/i);
+    // The restart case: the work may well have finished and saved, so the
+    // operator must not be told to burn another three minutes on a re-run.
+    expect(res.body.error).toMatch(/may still have finished and saved/i);
+    expect(res.body.error).toMatch(/before running the week again/i);
     mockAnalysis.resolve({});
   });
 });

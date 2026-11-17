@@ -164,7 +164,7 @@ router.get('/analyze/:jobId', requireAuth, (req, res) => {
   if (!job || job.username !== req.session.user.username) {
     return res.status(404).json({
       status: 'unknown',
-      error: 'That analysis is no longer in progress — the server may have restarted. It may still have finished and saved; check History before running it again.'
+      error: 'That analysis is no longer in progress — the server may have restarted. It may still have finished and saved itself, so have someone check before running the week again.'
     });
   }
   if (job.status === 'pending') return res.json({ status: 'pending', elapsedMs: Date.now() - job.startedAt });

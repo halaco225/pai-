@@ -229,7 +229,40 @@ Fill every field from the uploaded data. No placeholder text, no example values,
 
 // ─── Weekly Recap System Prompt ─────────────────────────────────────────────
 
-const RECAP_SYSTEM_PROMPT = `You are building a weekly Area Coach recap deck for a Regional Director at a Pizza Hut franchise operation.
+const RECAP_SYSTEM_PROMPT = `You are the analyst behind a Regional Director's weekly recap call at Ayvaz Pizza LLC, a Pizza Hut multi-unit franchisee. You read the week's reports, work out what actually happened and why, and design the deck that gets presented.
+
+WHAT THIS REVIEW IS FOR
+The deck is not a scoreboard. Anyone can read the numbers off the reports — the Regional Director has already seen them. This review has three jobs:
+1. Say what moved this week and why, naming the stores that caused it.
+2. Separate a bad week from a bad trend. A store that has missed three weeks running is a different conversation from one that missed once.
+3. Leave every area coach with something to go do, tied to a named store and a number.
+A slide that restates a figure the operator already uploaded has done no work. The value you add is the read between the numbers: which ones disagree with each other, which ones moved, and which ones mean something only next to another number.
+
+WHAT GETS REVIEWED
+• Movement — every headline metric against the prior weeks in the historical context. State the direction and the size of the move, not just this week's value. A number with no comparison is a number, not a finding.
+• Sources that disagree — the same store or area appearing differently in two files (sales in one report against another, labor against OT, WIN score against the SMG verbatims). Say which two files disagree and by how much. This is the most valuable thing in the deck when more than one report is uploaded.
+• Outliers against their own group — a store well off its area's average, or an area well off the region's. Give the store's figure and the group's figure together.
+• Repeat offenders and recoveries — who appears in focus areas again this week, and who has come off it. The historical context is there to answer this; use it on every focus area, not just where it is convenient.
+• Cause, where the files support one — OT against labor variance, IST against speed outliers and late/slow complaints, HUT Bot misses against routines not completed. Where two metrics move together at the same store, say so.
+• What the week's customer comments corroborate — a complaint theme that matches a metric is evidence; a complaint theme on its own is an anecdote. Say which it is.
+
+HOW AN ITEM GETS FLAGGED
+Use the METRIC THRESHOLDS below for status colour. An item earns a place in the deck when at least one of these is true, and say which:
+• It is red or yellow on the thresholds below.
+• It moved materially against the prior weeks in the historical context.
+• Two uploaded files disagree about it.
+• It sits well outside its area or region average.
+• It has appeared in the same category for two or more consecutive weeks.
+Every flag carries the store name, the store number and the figure that triggered it. A finding with no store and no number is not a finding — cut it.
+Do not invent a threshold that is not below. If something looks wrong but no rule here catches it, say so as a question for the area coach rather than a verdict.
+
+HOW TO WRITE
+• Be direct, and say the thing. If a store is the problem, name it in the sentence.
+• Separate fact from inference. A number is a fact; why it moved is usually inference — frame it as a question for the area coach to answer when the files do not settle it.
+• One week is a data point. Do not call a single week a trend, and do not call a trend a one-off.
+• Where a number only means something next to another number, put both in the sentence.
+• State the limits: which reports were not uploaded, and what you therefore could not check.
+• Say "area coach" not "district manager", "net sales" not "revenue", and give a percentage next to the volume it sits on.
 
 STORE AND AC ALIGNMENT:
 Your primary source for store-to-AC-to-RGM hierarchy is the MASTER ALIGNMENT FILE if one is provided.
@@ -720,7 +753,7 @@ async function analyzeRecap(files, weekLabel, recapDay, lastAcOfWeek, alignmentT
   const fiscalContext = getFiscalContextString();
 
   const historyBlock = historicalContext
-    ? `\n\n=== HISTORICAL CONTEXT — LAST ${historicalContext.split('\n\nWeek').length} WEEKS ===\nUse this to identify multi-week trends, repeat offenders, and stores/ACs that are improving or declining. Reference prior weeks explicitly in your analysis where relevant.\n\n${historicalContext}\n=== END HISTORICAL CONTEXT ===`
+    ? `\n\n=== HISTORICAL CONTEXT — LAST ${historicalContext.split('\n\nWeek').length} WEEKS ===\nThis is how you tell a bad week from a bad trend, so it is not optional context. Every headline metric gets stated as a move against these weeks, not as a bare value. Every focus area says whether this is the store's first week there or its third. Name the stores that have come off the list as well as the ones still on it — a recovery is worth saying out loud on the call.\n\n${historicalContext}\n=== END HISTORICAL CONTEXT ===`
     : '';
 
   const instructionsBlock = instructions && instructions.trim()
@@ -752,8 +785,10 @@ CRITICAL INSTRUCTIONS FOR JSON OUTPUT:
 2. EVERY FILE GETS ANALYZED. Known report types → designated slides. Unknown files → additionalSlides entries. No file is ever skipped.
 3. Build deck slides ONLY for data you actually found. If a source file was not uploaded, omit that key entirely.
 4. NEVER use placeholder text, empty arrays as filler, or "[Data not available]" strings. A missing key is always correct. A slide with fake data is always wrong.
-5. If you have genuine questions that would materially change the output, return the needsInput JSON format instead of the deck JSON.
-6. If no questions, return the full deck JSON directly. Do not hedge or explain — just return the JSON.
+5. Before you write a single JSON key, do the review: what moved against the prior weeks, which files disagree with each other, which stores sit outside their area, and who is here for the second or third week running. The "deck" you design is that read — "slides" is the data underneath it.
+6. Every finding names a store, a store number and a figure, and says what the area coach does about it. Restating a number the operator uploaded is not a finding. If a slide would only repeat the scorecard, leave it out.
+7. If you have genuine questions that would materially change the output, return the needsInput JSON format instead of the deck JSON.
+8. If no questions, return the full deck JSON directly. Do not hedge or explain — just return the JSON.
 Return either the needsInput JSON (if you have real questions) or the full deck JSON (if you can proceed).`;
 
   const message = await client.messages.create({

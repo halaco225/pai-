@@ -833,14 +833,14 @@
         misses = 0;
       } catch (e) {
         if (e.message && e.message.startsWith('Lost track')) throw e;
-        if (++misses >= 5) throw new Error('Lost contact with the server while it was analysing. Check History — it may have finished anyway.');
+        if (++misses >= 5) throw new Error('Lost contact with the server while it was analysing. It may have finished and saved anyway — have someone check before running the week again.');
         continue;
       }
       if (state.status === 'done')  return state;
       if (state.status === 'error') throw new Error(state.error || 'Analysis failed');
       if (waited > 0 && waited % 30000 === 0) log(`Still analysing… ${Math.round(waited / 1000)}s elapsed`, 'info');
     }
-    throw new Error('The analysis is taking unusually long. Check History in a few minutes — it may still finish and save.');
+    throw new Error('The analysis is taking unusually long. It is still running on the server and will save itself when it lands — do not start the week again yet.');
   }
 
   function log(msg, type = 'info') {
