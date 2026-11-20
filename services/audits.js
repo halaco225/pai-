@@ -64,6 +64,40 @@ function assignScore(q, given) {
   return { earned: right === items.length ? points : 0, right, of: items.length };
 }
 
+/**
+ * The two questions a response is filed under: who did it and where.
+ *
+ * Read off the wording, not off where the question sits. A walk asks for a
+ * name and a store number; an anonymous questionnaire asks for neither, and
+ * taking "the first text question" would file whatever it does ask for as a
+ * name. The phone uses the same test to decide where to offer the store list
+ * (looksLikeStore in public/audit.html).
+ */
+const isNameQuestion  = q => !!q && q.type === 'text' && /\bnames?\b/i.test(q.title);
+const isStoreQuestion = q => !!q && q.type === 'text'
+  && /store/i.test(q.title) && /number/i.test(q.title);
+
+/**
+ * Wording first, then where it sits.
+ *
+ * The fallback is what every walk here did before the wording was read at
+ * all: first text question is the name, second is the store. It stays for
+ * walks built by somebody else that word those questions their own way —
+ * reading wording alone would file those as anonymous overnight and drop
+ * them out of every Area Coach's view, which filters on the store number.
+ *
+ * A form that opens with something other than a text question — an
+ * anonymous questionnaire — matches neither test and is filed under neither.
+ */
+function whoAndWhere(def) {
+  const qs = (def && def.questions) || [];
+  const first = qs[0] && qs[0].type === 'text' ? qs[0] : null;
+  const nameQ = qs.find(isNameQuestion) || first;
+  const second = qs[1] && qs[1].type === 'text' ? qs[1] : null;
+  const storeQ = qs.find(isStoreQuestion) || (nameQ === first ? second : null);
+  return { nameQ: nameQ || null, storeQ: storeQ || null };
+}
+
 function maxScore(def) {
   return def.questions.reduce((sum, q) => sum + (q.points || 0), 0);
 }
@@ -486,5 +520,5 @@ function checkOne(def, n, given) {
 
 module.exports = {
   publicForm, grade, missingAnswers, maxScore, checkOne, matchTaps, shuffle, isScored, choiceScore,
-  assignScore, visible,
+  assignScore, visible, isNameQuestion, isStoreQuestion, whoAndWhere,
 };

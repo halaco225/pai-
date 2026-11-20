@@ -33,10 +33,12 @@ const { requireAuth, requireRole, requireTemplateEditor,
 const { visibleStores, canSee } = require('../services/rc-scope');
 const { USER_ROSTER } = require('./auth');
 const insights = require('../services/audit-insights');
+const { buildWorkbook } = require('../services/audit-export');
 const video = require('../services/audit-video');
 const agent = require('../services/pai-agent');
 const claude = require('../services/claude');
-const { publicForm, grade, missingAnswers, checkOne, visible } = require('../services/audits');
+const { publicForm, grade, missingAnswers, checkOne, visible, maxScore,
+        whoAndWhere } = require('../services/audits');
 
 const DEFAULT_AUDIT = 'steritech-readiness';
 const BUCKET        = 'audit-photos';
@@ -288,12 +290,16 @@ router.post('/submit', upload.any(), safe(async (req, res) => {
   const missing = missingAnswers(def, answers, pending, unread);
   if (missing.length) return res.status(400).json({ error: 'Some questions are not finished.', missing });
 
-  const nameQ  = def.questions.find(q => q.type === 'text');
-  const storeQ = def.questions.find(q => q.type === 'text' && q !== nameQ);
+  // Who and where, by what the question asks for rather than by where it sits
+  // in the list. A walk that asks for neither — an anonymous questionnaire —
+  // files under neither, instead of filing its first two text answers as a
+  // name and a store number because they happened to come first.
+  const { nameQ, storeQ } = whoAndWhere(def);
   const fixesQ = def.questions.find(q => q.type === 'longtext');
 
-  const name  = String(answers[nameQ ? nameQ.n : 1] || '').trim();
-  const store = String(answers[storeQ ? storeQ.n : 2] || '').trim();
+  // NOT NULL on the column, and a blank name reads as a walk that lost one.
+  const name  = nameQ ? String(answers[nameQ.n] || '').trim() : 'Anonymous';
+  const store = storeQ ? String(answers[storeQ.n] || '').trim() : '';
   const fixes = String(answers[fixesQ ? fixesQ.n : 20] || '').trim();
 
   const c = serviceClient(res); if (!c) return;
@@ -337,7 +343,10 @@ router.post('/submit', upload.any(), safe(async (req, res) => {
     score: graded.score,
     max_score: graded.maxScore,
     fixes,
-    user_agent: String(req.get('user-agent') || '').slice(0, 300),
+    // A walk that does not ask who you are does not keep the phone you sent
+    // it from either. One browser string across a handful of people is a
+    // name with extra steps.
+    user_agent: nameQ ? String(req.get('user-agent') || '').slice(0, 300) : null,
     graded,                       // frozen, so a later edit cannot re-score this walk
     template_version: def.version,
   }).select('id').single();
@@ -1229,20 +1238,79 @@ async function exportRows(req, res) {
   return { header, body, questions, stats };
 }
 
+// The same first sheet, for people who want it in something other than Excel.
+// It used to be Right/Wrong per question, which left a questionnaire's CSV as
+// a header and nothing else; it now carries the answers, like the workbook.
 router.get('/export.csv', async (req, res) => {
-  const data = await exportRows(req, res);
-  if (!data) return;
-
   const cell = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-  const lines = [data.header.map(cell).join(',')];
-  for (const row of data.body) lines.push(row.map(cell).join(','));
+  const auditId = req.query.auditId || DEFAULT_AUDIT;
+  const def = await templates.getTemplate(auditId);
+  if (!def) return res.status(404).json({ error: 'That walk does not exist.' });
+
+  let lines;
+  if (maxScore(def) > 0) {
+    const data = await exportRows(req, res);
+    if (!data) return;
+    lines = [data.header.map(cell).join(','),
+      ...data.body.map(row => row.map(cell).join(','))];
+  } else {
+    const result = await summarise(req, res);
+    if (!result) return;
+    const sheet = buildWorkbook({
+      def, rows: result.rows, graded: result.graded, assignments: result.assignments,
+    }).getWorksheet('Responses');
+    // Read by column rather than through row.values: an empty cell is left
+    // out of that array, and one blank answer would shift the rest of the
+    // line one column left.
+    const width = sheet.getRow(1).cellCount;
+    lines = [];
+    sheet.eachRow(row => {
+      const out = [];
+      for (let c = 1; c <= width; c++) out.push(row.getCell(c).value);
+      lines.push(out.map(cell).join(','));
+    });
+  }
 
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="audits-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.setHeader('Content-Disposition', `attachment; filename="${def.id}-${new Date().toISOString().slice(0, 10)}.csv"`);
   res.send(lines.join('\n'));
 });
 
+// One click, one workbook: the answers on the first sheet so they can be
+// filtered, and every cut of them on the sheets after it. Built from the
+// answers rather than from the marks, because an unscored questionnaire has
+// no marks and used to export a sheet of empty columns.
+//
+// A test still exports the sheet it always did — Right/Wrong per question and
+// the answer breakdown beside it. Scores are what you read a test by, and
+// that workbook is what people already have open.
 router.get('/export.xlsx', async (req, res) => {
+  const auditId = req.query.auditId || DEFAULT_AUDIT;
+  const def = await templates.getTemplate(auditId);
+  if (!def) return res.status(404).json({ error: 'That walk does not exist.' });
+  if (maxScore(def) > 0) return scoreWorkbook(req, res);
+
+  const result = await summarise(req, res);
+  if (!result) return;
+
+  const book = buildWorkbook({
+    def,
+    rows: result.rows,
+    graded: result.graded,
+    assignments: result.assignments,
+  });
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition',
+    `attachment; filename="${def.id}-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+  await book.xlsx.write(res);
+  res.end();
+});
+
+// What a test exports: one Right/Wrong column per question, coloured, with
+// the answer breakdown on its own sheet. Reached through /export.xlsx above,
+// which picks by whether the walk is marked at all.
+async function scoreWorkbook(req, res) {
   const data = await exportRows(req, res);
   if (!data) return;
 
@@ -1305,10 +1373,10 @@ router.get('/export.xlsx', async (req, res) => {
   key.getColumn(7).alignment = { wrapText: true };
 
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="audits-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+  res.setHeader('Content-Disposition', `attachment; filename="audits-scores-${new Date().toISOString().slice(0, 10)}.xlsx"`);
   await book.xlsx.write(res);
   res.end();
-});
+}
 
 module.exports = router;
 
