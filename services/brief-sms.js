@@ -394,6 +394,16 @@ async function rcPerson(name) {
   return { name, tz: d.tz, signedUp: Boolean(d.signed_up) };
 }
 
+// Who has the daily numbers turned on, as the checkbox in RC Tracker's Message
+// Center left it: { "Name": true|false }. RC Tracker owns this the same way it
+// owns the roster and the phone numbers, so an RC turns someone on or off there
+// and no deploy happens here.
+async function briefOptIns() {
+  const r = await fetch(`${RC_BASE}/api/brief-optins`);
+  if (!r.ok) throw new Error(`RC Tracker returned HTTP ${r.status}`);
+  return await r.json();
+}
+
 // Send by name through RC Tracker. track:false so the brief is a text, not a
 // new follow-up item on Harold's list.
 async function rcSend(name, body) {
@@ -793,7 +803,16 @@ async function tick(now = new Date()) {
     }
   }
 
+  // The recipients list is permission to text someone; the checkbox is the
+  // decision to. Unreachable list means nobody is texted this tick rather than
+  // everybody — the next tick a few minutes later tries again.
+  let optIns;
+  try { optIns = await briefOptIns(); }
+  catch (err) { console.error('[BriefSMS] opt-in list unavailable, sending nothing:', err.message); return; }
+
   for (const username of recipients()) {
+    const optInName = people.nameForUsername(username);
+    if (!optInName || optIns[optInName] !== true) continue;
     try {
       const outcome = await sendOne(username, now);
       if (outcome) console.log(`[BriefSMS] ${outcome}`);
@@ -804,7 +823,7 @@ async function tick(now = new Date()) {
 }
 
 module.exports = {
-  condense, buildLink, clip, isDue, recipients, sendOne, tick, briefCacheDate,
+  condense, buildLink, clip, isDue, recipients, sendOne, tick, briefCacheDate, briefOptIns,
   resolvePerson, rcPerson, rcSend, buildBody, MAX_BODY_CHARS,
   laborRefreshDue, refreshLabor, LABOR_REFRESH_LOCAL,
   salesBackfillDue, salesMissing, backfillSales,
